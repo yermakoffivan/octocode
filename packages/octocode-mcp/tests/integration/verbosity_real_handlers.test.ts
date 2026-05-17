@@ -12,6 +12,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
 // Vitest setup mocks child_process globally. For this e2e suite we need the
 // real `spawn` so `find`, `rg`, etc. actually run against this workspace.
@@ -38,7 +40,12 @@ const { applyGotoDefinitionVerbosity } =
 const { applyCallHierarchyVerbosity } =
   await import('../../src/tools/lsp_call_hierarchy/callHierarchy.js');
 
-const WORKSPACE = '/Users/guybary/Documents/octocode-mcp/packages/octocode-mcp';
+// Derive WORKSPACE dynamically so the test works on any machine / CI runner.
+// This file lives at tests/integration/, two levels below the package root.
+const WORKSPACE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..'
+);
 
 function payload(obj: unknown): string {
   return JSON.stringify(obj);
