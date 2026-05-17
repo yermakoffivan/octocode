@@ -14,7 +14,9 @@ const mockReadFile = vi.hoisted(() => vi.fn());
 const mockGetConfigSync = vi.hoisted(() =>
   vi.fn(() => ({ lsp: { configPath: undefined } }))
 );
-const mockGetOctocodeDir = vi.hoisted(() => vi.fn(() => '/home/user/.octocode'));
+const mockGetOctocodeDir = vi.hoisted(() =>
+  vi.fn(() => '/home/user/.octocode')
+);
 const mockValidateLSPServerPath = vi.hoisted(() =>
   vi.fn(() => ({ isValid: true, resolvedPath: '/usr/bin/tls' }))
 );
@@ -45,7 +47,11 @@ describe('lsp/config', () => {
     it('filters out dangerous shell commands from user config', async () => {
       const configWithUnsafe = JSON.stringify({
         languageServers: {
-          '.ts': { command: 'typescript-language-server', args: ['--stdio'], languageId: 'typescript' },
+          '.ts': {
+            command: 'typescript-language-server',
+            args: ['--stdio'],
+            languageId: 'typescript',
+          },
           '.sh': { command: 'bash', args: [], languageId: 'shellscript' },
         },
       });

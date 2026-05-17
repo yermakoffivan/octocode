@@ -42,7 +42,6 @@ describe('pythonPackage - branch coverage', () => {
   });
 
   describe('lastPublished extraction from releases', () => {
-
     it('should report rawResponseChars from the successful PyPI response body', async () => {
       const payload = {
         info: {

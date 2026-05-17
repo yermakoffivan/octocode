@@ -190,9 +190,10 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
         expect(result.structure['.']?.folders).toContain('src');
         // Should have made API calls
         expect(mockOctokit.rest.repos.getContent).toHaveBeenCalled();
-        const [rootResponse, recursiveResponse] = mockOctokit.rest.repos.getContent.mock.results.map(
-          call => call.value
-        );
+        const [rootResponse, recursiveResponse] =
+          mockOctokit.rest.repos.getContent.mock.results.map(
+            call => call.value
+          );
         const [rootData, recursiveData] = await Promise.all([
           rootResponse.then(response => response.data),
           recursiveResponse.then(response => response.data),

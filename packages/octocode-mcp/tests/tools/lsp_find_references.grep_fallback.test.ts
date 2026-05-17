@@ -304,12 +304,14 @@ describe('lspReferencesPatterns — grep fallback (searchReferencesWithGrep)', (
   });
 
   it('validation failure in spawn (line 110 branch) falls back gracefully', async () => {
-    const { validateCommand } = await import(
-      'octocode-security-utils/commandValidator'
-    );
+    const { validateCommand } =
+      await import('octocode-security-utils/commandValidator');
     const mockValidate = vi.mocked(validateCommand);
     // Make validation fail for all commands → spawnCollectOutput throws
-    mockValidate.mockReturnValue({ isValid: false, error: 'command not allowed' });
+    mockValidate.mockReturnValue({
+      isValid: false,
+      error: 'command not allowed',
+    });
 
     // Both ripgrep and grep will throw → both paths caught → empty result
     const result = await findReferencesWithPatternMatching(

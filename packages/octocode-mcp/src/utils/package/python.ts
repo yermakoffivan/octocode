@@ -54,9 +54,22 @@ async function searchPythonPackageInternal(
       }
 
       const rawBody = await response.text();
-      let packageInfo: any;
+      let packageInfo: {
+        info?: {
+          name?: string;
+          version?: string;
+          summary?: string;
+          description?: string;
+          keywords?: string | string[];
+          project_urls?: Record<string, string>;
+          home_page?: string;
+          author?: string;
+          license?: string;
+        };
+        releases?: Record<string, Array<{ upload_time?: string }>>;
+      };
       try {
-        packageInfo = JSON.parse(rawBody);
+        packageInfo = JSON.parse(rawBody) as typeof packageInfo;
       } catch {
         continue;
       }

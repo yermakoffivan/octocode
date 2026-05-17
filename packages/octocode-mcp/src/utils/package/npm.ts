@@ -133,7 +133,8 @@ async function fetchWeeklyDownloads(
       packageRegistry: 'npm',
     })) as { downloads?: number } | null;
     return {
-      downloads: typeof data?.downloads === 'number' ? data.downloads : undefined,
+      downloads:
+        typeof data?.downloads === 'number' ? data.downloads : undefined,
       rawResponseChars: countRawPayloadChars(data),
     };
   } catch {
@@ -255,7 +256,8 @@ async function fetchLastPublished(
         packageRegistry: 'npm',
       })) as { modified?: string } | null;
       const rawResponseChars = countRawPayloadChars(data);
-      if (data?.modified) return { lastPublished: data.modified, rawResponseChars };
+      if (data?.modified)
+        return { lastPublished: data.modified, rawResponseChars };
     } catch {
       // install-v1+json abbreviated fetch failed; fall back to full JSON metadata below.
     }
@@ -357,10 +359,8 @@ async function fetchNpmPackageByView(
   packageName: string,
   fetchMetadata: boolean
 ): Promise<PackageSearchAPIResult | PackageSearchError> {
-  const { pkg, errorDetail, rawResponseChars } = await fetchPackageDetailsWithError(
-    packageName,
-    fetchMetadata
-  );
+  const { pkg, errorDetail, rawResponseChars } =
+    await fetchPackageDetailsWithError(packageName, fetchMetadata);
 
   if (!pkg) {
     if (errorDetail) {
@@ -464,7 +464,8 @@ async function searchNpmPackageViaSearch(
         return {
           pkg: {
             repoUrl:
-              item.links?.repository && typeof item.links.repository === 'string'
+              item.links?.repository &&
+              typeof item.links.repository === 'string'
                 ? cleanRepoUrl(item.links.repository)
                 : null,
             path: item.name,
