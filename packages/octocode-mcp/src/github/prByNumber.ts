@@ -122,7 +122,8 @@ export async function fetchGitHubPullRequestByNumberAPIInternal(
       pull_requests: [formattedPR],
       total_count: 1,
       rawResponseChars:
-        countSerializedChars(result.data) + (getRawResponseChars(transformedPR) ?? 0),
+        countSerializedChars(result.data) +
+        (getRawResponseChars(transformedPR) ?? 0),
     };
   } catch (error: unknown) {
     const apiError = handleGitHubAPIError(error);

@@ -154,7 +154,6 @@ describe('Pull Request Search', () => {
       });
     });
 
-
     it('should include raw chars from REST list and fetched file changes', async () => {
       mockShouldUseSearchForPRs.mockReturnValue(false);
 

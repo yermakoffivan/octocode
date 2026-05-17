@@ -811,7 +811,10 @@ describe('lspReferencesPatterns - Branch Coverage', () => {
     });
 
     it('combines include and exclude patterns', () => {
-      const result = buildGrepFilterArgs(['**/*.ts'], ['**/dist/**', '*.test.ts']);
+      const result = buildGrepFilterArgs(
+        ['**/*.ts'],
+        ['**/dist/**', '*.test.ts']
+      );
       expect(result).toContain('--include="*.ts"');
       expect(result).toContain('--exclude-dir="dist"');
       expect(result).toContain('--exclude="*.test.ts"');
@@ -830,7 +833,9 @@ describe('lspReferencesPatterns - Branch Coverage', () => {
     });
 
     it('builds --exclude-dir= when excludePattern contains a slash', () => {
-      const result = buildGrepFilterArgsArray(undefined, ['**/node_modules/**']);
+      const result = buildGrepFilterArgsArray(undefined, [
+        '**/node_modules/**',
+      ]);
       expect(result).toContain('--exclude-dir=node_modules');
     });
 
@@ -840,7 +845,10 @@ describe('lspReferencesPatterns - Branch Coverage', () => {
     });
 
     it('combines include and exclude in array form', () => {
-      const result = buildGrepFilterArgsArray(['**/*.ts'], ['**/dist/**', '*.snap']);
+      const result = buildGrepFilterArgsArray(
+        ['**/*.ts'],
+        ['**/dist/**', '*.snap']
+      );
       expect(result).toContain('--include=*.ts');
       expect(result).toContain('--exclude-dir=dist');
       expect(result).toContain('--exclude=*.snap');
@@ -863,12 +871,9 @@ describe('lspReferencesPatterns - Branch Coverage', () => {
     });
 
     it('adds default extensions when only excludePattern is provided (no include)', () => {
-      const result = buildGrepSearchArgs(
-        '/workspace',
-        'myFn',
-        undefined,
-        ['**/dist/**']
-      );
+      const result = buildGrepSearchArgs('/workspace', 'myFn', undefined, [
+        '**/dist/**',
+      ]);
       expect(result).toContain('--exclude-dir=dist');
       expect(result).toContain('--include=*.ts');
     });

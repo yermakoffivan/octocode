@@ -62,7 +62,15 @@ describe('shapePullRequestFileChanges', () => {
 
   it('returns metadata-only view when type is metadata', () => {
     const result = shapePullRequestFileChanges(
-      [{ path: 'file.ts', status: 'modified', additions: 5, deletions: 2, patch: 'patch' }],
+      [
+        {
+          path: 'file.ts',
+          status: 'modified',
+          additions: 5,
+          deletions: 2,
+          patch: 'patch',
+        },
+      ],
       {
         id: 'q1',
         mainResearchGoal: 'test',
@@ -79,7 +87,15 @@ describe('shapePullRequestFileChanges', () => {
 
   it('returns full content when type is fullContent', () => {
     const result = shapePullRequestFileChanges(
-      [{ path: 'file.ts', status: 'modified', additions: 3, deletions: 1, patch: '+new line' }],
+      [
+        {
+          path: 'file.ts',
+          status: 'modified',
+          additions: 3,
+          deletions: 1,
+          patch: '+new line',
+        },
+      ],
       {
         id: 'q1',
         mainResearchGoal: 'test',

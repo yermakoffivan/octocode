@@ -48,7 +48,8 @@ vi.mock('../../src/hints/dynamic.js', () => ({
 
 // Mock validateRipgrepQuery so we can control its output
 vi.mock('@octocodeai/octocode-core', async importOriginal => {
-  const actual = await importOriginal<typeof import('@octocodeai/octocode-core')>();
+  const actual =
+    await importOriginal<typeof import('@octocodeai/octocode-core')>();
   return {
     ...actual,
     validateRipgrepQuery: vi.fn().mockReturnValue({

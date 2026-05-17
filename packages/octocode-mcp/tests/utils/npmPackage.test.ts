@@ -162,7 +162,6 @@ describe('mapToResult - time object parsing', () => {
     }
   });
 
-
   it('should report rawResponseChars from every fetched npm payload', async () => {
     const viewPayload = {
       name: 'test-pkg',
@@ -179,7 +178,8 @@ describe('mapToResult - time object parsing', () => {
     expect('packages' in result).toBe(true);
     if ('packages' in result) {
       const expectedRawChars =
-        JSON.stringify(viewPayload).length + JSON.stringify(downloadsPayload).length;
+        JSON.stringify(viewPayload).length +
+        JSON.stringify(downloadsPayload).length;
       expect(result.rawResponseChars).toBe(expectedRawChars);
     }
   });

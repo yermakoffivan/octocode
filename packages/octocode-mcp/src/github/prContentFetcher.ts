@@ -228,10 +228,7 @@ async function fetchPRCommitsAPI(
     pull_number: prNumber,
   });
 
-  return attachRawResponseChars(
-    result.data as CommitListItem[],
-    result.data
-  );
+  return attachRawResponseChars(result.data as CommitListItem[], result.data);
 }
 
 async function fetchCommitFilesAPI(

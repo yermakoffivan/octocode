@@ -95,9 +95,9 @@ describe('spawnCollectOutput', () => {
       error: 'Command not allowed',
     });
 
-    await expect(
-      spawnCollectOutput('evil-cmd', ['--bad'])
-    ).rejects.toThrow('Command validation failed: Command not allowed');
+    await expect(spawnCollectOutput('evil-cmd', ['--bad'])).rejects.toThrow(
+      'Command validation failed: Command not allowed'
+    );
   });
 
   it('rejects with generic message when validation error is missing', async () => {
@@ -106,24 +106,24 @@ describe('spawnCollectOutput', () => {
       error: undefined,
     });
 
-    await expect(
-      spawnCollectOutput('evil-cmd', [])
-    ).rejects.toThrow('Command validation failed: Command not allowed');
+    await expect(spawnCollectOutput('evil-cmd', [])).rejects.toThrow(
+      'Command validation failed: Command not allowed'
+    );
   });
 
   it('rejects when exit code is ≥ 2', async () => {
     simulateSpawn([], 2);
-    await expect(
-      spawnCollectOutput('rg', ['pattern'])
-    ).rejects.toThrow('Process exited with code 2');
+    await expect(spawnCollectOutput('rg', ['pattern'])).rejects.toThrow(
+      'Process exited with code 2'
+    );
   });
 
   it('rejects on spawn error event', async () => {
     const spawnErr = new Error('ENOENT: no such file');
     simulateSpawn([], null, spawnErr);
-    await expect(
-      spawnCollectOutput('rg', ['pattern'])
-    ).rejects.toThrow('ENOENT: no such file');
+    await expect(spawnCollectOutput('rg', ['pattern'])).rejects.toThrow(
+      'ENOENT: no such file'
+    );
   });
 
   it('rejects and kills process when output exceeds maxBuffer', async () => {

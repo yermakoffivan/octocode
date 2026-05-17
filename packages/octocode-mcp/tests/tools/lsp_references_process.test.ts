@@ -131,7 +131,8 @@ describe('spawnCollectOutput (lspReferencesProcess)', () => {
     mockStdoutOn.mockImplementation(() => {});
     mockSpawnOn.mockImplementation(
       (event: string, cb: (err: Error) => void) => {
-        if (event === 'error') setTimeout(() => cb(new Error('spawn ENOENT')), 0);
+        if (event === 'error')
+          setTimeout(() => cb(new Error('spawn ENOENT')), 0);
       }
     );
 

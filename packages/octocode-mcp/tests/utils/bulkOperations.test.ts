@@ -127,7 +127,6 @@ describe('executeBulkOperation', () => {
   });
 
   describe('Multiple queries - same status', () => {
-
     it('records responseChars after top-level response pagination is applied', async () => {
       const queries = [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }];
       const processor = vi
@@ -154,9 +153,8 @@ describe('executeBulkOperation', () => {
         results: Array<{ id: string }>;
         responsePagination?: { hasMore: boolean };
       };
-      const [toolName, rawChars, responseChars] = vi.mocked(
-        incrementToolCharSavings
-      ).mock.calls.at(-1) ?? [];
+      const [toolName, rawChars, responseChars] =
+        vi.mocked(incrementToolCharSavings).mock.calls.at(-1) ?? [];
 
       expect(toolName).toBe(TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES);
       expect(rawChars).toBe(3_000);

@@ -385,56 +385,56 @@ describe('GitHub Error Handling', () => {
     });
   });
 
-    it('should use default message when RequestError has empty message for unknown status', () => {
-      const error = new RequestError('', 418, {
-        response: {
-          status: 418,
-          headers: {},
-          data: {},
-          url: 'https://api.github.com',
-          retryCount: 0,
-        },
-        request: {
-          method: 'GET',
-          url: 'https://api.github.com',
-          headers: {},
-        },
-      });
-
-      const result = handleGitHubAPIError(error);
-
-      expect(result.type).toBe('http');
-      expect(result.status).toBe(418);
-      expect(typeof result.error).toBe('string');
-      expect(result.error.length).toBeGreaterThan(0);
+  it('should use default message when RequestError has empty message for unknown status', () => {
+    const error = new RequestError('', 418, {
+      response: {
+        status: 418,
+        headers: {},
+        data: {},
+        url: 'https://api.github.com',
+        retryCount: 0,
+      },
+      request: {
+        method: 'GET',
+        url: 'https://api.github.com',
+        headers: {},
+      },
     });
 
-    it('should use fallback suggestion when token already has all required scopes', () => {
-      const error = new RequestError('Forbidden', 403, {
-        response: {
-          status: 403,
-          headers: {
-            'x-accepted-oauth-scopes': 'repo',
-            'x-oauth-scopes': 'repo, read:user, read:org',
-            'x-ratelimit-remaining': '10',
-          },
-          data: {},
-          url: 'https://api.github.com',
-          retryCount: 0,
-        },
-        request: {
-          method: 'GET',
-          url: 'https://api.github.com',
-          headers: {},
-        },
-      });
+    const result = handleGitHubAPIError(error);
 
-      const result = handleGitHubAPIError(error);
+    expect(result.type).toBe('http');
+    expect(result.status).toBe(418);
+    expect(typeof result.error).toBe('string');
+    expect(result.error.length).toBeGreaterThan(0);
+  });
 
-      expect(result.status).toBe(403);
-      expect(result.type).toBe('http');
-      expect(typeof result.scopesSuggestion).toBe('string');
+  it('should use fallback suggestion when token already has all required scopes', () => {
+    const error = new RequestError('Forbidden', 403, {
+      response: {
+        status: 403,
+        headers: {
+          'x-accepted-oauth-scopes': 'repo',
+          'x-oauth-scopes': 'repo, read:user, read:org',
+          'x-ratelimit-remaining': '10',
+        },
+        data: {},
+        url: 'https://api.github.com',
+        retryCount: 0,
+      },
+      request: {
+        method: 'GET',
+        url: 'https://api.github.com',
+        headers: {},
+      },
     });
+
+    const result = handleGitHubAPIError(error);
+
+    expect(result.status).toBe(403);
+    expect(result.type).toBe('http');
+    expect(typeof result.scopesSuggestion).toBe('string');
+  });
 
   // generateFileAccessHints tests removed: function no longer part of API
 });
