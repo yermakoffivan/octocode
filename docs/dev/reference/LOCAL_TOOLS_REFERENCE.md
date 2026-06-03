@@ -111,13 +111,13 @@ For LSP tools, workspace selection is automatic:
 - If the target file is outside `WORKSPACE_ROOT`, Octocode walks up from the file and picks the nearest project root using markers such as `package.json`, `tsconfig.json`, `.git`, `Cargo.toml`, `go.mod`, or `pyproject.toml`.
 - If no marker is found, Octocode falls back to the file's own directory.
 
-> **Note:** `githubCloneRepo` and `githubGetFileContent` directory mode are **GitHub only** — they are not available when GitLab or Bitbucket is the active provider. Both require `ENABLE_LOCAL=true` and `ENABLE_CLONE=true`.
+> **Note:** `githubCloneRepo` and `githubGetFileContent` directory mode both require `ENABLE_LOCAL=true` and `ENABLE_CLONE=true`.
 
 > **Full workflow guide:** [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/workflows/CLONE_AND_LOCAL_TOOLS_WORKFLOW.md)
 
 ### Research Context (Required)
 
-All local and LSP tools require research context fields (same as GitHub/GitLab tools):
+All local and LSP tools require research context fields (same as GitHub tools):
 
 | Field | Description |
 |-------|-------------|
@@ -146,26 +146,24 @@ Every local and LSP tool accepts `verbosity`. Choose it by cost:
 |---|---|---|---|
 | _omitted_ / `"compact"` | Default for normal work and follow-up `lineHint`s. | Actionable paths, lines, snippets/entries, metadata, pagination, and `lspMode` where relevant. | Nothing. |
 | `"verbose"` | Rarely. Currently only for future expansion. | Same as `compact` today. | Nothing, but it does not add value yet. |
-| `"ultra"` | First pass over broad or large scopes. | Counts, summary, top path/line or graph edge hints, plus drill-back guidance. | Heavy arrays/content such as `files[]`, `entries[]`, snippets, node content, or call arrays. |
+| `"concise"` | First pass over broad or large scopes. | Counts, summary, top path/line or graph edge hints, plus drill-back guidance. | Heavy arrays/content such as `files[]`, `entries[]`, snippets, node content, or call arrays. |
 
-Default strategy: probe with `ultra`; if the signal matters, re-call with `compact` scoped to the returned path, line, file page, or include pattern.
+Default strategy: probe with `concise`; if the signal matters, re-call with `compact` scoped to the returned path, line, file page, or include pattern.
 
 ```jsonc
 // Cheap existence probe
-{ "queries": [{ "pattern": "parseHints", "path": "./", "verbosity": "ultra" }] }
+{ "queries": [{ "pattern": "parseHints", "path": "./", "verbosity": "concise" }] }
 // -> "5 matches in 3 files (top: src/hints/parseHints.ts:12)"
 
 // Drill back for exact matches and line hints
 { "queries": [{ "pattern": "parseHints", "path": "src/hints/parseHints.ts", "verbosity": "compact" }] }
 ```
 
-For the longer design rationale, see [RFC §3.1](https://github.com/bgauryy/octocode-mcp/blob/main/.octocode/rfc/rtk-token-techniques/RFC.md#31-what-this-rfc-costs--friction-lossy-modes-and-the-agent-decides-design).
-
 ## Tools at a Glance
 
 ### Local Tools
 
-| Tool | Description | `verbosity:"ultra"` payload |
+| Tool | Description | `verbosity:"concise"` payload |
 |------|-------------|------------------------------|
 | **`localSearchCode`** | Fast pattern search across files using ripgrep. Returns matches with line numbers and context. Produces `lineHint` for LSP tools. | `"N matches in M files (top: path:line)"` |
 | **`localViewStructure`** | Lists directory contents with metadata (size, type, time). Supports depth control and sorting. | `"X entries (Y files, Z dirs, size)"` |
@@ -174,7 +172,7 @@ For the longer design rationale, see [RFC §3.1](https://github.com/bgauryy/octo
 
 ### LSP Tools
 
-| Tool | Description | `verbosity:"ultra"` payload |
+| Tool | Description | `verbosity:"concise"` payload |
 |------|-------------|------------------------------|
 | **`lspGotoDefinition`** | Jumps to where a symbol is defined. Requires `lineHint` from search. | `"N definition(s) (top: file:line:col)"` |
 | **`lspFindReferences`** | Finds all usages of a symbol (types, variables, constants). Requires `lineHint`. | `"N refs in M files"` + flat `refs[]` (< 500) or `topFiles` rollup (≥ 500). Force rollup any fanout with `groupByFile:true`. |
@@ -395,9 +393,9 @@ TypeScript/JavaScript works out of the box in standard Octocode installs. Other 
 
 | Tool | Rating | Best for | Output shape | Caveat |
 |---|---:|---|---|---|
-| `lspGotoDefinition` | 10/10 | Jumping from a symbol usage/import to the real definition. | Definition `locations[]`, ranges, snippets in `compact`, `lspMode`. `ultra` keeps count + top path:line:column and empties content. | Needs exact symbol + `lineHint`. |
-| `lspFindReferences` | 10/10 | All usages of types, interfaces, variables, constants, and functions. | Reference `locations[]`, `isDefinition`, pagination, `lspMode`. `ultra` returns ref counts + path:line refs or `groupByFile` rollup. | Use `lspCallHierarchy` for true call relationships. |
-| `lspCallHierarchy` | 8/10 | Function/method flow: who calls X, what X calls. | Target item + incoming/outgoing calls and call ranges. `ultra` returns compact `A -> B` edges and empties node content. | `compact` can be large for module-level callers; prefer `ultra` first, then drill back. |
+| `lspGotoDefinition` | 10/10 | Jumping from a symbol usage/import to the real definition. | Definition `locations[]`, ranges, snippets in `compact`, `lspMode`. `concise` keeps count + top path:line:column and empties content. | Needs exact symbol + `lineHint`. |
+| `lspFindReferences` | 10/10 | All usages of types, interfaces, variables, constants, and functions. | Reference `locations[]`, `isDefinition`, pagination, `lspMode`. `concise` returns ref counts + path:line refs or `groupByFile` rollup. | Use `lspCallHierarchy` for true call relationships. |
+| `lspCallHierarchy` | 8/10 | Function/method flow: who calls X, what X calls. | Target item + incoming/outgoing calls and call ranges. `concise` returns compact `A -> B` edges and empties node content. | `compact` can be large for module-level callers; prefer `concise` first, then drill back. |
 
 ### Choosing the Right LSP Tool
 
@@ -721,5 +719,5 @@ Tools with no dependencies can run in parallel:
 ## Related Documentation
 
 - [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/workflows/CLONE_AND_LOCAL_TOOLS_WORKFLOW.md) — How to clone external repos and analyze them with local + LSP tools
-- [GitHub, GitLab & Bitbucket Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_GITLAB_TOOLS_REFERENCE.md) — code host tools including `githubCloneRepo`
+- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_TOOLS_REFERENCE.md) — code host tools including `githubCloneRepo`
 - [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) — `ENABLE_LOCAL`, `ENABLE_CLONE`, and other settings

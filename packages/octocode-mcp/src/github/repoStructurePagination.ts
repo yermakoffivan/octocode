@@ -2,7 +2,12 @@
  * Repository structure pagination — applies pagination to cached structure results.
  * Extracted from repoStructure.ts.
  */
-import type { GitHubViewRepoStructureQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { GitHubViewRepoStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type GitHubViewRepoStructureQuery = z.infer<
+  typeof GitHubViewRepoStructureQuerySchema
+>;
 import type { GitHubRepositoryStructureResult } from '../tools/github_view_repo_structure/types.js';
 import { GITHUB_STRUCTURE_DEFAULTS as STRUCTURE_DEFAULTS } from '../tools/github_view_repo_structure/constants.js';
 import { generateStructurePaginationHints } from '../utils/pagination/hints.js';
@@ -32,7 +37,10 @@ export function applyStructurePagination(
 
   const paginatedItems = cachedItems.slice(startIdx, endIdx);
 
-  const structure: Record<string, { files: string[]; folders: string[] }> = {};
+  // Object.create(null): keys come from GitHub paths — defense-in-depth
+  // against unexpected paths polluting Object.prototype.
+  const structure: Record<string, { files: string[]; folders: string[] }> =
+    Object.create(null);
   const basePath = cachedResult.path === '/' ? '' : cachedResult.path;
 
   const getRelativeParent = (itemPath: string): string => {
@@ -82,7 +90,7 @@ export function applyStructurePagination(
   const sortedStructure: Record<
     string,
     { files: string[]; folders: string[] }
-  > = {};
+  > = Object.create(null);
   const sortedKeys = Object.keys(structure).sort((a, b) => {
     if (a === '.') return -1;
     if (b === '.') return 1;

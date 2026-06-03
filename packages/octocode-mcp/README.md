@@ -29,21 +29,85 @@
 
 ---
 
+## Benchmark Performance
+
+Hermetic evals: **212/212 passing**. Octocode MCP is the best default for agent research: it wins the combined benchmark with **99/105 quality** and **17,274 output tokens** on the full 60-query remote sweep (**89% less than raw `gh`**).
+
+**Token benchmark — lower is better**
+
+| Method | Token load | Tokens | Result |
+|---|---:|---:|---|
+| raw `gh` | `████████████████████` | 153,042 | baseline |
+| Octocode CLI | `████░░░░░░░░░░░░░░░░` | 29,365 | 81% less than `gh` |
+| **Octocode MCP** | `██░░░░░░░░░░░░░░░░░░` | **17,274** | **89% less than `gh`** |
+
+**Quality benchmark — higher is better**
+
+| Method | Quality bar | Score | Best use |
+|---|---:|---:|---|
+| **Octocode MCP** | `███████████████████░` | **99/105 · 94%** | Deep agent research + local/LSP flow |
+| Octocode CLI | `███████████████░░░░░` | 79/105 · 75% | Short scripted research |
+| raw `gh` | `not scored` | baseline | Writes and direct GitHub API access |
+
+**Token × Quality visual axis**
+
+X-axis = token savings vs raw `gh` (right is better). Y-axis = research quality score (up is better). **Best overall is the upper-right quadrant.**
+
+```text
+Quality ↑
+100 |                                                  ● Octocode MCP
+ 90 |                                                    99/105 quality
+ 80 |                                      ● Octocode CLI 89% token savings
+ 70 |                                        79/105 quality
+ 60 |
+ 50 |
+ 40 |
+ 30 |
+ 20 |
+ 10 |
+  0 | ● raw gh
+    +--------------------------------------------------------------→ Token savings
+      0%               40%               80%              90%+
+      baseline                          CLI 81%        MCP 89%
+```
+
+| Point | X: token benchmark | Y: quality benchmark | Interpretation |
+|---|---:|---:|---|
+| **Octocode MCP** | 89% less than `gh` | **99/105** | Best combined token + quality result |
+| Octocode CLI | 81% less than `gh` | 79/105 | Best short/scripted structured runner |
+| raw `gh` | baseline | not scored | Direct API/writes; verbose reads |
+
+**Best-by-scenario matrix**
+
+| Scenario | Best tokens | Best quality | Recommendation |
+|---|---|---|---|
+| Full remote research sweep | **Octocode MCP** | **Octocode MCP** | Default for agent research |
+| Short one-off scripted run | **Octocode CLI** | Octocode CLI / MCP | Use CLI when MCP init is not amortized |
+| Shallow PR listing | **Octocode MCP** | **Octocode MCP** | MCP for triage |
+| PR triage with diff stats | **Octocode MCP** | **Octocode MCP** | MCP avoids `1 + N` follow-up calls |
+| Remote directory browsing | **Octocode MCP** | **Octocode MCP** | Raw `gh api /contents` is very verbose |
+| Local shallow grep/find | **Octocode local tools** | **Octocode local tools** | Octocode for evidence |
+| Local targeted code read | **Octocode local tools** | **Octocode local tools** | Use `matchString` / line ranges |
+| Local semantic flow | **Octocode MCP LSP** | **Octocode MCP LSP** | Definitions, references, call hierarchy |
+| GitHub writes | **raw `gh`** | **raw `gh`** | Octocode is read-only |
+
+Local verdict: Octocode local tools win for structured evidence, metadata, targeted reads, PCRE2, and LSP (`definition`, `references`, `call hierarchy`). Octocode `verbosity:"concise"` is available for lossy broad probes; use compact/default for evidence.
+
+Details: [Benchmark Suite](https://github.com/bgauryy/octocode-mcp/blob/main/benchmark/github/README.md)
+
+---
+
 ## Table of Contents
 
-- [See It In Action](#see-it-in-action)
-- [Installation](#installation)
-- [More Examples](#more-examples)
-- [Overview](#overview)
-- [Tools](#tools)
-- [Commands](#commands)
-  - [/research - Expert Code & Product Research](#research---expert-code--product-research)
-  - [/plan - Research, Plan & Implement Complex Tasks](#plan---research-plan--implement-complex-tasks)
-  - [/review_pull_request - Comprehensive PR Review](#review_pull_request---comprehensive-pr-review)
-  - [/review_security - Security Audit](#review_security---security-audit)
-- [Documentation](#documentation)
-- [Community](#community)
-- [License](#license)
+- [Benchmark Performance](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#benchmark-performance)
+- [See It In Action](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#see-it-in-action)
+- [Installation](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#installation)
+- [More Examples](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#more-examples)
+- [Overview](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#overview)
+- [Tools](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#tools)
+- [Documentation](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#documentation)
+- [Community](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#community)
+- [License](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#license)
 
 ---
 
@@ -190,7 +254,7 @@ First, install the Octocode MCP server with your client.
 }
 ```
 
-> **Note**: This configuration uses GitHub CLI authentication. For Personal Access Token, see the [Authentication Guide](#authentication-methods) below.
+> **Note**: This configuration uses GitHub CLI authentication. For Personal Access Token, see the [Authentication Guide](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/README.md#authentication-methods) below.
 
 [<img src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D) [<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D)
 
@@ -584,101 +648,6 @@ Demonstrates progressive research workflow:
 
 ---
 
-## Commands
-
-Octocode MCP provides intelligent prompt commands that enhance your research workflow:
-
-### `/research` - Expert Code & Product Research
-
-Powerful research prompt leveraging Octocode's full capabilities for deep code discovery, documentation analysis, pattern identification, and bug investigation. Orchestrates parallel bulk queries with staged analysis to uncover insights fast.
-
-**When to use**:
-- **Understanding repository workflows**: Discover how repositories work, trace specific flows through codebases, and understand technical implementations
-- **Cross-repository flow analysis**: Understand complex flows that span multiple repositories, trace data flows across microservices
-- **Deep technical investigations**: Trace code flows, understand complex implementations, analyze architecture decisions
-- **Bug investigation**: Find root causes by analyzing code, commit history, and related PRs
-- **Pattern discovery**: Compare implementations across multiple repos to find best practices
-- **Documentation validation**: Verify docs match actual code behavior
-
-**Usage Examples**:
-```
-/research How does React's useState hook work internally?
-/research Compare state management approaches: Redux vs Zustand vs Jotai
-/research Why is the payment webhook failing? Trace the error through payment-service
-```
-
----
-
-### `/plan` - Research, Plan & Implement Complex Tasks
-
-Your AI architect for tackling complex development work. Breaks down ambitious tasks into actionable steps, researches existing patterns and implementations, then guides you through execution—all powered by Octocode's deep codebase intelligence.
-
-**When to use**:
-- **Building new features**: Research patterns, plan architecture, then implement
-- **Complex refactoring**: Understand current state, plan migration path, execute safely
-- **Learning new technologies**: Research best practices, create learning plan, build incrementally
-- **System design**: Explore existing implementations, design your approach, validate decisions
-
-**Usage Examples**:
-```
-/plan Build a real-time chat application with WebSocket support
-/plan Migrate our authentication from JWT to OAuth2
-/plan Implement a plugin system for our CLI tool
-```
-
----
-
-### `/review_pull_request` - Comprehensive PR Review
-
-**Args:** `prUrl` (required) - GitHub Pull Request URL (e.g., https://github.com/owner/repo/pull/123)
-
-Expert-level PR review with a Defects-First mindset. Dives deep into code changes, spots bugs before they ship, flags complexity risks, and delivers actionable feedback that elevates code quality.
-
-**What it analyzes**:
-- **Defects & Bugs**: Logic errors, edge cases, race conditions, null handling
-- **Security Issues**: Injection vulnerabilities, auth bypasses, data exposure
-- **Performance**: N+1 queries, memory leaks, inefficient algorithms
-- **Code Quality**: Complexity, maintainability, test coverage gaps
-- **Best Practices**: Design patterns, error handling, documentation
-
-**Usage**:
-```
-/review_pull_request prUrl: https://github.com/facebook/react/pull/12345
-```
-
----
-
-### `/review_security` - Security Audit
-
-**Args:** `repoUrl` (required) - GitHub repository URL (e.g., https://github.com/owner/repo)
-
-Comprehensive security analysis of a repository. Identifies vulnerabilities, reviews authentication/authorization patterns, checks for secrets exposure, and provides remediation guidance.
-
-**What it analyzes**:
-- **Authentication & Authorization**: Auth flows, session management, access controls
-- **Input Validation**: Injection points, sanitization, boundary checks
-- **Secrets Management**: Hardcoded credentials, API keys, configuration security
-- **Dependencies**: Known vulnerabilities, outdated packages, supply chain risks
-- **Data Protection**: Encryption, PII handling, data flow security
-
-**Usage**:
-```
-/review_security repoUrl: https://github.com/your-org/your-repo
-```
-
----
-
-### Tips for Using Commands
-
-1. **Use `/research` for code exploration** - Deep dive into how things work
-2. **Use `/plan` for building** - Research, plan, then implement complex features
-3. **Use `/review_pull_request`** before merging PRs for thorough code review
-4. **Use `/review_security`** for security audits of repositories
-
-> **💡 Pro Tip**: Combine `/research` and `/plan` for maximum effectiveness—research existing patterns first, then plan your implementation with confidence.
-
----
-
 ## Documentation
 
 ### Comprehensive Guides
@@ -688,8 +657,8 @@ Comprehensive security analysis of a repository. Identifies vulnerabilities, rev
 | **Official Website** | Interactive tutorials, demos, community | [octocode.ai](https://octocode.ai) |
 | **Docs Index** | All configuration, development, workflow, and reference docs | [docs/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md) |
 | **Configuration Guide** | Environment variables and server configuration | [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) |
-| **Authentication Guide** | Setup instructions for GitHub, GitLab, and Bitbucket | [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) |
-| **Remote Tool Reference** | GitHub/GitLab/Bitbucket tool behavior and schemas | [GitHub, GitLab & Bitbucket Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_GITLAB_TOOLS_REFERENCE.md) |
+| **Authentication Guide** | Setup instructions for GitHub | [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) |
+| **Remote Tool Reference** | GitHub tool behavior and schemas | [GitHub Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_TOOLS_REFERENCE.md) |
 | **Local + LSP Reference** | Local filesystem and semantic navigation tools | [Local & LSP Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LOCAL_TOOLS_REFERENCE.md) |
 | **Clone Workflow** | Clone GitHub repos, then analyze locally with LSP | [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/workflows/CLONE_AND_LOCAL_TOOLS_WORKFLOW.md) |
 | **Troubleshooting** | Common issues and solutions | [Troubleshooting Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md) |

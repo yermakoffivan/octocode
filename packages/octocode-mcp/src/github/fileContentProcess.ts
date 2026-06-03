@@ -3,9 +3,8 @@
  * Extracted from fileContent.ts to isolate post-cache processing.
  */
 import type { GitHubFileContentApiResult } from '../tools/github_fetch_content/types.js';
-import { getConfigSync } from 'octocode-shared';
+import { getOutputCharLimit } from '../utils/pagination/charLimit.js';
 import { ContentSanitizer } from 'octocode-security-utils/contentSanitizer';
-import { minifyContent } from '../utils/minifier/minifier.js';
 import {
   applyPagination,
   createPaginationInfo,
@@ -13,24 +12,8 @@ import {
 import { generateGitHubPaginationHints } from '../utils/pagination/hints.js';
 import { OctokitWithThrottling } from './client.js';
 
-function readConfiguredDefaultCharLength(): number {
-  const config = getConfigSync() as {
-    output?: {
-      pagination?: {
-        defaultCharLength?: number;
-      };
-    };
-  };
-
-  return config.output?.pagination?.defaultCharLength ?? 8000;
-}
-
 function getDefaultContentPageSize(): number {
-  try {
-    return readConfiguredDefaultCharLength();
-  } catch {
-    return 8000;
-  }
+  return getOutputCharLimit();
 }
 
 interface FileTimestampInfo {
@@ -151,6 +134,24 @@ export async function processFileContentAPI(
       }
     }
 
+    // Whitespace-tolerant fallback: an anchor copied from a minified search
+    // snippet (whitespace stripped, e.g. `foo(a,b,c)`) won't exact-match the
+    // raw line `foo(a, b, c)`. Retry once with all whitespace removed so the
+    // anchor resolves instead of returning a false "pattern not found".
+    if (matchingLines.length === 0) {
+      const needle = searchLower.replace(/\s+/g, '');
+      if (needle.length > 0) {
+        for (let i = 0; i < originalLines.length; i++) {
+          const haystack = (originalLines[i] ?? '')
+            .toLowerCase()
+            .replace(/\s+/g, '');
+          if (haystack.includes(needle)) {
+            matchingLines.push(i + 1);
+          }
+        }
+      }
+    }
+
     if (matchingLines.length === 0) {
       return {
         owner,
@@ -158,6 +159,7 @@ export async function processFileContentAPI(
         path: filePath,
         content: '',
         branch,
+        totalLines,
         matchNotFound: true,
         searchedFor: matchString,
         hints: [
@@ -238,9 +240,12 @@ export async function processFileContentAPI(
     );
   }
 
-  const minifyResult = await minifyContent(finalContent, filePath);
-  finalContent = minifyResult.content;
-
+  // NOTE: Minification is intentionally NOT applied here. It is owned by the
+  // concise verbosity finalizer (applyGithubFetchContentVerbosity), which is a
+  // bulk-level decision (concise activates only when EVERY query asks for it).
+  // The base processor must return content verbatim so a basic/default read
+  // matches the bytes on disk — see src/scheme/verbosity.ts ("content reduced
+  // ONLY in concise; basic and compact never drop a returned value").
   const matchLocations = Array.from(matchLocationsSet);
 
   return {
@@ -249,6 +254,7 @@ export async function processFileContentAPI(
     path: filePath,
     content: finalContent,
     branch,
+    totalLines,
     ...(isPartial && {
       startLine: actualStartLine,
       endLine: actualEndLine,
@@ -256,6 +262,7 @@ export async function processFileContentAPI(
     }),
     ...(matchLocations.length > 0 && {
       matchLocations,
+      warnings: matchLocations,
     }),
   } as GitHubFileContentApiResult;
 }

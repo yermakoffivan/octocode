@@ -47,7 +47,7 @@ export type MCPClient =
   | 'kiro'
   | 'custom';
 
-export type IDE = 'cursor' | 'claude';
+export type IDE = Exclude<MCPClient, 'custom'> | 'claude';
 
 export type MCPClientCategory = 'ide' | 'desktop' | 'extension' | 'cli';
 
@@ -60,7 +60,7 @@ export interface MCPClientInfo {
   envVars?: string[];
 }
 
-export type InstallMethod = 'direct' | 'npx';
+export type InstallMethod = 'npx';
 
 export interface GitHubAuthStatus {
   installed: boolean;

@@ -33,27 +33,33 @@ export async function fetchDirectoryContentsRecursivelyAPI(
     const result = await octokit.rest.repos.getContent({
       owner,
       repo,
-      path: path || undefined,
+      path: path || '',
       ref: branch,
     });
 
     let rawResponseChars = countSerializedChars(result.data);
     const items = Array.isArray(result.data) ? result.data : [result.data];
-    const apiItems: GitHubApiFileItem[] = items.map(
-      (item: GitHubApiFileItem) => ({
-        name: item.name,
-        path: item.path,
-        type: item.type as 'file' | 'dir',
-        size: 'size' in item ? item.size : undefined,
-        download_url: 'download_url' in item ? item.download_url : undefined,
-        url: item.url,
-        html_url: item.html_url,
-        git_url: item.git_url,
-        sha: item.sha,
-      })
-    );
+    const apiItems = items.map((item: GitHubApiFileItem) => ({
+      name: item.name,
+      path: item.path,
+      type: item.type as 'file' | 'dir',
+      size: 'size' in item ? item.size : undefined,
+      download_url: 'download_url' in item ? item.download_url : undefined,
+      url: item.url,
+      html_url: item.html_url,
+      git_url: item.git_url,
+      sha: item.sha,
+    }));
 
-    const allItems: GitHubApiFileItem[] = [...apiItems];
+    // Intentional projection: `apiItems` carries the fields downstream consumes
+    // (name/path/type/size/urls/sha) but omits `_links` and narrows `size` to
+    // optional, so it is a structural subset of GitHubApiFileItem rather than a
+    // member of it. This is an internal reshape of already-typed API data — not
+    // an untrusted boundary — so the bridge cast is the right tool here (a
+    // runtime validator would add cost without adding safety).
+    const allItems: GitHubApiFileItem[] = [
+      ...apiItems,
+    ] as unknown as GitHubApiFileItem[];
 
     if (currentDepth < maxDepth) {
       const directories = apiItems.filter(item => item.type === 'dir');

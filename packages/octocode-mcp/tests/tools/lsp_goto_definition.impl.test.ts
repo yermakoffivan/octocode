@@ -127,6 +127,38 @@ export interface Config {
   });
 
   describe('Error Handling', () => {
+    it('returns structured error when definition capability is unsupported', async () => {
+      vi.mocked(managerModule.isLanguageServerAvailable).mockResolvedValue(
+        true
+      );
+      const mockClient = {
+        hasCapability: vi.fn().mockReturnValue(false),
+        gotoDefinition: vi.fn(),
+      };
+      vi.mocked(managerModule.acquirePooledClient).mockResolvedValue(
+        mockClient as any
+      );
+
+      const handler = createHandler();
+      const result = await handler({
+        queries: [
+          {
+            uri: `${process.cwd()}/src/file.ts`,
+            symbolName: 'helper',
+            lineHint: 4,
+            researchGoal: 'Find def',
+            reasoning: 'Testing capability gating',
+          },
+        ],
+      });
+
+      const text = result.content?.[0]?.text ?? '';
+      expect(text).toContain('status: "error"');
+      expect(text).toContain('errorCode: "LSP_CAPABILITY_UNSUPPORTED"');
+      expect(text).not.toContain('lspMode: "semantic"');
+      expect(mockClient.gotoDefinition).not.toHaveBeenCalled();
+    });
+
     it('should handle file read errors', async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error('Permission denied'));
 
@@ -430,8 +462,7 @@ export interface Config {
 
       const text = result.content?.[0]?.text ?? '';
       // Note: YAML output uses quotes around string values
-      expect(text).toContain('status: "hasResults"');
-      expect(text).toContain('Found 1 definition(s) via Language Server');
+      expect(text).not.toContain('status: "hasResults"');
       expect(text).toContain('>   2| beta');
     });
 
@@ -736,7 +767,7 @@ export interface Config {
 
       const text = result.content?.[0]?.text ?? '';
       expect(text).toContain(modulePath);
-      expect(text).toContain('status: "hasResults"');
+      expect(text).not.toContain('status: "hasResults"');
     });
   });
 
@@ -1024,7 +1055,7 @@ export interface Config {
 
       const text = result.content?.[0]?.text ?? '';
       // Should still return original result (the import line)
-      expect(text).toContain('status: "hasResults"');
+      expect(text).not.toContain('status: "hasResults"');
       expect(text).not.toContain('Followed import chain');
       // Two calls made: original + chain attempt
       expect(mockGotoDefinition).toHaveBeenCalledTimes(2);
@@ -1278,7 +1309,7 @@ export interface Config {
 
       const text = result.content?.[0]?.text ?? '';
       // Falls back to original import-line result — module file not found
-      expect(text).toContain('status: "hasResults"');
+      expect(text).not.toContain('status: "hasResults"');
       expect(text).not.toContain('Followed import chain');
       // Two LSP calls made; both returned the same file; manual resolution also failed
       expect(mockGotoDefinition).toHaveBeenCalledTimes(2);

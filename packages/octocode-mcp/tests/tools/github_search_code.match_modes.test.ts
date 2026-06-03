@@ -118,7 +118,7 @@ describe('GitHub Search Code - match Parameter Modes', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('src/tools/utils.ts');
-      expect(responseText).toContain('text_matches');
+      expect(responseText).toContain('matches:');
     });
 
     it('should search IN file content and return matching code snippets', async () => {
@@ -405,6 +405,63 @@ describe('GitHub Search Code - match Parameter Modes', () => {
       expect(providerQuery.match).toBe('file');
     });
 
+    it('caps the provider-bound limit to 3 under verbosity:"concise" (regression)', async () => {
+      // concise is a presence/where probe — its documented contract caps limit
+      // to 3. The cap must reach the upstream fetch, not just trim afterward.
+      mockProvider.searchCode.mockResolvedValue({
+        data: {
+          items: [],
+          totalCount: 0,
+          pagination: { currentPage: 1, totalPages: 0, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
+        queries: [
+          {
+            keywordsToSearch: ['useState'],
+            owner: 'test',
+            repo: 'repo',
+            match: 'file',
+            itemsPerPage: 10,
+            verbosity: 'concise',
+          },
+        ],
+      });
+
+      const providerQuery = mockProvider.searchCode.mock.calls[0]?.[0];
+      expect(providerQuery.limit).toBe(3);
+    });
+
+    it('leaves the provider-bound limit untouched under basic verbosity', async () => {
+      mockProvider.searchCode.mockResolvedValue({
+        data: {
+          items: [],
+          totalCount: 0,
+          pagination: { currentPage: 1, totalPages: 0, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
+        queries: [
+          {
+            keywordsToSearch: ['useState'],
+            owner: 'test',
+            repo: 'repo',
+            match: 'file',
+            itemsPerPage: 10,
+          },
+        ],
+      });
+
+      const providerQuery = mockProvider.searchCode.mock.calls[0]?.[0];
+      expect(providerQuery.limit).toBe(10);
+    });
+
     it('should pass match="path" to the provider searchCode call', async () => {
       mockProvider.searchCode.mockResolvedValue({
         data: {
@@ -483,8 +540,8 @@ describe('GitHub Search Code - match Parameter Modes', () => {
       });
 
       expect(result.isError).toBe(false);
-      const responseText = getTextContent(result.content);
-      expect(responseText).toContain('empty');
+      const structured = result.structuredContent as { results: unknown[] };
+      expect(structured.results).toEqual([]);
     });
   });
 });

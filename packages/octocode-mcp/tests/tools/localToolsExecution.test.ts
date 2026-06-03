@@ -47,10 +47,22 @@ const mockSafeParse = (query: object) => ({
   success: true,
   data: withParsedDefaults(query),
 });
-vi.mock('@octocodeai/octocode-core', async importOriginal => ({
-  ...(await importOriginal<object>()),
-  FetchContentQuerySchema: { safeParse: mockSafeParse },
-}));
+vi.mock('@octocodeai/octocode-core', async importOriginal => {
+  const { z } = await import('zod/v4');
+  const out = () => z.object({}).passthrough();
+  return {
+    ...(await importOriginal<object>()),
+    FetchContentQuerySchema: { safeParse: mockSafeParse },
+    LOCAL_RIPGREP_DESCRIPTION: 'localSearchCode',
+    LOCAL_FIND_FILES_DESCRIPTION: 'localFindFiles',
+    LOCAL_VIEW_STRUCTURE_DESCRIPTION: 'localViewStructure',
+    LOCAL_FETCH_CONTENT_DESCRIPTION: 'localGetFileContent',
+    LocalSearchCodeOutputSchema: out(),
+    LocalFindFilesOutputSchema: out(),
+    LocalViewStructureOutputSchema: out(),
+    LocalGetFileContentOutputSchema: out(),
+  };
+});
 
 // localSchemaOverlay re-publishes the ripgrep/find/view schemas with relaxed
 // caps. Stub the overlay so tests can verify orchestration without exercising Zod.
@@ -63,17 +75,26 @@ vi.mock('../../src/scheme/localSchemaOverlay.js', () => ({
   BulkFindFilesSchema: {},
   BulkViewStructureSchema: {},
   BulkFetchContentQuerySchema: {},
-  VERBOSITY_VALUES: ['compact', 'verbose', 'ultra'] as const,
+  VERBOSITY_VALUES: ['basic', 'compact', 'concise'] as const,
   verbosityField: {},
-  isUltra: (_v: unknown) => false,
-  ultraDrillBackHint: (_s: string) => [] as string[],
+  isConcise: (_v: unknown) => false,
+  conciseDrillBackHint: (_s: string) => [] as string[],
 }));
 
-// Verbosity helper module — stub `isUltra` so handler stays on default path
-// when tests don't pass verbosity (preserves byte-identical behaviour).
+// Verbosity helper module — stub helpers so handlers stay on the default
+// (basic) path when tests don't pass a verbosity value.
 vi.mock('../../src/scheme/verbosity.js', () => ({
-  isUltra: (v: unknown) => v === 'ultra',
-  ultraDrillBackHint: (s: string) => [`Drill-back: ${s}`],
+  isConcise: (v: unknown) => v === 'concise',
+  isCompact: (v: unknown) => v === 'compact',
+  isBasic: (v: unknown) => v === undefined || v === 'basic',
+  normalizeVerbosity: (v: unknown) => v ?? 'basic',
+  conciseDrillBackHint: (_s: string) => [] as string[],
+  compactTrimHints: (hints: string[]) => hints,
+  makeAdvisoryPredicate:
+    (_keywords: string[]) =>
+    (_hint: string): boolean =>
+      false,
+  assertConcisePayload: () => undefined,
 }));
 
 describe('Local Tools Execution', () => {
@@ -179,7 +200,6 @@ describe('Local Tools Execution', () => {
       const { fetchContent } =
         await import('../../src/tools/local_fetch_content/fetchContent.js');
       vi.mocked(fetchContent).mockResolvedValue({
-        status: 'hasResults',
         content: 'abc',
       } as any);
 
@@ -295,6 +315,36 @@ describe('Local Tools Execution', () => {
       expect(result).toBeDefined();
       expect(result).toHaveProperty('status', 'error');
     });
+
+    it('marks capped find results as incomplete evidence', async () => {
+      const { executeFindFiles } =
+        await import('../../src/tools/local_find_files/execution.js');
+      const { executeBulkOperation } =
+        await import('../../src/utils/response/bulk.js');
+      const { findFiles } =
+        await import('../../src/tools/local_find_files/findFiles.js');
+
+      vi.mocked(findFiles).mockResolvedValueOnce({
+        files: [{ path: '/test/a.ts' }],
+        hints: ['Results capped at 5 of 14. Narrow filters or increase limit.'],
+      } as any);
+
+      const query = {
+        id: 'test',
+        researchGoal: 'Test',
+        reasoning: 'capped evidence',
+        path: '/test',
+      };
+      await executeFindFiles({ queries: [query] as any });
+
+      const callback = vi.mocked(executeBulkOperation).mock.calls[0]![1];
+      const result = await callback(query, 0);
+      expect(result.evidence).toMatchObject({
+        complete: false,
+        confidence: 'medium',
+      });
+      expect(result.evidence?.reason).toContain('capped');
+    });
   });
 
   describe('executeRipgrepSearch', () => {
@@ -371,6 +421,36 @@ describe('Local Tools Execution', () => {
         expect.any(Function),
         expect.objectContaining({ toolName: 'localSearchCode' })
       );
+    });
+
+    it('marks limited ripgrep results as incomplete evidence', async () => {
+      const { executeRipgrepSearch } =
+        await import('../../src/tools/local_ripgrep/execution.js');
+      const { executeBulkOperation } =
+        await import('../../src/utils/response/bulk.js');
+      const { searchContentRipgrep } =
+        await import('../../src/tools/local_ripgrep/searchContentRipgrep.js');
+
+      vi.mocked(searchContentRipgrep).mockResolvedValueOnce({
+        files: [{ path: '/test/a.ts', matches: [] }],
+        hints: ['Results limited to 10 files (found 17 matching)'],
+      } as any);
+
+      const query = {
+        researchGoal: 'Test',
+        reasoning: 'limited evidence',
+        pattern: 'test',
+        path: '/test',
+      } as RipgrepQuery;
+      await executeRipgrepSearch({ queries: [query] });
+
+      const callback = vi.mocked(executeBulkOperation).mock.calls[0]![1];
+      const result = await callback(query, 0);
+      expect(result.evidence).toMatchObject({
+        complete: false,
+        confidence: 'medium',
+      });
+      expect(result.evidence?.reason).toContain('limited');
     });
   });
 

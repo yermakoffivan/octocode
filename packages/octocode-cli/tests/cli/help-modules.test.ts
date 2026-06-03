@@ -29,8 +29,8 @@ describe('main-help', () => {
     expect(output).toContain('TOOLS');
     expect(output).toContain('OPTIONS');
     expect(output).toContain('EXAMPLES');
-    expect(output).toContain('--tools-context');
-    expect(output).toContain('--tool');
+    expect(output).toContain('instructions');
+    expect(output).toContain('tools');
     expect(output).toContain('--queries');
   });
 });
@@ -101,6 +101,27 @@ describe('command-help-specs', () => {
 
     stdoutSpy.mockRestore();
   });
+
+  it('does not rewrite token source names inside usage', async () => {
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+
+    const { findStaticCommandHelp } =
+      await import('../../src/cli/command-help-specs.js');
+    const { showCommandHelp } = await import('../../src/cli/help.js');
+    const cmd = findStaticCommandHelp('token')!;
+    showCommandHelp(cmd);
+
+    const output = stdoutSpy.mock.calls
+      .map((c: unknown[]) => String(c[0]))
+      .join('');
+    expect(output).toContain('--type <auto|octocode|gh>');
+    expect(output).toContain('env→octocode→gh');
+    expect(output).not.toContain('auto|octocode-cli|gh');
+
+    stdoutSpy.mockRestore();
+  });
 });
 
 describe('help (dynamic fallback)', () => {
@@ -140,7 +161,7 @@ describe('help (dynamic fallback)', () => {
     expect(output).toContain('test-cmd');
     expect(output).toContain('A test command');
     expect(output).toContain('USAGE');
-    expect(output).toContain('octocode-cli test-cmd --flag');
+    expect(output).toContain('octocode test-cmd --flag');
     expect(output).toContain('OPTIONS');
     expect(output).toContain('-f, --flag');
     expect(output).toContain('(default: yes)');

@@ -1,7 +1,3 @@
-/**
- * Prompts Utility Tests
- */
-
 import { describe, it, expect } from 'vitest';
 import {
   select,
@@ -49,6 +45,25 @@ describe('Prompts Utilities', () => {
       await loadInquirer();
       await loadInquirer();
       expect(isInquirerLoaded()).toBe(true);
+    });
+  });
+
+  describe('selectWithCancel', () => {
+    it('is a function that accepts a config object', () => {
+      expect(typeof selectWithCancel).toBe('function');
+      // Verify it accepts the same shape as select
+      const config = {
+        message: 'Pick one',
+        choices: [
+          { name: 'Option A', value: 'a' },
+          { name: 'Option B', value: 'b' },
+        ],
+      };
+      // selectWithCancel just calls through — we only verify it returns a Promise
+      const result = selectWithCancel(config);
+      expect(result).toBeInstanceOf(Promise);
+      // Cancel the pending prompt to avoid test hang
+      result.catch(() => {});
     });
   });
 });

@@ -3,12 +3,10 @@ import {
   initialize,
   cleanup,
   getGitHubToken,
-  getToken,
   getServerConfig,
   isLoggingEnabled,
   isLocalEnabled,
   isCloneEnabled,
-  arePromptsEnabled,
   getTokenSource,
   _setTokenResolvers,
   _resetTokenResolvers,
@@ -35,8 +33,8 @@ function mockTokenResult(
     | 'env:OCTOCODE_TOKEN'
     | 'env:GH_TOKEN'
     | 'env:GITHUB_TOKEN'
-    | 'file'
-    | 'file'
+    | 'octocode-storage'
+    | 'octocode-storage'
     | 'gh-cli'
     | null
 ): FullTokenResolution | null {
@@ -74,8 +72,8 @@ function mockTokenResolution(
     | 'env:GITHUB_TOKEN'
     | 'env:GH_TOKEN'
     | 'env:OCTOCODE_TOKEN'
-    | 'file'
-    | 'file'
+    | 'octocode-storage'
+    | 'octocode-storage'
     | 'gh-cli'
     | null = 'env:GITHUB_TOKEN'
 ) {
@@ -108,7 +106,6 @@ describe('ServerConfig - Simplified Version', () => {
     delete process.env.REQUEST_TIMEOUT;
     delete process.env.MAX_RETRIES;
     delete process.env.OCTOCODE_TOKEN;
-    delete process.env.DISABLE_PROMPTS;
 
     // Set up injectable mock for token resolution
     setupTokenMocks();
@@ -145,7 +142,6 @@ describe('ServerConfig - Simplified Version', () => {
       expect(config.loggingEnabled).toBe(true);
       expect(config.enableLocal).toBe(true);
       expect(config.enableClone).toBe(false);
-      expect(config.disablePrompts).toBe(false);
       expect(config.tokenSource).toBe('none');
     });
 
@@ -275,7 +271,7 @@ describe('ServerConfig - Simplified Version', () => {
       delete process.env.GITHUB_TOKEN;
 
       // resolveTokenFull returns stored token
-      mockTokenResolution('octocode-stored-token', 'file');
+      mockTokenResolution('octocode-stored-token', 'octocode-storage');
 
       const token = await getGitHubToken();
 
@@ -318,7 +314,7 @@ describe('ServerConfig - Simplified Version', () => {
       delete process.env.GITHUB_TOKEN;
 
       // Token is returned trimmed by resolveTokenFull
-      mockTokenResolution('octocode-token-with-spaces', 'file');
+      mockTokenResolution('octocode-token-with-spaces', 'octocode-storage');
 
       const token = await getGitHubToken();
 
@@ -345,12 +341,11 @@ describe('ServerConfig - Simplified Version', () => {
     });
   });
 
-  describe('getToken', () => {
+  describe('getGitHubToken (direct resolution)', () => {
     it('should return token when available', async () => {
-      // Mock resolveTokenFull to return the env token
       mockTokenResolution('available-token', 'env:GITHUB_TOKEN');
 
-      const token = await getToken();
+      const token = await getGitHubToken();
 
       expect(token).toBe('available-token');
     });
@@ -358,7 +353,7 @@ describe('ServerConfig - Simplified Version', () => {
     it('should return null when no token available', async () => {
       mockSpawnFailure();
 
-      const token = await getToken();
+      const token = await getGitHubToken();
 
       expect(token).toBeNull();
     });
@@ -797,7 +792,7 @@ describe('ServerConfig - Simplified Version', () => {
     });
 
     it('should return "octocode-storage" when token comes from file storage', async () => {
-      mockTokenResolution('stored-token', 'file');
+      mockTokenResolution('stored-token', 'octocode-storage');
       const source = await getTokenSource();
       expect(source).toBe('octocode-storage');
     });
@@ -814,100 +809,6 @@ describe('ServerConfig - Simplified Version', () => {
       );
       const source2 = await getTokenSource();
       expect(source2).toBe('gh-cli');
-    });
-  });
-
-  describe('DISABLE_PROMPTS Configuration', () => {
-    beforeEach(() => {
-      delete process.env.DISABLE_PROMPTS;
-    });
-
-    it('should default to false when DISABLE_PROMPTS is not set', async () => {
-      mockSpawnFailure();
-      await initialize();
-      expect(getServerConfig().disablePrompts).toBe(false);
-      expect(arePromptsEnabled()).toBe(true);
-    });
-
-    it('should disable prompts when DISABLE_PROMPTS is "true"', async () => {
-      process.env.DISABLE_PROMPTS = 'true';
-      mockSpawnFailure();
-      await initialize();
-      expect(getServerConfig().disablePrompts).toBe(true);
-      expect(arePromptsEnabled()).toBe(false);
-    });
-
-    it('should disable prompts when DISABLE_PROMPTS is "1"', async () => {
-      process.env.DISABLE_PROMPTS = '1';
-      mockSpawnFailure();
-      await initialize();
-      expect(getServerConfig().disablePrompts).toBe(true);
-      expect(arePromptsEnabled()).toBe(false);
-    });
-
-    it('should handle DISABLE_PROMPTS with leading/trailing whitespace', async () => {
-      process.env.DISABLE_PROMPTS = '  true  ';
-      mockSpawnFailure();
-      await initialize();
-      expect(getServerConfig().disablePrompts).toBe(true);
-      expect(arePromptsEnabled()).toBe(false);
-    });
-
-    it('should handle DISABLE_PROMPTS with uppercase', async () => {
-      process.env.DISABLE_PROMPTS = 'TRUE';
-      mockSpawnFailure();
-      await initialize();
-      expect(getServerConfig().disablePrompts).toBe(true);
-      expect(arePromptsEnabled()).toBe(false);
-    });
-
-    it('should handle DISABLE_PROMPTS with mixed case', async () => {
-      process.env.DISABLE_PROMPTS = 'TrUe';
-      mockSpawnFailure();
-      await initialize();
-      expect(getServerConfig().disablePrompts).toBe(true);
-      expect(arePromptsEnabled()).toBe(false);
-    });
-
-    it('should handle DISABLE_PROMPTS = "1" with whitespace', async () => {
-      process.env.DISABLE_PROMPTS = ' 1 ';
-      mockSpawnFailure();
-      await initialize();
-      expect(getServerConfig().disablePrompts).toBe(true);
-      expect(arePromptsEnabled()).toBe(false);
-    });
-
-    it('should return false (prompts enabled) for explicit false values', async () => {
-      const explicitFalseValues = ['false', 'FALSE', '0'];
-
-      for (const value of explicitFalseValues) {
-        cleanup();
-        delete process.env.DISABLE_PROMPTS;
-        process.env.DISABLE_PROMPTS = value;
-        mockSpawnFailure();
-        await initialize();
-        expect(getServerConfig().disablePrompts).toBe(false);
-        expect(arePromptsEnabled()).toBe(true);
-      }
-    });
-
-    it('should return false (prompts enabled) for invalid/unrecognized values', async () => {
-      const invalidValues = ['no', 'yes', 'disabled', '', '   '];
-
-      for (const value of invalidValues) {
-        cleanup();
-        delete process.env.DISABLE_PROMPTS;
-        process.env.DISABLE_PROMPTS = value;
-        mockSpawnFailure();
-        await initialize();
-        expect(getServerConfig().disablePrompts).toBe(false);
-        expect(arePromptsEnabled()).toBe(true);
-      }
-    });
-
-    it('should return false for arePromptsEnabled when config is not initialized', () => {
-      // cleanup() is called in beforeEach, so config is null
-      expect(arePromptsEnabled()).toBe(true); // Returns true when config is null (default)
     });
   });
 
@@ -1163,149 +1064,21 @@ describe('ServerConfig - Simplified Version', () => {
     });
   });
 
-  describe('GitLab Configuration Fresh Resolution (Issue #1 & #2)', () => {
-    let getGitLabConfig: typeof import('../src/gitlabConfig.js').getGitLabConfig;
-
-    beforeEach(async () => {
-      const gitlabConfig = await import('../src/gitlabConfig.js');
-      getGitLabConfig = gitlabConfig.getGitLabConfig;
-      // Clear any cached state
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
-      delete process.env.GITLAB_HOST;
-    });
-
-    it('should resolve GitLab config fresh each time (no caching)', () => {
-      // First call - no token
-      const config1 = getGitLabConfig();
-      expect(config1.token).toBeNull();
-      expect(config1.isConfigured).toBe(false);
-
-      // Set token at runtime
-      process.env.GITLAB_TOKEN = 'fresh-token-1';
-
-      // Second call - should see the new token (fresh resolution)
-      const config2 = getGitLabConfig();
-      expect(config2.token).toBe('fresh-token-1');
-      expect(config2.isConfigured).toBe(true);
-
-      // Change token again
-      process.env.GITLAB_TOKEN = 'fresh-token-2';
-
-      // Third call - should see updated token
-      const config3 = getGitLabConfig();
-      expect(config3.token).toBe('fresh-token-2');
-    });
-
-    it('should pick up GitLab token deletion dynamically', () => {
-      process.env.GITLAB_TOKEN = 'initial-token';
-
-      const config1 = getGitLabConfig();
-      expect(config1.token).toBe('initial-token');
-
-      // Delete token at runtime
-      delete process.env.GITLAB_TOKEN;
-
-      const config2 = getGitLabConfig();
-      expect(config2.token).toBeNull();
-      expect(config2.isConfigured).toBe(false);
-    });
-
-    it('should pick up GL_TOKEN changes dynamically', () => {
-      process.env.GL_TOKEN = 'gl-token-1';
-
-      const config1 = getGitLabConfig();
-      expect(config1.token).toBe('gl-token-1');
-
-      process.env.GL_TOKEN = 'gl-token-2';
-
-      const config2 = getGitLabConfig();
-      expect(config2.token).toBe('gl-token-2');
-    });
-
-    // Removed: 'should pick up GITLAB_HOST changes dynamically'
-    // This test relied on env var propagation through mocked getConfigSync.
-    // Dynamic host resolution is an implementation detail covered by config integration tests.
-
-    it('should always return GitLabConfig (not null)', () => {
-      const config = getGitLabConfig();
-      expect(config).not.toBeNull();
-      expect(config.host).toBe('https://gitlab.com');
-      expect(config.isConfigured).toBe(false);
-    });
-
-    it('should prioritize GITLAB_TOKEN over GL_TOKEN when both are set', () => {
-      process.env.GITLAB_TOKEN = 'gitlab-primary-token';
-      process.env.GL_TOKEN = 'gl-fallback-token';
-
-      const config = getGitLabConfig();
-      expect(config.token).toBe('gitlab-primary-token');
-      expect(config.isConfigured).toBe(true);
-    });
-
-    it('should fall back to GL_TOKEN when GITLAB_TOKEN is not set', () => {
-      delete process.env.GITLAB_TOKEN;
-      process.env.GL_TOKEN = 'gl-fallback-token';
-
-      const config = getGitLabConfig();
-      expect(config.token).toBe('gl-fallback-token');
-      expect(config.isConfigured).toBe(true);
-    });
-
-    it('should use GITLAB_TOKEN even when GL_TOKEN changes', () => {
-      process.env.GITLAB_TOKEN = 'gitlab-primary-token';
-      process.env.GL_TOKEN = 'gl-fallback-token';
-
-      const config1 = getGitLabConfig();
-      expect(config1.token).toBe('gitlab-primary-token');
-
-      process.env.GL_TOKEN = 'gl-changed-token';
-
-      const config2 = getGitLabConfig();
-      expect(config2.token).toBe('gitlab-primary-token');
-    });
-  });
-
   describe('Active Provider Configuration', () => {
-    // Import the functions we need to test
     let getActiveProvider: typeof import('../src/serverConfig.js').getActiveProvider;
     let getActiveProviderConfig: typeof import('../src/serverConfig.js').getActiveProviderConfig;
-    let isGitLabActive: typeof import('../src/serverConfig.js').isGitLabActive;
 
     beforeEach(async () => {
-      // Dynamic import to get fresh module state
       const serverConfig = await import('../src/serverConfig.js');
       getActiveProvider = serverConfig.getActiveProvider;
       getActiveProviderConfig = serverConfig.getActiveProviderConfig;
-      isGitLabActive = serverConfig.isGitLabActive;
     });
 
-    it('should return github as default provider when no GitLab token', () => {
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
-
+    it('should always return github as the active provider', () => {
       expect(getActiveProvider()).toBe('github');
     });
 
-    it('should return gitlab as provider when GITLAB_TOKEN is set', () => {
-      process.env.GITLAB_TOKEN = 'glpat-test-token';
-
-      expect(getActiveProvider()).toBe('gitlab');
-
-      delete process.env.GITLAB_TOKEN;
-    });
-
-    it('should return gitlab as provider when GL_TOKEN is set', () => {
-      process.env.GL_TOKEN = 'glpat-test-token';
-
-      expect(getActiveProvider()).toBe('gitlab');
-
-      delete process.env.GL_TOKEN;
-    });
-
-    it('should return github provider config when no GitLab token', () => {
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
+    it('should return github provider config with no custom API URL', () => {
       delete process.env.GITHUB_API_URL;
 
       const config = getActiveProviderConfig();
@@ -1316,8 +1089,6 @@ describe('ServerConfig - Simplified Version', () => {
     });
 
     it('should return github provider config with custom API URL', () => {
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
       process.env.GITHUB_API_URL = 'https://github.mycompany.com/api/v3';
 
       const config = getActiveProviderConfig();
@@ -1326,101 +1097,6 @@ describe('ServerConfig - Simplified Version', () => {
       expect(config.baseUrl).toBe('https://github.mycompany.com/api/v3');
 
       delete process.env.GITHUB_API_URL;
-    });
-
-    it('should return gitlab provider config when GITLAB_TOKEN is set', () => {
-      process.env.GITLAB_TOKEN = 'glpat-test-token';
-      delete process.env.GITLAB_HOST;
-
-      const config = getActiveProviderConfig();
-
-      expect(config.provider).toBe('gitlab');
-      expect(config.baseUrl).toBe('https://gitlab.com');
-      expect(config.token).toBe('glpat-test-token');
-
-      delete process.env.GITLAB_TOKEN;
-    });
-
-    it('should return gitlab provider config with custom host', () => {
-      process.env.GITLAB_TOKEN = 'glpat-test-token';
-      process.env.GITLAB_HOST = 'https://gitlab.mycompany.com';
-
-      const config = getActiveProviderConfig();
-
-      expect(config.provider).toBe('gitlab');
-      expect(config.baseUrl).toBe('https://gitlab.mycompany.com');
-      expect(config.token).toBe('glpat-test-token');
-
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GITLAB_HOST;
-    });
-
-    it('should return false for isGitLabActive when no GitLab token', () => {
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
-
-      expect(isGitLabActive()).toBe(false);
-    });
-
-    it('should return true for isGitLabActive when GitLab token is set', () => {
-      process.env.GITLAB_TOKEN = 'glpat-test-token';
-
-      expect(isGitLabActive()).toBe(true);
-
-      delete process.env.GITLAB_TOKEN;
-    });
-
-    it('should return bitbucket as provider when BITBUCKET_TOKEN is set', () => {
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
-      process.env.BITBUCKET_TOKEN = 'bb-test-token';
-
-      expect(getActiveProvider()).toBe('bitbucket');
-
-      delete process.env.BITBUCKET_TOKEN;
-    });
-
-    it('should return bitbucket provider config when BITBUCKET_TOKEN is set', () => {
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
-      process.env.BITBUCKET_TOKEN = 'bb-test-token';
-
-      const config = getActiveProviderConfig();
-
-      expect(config.provider).toBe('bitbucket');
-      expect(config.baseUrl).toBe('https://api.bitbucket.org/2.0');
-      expect(config.token).toBe('bb-test-token');
-
-      delete process.env.BITBUCKET_TOKEN;
-    });
-
-    it('should return bitbucket provider config with custom host', () => {
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.GL_TOKEN;
-      process.env.BITBUCKET_TOKEN = 'bb-test-token';
-      process.env.BITBUCKET_HOST = 'https://bitbucket.mycompany.com';
-
-      const config = getActiveProviderConfig();
-
-      expect(config.provider).toBe('bitbucket');
-      expect(config.baseUrl).toBe('https://bitbucket.mycompany.com');
-      expect(config.token).toBe('bb-test-token');
-
-      delete process.env.BITBUCKET_TOKEN;
-      delete process.env.BITBUCKET_HOST;
-    });
-
-    it('should prioritize gitlab over bitbucket when both tokens are set', () => {
-      process.env.GITLAB_TOKEN = 'glpat-test-token';
-      process.env.BITBUCKET_TOKEN = 'bb-test-token';
-
-      expect(getActiveProvider()).toBe('gitlab');
-
-      const config = getActiveProviderConfig();
-      expect(config.provider).toBe('gitlab');
-
-      delete process.env.GITLAB_TOKEN;
-      delete process.env.BITBUCKET_TOKEN;
     });
   });
 });

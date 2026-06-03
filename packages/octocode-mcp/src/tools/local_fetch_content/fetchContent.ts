@@ -1,7 +1,6 @@
 import { open, readFile, stat } from 'fs/promises';
-import { getConfigSync } from 'octocode-shared';
 import { getHints } from '../../hints/index.js';
-import { applyMinification } from './contentMinifier.js';
+import { applyMinification } from '../../utils/minifier/applyMinification.js';
 import { extractMatchingLines } from './contentExtractor.js';
 import {
   applyPagination,
@@ -9,29 +8,43 @@ import {
 } from '../../utils/pagination/core.js';
 import { generatePaginationHints } from '../../utils/pagination/hints.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
+import { getOutputCharLimit } from '../../utils/pagination/charLimit.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
   validateToolPath,
   createErrorResult,
 } from '../../utils/file/toolHelpers.js';
-import type {
-  FetchContentQuery as UpstreamFetchContentQuery,
-  LocalGetFileContentToolResult,
-} from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { FetchContentQuerySchema } from '@octocodeai/octocode-core/schemas';
+import type { LocalGetFileContentToolResult } from '@octocodeai/octocode-core/extra-types';
+
+type UpstreamFetchContentQuery = z.infer<typeof FetchContentQuerySchema>;
 import type { WithOptionalMeta } from '../../types/execution.js';
 import { ToolErrors } from '../../errors/errorFactories.js';
 import { LOCAL_TOOL_ERROR_CODES } from '../../errors/localToolErrors.js';
 import { fallbackOnBestEffortFailure } from '../../utils/core/bestEffort.js';
-import type { Verbosity } from '../../scheme/localSchemaOverlay.js';
-import { isUltra, ultraDrillBackHint } from '../../scheme/verbosity.js';
+import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
+import {
+  isConcise,
+  isCompact,
+  compactTrimHints,
+  makeAdvisoryPredicate,
+} from '../../scheme/verbosity.js';
+
+/** Advisory hints localGetFileContent emits; stripped under compact.
+ * Substring-OR, case-insensitive. */
+const isAdvisoryFetchContentHint = makeAdvisoryPredicate([
+  'regex is per-line',
+  'casesensitive=true is active',
+  'not found',
+  'continuation:',
+  'fuzzier matching',
+]);
 import { attachRawResponseChars } from '../../utils/response/charSavings.js';
 
-type FetchContentQuery = WithOptionalMeta<UpstreamFetchContentQuery> & {
-  verbosity?: Verbosity;
-};
-
-const DEFAULT_OUTPUT_CHAR_LENGTH = 8000;
-const MAX_MATCH_LINES = 50;
+type FetchContentQuery = WithVerbosity<
+  WithOptionalMeta<UpstreamFetchContentQuery>
+>;
 
 type FileStats = Awaited<ReturnType<typeof stat>>;
 
@@ -41,47 +54,81 @@ interface ExtractionState {
   actualStartLine?: number;
   actualEndLine?: number;
   matchRanges?: Array<{ start: number; end: number }>;
-  warnings: string[];
+  // Internal collection of any warnings emitted during extraction. Optional
+  // — consumers default to no warnings; non-emission keeps the response
+  // payload free of empty `warnings: []` clutter.
+  warnings?: string[];
   earlyResult?: LocalGetFileContentToolResult;
-}
-
-function readConfiguredDefaultCharLength(): number {
-  const config = getConfigSync() as {
-    output?: {
-      pagination?: {
-        defaultCharLength?: number;
-      };
-    };
-  };
-
-  return (
-    config.output?.pagination?.defaultCharLength ?? DEFAULT_OUTPUT_CHAR_LENGTH
-  );
-}
-
-function getDefaultOutputCharLengthSafe(): number {
-  try {
-    return readConfiguredDefaultCharLength();
-  } catch {
-    return DEFAULT_OUTPUT_CHAR_LENGTH;
-  }
 }
 
 function validateExtractionOptions(
   query: FetchContentQuery
 ): LocalGetFileContentToolResult | null {
-  if (query.fullContent === true && query.matchString !== undefined) {
-    return {
+  const hasFullContent = query.fullContent === true;
+  const hasMatchString = query.matchString !== undefined;
+  const hasLineRange =
+    query.startLine !== undefined || query.endLine !== undefined;
+
+  if (hasFullContent && hasMatchString) {
+    const result: LocalGetFileContentToolResult = {
       status: 'error',
       error:
-        'Cannot use fullContent with matchString — these are mutually exclusive extraction methods. Choose ONE: fullContent=true to read the entire file, OR matchString to extract matching sections.',
+        'Cannot use fullContent with matchString — these are mutually exclusive extraction methods. Choose ONE: fullContent=true to read the entire file, OR matchString to extract matching sections, OR startLine+endLine for a known line range.',
       hints: [
-        'fullContent and matchString are mutually exclusive — pick one extraction method',
-        'Use fullContent=true to read the entire file (small files only)',
-        'Use matchString="pattern" to extract specific sections (recommended for large files)',
-        'TIP: matchString is more token-efficient — prefer it when you know what to look for',
+        'fullContent and matchString are mutually exclusive. Pick one — matchString is more token-efficient when you know what to look for.',
       ],
-    } as LocalGetFileContentToolResult;
+    };
+    return result;
+  }
+
+  if (hasFullContent && hasLineRange) {
+    const result: LocalGetFileContentToolResult = {
+      status: 'error',
+      error:
+        'Cannot use fullContent with startLine/endLine — these are mutually exclusive extraction methods. Choose ONE: fullContent=true to read the entire file, OR startLine+endLine for a known line range, OR matchString to extract matching sections.',
+      hints: [
+        'fullContent and startLine/endLine are mutually exclusive. Pick one extraction mode so line ranges are never silently ignored.',
+      ],
+    };
+    return result;
+  }
+
+  if (hasMatchString && hasLineRange) {
+    const result: LocalGetFileContentToolResult = {
+      status: 'error',
+      error:
+        'Cannot use matchString with startLine/endLine — these are mutually exclusive extraction methods. Choose ONE: matchString to extract matching sections, OR startLine+endLine for a known line range, OR fullContent=true to read the entire file.',
+      hints: [
+        'matchString and startLine/endLine are mutually exclusive. Use matchString for search-driven extraction or startLine/endLine for a known range.',
+      ],
+    };
+    return result;
+  }
+
+  // Partial line-range: only one of startLine/endLine was provided.
+  // hasLineRangeRequest() requires BOTH, so providing only startLine silently
+  // falls back to charOffset reading from the beginning — a confusing no-op.
+  const hasStartLine = query.startLine !== undefined;
+  const hasEndLine = query.endLine !== undefined;
+  if (hasStartLine && !hasEndLine) {
+    return {
+      status: 'error',
+      error: `startLine=${query.startLine} provided without endLine — both are required for line-range extraction.`,
+      hints: [
+        `Add endLine to complete the range, e.g. endLine=${query.startLine! + 50}.`,
+        'Use matchString for search-driven extraction when you do not know the exact end line.',
+      ],
+    };
+  }
+  if (hasEndLine && !hasStartLine) {
+    return {
+      status: 'error',
+      error: `endLine=${query.endLine} provided without startLine — both are required for line-range extraction.`,
+      hints: [
+        `Add startLine to complete the range, e.g. startLine=1.`,
+        'Use matchString for search-driven extraction when you do not know the exact start line.',
+      ],
+    };
   }
 
   return null;
@@ -100,7 +147,7 @@ async function getFileStatsOrError(
     };
   } catch (error) {
     const toolError = ToolErrors.fileAccessFailed(
-      query.path,
+      query.path!,
       error instanceof Error ? error : undefined
     );
 
@@ -133,7 +180,7 @@ function createLargeFileErrorResult(
   fileSizeKB: number
 ): LocalGetFileContentToolResult {
   const toolError = ToolErrors.fileTooLarge(
-    query.path,
+    query.path!,
     fileSizeKB,
     RESOURCE_LIMITS.LARGE_FILE_THRESHOLD_KB
   );
@@ -141,12 +188,7 @@ function createLargeFileErrorResult(
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
     extra: { resolvedPath: absolutePath },
-    customHints: [
-      'Best approach: Use matchString to extract specific functions/classes you actually need',
-      'Alternative: Use charLength for pagination if you need to browse through the file systematically',
-      'Why matchString works better: Gets only relevant sections, faster, and uses fewer tokens',
-      'Critical: fullContent without charLength will fail on large files - always specify a reading strategy',
-    ],
+    hintContext: { fileSize: fileSizeKB * 1024, isLarge: true },
   }) as LocalGetFileContentToolResult;
 }
 
@@ -154,17 +196,12 @@ function createBinaryFileErrorResult(
   query: FetchContentQuery,
   absolutePath: string
 ): LocalGetFileContentToolResult {
-  const toolError = ToolErrors.binaryFileUnsupported(query.path);
+  const toolError = ToolErrors.binaryFileUnsupported(query.path!);
 
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
     extra: { resolvedPath: absolutePath },
-    customHints: [
-      'This appears to be binary or non-UTF-8 content, not text.',
-      'Use localSearchCode with binaryFiles="text" only when you need to scan for specific ASCII strings.',
-      'Use localFindFiles for metadata discovery before choosing a text file to read.',
-      'localGetFileContent is intentionally limited to UTF-8 text to avoid garbled output.',
-    ],
+    customHints: ['Binary or non-UTF-8 content.'],
   }) as LocalGetFileContentToolResult;
 }
 
@@ -243,7 +280,7 @@ async function readFileContentOrError(
     };
   } catch (error) {
     const toolError = ToolErrors.fileReadFailed(
-      query.path,
+      query.path!,
       error instanceof Error ? error : undefined
     );
 
@@ -260,39 +297,26 @@ function createNoMatchesResult(
   query: FetchContentQuery,
   totalLines: number
 ): LocalGetFileContentToolResult {
-  const contextHints = [
-    `Searched ${totalLines} line${totalLines === 1 ? '' : 's'} - no matches found`,
+  // Recovery only — name the actual matchString options in play and
+  // propose one concrete switch. No "TIP:" prefix, no trailing prose.
+  const hints: string[] = [
+    `No matches for "${query.matchString}" in ${query.path} (${totalLines} line${totalLines === 1 ? '' : 's'} scanned).`,
   ];
-
   if (query.matchStringIsRegex) {
-    contextHints.push(
-      'TIP: Regex matches per-line only (not multiline). Verify pattern exists on a single line.'
-    );
+    hints.push('Regex is per-line only — verify the pattern fits on one line.');
   } else {
-    contextHints.push(
-      'TIP: Try matchStringIsRegex=true for pattern matching (e.g., "export.*function")'
+    hints.push(
+      'Try matchStringIsRegex=true for pattern matching (e.g. "export.*function").'
     );
   }
-
   if (query.matchStringCaseSensitive) {
-    contextHints.push(
-      'TIP: Case-sensitive mode active - try matchStringCaseSensitive=false'
-    );
+    hints.push('caseSensitive=true is active — disable for fuzzier matching.');
   }
-
-  contextHints.push(
-    'TIP: Verify file contains expected content or try simpler pattern'
-  );
-
   return {
     status: 'empty',
     errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
     totalLines,
-    hints: [
-      ...getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
-      '',
-      ...contextHints,
-    ],
+    hints,
   };
 }
 
@@ -302,24 +326,29 @@ function buildMatchExtractionState(
   totalLines: number,
   defaultOutputCharLength: number
 ): ExtractionState {
+  // No match cap: extract EVERY matched range. Oversized output is bounded
+  // losslessly by char-pagination (auto-paginate below, or explicit charLength/
+  // charOffset), which gives the agent a cursor to the rest — never a silent
+  // "first 50 matches" cut.
   const result = extractMatchingLines(
     lines,
     query.matchString!,
     query.matchStringContextLines ?? 5,
     query.matchStringIsRegex ?? false,
-    query.matchStringCaseSensitive ?? false,
-    MAX_MATCH_LINES
+    query.matchStringCaseSensitive ?? false
   );
 
   if (result.lines.length === 0) {
     return {
       isPartial: false,
-      warnings: [],
       earlyResult: createNoMatchesResult(query, totalLines),
     };
   }
 
-  const resultContent = applyMinification(result.lines.join('\n'), query.path);
+  // Verbatim slice. Minification is owned by the concise verbosity finalizer
+  // (applyFetchContentVerbosity) — basic/omitted reads return content as-is,
+  // per src/scheme/verbosity.ts ("content reduced ONLY in concise").
+  const resultContent = result.lines.join('\n');
   let actualStartLine: number | undefined;
   let actualEndLine: number | undefined;
   let matchRanges: Array<{ start: number; end: number }> | undefined;
@@ -334,32 +363,6 @@ function buildMatchExtractionState(
     }
   }
 
-  if (result.matchCount > MAX_MATCH_LINES) {
-    return {
-      isPartial: true,
-      warnings: [],
-      earlyResult: {
-        status: 'hasResults',
-        content: resultContent,
-        isPartial: true,
-        totalLines,
-        ...(actualStartLine !== undefined && {
-          startLine: actualStartLine,
-          endLine: actualEndLine,
-          matchRanges,
-        }),
-        warnings: [
-          `Pattern matched ${result.matchCount} lines. Truncated to first ${MAX_MATCH_LINES} matches.`,
-        ],
-        hints: [
-          `Pattern matched ${result.matchCount} lines - likely too generic`,
-          'Make the pattern more specific to target only what you need',
-          'TIP: Use charLength to paginate if you need all matches',
-        ],
-      },
-    };
-  }
-
   if (!query.charLength && resultContent.length > defaultOutputCharLength) {
     const autoPagination = applyPagination(
       resultContent,
@@ -368,9 +371,7 @@ function buildMatchExtractionState(
     );
     return {
       isPartial: true,
-      warnings: [],
       earlyResult: {
-        status: 'hasResults',
         content: autoPagination.paginatedContent,
         isPartial: true,
         totalLines,
@@ -382,13 +383,15 @@ function buildMatchExtractionState(
         pagination: createPaginationInfo(autoPagination),
         warnings: [
           `Auto-paginated: ${result.matchCount} matches exceeded display limit`,
+          ...(matchRanges && matchRanges.length > 0
+            ? [
+                'matchRanges covers this page only — advance charOffset to access further match positions.',
+              ]
+            : []),
         ],
-        hints: [
-          ...getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'hasResults'),
-          ...generatePaginationHints(autoPagination, {
-            toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
-          }),
-        ],
+        hints: generatePaginationHints(autoPagination, {
+          toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
+        }),
       },
     };
   }
@@ -399,7 +402,6 @@ function buildMatchExtractionState(
     actualStartLine,
     actualEndLine,
     matchRanges,
-    warnings: [],
   };
 }
 
@@ -417,10 +419,28 @@ function buildLineRangeExtractionState(
   const effectiveStartLine = Math.max(1, requestedStartLine);
   const effectiveEndLine = Math.min(requestedEndLine, totalLines);
 
+  // Inverted range: startLine after endLine yields an empty slice. Signal it
+  // explicitly instead of returning silent empty content (the slice would be
+  // `[]` with no explanation).
+  if (requestedEndLine < requestedStartLine) {
+    return {
+      isPartial: false,
+      earlyResult: {
+        status: 'empty',
+        totalLines,
+        errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
+        hints: [
+          ...getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
+          `startLine ${requestedStartLine} is greater than endLine ${requestedEndLine} — startLine must be ≤ endLine`,
+          `Use startLine=1 to ${totalLines} with startLine ≤ endLine for a valid range`,
+        ],
+      },
+    };
+  }
+
   if (effectiveStartLine > totalLines) {
     return {
       isPartial: false,
-      warnings: [],
       earlyResult: {
         status: 'empty',
         totalLines,
@@ -476,8 +496,38 @@ function buildExtractionState(
   return {
     resultContent: content,
     isPartial: false,
-    warnings: [],
   };
+}
+
+/**
+ * Continuation hint for a line-range read that stopped before EOF, derived
+ * from the result's STRUCTURED fields (never by parsing hint text). Pagination
+ * is orthogonal to verbosity, so this is re-applied after concise shaping to
+ * keep the cursor an agent needs to read the rest. Scoped to line-range reads:
+ * `matchRanges` present means a matchString read, whose continuation is
+ * char-offset paginated — a `startLine` cursor would be wrong there.
+ */
+export function lineRangeContinuationHints(r: {
+  isPartial?: boolean;
+  startLine?: number;
+  endLine?: number;
+  totalLines?: number;
+  matchRanges?: unknown;
+}): string[] {
+  if (
+    r.isPartial === true &&
+    r.matchRanges === undefined &&
+    typeof r.startLine === 'number' &&
+    typeof r.endLine === 'number' &&
+    typeof r.totalLines === 'number' &&
+    r.endLine < r.totalLines
+  ) {
+    const remaining = r.totalLines - r.endLine;
+    return [
+      `More content: use startLine=${r.endLine + 1} to continue (${remaining} line${remaining === 1 ? '' : 's'} remaining)`,
+    ];
+  }
+  return [];
 }
 
 function buildSuccessResult(
@@ -498,7 +548,7 @@ function buildSuccessResult(
     };
   }
 
-  const warnings = [...extraction.warnings];
+  const warnings = [...(extraction.warnings ?? [])];
   let effectiveCharLength = query.charLength;
   let autoPaginated = false;
 
@@ -513,26 +563,33 @@ function buildSuccessResult(
     );
   }
 
+  const charOffset = query.charOffset ?? 0;
+  if (charOffset > 0 && charOffset >= extraction.resultContent.length) {
+    return {
+      status: 'error',
+      error: `charOffset ${charOffset} exceeds file content length (${extraction.resultContent.length} chars). Use charOffset < ${extraction.resultContent.length} or omit charOffset to read from the beginning.`,
+      hints: [
+        `File has ${totalLines} lines and ${extraction.resultContent.length} chars total.`,
+        `Valid charOffset range: 0 – ${extraction.resultContent.length - 1}.`,
+        'Omit charOffset to read from the start, or use charLength to get the first page.',
+      ],
+    };
+  }
+
   const pagination = applyPagination(
     extraction.resultContent,
-    query.charOffset ?? 0,
+    charOffset,
     effectiveCharLength
   );
 
-  const hasMoreContent =
-    extraction.isPartial ||
-    pagination.hasMore ||
-    (extraction.actualEndLine !== undefined &&
-      extraction.actualEndLine < totalLines);
   const isPartial = extraction.isPartial || pagination.hasMore;
 
-  const baseHints = getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'hasResults', {
-    hasMoreContent,
+  const baseHints: string[] = lineRangeContinuationHints({
     isPartial,
+    startLine: extraction.actualStartLine,
     endLine: extraction.actualEndLine,
     totalLines,
-    nextCharOffset: pagination.nextCharOffset,
-    totalChars: pagination.totalChars,
+    matchRanges: extraction.matchRanges,
   });
 
   const paginationHints =
@@ -543,7 +600,7 @@ function buildSuccessResult(
       : [];
 
   return {
-    status: 'hasResults',
+    path: query.path,
     content: pagination.paginatedContent,
     isPartial,
     totalLines,
@@ -567,7 +624,7 @@ function buildSuccessResult(
 export async function fetchContent(
   query: FetchContentQuery
 ): Promise<LocalGetFileContentToolResult> {
-  const defaultOutputCharLength = getDefaultOutputCharLengthSafe();
+  const defaultOutputCharLength = getOutputCharLimit();
 
   try {
     const pathValidation = validateToolPath(
@@ -651,33 +708,61 @@ export async function fetchContent(
 }
 
 /**
- * RFC §4.7.4: when `verbosity:"ultra"` is requested, drop the file `content`
- * field and return a `{filePath, summary}` line only. Compact / verbose /
- * omitted behave identically to today (default-invariance contract).
+ * Verbosity shaping for file reads.
  *
- * Exported for direct unit testing in `tests/scheme/verbosity_ultra.test.ts`.
+ * - concise: MINIFY the content (strip comments/whitespace per file type) rather
+ *   than blank it — a minified body is a cheap, still-useful read, not a
+ *   dead-end. Heavy metadata (lastModified/By) is dropped and a raw→minified
+ *   token summary is emitted. If minification can't shrink it, content is kept
+ *   verbatim (never larger than basic).
+ * - compact: keep content; trim advisory hints.
+ * - omitted / basic: verbatim passthrough.
+ *
+ * Exported for direct unit testing in `tests/scheme/verbosity_concise.test.ts`.
  */
 export function applyFetchContentVerbosity(
   result: LocalGetFileContentToolResult,
   query: FetchContentQuery,
   totalLines: number
 ): LocalGetFileContentToolResult {
-  if (!isUltra(query.verbosity)) return result;
-  if (result.status !== 'hasResults') return result;
-
-  const contentLen = result.content?.length ?? 0;
-  const approxTokens = Math.ceil(contentLen / 4);
-  const filePath = result.filePath ?? query.path;
-  const summary = `${filePath}: ${totalLines} lines, ~${approxTokens} tokens raw`;
-
-  return {
-    ...result,
-    content: '',
-    hints: [
-      summary,
-      ...ultraDrillBackHint(
-        're-call with verbosity:"compact" (default) for content, or use matchString/lineRange for a slice'
-      ),
-    ],
-  };
+  if (isConcise(query.verbosity)) {
+    // hasResults ≡ absent status; only 'empty'/'error' carry a marker.
+    if (result.status !== undefined) return result;
+    const filePath = result.filePath ?? query.path;
+    const raw = result.content ?? '';
+    const minified = filePath ? applyMinification(raw, String(filePath)) : raw;
+    const rawTokens = Math.ceil(raw.length / 4);
+    const minTokens = Math.ceil(minified.length / 4);
+    const hints = [
+      `${filePath}: ${totalLines} lines, ~${rawTokens}→${minTokens} tokens (minified)`,
+    ];
+    // Parity with the GitHub fetch-content tool: surface the downgrade so a
+    // fullContent request that got minified under concise isn't silent.
+    if ((query as { fullContent?: boolean }).fullContent === true) {
+      hints.push('fullContent=true minified under concise');
+    }
+    // Pagination is orthogonal to verbosity: re-derive the line-range
+    // continuation from the result's structured fields so concise never drops
+    // the cursor for the rest of the file.
+    hints.push(
+      ...lineRangeContinuationHints(
+        result as Parameters<typeof lineRangeContinuationHints>[0]
+      )
+    );
+    const shaped: LocalGetFileContentToolResult = {
+      ...result,
+      content: minified,
+      hints,
+    };
+    delete (shaped as { lastModified?: string }).lastModified;
+    delete (shaped as { lastModifiedBy?: string }).lastModifiedBy;
+    return shaped;
+  }
+  if (isCompact(query.verbosity)) {
+    return {
+      ...result,
+      hints: compactTrimHints(result.hints, isAdvisoryFetchContentHint, 2),
+    };
+  }
+  return result;
 }

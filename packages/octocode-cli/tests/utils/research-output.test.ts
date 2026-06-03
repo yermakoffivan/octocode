@@ -1,7 +1,3 @@
-/**
- * Tests for research-output utilities
- */
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('node:fs', async importOriginal => {

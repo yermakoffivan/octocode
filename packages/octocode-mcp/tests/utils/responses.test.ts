@@ -1,9 +1,54 @@
 import { describe, it, expect } from 'vitest';
-import { createResult, createResponseFormat } from '../../src/responses';
+import {
+  createResult,
+  createResponseFormat,
+  formatCallToolResultForOutput,
+} from '../../src/responses';
 import { jsonToYamlString } from '../../src/utils/minifier/jsonToYamlString.js';
 import { getTextContent } from './testHelpers.js';
 
 describe('Response Utilities', () => {
+  describe('formatCallToolResultForOutput', () => {
+    it('returns the full MCP CallToolResult envelope in json mode', () => {
+      const result = {
+        content: [{ type: 'text' as const, text: 'text output' }],
+        structuredContent: {
+          base: '/repo/src',
+          results: [{ id: 'q1', status: 'hasResults', data: {} }],
+        },
+        isError: false,
+      };
+
+      expect(formatCallToolResultForOutput(result, 'json')).toBe(
+        JSON.stringify(result)
+      );
+    });
+
+    it('returns joined text blocks in text mode', () => {
+      expect(
+        formatCallToolResultForOutput(
+          {
+            content: [
+              { type: 'text' as const, text: 'first' },
+              { type: 'text' as const, text: '' },
+              { type: 'text' as const, text: 'second' },
+            ],
+          },
+          'text'
+        )
+      ).toBe('first\n\nsecond');
+    });
+
+    it('falls back to pretty structuredContent in text mode', () => {
+      expect(
+        formatCallToolResultForOutput(
+          { content: [], structuredContent: { status: 'ok' } },
+          'text'
+        )
+      ).toBe(JSON.stringify({ status: 'ok' }, null, 2));
+    });
+  });
+
   describe('createResult', () => {
     it('should create success result with JSON data', () => {
       const data = { message: 'Hello' };
@@ -231,7 +276,9 @@ describe('Response Utilities', () => {
   describe('createResponseFormat', () => {
     it('should prioritize live bulk fields ahead of legacy status-hint fields by default', () => {
       const serialized = createResponseFormat({
-        status: 'hasResults',
+        // Success path is signaled by ABSENT status. Pass an explicit empty
+        // status so the YAML still emits the `status:` key for ordering.
+        status: 'empty',
         data: { value: 1 },
         hasResultsStatusHints: ['legacy'],
         emptyStatusHints: ['legacy-empty'],

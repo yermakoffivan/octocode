@@ -1,7 +1,3 @@
-/**
- * cache command handler tests
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, rmSync } from 'node:fs';
 import {
@@ -59,6 +55,14 @@ vi.mock('octocode-shared', () => ({
   paths: mockOctocodePaths,
   getDirectorySizeBytes: vi.fn().mockReturnValue(1024),
   formatBytes: vi.fn().mockImplementation((b: number) => `${b} B`),
+}));
+
+const { confirmMock } = vi.hoisted(() => ({
+  confirmMock: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock('../../../src/utils/prompts.js', () => ({
+  confirm: confirmMock,
 }));
 
 describe('cacheCommand', () => {
@@ -369,12 +373,13 @@ describe('cacheCommand', () => {
     expect(getDirectorySizeBytes).toHaveBeenCalledWith('/fake/octocode/logs');
   });
 
-  it('clean --skills does not count cleanup when size increases after clear (edge)', async () => {
+  it('clean --skills counts cleanup when size decreases after clear', async () => {
     let skillsPass = 0;
     vi.mocked(getDirectorySizeBytes).mockImplementation((dir: string) => {
       if (dir === '/fake/cache/skills') {
         skillsPass += 1;
-        return skillsPass === 1 ? 0 : 100;
+        // plan call returns 500, before-delete call returns 500, after-delete call returns 0
+        return skillsPass >= 3 ? 0 : 500;
       }
       return 1024;
     });
@@ -389,8 +394,185 @@ describe('cacheCommand', () => {
     expect(clearSkillsCache).toHaveBeenCalled();
     expect(
       consoleSpy.mock.calls.some((call: unknown[]) =>
-        String(call[0]).includes('Nothing to clean')
+        String(call[0]).includes('Cache cleanup complete')
       )
     ).toBe(true);
+  });
+
+  it('status --json outputs structured cache report', async () => {
+    const { cacheCommand } = await import('../../../src/cli/commands/cache.js');
+    await cacheCommand.handler({
+      command: 'cache',
+      args: ['status'],
+      options: { json: true },
+    });
+
+    const out = consoleSpy.mock.calls.map(call => String(call[0])).join('\n');
+    const parsed = JSON.parse(out.trim());
+    expect(parsed.repos.path).toBe('/fake/repos');
+    expect(parsed.skills.path).toBe('/fake/cache/skills');
+    expect(parsed.logs.path).toBe('/fake/logs');
+    expect(parsed.totalBytes).toBe(3072);
+    expect(parsed.totalFormatted).toBe('3072 B');
+  });
+
+  it('clean without target --json outputs error object and exits 1', async () => {
+    const { cacheCommand } = await import('../../../src/cli/commands/cache.js');
+    await cacheCommand.handler({
+      command: 'cache',
+      args: ['clean'],
+      options: { json: true },
+    });
+
+    const out = consoleSpy.mock.calls.map(call => String(call[0])).join('\n');
+    const parsed = JSON.parse(out.trim());
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain('Missing clean target');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('clean --dry-run --json reports plan without deleting', async () => {
+    const { cacheCommand } = await import('../../../src/cli/commands/cache.js');
+    await cacheCommand.handler({
+      command: 'cache',
+      args: ['clean'],
+      options: { all: true, 'dry-run': true, json: true },
+    });
+
+    expect(rmSync).not.toHaveBeenCalled();
+    expect(clearSkillsCache).not.toHaveBeenCalled();
+    const out = consoleSpy.mock.calls.map(call => String(call[0])).join('\n');
+    const parsed = JSON.parse(out.trim());
+    expect(parsed.dryRun).toBe(true);
+    expect(parsed.plan.map((p: { target: string }) => p.target)).toEqual([
+      'repos',
+      'skills',
+      'logs',
+    ]);
+    expect(parsed.totalBytes).toBe(3072);
+  });
+
+  it('clean --dry-run (non-json) prints plan and tools advisory', async () => {
+    const { cacheCommand } = await import('../../../src/cli/commands/cache.js');
+    await cacheCommand.handler({
+      command: 'cache',
+      args: ['clean'],
+      options: { all: true, tools: true, n: true },
+    });
+
+    expect(rmSync).not.toHaveBeenCalled();
+    expect(
+      consoleSpy.mock.calls.some(call => String(call[0]).includes('DRY RUN'))
+    ).toBe(true);
+    expect(
+      consoleSpy.mock.calls.some(call =>
+        String(call[0]).includes('in-memory only')
+      )
+    ).toBe(true);
+    expect(
+      consoleSpy.mock.calls.some(call =>
+        String(call[0]).includes('Remove --dry-run to apply.')
+      )
+    ).toBe(true);
+  });
+
+  it('clean --all on TTY prompts and aborts when declined', async () => {
+    const originalIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
+    confirmMock.mockResolvedValueOnce(false);
+
+    try {
+      const { cacheCommand } =
+        await import('../../../src/cli/commands/cache.js');
+      await cacheCommand.handler({
+        command: 'cache',
+        args: ['clean'],
+        options: { all: true },
+      });
+
+      expect(confirmMock).toHaveBeenCalled();
+      expect(rmSync).not.toHaveBeenCalled();
+      expect(
+        consoleSpy.mock.calls.some(call =>
+          String(call[0]).includes('Cancelled.')
+        )
+      ).toBe(true);
+    } finally {
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: originalIsTTY,
+        configurable: true,
+      });
+    }
+  });
+
+  it('clean --all on TTY prompts and proceeds when confirmed', async () => {
+    const originalIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
+    confirmMock.mockResolvedValueOnce(true);
+
+    try {
+      const { cacheCommand } =
+        await import('../../../src/cli/commands/cache.js');
+      await cacheCommand.handler({
+        command: 'cache',
+        args: ['clean'],
+        options: { all: true },
+      });
+
+      expect(confirmMock).toHaveBeenCalled();
+      expect(rmSync).toHaveBeenCalledWith('/fake/repos', {
+        recursive: true,
+        force: true,
+      });
+      expect(clearSkillsCache).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: originalIsTTY,
+        configurable: true,
+      });
+    }
+  });
+
+  it('clean --json outputs success summary with targets', async () => {
+    const { cacheCommand } = await import('../../../src/cli/commands/cache.js');
+    await cacheCommand.handler({
+      command: 'cache',
+      args: ['clean'],
+      options: { all: true, json: true },
+    });
+
+    expect(rmSync).toHaveBeenCalled();
+    expect(clearSkillsCache).toHaveBeenCalled();
+    const out = consoleSpy.mock.calls.map(call => String(call[0])).join('\n');
+    const parsed = JSON.parse(out.trim());
+    expect(parsed.success).toBe(true);
+    expect(parsed.cleaned).toBe(true);
+    expect(parsed.targets).toEqual(['repos', 'skills', 'logs']);
+  });
+
+  it('clean --tools --json suppresses in-memory message and reports nothing cleaned', async () => {
+    vi.mocked(existsSync).mockReturnValue(false);
+    const { cacheCommand } = await import('../../../src/cli/commands/cache.js');
+    await cacheCommand.handler({
+      command: 'cache',
+      args: ['clean'],
+      options: { tools: true, json: true },
+    });
+
+    expect(
+      consoleSpy.mock.calls.some(call =>
+        String(call[0]).includes('No disk caches to clean')
+      )
+    ).toBe(false);
+    const out = consoleSpy.mock.calls.map(call => String(call[0])).join('\n');
+    const parsed = JSON.parse(out.trim());
+    expect(parsed.success).toBe(true);
+    expect(parsed.cleaned).toBe(false);
   });
 });

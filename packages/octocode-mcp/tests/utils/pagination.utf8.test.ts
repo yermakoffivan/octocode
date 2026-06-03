@@ -8,10 +8,7 @@ import {
   applyPagination,
   createPaginationInfo,
 } from '../../src/utils/pagination/core.js';
-import {
-  generatePaginationHints,
-  generateGitHubPaginationHints,
-} from '../../src/utils/pagination/hints.js';
+import { generatePaginationHints } from '../../src/utils/pagination/hints.js';
 
 describe('UTF-8 Pagination - Byte/Character Separation', () => {
   // Test content with various UTF-8 characters
@@ -398,32 +395,6 @@ describe('UTF-8 Pagination - Byte/Character Separation', () => {
       const nextPageHint = hints.find(h => h.includes('charOffset='));
       expect(nextPageHint).toBeDefined();
       expect(nextPageHint).toContain(`charOffset=${metadata.nextCharOffset}`);
-    });
-  });
-
-  describe('generateGitHubPaginationHints with UTF-8', () => {
-    it('should use byte offsets in hints for GitHub tools', () => {
-      const metadata = applyPagination(TEST_CONTENT.emoji, 0, 10, {
-        mode: 'bytes',
-      });
-      const info = createPaginationInfo(metadata);
-
-      const hints = generateGitHubPaginationHints(info, {
-        owner: 'test',
-        repo: 'test',
-        path: 'test.txt',
-      });
-
-      // Should reference bytes, not chars
-      const bytesHint = hints.find(h => h.includes('bytes'));
-      expect(bytesHint).toBeDefined();
-
-      // Next offset should be byte-based
-      const nextOffset = (info.byteOffset ?? 0) + (info.byteLength ?? 0);
-      const nextPageHint = hints.find(h =>
-        h.includes(`charOffset=${nextOffset}`)
-      );
-      expect(nextPageHint).toBeDefined();
     });
   });
 

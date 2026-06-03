@@ -1,7 +1,5 @@
 import type {
   RequiredGitHubConfig,
-  RequiredGitLabConfig,
-  RequiredBitbucketConfig,
   RequiredLocalConfig,
   RequiredToolsConfig,
   RequiredNetworkConfig,
@@ -19,27 +17,12 @@ export const DEFAULT_GITHUB_CONFIG: RequiredGitHubConfig = {
 };
 
 /**
- * Default GitLab configuration
- */
-export const DEFAULT_GITLAB_CONFIG: RequiredGitLabConfig = {
-  host: 'https://gitlab.com',
-};
-
-/**
- * Default Bitbucket configuration
- */
-export const DEFAULT_BITBUCKET_CONFIG: RequiredBitbucketConfig = {
-  host: 'https://api.bitbucket.org/2.0',
-};
-
-/**
  * Default local tools configuration
  */
 export const DEFAULT_LOCAL_CONFIG: RequiredLocalConfig = {
   enabled: true,
   enableClone: false,
   allowedPaths: [],
-  workspaceRoot: undefined,
 };
 
 /**
@@ -49,7 +32,6 @@ export const DEFAULT_TOOLS_CONFIG: RequiredToolsConfig = {
   enabled: null,
   enableAdditional: null,
   disabled: null,
-  disablePrompts: false,
 };
 
 /**
@@ -80,6 +62,8 @@ export const DEFAULT_LSP_CONFIG: RequiredLspConfig = {
 export const DEFAULT_OUTPUT_CONFIG: RequiredOutputConfig = {
   format: 'yaml',
   pagination: {
+    // THE single pagination char limit for every tool result (~2000 tokens).
+    // Larger result sets are reached by paginating, never one big payload.
     defaultCharLength: 8000,
   },
 };
@@ -91,8 +75,6 @@ export const DEFAULT_OUTPUT_CONFIG: RequiredOutputConfig = {
 export const DEFAULT_CONFIG: Omit<ResolvedConfig, 'source' | 'configPath'> = {
   version: 1,
   github: DEFAULT_GITHUB_CONFIG,
-  gitlab: DEFAULT_GITLAB_CONFIG,
-  bitbucket: DEFAULT_BITBUCKET_CONFIG,
   local: DEFAULT_LOCAL_CONFIG,
   tools: DEFAULT_TOOLS_CONFIG,
   network: DEFAULT_NETWORK_CONFIG,

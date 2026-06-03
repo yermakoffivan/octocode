@@ -1,18 +1,18 @@
 import type { MCPClient } from '../../types/index.js';
 import type { TokenSource } from '../../types/index.js';
-import { c, dim } from '../../utils/colors.js';
+import { c, bold, dim } from '../../utils/colors.js';
 import { IDE_INFO, CLIENT_INFO } from '../../ui/constants.js';
+import { getAuthStatus, getStoragePath } from '../../features/github-oauth.js';
+import { DETECTABLE_MCP_CLIENTS } from '../../utils/mcp-paths.js';
+export {
+  formatSkillInstallTargets,
+  normalizeSkillTarget,
+  type SkillInstallMode,
+  type SkillInstallStrategy,
+  type SkillInstallTarget,
+} from '../../utils/skills.js';
 
 export type GetTokenSource = 'octocode' | 'gh' | 'auto';
-
-export type SkillInstallMode = 'copy' | 'symlink';
-export type SkillInstallStrategy = SkillInstallMode | 'hybrid';
-export type SkillInstallTarget =
-  | 'claude-code'
-  | 'claude-desktop'
-  | 'cursor'
-  | 'codex'
-  | 'opencode';
 
 export const MCP_CLIENT_ALIASES: Record<string, MCPClient> = {
   claude: 'claude-desktop',
@@ -46,6 +46,13 @@ export function normalizeMCPClient(value: string): MCPClient | null {
   return MCP_CLIENT_ALIASES[value.trim().toLowerCase()] ?? null;
 }
 
+export function formatSupportedMCPClients(options?: {
+  includeInstallAlias?: boolean;
+}): string {
+  const aliases = options?.includeInstallAlias ? ['claude'] : [];
+  return [...aliases, ...DETECTABLE_MCP_CLIENTS].join(', ');
+}
+
 export function getIDEDisplayName(ide: string): string {
   if (ide in CLIENT_INFO) {
     return CLIENT_INFO[ide as keyof typeof CLIENT_INFO].name;
@@ -73,6 +80,54 @@ export function printLoginHint(): void {
   console.log(`    ${c('cyan', '→')} ${c('yellow', 'gh auth login')}`);
 }
 
+export function formatAuthStatusAsJson(
+  hostname: string
+): Record<string, unknown> {
+  const status = getAuthStatus(hostname);
+  return {
+    authenticated: status.authenticated,
+    username: status.username || null,
+    hostname: status.hostname,
+    tokenSource: status.tokenSource || null,
+    tokenExpired: Boolean(status.tokenExpired),
+  };
+}
+
+export function printAuthStatus(hostname: string = 'github.com'): void {
+  console.log();
+  console.log(`  ${bold('🔐 GitHub Authentication')}`);
+  console.log();
+
+  const status = getAuthStatus(hostname);
+
+  if (status.authenticated) {
+    console.log(
+      `  ${c('green', '✓')} Authenticated as ${c('cyan', status.username || 'unknown')}`
+    );
+    console.log(`  ${dim('Logged in:')} yes`);
+    if (status.tokenExpired) {
+      console.log(
+        `  ${c('yellow', '⚠')} Token has expired - please login again`
+      );
+    }
+    console.log(`  ${dim('Host:')} ${status.hostname}`);
+    console.log(
+      `  ${dim('Source:')} ${formatTokenSource(status.tokenSource || 'none', status.envTokenSource)}`
+    );
+  } else {
+    console.log(
+      `  ${c('yellow', '⚠')} ${c('yellow', 'Not authenticated')} ${dim('(Not logged in)')}`
+    );
+    console.log();
+    console.log(`  ${bold('To authenticate:')}`);
+    printLoginHint();
+  }
+
+  console.log();
+  console.log(`  ${dim('Credentials stored in:')} ${getStoragePath()}`);
+  console.log();
+}
+
 export function printNodeDoctorHintCLI(): void {
   console.log(
     `  ${dim('For deeper diagnostics:')} ${c('cyan', 'npx node-doctor')}`
@@ -97,29 +152,6 @@ export function formatTokenSource(
       return c('green', 'environment variable');
     default:
       return dim('none');
-  }
-}
-
-export function normalizeSkillTarget(
-  target: string
-): SkillInstallTarget | null {
-  const normalized = target.trim().toLowerCase();
-  switch (normalized) {
-    case 'claude':
-    case 'claude-code':
-    case 'claudecode':
-      return 'claude-code';
-    case 'claude-desktop':
-    case 'claudedesktop':
-      return 'claude-desktop';
-    case 'cursor':
-      return 'cursor';
-    case 'codex':
-      return 'codex';
-    case 'opencode':
-      return 'opencode';
-    default:
-      return null;
   }
 }
 

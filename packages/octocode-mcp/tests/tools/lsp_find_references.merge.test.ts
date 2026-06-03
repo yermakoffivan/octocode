@@ -37,7 +37,6 @@ const makeLocation = (uri: string, line: number, isDef = false) => ({
 describe('mergeReferenceResults - branch coverage', () => {
   it('should return patternResult when lspResult is null', () => {
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 1)],
       totalReferences: 1,
     };
@@ -48,7 +47,6 @@ describe('mergeReferenceResults - branch coverage', () => {
   it('should return patternResult when lspResult status is empty', () => {
     const lspResult: any = { status: 'empty', locations: [] };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 1)],
       totalReferences: 1,
     };
@@ -59,7 +57,6 @@ describe('mergeReferenceResults - branch coverage', () => {
   it('should return patternResult when lspResult has no locations', () => {
     const lspResult: any = { status: 'hasResults', locations: [] };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 1)],
       totalReferences: 1,
     };
@@ -69,7 +66,6 @@ describe('mergeReferenceResults - branch coverage', () => {
 
   it('should return lspResult when patternResult is empty', () => {
     const lspResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 1)],
       totalReferences: 1,
       hints: ['lsp hint'],
@@ -81,7 +77,6 @@ describe('mergeReferenceResults - branch coverage', () => {
 
   it('should return lspResult when patternResult has no locations', () => {
     const lspResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 1)],
       totalReferences: 1,
     };
@@ -93,13 +88,11 @@ describe('mergeReferenceResults - branch coverage', () => {
   it('should return LSP result with confirmation hint when no additional refs found', () => {
     const loc = makeLocation('a.ts', 5);
     const lspResult: any = {
-      status: 'hasResults',
       locations: [loc],
       totalReferences: 1,
       hints: ['existing-hint'],
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 5)],
       totalReferences: 1,
     };
@@ -113,12 +106,10 @@ describe('mergeReferenceResults - branch coverage', () => {
   it('should handle lspResult.hints being undefined in confirmation path', () => {
     const loc = makeLocation('a.ts', 5);
     const lspResult: any = {
-      status: 'hasResults',
       locations: [loc],
       totalReferences: 1,
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 5)],
       totalReferences: 1,
     };
@@ -134,28 +125,22 @@ describe('mergeReferenceResults - branch coverage', () => {
     const patternLoc2 = makeLocation('b.ts', 10);
 
     const lspResult: any = {
-      status: 'hasResults',
       locations: [lspLoc],
       totalReferences: 1,
       hints: [],
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [patternLoc1, patternLoc2],
       totalReferences: 2,
     };
     const result = mergeReferenceResults(lspResult, patternResult, baseQuery);
-    expect(result.status).toBe('hasResults');
-    expect(
-      result.hints!.some((h: string) =>
-        h.includes('Added 1 reference(s) from text search')
-      )
-    ).toBe(true);
+    expect(result.status).toBeUndefined();
+    // hasResults-time narration removed; merge still produces a hasResults envelope.
+    expect(result.locations!.length).toBeGreaterThan(0);
   });
 
   it('should preserve references on same line with different columns', () => {
     const lspResult: any = {
-      status: 'hasResults',
       locations: [
         {
           uri: 'a.ts',
@@ -170,7 +155,6 @@ describe('mergeReferenceResults - branch coverage', () => {
       hints: [],
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [
         {
           uri: 'a.ts',
@@ -185,7 +169,7 @@ describe('mergeReferenceResults - branch coverage', () => {
     };
 
     const result = mergeReferenceResults(lspResult, patternResult, baseQuery);
-    expect(result.status).toBe('hasResults');
+    expect(result.status).toBeUndefined();
     expect(result.locations).toHaveLength(2);
   });
 
@@ -198,13 +182,11 @@ describe('mergeReferenceResults - branch coverage', () => {
       ...Array.from({ length: 10 }, (_, i) => makeLocation('b.ts', i)),
     ];
     const lspResult: any = {
-      status: 'hasResults',
       locations: lspLocs,
       totalReferences: 15,
       hints: [],
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: patternLocs,
       totalReferences: 25,
     };
@@ -219,13 +201,11 @@ describe('mergeReferenceResults - branch coverage', () => {
 
   it('should keep hasMultipleFiles true when a paginated merged page shows one location', () => {
     const lspResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 1)],
       totalReferences: 1,
       hints: [],
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 1), makeLocation('b.ts', 2)],
       totalReferences: 2,
     };
@@ -244,13 +224,11 @@ describe('mergeReferenceResults - branch coverage', () => {
     const lspLoc = makeLocation('a.ts', 5);
     const patternLoc = makeLocation('b.ts', 10);
     const lspResult: any = {
-      status: 'hasResults',
       locations: [lspLoc],
       totalReferences: 1,
       hints: [],
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 5), patternLoc],
       totalReferences: 2,
     };
@@ -262,19 +240,61 @@ describe('mergeReferenceResults - branch coverage', () => {
 
   it('should handle undefined lspResult hints in merge path', () => {
     const lspResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 5)],
       totalReferences: 1,
     };
     const patternResult: any = {
-      status: 'hasResults',
       locations: [makeLocation('a.ts', 5), makeLocation('c.ts', 3)],
       totalReferences: 2,
     };
     const result = mergeReferenceResults(lspResult, patternResult, baseQuery);
-    expect(result.hints).toBeDefined();
-    expect(
-      result.hints!.some((h: string) => h.includes('Added 1 reference(s)'))
-    ).toBe(true);
+    expect(result.locations!.length).toBeGreaterThan(0);
+  });
+
+  it('paginates the confirmed (additionalRefs=0) path instead of dumping the full global-merge set', () => {
+    // Regression: LSP and pattern matching agree (no additional refs), but the
+    // result was fetched via createGlobalMergeQuery (referencesPerPage =
+    // MAX_SAFE_INTEGER). The confirmed branch used to return that verbatim,
+    // silently ignoring the caller's referencesPerPage. It must paginate.
+    const locs = Array.from({ length: 25 }, (_, i) => makeLocation('a.ts', i));
+    const lspResult: any = { locations: locs, totalReferences: 25, hints: [] };
+    const patternResult: any = {
+      locations: locs.map(l => makeLocation(l.uri, l.range.start.line)),
+      totalReferences: 25,
+    };
+    const result = mergeReferenceResults(lspResult, patternResult, {
+      ...baseQuery,
+      referencesPerPage: 5,
+      page: 1,
+    });
+    // Still flags agreement…
+    expect(result.hints).toContain(
+      'All references confirmed by both LSP and text search'
+    );
+    // …but now honors the requested page size.
+    expect(result.locations).toHaveLength(5);
+    expect(result.pagination!.resultsPerPage).toBe(5);
+    expect(result.pagination!.totalResults).toBe(25);
+    expect(result.pagination!.totalPages).toBe(5);
+    expect(result.pagination!.hasMore).toBe(true);
+  });
+
+  it('omits the resultsPerPage sentinel (MAX_SAFE_INTEGER) from pagination', () => {
+    // The global-merge query uses referencesPerPage = MAX_SAFE_INTEGER to mean
+    // "return everything". That sentinel carries no information and must not be
+    // serialized into the payload (#A3a).
+    const locs = Array.from({ length: 3 }, (_, i) => makeLocation('a.ts', i));
+    const lspResult: any = { locations: locs, totalReferences: 3, hints: [] };
+    const patternResult: any = {
+      locations: locs.map(l => makeLocation(l.uri, l.range.start.line)),
+      totalReferences: 3,
+    };
+    const result = mergeReferenceResults(lspResult, patternResult, {
+      ...baseQuery,
+      referencesPerPage: Number.MAX_SAFE_INTEGER,
+      page: 1,
+    });
+    expect(result.pagination!.resultsPerPage).toBeUndefined();
+    expect(result.pagination!.totalResults).toBe(3);
   });
 });

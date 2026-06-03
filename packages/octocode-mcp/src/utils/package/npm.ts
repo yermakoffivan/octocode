@@ -393,11 +393,16 @@ async function fetchNpmPackageByView(
 async function searchNpmPackageViaSearch(
   keywords: string,
   limit: number,
-  fetchMetadata: boolean
+  fetchMetadata: boolean,
+  from: number = 0
 ): Promise<PackageSearchAPIResult | PackageSearchError> {
   try {
-    const registryUrl = await getNpmRegistryUrl();
-    const url = `${registryUrl}/-/v1/search?text=${encodeURIComponent(keywords)}&size=${limit}`;
+    // Always search the public npmjs.org registry — the /-/v1/search endpoint
+    // is a public npm API. Using getNpmRegistryUrl() here would route searches
+    // to a corporate/private registry (e.g. Wix, Artifactory) when the user's
+    // npm config points to one, returning private packages instead of public ones.
+    const fromParam = from > 0 ? `&from=${from}` : '';
+    const url = `${DEFAULT_NPM_REGISTRY}/-/v1/search?text=${encodeURIComponent(keywords)}&size=${limit}${fromParam}`;
 
     let raw: unknown;
     try {
@@ -437,7 +442,7 @@ async function searchNpmPackageViaSearch(
         rawResponseChars: searchRawResponseChars,
         hints: [
           'Try a different search term',
-          'Try searchLimit=1 for an exact package lookup',
+          'Try itemsPerPage=1 for an exact package lookup',
         ],
       };
     }
@@ -507,23 +512,26 @@ async function searchNpmPackageViaSearch(
 export async function searchNpmPackage(
   packageName: string,
   limit: number,
-  fetchMetadata: boolean
+  fetchMetadata: boolean,
+  from: number = 0
 ): Promise<PackageSearchAPIResult | PackageSearchError> {
   const cacheKey = generateCacheKey('npm-search', {
     name: packageName,
     limit,
     metadata: fetchMetadata,
+    from,
   });
 
   return withDataCache(
     cacheKey,
     async () => {
       // If limit is > 1, we want to see alternatives, so force a search
-      // even if the name looks like an exact match.
-      if (limit === 1 && isExactPackageName(packageName)) {
+      // even if the name looks like an exact match. Paging (from > 0) also
+      // forces search — the exact-view lookup has no offset.
+      if (from === 0 && limit === 1 && isExactPackageName(packageName)) {
         return fetchNpmPackageByView(packageName, fetchMetadata);
       }
-      return searchNpmPackageViaSearch(packageName, limit, fetchMetadata);
+      return searchNpmPackageViaSearch(packageName, limit, fetchMetadata, from);
     },
     {
       // Don't cache errors or empty results. Empty results may indicate

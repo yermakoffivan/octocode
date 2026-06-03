@@ -70,6 +70,7 @@ describe('LSP Call Hierarchy - Branch Coverage Tests', () => {
   } as any;
 
   const mockClient = {
+    hasCapability: vi.fn(),
     prepareCallHierarchy: vi.fn(),
     getIncomingCalls: vi.fn(),
     getOutgoingCalls: vi.fn(),
@@ -99,6 +100,7 @@ describe('LSP Call Hierarchy - Branch Coverage Tests', () => {
     vi.mocked(lspModule.acquirePooledClient).mockResolvedValue(
       mockClient as any
     );
+    vi.mocked(mockClient.hasCapability).mockReturnValue(true);
     vi.mocked(mockClient.prepareCallHierarchy).mockResolvedValue([
       mockCallHierarchyItem,
     ]);
@@ -108,6 +110,30 @@ describe('LSP Call Hierarchy - Branch Coverage Tests', () => {
   });
 
   describe('callHierarchyWithLSP - Direction and Client Branches', () => {
+    it('returns structured error when call hierarchy capability is unsupported', async () => {
+      vi.mocked(mockClient.hasCapability).mockReturnValue(false);
+
+      const result = await callHierarchyWithLSP(
+        '/workspace/src/file.ts',
+        '/workspace',
+        { line: 4, character: 0 },
+        { ...baseQuery, direction: 'incoming' },
+        'export function testFunction() {}'
+      );
+
+      // lspMode='semantic' removed — absent ≡ semantic. Capability-unsupported
+      // errors are still emitted by the LSP path, so the result.lspMode field
+      // does NOT appear (it's part of the lean output).
+      expect(result).toMatchObject({
+        status: 'error',
+        errorCode: 'LSP_CAPABILITY_UNSUPPORTED',
+        direction: 'incoming',
+        depth: 1,
+      });
+      expect((result as Record<string, unknown>).lspMode).toBeUndefined();
+      expect(mockClient.prepareCallHierarchy).not.toHaveBeenCalled();
+    });
+
     it('should handle incoming direction path', async () => {
       const incomingCall = {
         from: {
@@ -138,7 +164,7 @@ describe('LSP Call Hierarchy - Branch Coverage Tests', () => {
 
       expect(result).not.toBeNull();
       expect(result?.direction).toBe('incoming');
-      expect(result?.status).toBe('hasResults');
+      expect(result?.status).toBeUndefined();
       expect(mockClient.getIncomingCalls).toHaveBeenCalled();
     });
 
@@ -169,7 +195,7 @@ describe('LSP Call Hierarchy - Branch Coverage Tests', () => {
 
       expect(result).not.toBeNull();
       expect(result?.direction).toBe('outgoing');
-      expect(result?.status).toBe('hasResults');
+      expect(result?.status).toBeUndefined();
       expect(mockClient.getOutgoingCalls).toHaveBeenCalled();
     });
 
@@ -605,7 +631,7 @@ describe('LSP Call Hierarchy - Branch Coverage Tests', () => {
       );
 
       expect(result).not.toBeNull();
-      expect(result?.status).toBe('hasResults');
+      expect(result?.status).toBeUndefined();
       expect(mockClient.gotoDefinition).toHaveBeenCalledWith(
         '/workspace/src/file.ts',
         { line: 1, character: 10 }

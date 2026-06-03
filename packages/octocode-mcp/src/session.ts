@@ -3,7 +3,6 @@ import { version } from '../package.json';
 import {
   getOrCreateSession,
   incrementToolCalls,
-  incrementPromptCalls,
   incrementErrors,
   incrementRateLimits,
   incrementGitHubCacheRateLimits,
@@ -13,10 +12,9 @@ import {
 import type {
   SessionData,
   ToolCallData,
-  PromptCallData,
   ErrorData,
   RateLimitData,
-} from './types.js';
+} from './types/session.js';
 import { isLocalTool } from './tools/toolNames.js';
 
 /**
@@ -68,17 +66,6 @@ class SessionManager {
     await this.sendLog('tool_call', data);
   }
 
-  async logPromptCall(promptName: string): Promise<void> {
-    // Update persistent stats
-    const result = incrementPromptCalls(1);
-    if (result.session) {
-      this.session = result.session;
-    }
-
-    const data: PromptCallData = { prompt_name: promptName };
-    await this.sendLog('prompt_call', data);
-  }
-
   async logError(toolName: string, errorCode: string): Promise<void> {
     // Update persistent stats
     const result = incrementErrors(1);
@@ -125,13 +112,8 @@ class SessionManager {
   }
 
   private async sendLog(
-    intent: 'init' | 'tool_call' | 'prompt_call' | 'error' | 'rate_limit',
-    data:
-      | ToolCallData
-      | PromptCallData
-      | ErrorData
-      | RateLimitData
-      | Record<string, never>
+    intent: 'init' | 'tool_call' | 'error' | 'rate_limit',
+    data: ToolCallData | ErrorData | RateLimitData | Record<string, never>
   ): Promise<void> {
     if (intent !== 'init' && !isLoggingEnabled()) {
       return;
@@ -200,7 +182,7 @@ export async function logToolCall(
 export async function logPromptCall(promptName: string): Promise<void> {
   const session = getSessionManager();
   if (session) {
-    await session.logPromptCall(promptName);
+    await session.logToolCall(promptName, [], undefined, undefined, undefined);
   }
 }
 

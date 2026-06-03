@@ -16,23 +16,40 @@ import {
   LSP_UNAVAILABLE_HINT,
 } from '../../lsp/manager.js';
 import type { CallHierarchyResult } from '../../lsp/types.js';
-import type { LSPCallHierarchyQuery as UpstreamLSPCallHierarchyQuery } from '@octocodeai/octocode-core';
-import type { Verbosity } from '../../scheme/localSchemaOverlay.js';
-import type { WithOptionalMeta } from '../../types/execution.js';
-import { isUltra, ultraDrillBackHint } from '../../scheme/verbosity.js';
+import type { z } from 'zod/v4';
+import type { LSPCallHierarchyQuerySchema } from '@octocodeai/octocode-core/schemas';
 
-type LSPCallHierarchyQuery = WithOptionalMeta<UpstreamLSPCallHierarchyQuery> & {
-  verbosity?: Verbosity;
+type UpstreamLSPCallHierarchyQuery = z.infer<
+  typeof LSPCallHierarchyQuerySchema
+>;
+import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
+import type { WithOptionalMeta } from '../../types/execution.js';
+import {
+  isConcise,
+  isCompact,
+  compactTrimHints,
+  makeAdvisoryPredicate,
+} from '../../scheme/verbosity.js';
+
+/** Advisory hints lspCallHierarchy emits; stripped under compact.
+ * Substring-OR, case-insensitive. */
+const isAdvisoryCallHierarchyHint = makeAdvisoryPredicate([
+  'prefer depth=1',
+  'risks timeouts',
+  'hot function',
+  'fallback',
+]);
+
+type LSPCallHierarchyQuery = WithVerbosity<
+  WithOptionalMeta<UpstreamLSPCallHierarchyQuery>
+> & {
   orderHint?: number;
 };
 import { ToolErrors } from '../../errors/errorFactories.js';
 import { callHierarchyWithLSP } from './callHierarchyLsp.js';
 import { callHierarchyWithPatternMatching } from './callHierarchyPatterns.js';
-import { applyOutputSizeLimit } from '../../utils/pagination/outputSizeLimit.js';
-import { serializeForPagination } from '../../utils/pagination/core.js';
 import { TOOL_NAME } from './constants.js';
 import { resolveWorkspaceRootForFile } from '../../lsp/workspaceRoot.js';
-import { applyQueryOutputPagination } from '../../utils/response/structuredPagination.js';
 import { LSP_ERROR_CODES } from '../../lsp/lspErrorCodes.js';
 import {
   attachRawResponseChars,
@@ -43,12 +60,22 @@ import {
 /**
  * Process a single call hierarchy query.
  *
- * Wraps the internal core logic with the RFC §4.7.7 verbosity transformer
- * so that `verbosity:"ultra"` returns graph edges only (no per-node content).
+ * Wraps the internal core logic with the verbosity transformer so that
+ * `verbosity:"concise"` returns graph edges only (no per-node content).
  */
 export async function processCallHierarchy(
   query: LSPCallHierarchyQuery
 ): Promise<CallHierarchyResult> {
+  // Surface page-size knob is the cross-tool `itemsPerPage`; the internal
+  // pipeline threads `callsPerPage`. Bridge once here so downstream logic is
+  // unchanged.
+  const bridge = query as { itemsPerPage?: number; callsPerPage?: number };
+  if (
+    bridge.callsPerPage === undefined &&
+    typeof bridge.itemsPerPage === 'number'
+  ) {
+    bridge.callsPerPage = bridge.itemsPerPage;
+  }
   const result = await processCallHierarchyInternal(query);
   const rawChars = getRawResponseChars(result) ?? countSerializedChars(result);
   return attachRawResponseChars(
@@ -70,13 +97,16 @@ async function processCallHierarchyInternal(
     }
 
     const absolutePath = pathValidation.sanitizedPath!;
+    const uri = query.uri!;
+    const symbolName = query.symbolName!;
+    const lineHint = query.lineHint!;
 
     let content: string;
     try {
       content = await readFile(absolutePath, 'utf-8');
     } catch (error) {
       const toolError = ToolErrors.fileAccessFailed(
-        query.uri,
+        uri,
         error instanceof Error ? error : undefined
       );
       return createErrorResult(toolError, query, {
@@ -89,8 +119,8 @@ async function processCallHierarchyInternal(
     let resolvedSymbol;
     try {
       resolvedSymbol = resolver.resolvePositionFromContent(content, {
-        symbolName: query.symbolName,
-        lineHint: query.lineHint,
+        symbolName,
+        lineHint,
         orderHint: query.orderHint ?? 0,
       });
     } catch (error) {
@@ -103,7 +133,7 @@ async function processCallHierarchyInternal(
             error: error.message,
             hints: [
               ...getHints(TOOL_NAME, 'empty'),
-              `Symbol '${query.symbolName}' not found at line ${query.lineHint}`,
+              `Symbol '${symbolName}' not found at line ${lineHint}`,
               'Verify the exact function name (case-sensitive)',
               'Check the line number is correct',
               'Use localSearchCode to find the function first',
@@ -132,9 +162,14 @@ async function processCallHierarchyInternal(
           content
         );
         if (result) {
-          const semanticResult = { ...result, lspMode: 'semantic' } as const;
+          // Semantic path: omit lspMode (absent ≡ semantic). Fallback path
+          // below explicitly sets lspMode='fallback'.
+          const semanticResult = result;
           return attachRawResponseChars(
-            applyCallHierarchyOutputLimit(semanticResult, query),
+            // Output bounding is owned entirely by the bulk char-paginator,
+            // which sub-slices an oversized node's nested `content` — so no
+            // per-tool pre-clip is needed (lossless: the cursor reaches the rest).
+            semanticResult,
             content.length + countSerializedChars(semanticResult)
           );
         }
@@ -173,8 +208,17 @@ async function processCallHierarchyInternal(
             ),
             lspMode: 'fallback',
           };
+    // Char-pagination is owned by the unified bulk engine:
+    // applyQueryOutputPagination (explicit charOffset/charLength) and
+    // applyBulkResponsePagination (auto-cap) handle it via the same single
+    // getOutputCharLimit() flow as every other tool. The old per-tool
+    // applyCallHierarchyOutputLimit pre-paginated against JSON length and
+    // emitted its own outputPagination + "Auto-paginated" breadcrumbs
+    // ALONGSIDE the bulk layer — producing contradictory totals (three
+    // different char counts for the same query). Removing it here means the
+    // bulk engine is the one and only pagination authority.
     return attachRawResponseChars(
-      applyCallHierarchyOutputLimit(withMode, query),
+      withMode,
       content.length + countSerializedChars(withMode)
     );
   } catch (error) {
@@ -208,97 +252,41 @@ function withLspUnavailableHint(
 }
 
 /**
- * Apply output size limits to a call hierarchy result.
- * Serializes the result, checks against MAX_OUTPUT_CHARS, and auto-paginates
- * or applies explicit charOffset/charLength if provided.
- */
-function applyCallHierarchyOutputLimit(
-  result: CallHierarchyResult,
-  query: LSPCallHierarchyQuery
-): CallHierarchyResult {
-  if (result.status !== 'hasResults') return result;
-
-  const serialized = serializeForPagination(result, true);
-  const sizeLimitResult = applyOutputSizeLimit(serialized, {
-    charOffset: query.charOffset,
-    charLength: query.charLength,
-  });
-
-  if (!sizeLimitResult.wasLimited || !sizeLimitResult.pagination) return result;
-
-  // CallHierarchyResult satisfies Record<string, unknown> via its [key: string]:
-  // unknown index signature inherited from LSPToolResultBase, so no cast needed.
-  const pagedQueryResult = applyQueryOutputPagination(
-    {
-      id: query.id ?? 'q1',
-      status: result.status,
-      data: result,
-    },
-    {
-      charOffset: sizeLimitResult.pagination.charOffset,
-      charLength: sizeLimitResult.pagination.charLength,
-    },
-    TOOL_NAME
-  );
-
-  // pagedQueryResult.data is Record<string, unknown> — narrow what we read
-  // back into typed values rather than asserting a Partial<CallHierarchyResult>.
-  const pagedData = pagedQueryResult.data;
-  const pagedHints = Array.isArray(pagedData.hints)
-    ? pagedData.hints.filter((h): h is string => typeof h === 'string')
-    : [];
-
-  // Re-spread the original result.hints to make hint-preservation an explicit
-  // invariant. applyQueryOutputPagination today excludes 'hints' from
-  // structured pagination, so result.hints survives in pagedData.hints — but
-  // re-spreading guards against future paginator changes that might paginate
-  // hints, and aligns with applyGotoDefinitionOutputLimit's pattern. Set
-  // dedupes the outer hints with whatever pagedData.hints carries through.
-  const combinedHints = [
-    ...(result.hints ?? []),
-    ...pagedHints,
-    ...sizeLimitResult.warnings,
-    ...sizeLimitResult.paginationHints,
-  ];
-
-  const pagedLspMode: CallHierarchyResult['lspMode'] =
-    pagedData.lspMode === 'semantic' || pagedData.lspMode === 'fallback'
-      ? pagedData.lspMode
-      : undefined;
-
-  return {
-    ...result,
-    ...pagedData,
-    // Pin lspMode from the pre-pagination result. pagedData may omit it
-    // if the JSON slice lands past the field, and a slice that explicitly
-    // serialised `lspMode` to undefined would otherwise erase the marker.
-    lspMode: result.lspMode ?? pagedLspMode,
-    outputPagination: {
-      charOffset: sizeLimitResult.pagination.charOffset!,
-      charLength: sizeLimitResult.pagination.charLength!,
-      totalChars: sizeLimitResult.pagination.totalChars!,
-      hasMore: sizeLimitResult.pagination.hasMore,
-      currentPage: sizeLimitResult.pagination.currentPage,
-      totalPages: sizeLimitResult.pagination.totalPages,
-    },
-    hints: Array.from(new Set(combinedHints)),
-  };
-}
-
-/**
- * RFC §4.7.7: when `verbosity:"ultra"` is requested, drop tree node content
- * and emit graph edges only. Compact / verbose / omitted behave identically
+ * When `verbosity:"concise"` is requested, drop tree node content and emit
+ * graph edges only. Omitted / `"basic"` / `"compact"` behave identically
  * to today.
  *
- * Exported for direct unit testing in `tests/scheme/verbosity_ultra.test.ts`.
+ * Exported for direct unit testing in `tests/scheme/verbosity_concise.test.ts`.
  */
-export function applyCallHierarchyVerbosity(
+/** Call-hierarchy edge item shape used to render the concise edge list. */
+type ConciseEdgeItem = {
+  from?: { name?: string; uri?: string; range?: { start?: { line?: number } } };
+  to?: { name?: string; uri?: string; range?: { start?: { line?: number } } };
+  fromRanges?: Array<{ start?: { line?: number } }>;
+};
+
+/** Render `caller → root` / `root → callee` edge strings for concise output. */
+function buildConciseEdges(
+  items: ConciseEdgeItem[],
+  direction: 'incoming' | 'outgoing',
+  rootName: string
+): string[] {
+  return items.map(item => {
+    const peer = direction === 'incoming' ? item.from : item.to;
+    const peerName = peer?.name ?? '?';
+    const callSites = item.fromRanges?.length ?? 1;
+    const suffix = callSites > 1 ? ` (×${callSites})` : '';
+    return direction === 'incoming'
+      ? `${peerName} → ${rootName}${suffix}`
+      : `${rootName} → ${peerName}${suffix}`;
+  });
+}
+
+/** Collapse a call-hierarchy result to the tiny concise summary form. */
+function buildConciseCallHierarchy(
   result: CallHierarchyResult,
   query: LSPCallHierarchyQuery
 ): CallHierarchyResult {
-  if (!isUltra(query.verbosity)) return result;
-  if (result.status === 'error') return result;
-
   const direction = (result.direction ?? query.direction ?? 'incoming') as
     | 'incoming'
     | 'outgoing';
@@ -311,25 +299,9 @@ export function applyCallHierarchyVerbosity(
   const items = ((result as { calls?: unknown[] }).calls ??
     (result as { incomingCalls?: unknown[] }).incomingCalls ??
     (result as { outgoingCalls?: unknown[] }).outgoingCalls ??
-    []) as Array<{
-    from?: {
-      name?: string;
-      uri?: string;
-      range?: { start?: { line?: number } };
-    };
-    to?: { name?: string; uri?: string; range?: { start?: { line?: number } } };
-    fromRanges?: Array<{ start?: { line?: number } }>;
-  }>;
+    []) as ConciseEdgeItem[];
 
-  const edges = items.map(item => {
-    const peer = direction === 'incoming' ? item.from : item.to;
-    const peerName = peer?.name ?? '?';
-    const callSites = item.fromRanges?.length ?? 1;
-    return direction === 'incoming'
-      ? `${peerName} → ${rootName}${callSites > 1 ? ` (×${callSites})` : ''}`
-      : `${rootName} → ${peerName}${callSites > 1 ? ` (×${callSites})` : ''}`;
-  });
-
+  const edges = buildConciseEdges(items, direction, rootName);
   const summary = `${edges.length} ${direction} edge(s) for ${rootName} at depth=${result.depth ?? query.depth ?? 1}`;
 
   // Preserve whichever edge-list field the upstream result used so the
@@ -342,20 +314,37 @@ export function applyCallHierarchyVerbosity(
     result.item && typeof result.item === 'object'
       ? { ...result.item, content: '' }
       : result.item;
+  // Concise is a complete, tiny probe answer (the edge list lives in `hints`).
+  // Drop pagination / outputPagination: they were computed from the full
+  // payload before calls[] was emptied, so they're stale and would both bloat
+  // the response and falsely mark it incomplete. (#T3 / #5b)
+  const rest = { ...result } as Record<string, unknown>;
+  delete rest.pagination;
+  delete rest.outputPagination;
   return {
-    ...result,
+    ...(rest as CallHierarchyResult),
     ...(item ? { item } : {}),
     ...(hasCalls ? { calls: [] } : {}),
     ...(hasIncoming ? { incomingCalls: [] } : {}),
     ...(hasOutgoing ? { outgoingCalls: [] } : {}),
-    hints: [
-      summary,
-      `edges: ${edges.join('; ')}`,
-      ...ultraDrillBackHint(
-        're-call with verbosity:"compact" (default) for full per-node context'
-      ),
-    ],
+    hints: [summary, `edges: ${edges.join('; ')}`],
   };
+}
+
+export function applyCallHierarchyVerbosity(
+  result: CallHierarchyResult,
+  query: LSPCallHierarchyQuery
+): CallHierarchyResult {
+  if (isCompact(query.verbosity)) {
+    return {
+      ...result,
+      hints: compactTrimHints(result.hints, isAdvisoryCallHierarchyHint, 2),
+    };
+  }
+  if (!isConcise(query.verbosity)) return result;
+  if (result.status !== undefined) return result;
+
+  return buildConciseCallHierarchy(result, query);
 }
 
 export {

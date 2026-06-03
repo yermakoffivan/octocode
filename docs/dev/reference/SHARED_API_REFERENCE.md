@@ -614,7 +614,6 @@ Usage statistics.
 ```typescript
 interface SessionStats {
   toolCalls: number;
-  promptCalls: number;
   errors: number;
   rateLimits: number;
   rateLimitsByProvider?: Record<string, number>;
@@ -751,16 +750,6 @@ Increment tool call counter.
 
 ```typescript
 function incrementToolCalls(count?: number): SessionUpdateResult
-```
-
----
-
-#### `incrementPromptCalls(count?)`
-
-Increment prompt call counter.
-
-```typescript
-function incrementPromptCalls(count?: number): SessionUpdateResult
 ```
 
 ---
@@ -925,9 +914,8 @@ interface OctocodeConfig {
   $schema?: string;
   version?: number;
   github?: { apiUrl?: string };
-  gitlab?: { host?: string };
   local?: { enabled?: boolean; allowedPaths?: string[]; workspaceRoot?: string };
-  tools?: { enabled?: string[] | null; enableAdditional?: string[] | null; disabled?: string[] | null; disablePrompts?: boolean };
+  tools?: { enabled?: string[] | null; enableAdditional?: string[] | null; disabled?: string[] | null };
   network?: { timeout?: number; maxRetries?: number };
   telemetry?: { logging?: boolean };
   lsp?: { configPath?: string };
@@ -945,9 +933,8 @@ Fully resolved configuration with all defaults applied.
 interface ResolvedConfig {
   version: number;
   github: { apiUrl: string };
-  gitlab: { host: string };
   local: { enabled: boolean; allowedPaths: string[]; workspaceRoot: string | undefined };
-  tools: { enabled: string[] | null; enableAdditional: string[] | null; disabled: string[] | null; disablePrompts: boolean };
+  tools: { enabled: string[] | null; enableAdditional: string[] | null; disabled: string[] | null };
   network: { timeout: number; maxRetries: number };
   telemetry: { logging: boolean };
   lsp: { configPath: string | undefined };

@@ -6,14 +6,28 @@ import {
 import { expectHasResultsData, getSingleResult } from '../flows/assertions.js';
 import {
   LocalFindFilesDataSchema,
-  LocalFindFilesOutputSchema,
+  LocalFindFilesOutputSchema as UpstreamLocalFindFilesOutputSchema,
   LocalGetFileContentDataSchema,
-  LocalGetFileContentOutputSchema,
+  LocalGetFileContentOutputSchema as UpstreamLocalGetFileContentOutputSchema,
   LocalSearchCodeDataSchema,
-  LocalSearchCodeOutputSchema,
+  LocalSearchCodeOutputSchema as UpstreamLocalSearchCodeOutputSchema,
   LocalViewStructureDataSchema,
-  LocalViewStructureOutputSchema,
+  LocalViewStructureOutputSchema as UpstreamLocalViewStructureOutputSchema,
 } from '@octocodeai/octocode-core';
+import { withResponseEnvelope } from '../../src/scheme/responseEnvelope.js';
+
+const LocalFindFilesOutputSchema = withResponseEnvelope(
+  UpstreamLocalFindFilesOutputSchema
+);
+const LocalGetFileContentOutputSchema = withResponseEnvelope(
+  UpstreamLocalGetFileContentOutputSchema
+);
+const LocalSearchCodeOutputSchema = withResponseEnvelope(
+  UpstreamLocalSearchCodeOutputSchema
+);
+const LocalViewStructureOutputSchema = withResponseEnvelope(
+  UpstreamLocalViewStructureOutputSchema
+);
 import { registerLocalRipgrepTool } from '../../src/tools/local_ripgrep/register.js';
 import { registerLocalViewStructureTool } from '../../src/tools/local_view_structure/register.js';
 import { registerLocalFindFilesTool } from '../../src/tools/local_find_files/register.js';
@@ -54,7 +68,6 @@ describe('local tool MCP pagination responses', () => {
     registerLocalRipgrepTool(mockServer.server);
 
     mockSearchContentRipgrep.mockResolvedValue({
-      status: 'hasResults',
       files: [
         {
           path: '/workspace/src/search.ts',
@@ -128,7 +141,6 @@ describe('local tool MCP pagination responses', () => {
     registerLocalViewStructureTool(mockServer.server);
 
     mockViewStructure.mockResolvedValue({
-      status: 'hasResults',
       entries: Array.from({ length: 30 }, (_, index) => ({
         name: `entry-${index}`,
         type: 'file',
@@ -166,7 +178,6 @@ describe('local tool MCP pagination responses', () => {
     registerLocalFindFilesTool(mockServer.server);
 
     mockFindFiles.mockResolvedValue({
-      status: 'hasResults',
       files: [
         {
           path: '/workspace/src/a.ts',
@@ -218,7 +229,6 @@ describe('local tool MCP pagination responses', () => {
     registerLocalFetchContentTool(mockServer.server);
 
     mockFetchContent.mockResolvedValue({
-      status: 'hasResults',
       content: 'export const value = 1;',
       isPartial: true,
       totalLines: 20,
@@ -261,7 +271,6 @@ describe('local tool MCP pagination responses', () => {
     registerLocalViewStructureTool(mockServer.server);
 
     mockViewStructure.mockImplementation(async (query: { id: string }) => ({
-      status: 'hasResults',
       entries: Array.from({ length: 18 }, (_, index) => ({
         name: `${query.id}-entry-${index}`,
         type: 'file',

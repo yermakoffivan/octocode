@@ -3,7 +3,7 @@
  * Unified result types for provider-agnostic code hosting operations.
  */
 
-import type { PaginationInfo } from '../types.js';
+import type { PaginationInfo } from '../types/toolResults.js';
 
 /**
  * Unified repository information.
@@ -84,6 +84,11 @@ export interface CodeSearchResult {
     repo: string;
     branch?: string;
   };
+  /**
+   * True when the empty result is a nonexistent searched owner/repo/user
+   * (GitHub 422), not a valid scope that matched nothing.
+   */
+  nonExistentScope?: boolean;
 }
 
 /**
@@ -98,6 +103,8 @@ export interface FileContentResult {
   encoding: 'utf-8' | 'base64';
   /** File size in bytes */
   size: number;
+  /** Total number of lines in the source file, when known */
+  totalLines?: number;
   /** Branch/ref used */
   ref: string;
   /** Last modified date */
@@ -114,6 +121,8 @@ export interface FileContentResult {
   startLine?: number;
   /** End line (if partial) */
   endLine?: number;
+  /** Non-fatal warnings/notices from extraction or sanitization */
+  warnings?: string[];
 }
 
 /**
@@ -126,6 +135,11 @@ export interface RepoSearchResult {
   totalCount: number;
   /** Pagination info */
   pagination: PaginationInfo;
+  /**
+   * True when the empty result is a nonexistent searched owner/user (GitHub
+   * 422), not a valid scope that matched nothing.
+   */
+  nonExistentScope?: boolean;
 }
 
 /**

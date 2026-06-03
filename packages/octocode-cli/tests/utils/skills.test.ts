@@ -1,11 +1,6 @@
-/**
- * Skills Utilities Tests
- */
-
 import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the fs utilities module
 vi.mock('../../src/utils/fs.js', () => ({
   dirExists: vi.fn(),
   copyDirectory: vi.fn(),
@@ -14,7 +9,15 @@ vi.mock('../../src/utils/fs.js', () => ({
   readFileContent: vi.fn(),
 }));
 
-// Import the mocked module
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  rmSync: vi.fn(),
+  symlinkSync: vi.fn(),
+}));
+
 import {
   dirExists,
   copyDirectory,
@@ -30,7 +33,13 @@ import {
   getAvailableSkills,
   getSkillMetadata,
   getAllSkillsMetadata,
+  isSafeSkillName,
+  resolveModeForTarget,
+  resolveSkillDestination,
+  installSkillToDestination,
 } from '../../src/utils/skills.js';
+import { existsSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { getSkillsDirForTarget } from '../../src/utils/skills.js';
 
 describe('Skills Utilities', () => {
   beforeEach(() => {
@@ -40,7 +49,6 @@ describe('Skills Utilities', () => {
   describe('getSkillsSourcePath', () => {
     it('should return fromOut path when it exists', () => {
       vi.mocked(dirExists).mockImplementation((p: string) => {
-        // Check if path ends with 'skills' and parent is one level up (fromOut pattern)
         return p.includes('skills') && !p.includes('../..');
       });
 
@@ -53,7 +61,7 @@ describe('Skills Utilities', () => {
       let callCount = 0;
       vi.mocked(dirExists).mockImplementation(() => {
         callCount++;
-        // First call (fromOut) returns false, second call (fromSrc) returns true
+
         return callCount === 2;
       });
 
@@ -73,12 +81,11 @@ describe('Skills Utilities', () => {
       const checkedPaths: string[] = [];
       vi.mocked(dirExists).mockImplementation((p: string) => {
         checkedPaths.push(p);
-        return true; // Return true on first call
+        return true;
       });
 
       getSkillsSourcePath();
 
-      // Should only check one path since first one exists
       expect(checkedPaths).toHaveLength(1);
       expect(checkedPaths[0]).toMatch(/skills$/);
     });
@@ -155,12 +162,10 @@ describe('Skills Utilities', () => {
     });
 
     it('should return false when skill directory does not exist', () => {
-      // First call for getSkillsSourcePath succeeds
-      // Second call for skill path check fails
       let callCount = 0;
       vi.mocked(dirExists).mockImplementation(() => {
         callCount++;
-        return callCount === 1; // Only source path exists, skill path doesn't
+        return callCount === 1;
       });
 
       const result = copySkill('nonexistent-skill', '/dest/skills');
@@ -196,6 +201,40 @@ describe('Skills Utilities', () => {
       expect(() => copySkill('octocode-research', '/dest')).toThrow(
         'Skills directory not found'
       );
+    });
+
+    it('should reject unsafe skill names before copying', () => {
+      vi.mocked(dirExists).mockReturnValue(true);
+
+      const result = copySkill('../evil', '/dest/skills');
+
+      expect(result).toBe(false);
+      expect(copyDirectory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('shared install helpers', () => {
+    it('validates skill names as path segments only', () => {
+      expect(isSafeSkillName('octocode-research')).toBe(true);
+      expect(isSafeSkillName('../evil')).toBe(false);
+      expect(isSafeSkillName('octocode/evil')).toBe(false);
+      expect(isSafeSkillName('octocode\\evil')).toBe(false);
+      expect(isSafeSkillName('.')).toBe(false);
+      expect(isSafeSkillName(' octocode-research')).toBe(false);
+    });
+
+    it('resolves skill destinations only under the destination directory', () => {
+      expect(resolveSkillDestination('/dest/skills', 'octocode-plan')).toBe(
+        '/dest/skills/octocode-plan'
+      );
+      expect(resolveSkillDestination('/dest/skills', '../evil')).toBeNull();
+    });
+
+    it('keeps hybrid mode policy in the shared utility', () => {
+      expect(resolveModeForTarget('hybrid', 'claude-code')).toBe('copy');
+      expect(resolveModeForTarget('hybrid', 'claude-desktop')).toBe('copy');
+      expect(resolveModeForTarget('hybrid', 'cursor')).toBe('symlink');
+      expect(resolveModeForTarget('copy', 'cursor')).toBe('copy');
     });
   });
 
@@ -289,15 +328,12 @@ describe('Skills Utilities', () => {
       ]);
       vi.mocked(copyDirectory).mockReturnValue(true);
 
-      // Get available skills
       const skills = getAvailableSkills();
       expect(skills).toHaveLength(4);
 
-      // Copy all skills
       const copyAllResult = copySkills('/home/user/.claude/skills');
       expect(copyAllResult).toBe(true);
 
-      // Copy individual skill
       const copyOneResult = copySkill(
         'octocode-research',
         '/home/user/.claude/skills'
@@ -308,8 +344,8 @@ describe('Skills Utilities', () => {
     it('should handle partial failure gracefully', () => {
       vi.mocked(dirExists).mockReturnValue(true);
       vi.mocked(copyDirectory)
-        .mockReturnValueOnce(true) // First copy succeeds
-        .mockReturnValueOnce(false); // Second copy fails
+        .mockReturnValueOnce(true)
+        .mockReturnValueOnce(false);
 
       const result1 = copySkill('octocode-research', '/dest');
       const result2 = copySkill('octocode-plan', '/dest');
@@ -473,16 +509,7 @@ description: Valid skill
   });
 });
 
-// Separate describe block for config-related tests since they use different mocks
 describe('Skills Config', () => {
-  // Mock node:fs for config tests
-  vi.mock('node:fs', () => ({
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-    writeFileSync: vi.fn(),
-    mkdirSync: vi.fn(),
-  }));
-
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
@@ -604,7 +631,6 @@ describe('Skills Config', () => {
         await import('../../src/utils/skills.js');
       const result = getDefaultSkillsDestDir();
 
-      // Should end with .claude/skills or Claude/skills
       expect(result).toMatch(/[Cc]laude.*skills$/);
     });
 
@@ -654,5 +680,159 @@ describe('Skills Config', () => {
 
       expect(result).toBe(defaultPath);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getSkillsDirForTarget — all target paths
+// ---------------------------------------------------------------------------
+
+describe('getSkillsDirForTarget — all targets', () => {
+  it('returns defaultDestDir for claude-code', () => {
+    const result = getSkillsDirForTarget('claude-code', '/custom/dest');
+    expect(result).toBe('/custom/dest');
+  });
+
+  it('returns HOME-based path for cursor', () => {
+    const result = getSkillsDirForTarget('cursor', '/custom/dest');
+    expect(result).toContain('.cursor');
+    expect(result).toContain('skills');
+  });
+
+  it('returns HOME-based path for claude-desktop', () => {
+    const result = getSkillsDirForTarget('claude-desktop', '/custom/dest');
+    expect(result).toContain('skills');
+  });
+
+  it('returns HOME-based path for codex', () => {
+    const result = getSkillsDirForTarget('codex', '/custom/dest');
+    expect(result).toContain('skills');
+  });
+
+  it('returns HOME-based path for opencode', () => {
+    const result = getSkillsDirForTarget('opencode', '/custom/dest');
+    expect(result).toContain('skills');
+  });
+
+  it('returns HOME-based path for agents', () => {
+    const result = getSkillsDirForTarget('agents', '/custom/dest');
+    expect(result).toContain('.agents');
+    expect(result).toContain('skills');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// installSkillToDestination — uncovered branches
+// ---------------------------------------------------------------------------
+
+describe('installSkillToDestination', () => {
+  beforeEach(() => {
+    vi.mocked(existsSync).mockReset();
+    vi.mocked(mkdirSync).mockReset();
+    vi.mocked(rmSync).mockReset();
+    vi.mocked(symlinkSync).mockReset();
+    vi.mocked(dirExists).mockReset();
+    vi.mocked(copyDirectory).mockReset();
+  });
+
+  it('creates parent dir when it does not exist then copies (copy mode)', () => {
+    vi.mocked(existsSync).mockReturnValue(false);
+    // source exists, but destination parent does NOT → mkdirSync should be called
+    vi.mocked(dirExists).mockImplementation(
+      (p: string) => p === '/src/my-skill'
+    );
+    vi.mocked(copyDirectory).mockReturnValue(true);
+
+    const result = installSkillToDestination({
+      sourcePath: '/src/my-skill',
+      destinationPath: '/dest/skills/my-skill',
+      mode: 'copy',
+      force: false,
+    });
+
+    expect(vi.mocked(mkdirSync)).toHaveBeenCalledWith(
+      '/dest/skills',
+      expect.objectContaining({ recursive: true })
+    );
+    expect(result).toBe('installed');
+  });
+
+  it('installs via symlink when mode is symlink', () => {
+    vi.mocked(existsSync).mockReturnValue(false);
+    // source and parent dir both exist → no mkdirSync, installs via symlink
+    vi.mocked(dirExists).mockReturnValue(true);
+
+    const result = installSkillToDestination({
+      sourcePath: '/src/my-skill',
+      destinationPath: '/dest/skills/my-skill',
+      mode: 'symlink',
+      force: false,
+    });
+
+    expect(vi.mocked(symlinkSync)).toHaveBeenCalled();
+    expect(result).toBe('installed');
+  });
+
+  it('returns failed when an error is thrown', () => {
+    vi.mocked(existsSync).mockReturnValue(false);
+    vi.mocked(dirExists).mockReturnValue(true);
+    vi.mocked(copyDirectory).mockImplementation(() => {
+      throw new Error('disk full');
+    });
+
+    const result = installSkillToDestination({
+      sourcePath: '/src/my-skill',
+      destinationPath: '/dest/skills/my-skill',
+      mode: 'copy',
+      force: false,
+    });
+
+    expect(result).toBe('failed');
+  });
+
+  it('returns skipped when destination exists and force=false', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    vi.mocked(dirExists).mockReturnValue(true);
+
+    const result = installSkillToDestination({
+      sourcePath: '/src/my-skill',
+      destinationPath: '/dest/skills/my-skill',
+      mode: 'copy',
+      force: false,
+    });
+
+    expect(result).toBe('skipped');
+  });
+
+  it('removes and reinstalls when destination exists and force=true', () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    vi.mocked(dirExists).mockReturnValue(true);
+    vi.mocked(copyDirectory).mockReturnValue(true);
+
+    const result = installSkillToDestination({
+      sourcePath: '/src/my-skill',
+      destinationPath: '/dest/skills/my-skill',
+      mode: 'copy',
+      force: true,
+    });
+
+    expect(vi.mocked(rmSync)).toHaveBeenCalledWith(
+      '/dest/skills/my-skill',
+      expect.objectContaining({ recursive: true })
+    );
+    expect(result).toBe('installed');
+  });
+
+  it('returns failed when source does not exist', () => {
+    vi.mocked(dirExists).mockReturnValue(false);
+
+    const result = installSkillToDestination({
+      sourcePath: '/nonexistent-skill',
+      destinationPath: '/dest/skills/my-skill',
+      mode: 'copy',
+      force: false,
+    });
+
+    expect(result).toBe('failed');
   });
 });

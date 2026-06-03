@@ -4,7 +4,6 @@ import {
   MockMcpServer,
 } from '../fixtures/mcp-fixtures.js';
 import { getTextContent } from '../utils/testHelpers.js';
-import { FileContentBulkQuerySchema } from '@octocodeai/octocode-core';
 
 const mockInitialize = vi.hoisted(() => vi.fn());
 const mockGetServerConfig = vi.hoisted(() => vi.fn());
@@ -120,8 +119,43 @@ describe('GitHub Fetch Content Tool', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('status: "hasResults"');
+      expect(responseText).toContain('results:');
+      expect(responseText).toContain('owner: "test"');
+      expect(responseText).toContain('repo: "repo"');
+      expect(responseText).toContain('path: "README.md"');
       expect(responseText).toContain('content:');
+      expect(responseText).not.toContain('status:');
+    });
+
+    it('should include totalLines and omit repeated generic hints', async () => {
+      mockProvider.getFileContent.mockResolvedValue({
+        data: {
+          path: 'src/app.ts',
+          content: 'line1\nline2',
+          encoding: 'utf-8',
+          size: 11,
+          totalLines: 2,
+          ref: 'main',
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            { owner: 'test', repo: 'repo', path: 'src/app.ts', branch: 'main' },
+          ],
+        }
+      );
+
+      const responseText = getTextContent(result.content);
+      expect(responseText).toContain('totalLines: 2');
+      expect(responseText).not.toContain(
+        "Use 'owner', 'repo', 'branch', 'path'"
+      );
+      expect(responseText).not.toContain("Follow 'mainResearchGoal'");
     });
 
     it('should pass authInfo to provider', async () => {
@@ -195,8 +229,8 @@ describe('GitHub Fetch Content Tool', () => {
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('content1');
       expect(responseText).toContain('content2');
-      expect(responseText).not.toContain('file1.js');
-      expect(responseText).not.toContain('file2.js');
+      expect(responseText).toContain('path: "file1.js"');
+      expect(responseText).toContain('path: "file2.js"');
     });
   });
 
@@ -371,6 +405,46 @@ describe('GitHub Fetch Content Tool', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('function test');
+    });
+
+    it('signals matchString-not-found instead of silent empty content (F2)', async () => {
+      // The provider's content layer collapses a matchString miss to
+      // content:'' and surfaces a `noMatches` warning (see
+      // transformFileContentResult). The finalizer must render that warning,
+      // not present a silent empty read.
+      mockProvider.getFileContent.mockResolvedValue({
+        data: {
+          path: 'file.js',
+          content: '',
+          branch: 'main',
+          totalLines: 3,
+          warnings: [
+            'No matches for "NO_SUCH_ANCHOR_ZZ_98765" in file (3 lines scanned). Try matchStringIsRegex=true, a different anchor, or fullContent=true.',
+          ],
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            {
+              owner: 'test',
+              repo: 'repo',
+              path: 'file.js',
+              branch: 'main',
+              matchString: 'NO_SUCH_ANCHOR_ZZ_98765',
+            },
+          ],
+        }
+      );
+
+      expect(result.isError).toBe(false);
+      const responseText = getTextContent(result.content);
+      // Must NOT silently present an empty successful read — surface the miss.
+      expect(responseText).toMatch(/no matches|not found/i);
     });
 
     it('should use default matchStringContextLines when not specified', async () => {
@@ -603,7 +677,8 @@ describe('GitHub Fetch Content Tool', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('content: "good"');
-      expect(responseText).not.toContain('good.js');
+      expect(responseText).toContain('path: "good.js"');
+      expect(responseText).toContain('errors:');
     });
   });
 
@@ -693,157 +768,6 @@ describe('GitHub Fetch Content Tool', () => {
 
       // Should handle gracefully
       expect(result).toBeDefined();
-    });
-  });
-
-  describe('Schema validation', () => {
-    it('should have valid bulk query schema', () => {
-      expect(FileContentBulkQuerySchema).toBeDefined();
-    });
-
-    it('should accept type: "file" (default)', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            id: 'file_query',
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src/file.ts',
-            type: 'file',
-          },
-        ],
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('should accept type: "directory"', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            id: 'directory_query',
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src/utils',
-            type: 'directory',
-          },
-        ],
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('should reject invalid type values', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            id: 'default_file_query',
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src/file.ts',
-            type: 'folder',
-          },
-        ],
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('should default type to "file" when omitted', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            id: 'implicit_file_query',
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src/file.ts',
-          },
-        ],
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('should reject startLine when type is "directory"', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src',
-            type: 'directory',
-            startLine: 1,
-            endLine: 10,
-          },
-        ],
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject startLine=5 when type is "directory"', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src',
-            type: 'directory',
-            startLine: 5,
-            endLine: 5,
-          },
-        ],
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject matchString when type is "directory"', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src',
-            type: 'directory',
-            matchString: 'search term',
-          },
-        ],
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject charOffset when type is "directory"', () => {
-      const result = FileContentBulkQuerySchema.safeParse({
-        queries: [
-          {
-            mainResearchGoal: 'test',
-            researchGoal: 'test',
-            reasoning: 'test',
-            owner: 'owner',
-            repo: 'repo',
-            path: 'src',
-            type: 'directory',
-            charOffset: 100,
-          },
-        ],
-      });
-      expect(result.success).toBe(false);
     });
   });
 });

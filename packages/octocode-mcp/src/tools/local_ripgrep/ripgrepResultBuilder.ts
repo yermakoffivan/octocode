@@ -1,17 +1,31 @@
-import { getHints } from '../../hints/index.js';
-import type { RipgrepQuery as UpstreamRipgrepQuery } from '@octocodeai/octocode-core';
-import type {
-  LocalSearchCodeFile,
-  LocalSearchCodeToolResult,
-} from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { RipgrepQuerySchema } from '@octocodeai/octocode-core/schemas';
+import type { LocalSearchCodeFile } from '@octocodeai/octocode-core/types';
+import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-types';
+
+type UpstreamRipgrepQuery = z.infer<typeof RipgrepQuerySchema>;
 import type { SearchStats } from '../../utils/core/types.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
-import { TOOL_NAMES } from '../toolMetadata/proxies.js';
+import { compareIsoDateDescending } from '../../utils/core/compare.js';
 import { promises as fs } from 'fs';
-import type { Verbosity } from '../../scheme/localSchemaOverlay.js';
-import { isUltra, ultraDrillBackHint } from '../../scheme/verbosity.js';
+import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
+import {
+  isConcise,
+  isCompact,
+  compactTrimHints,
+  makeAdvisoryPredicate,
+} from '../../scheme/verbosity.js';
 
-type RipgrepQuery = UpstreamRipgrepQuery & { verbosity?: Verbosity };
+/** Advisory hints localSearchCode emits; stripped under compact.
+ * Substring-OR, case-insensitive. */
+const isAdvisoryRipgrepHint = makeAdvisoryPredicate([
+  'large result',
+  'payload is large',
+  'narrow:',
+  'timed out',
+]);
+
+type RipgrepQuery = WithVerbosity<UpstreamRipgrepQuery>;
 
 /**
  * Build the final search result with pagination and metadata
@@ -35,16 +49,8 @@ export async function buildSearchResult(
     })
   );
 
-  filesWithMetadata.sort(
-    (
-      a: LocalSearchCodeFile & { modified?: string },
-      b: LocalSearchCodeFile & { modified?: string }
-    ) => {
-      if (configuredQuery.showFileLastModified && a.modified && b.modified) {
-        return new Date(b.modified).getTime() - new Date(a.modified).getTime();
-      }
-      return a.path.localeCompare(b.path);
-    }
+  filesWithMetadata.sort((a, b) =>
+    compareRipgrepFilesByRelevance(a, b, configuredQuery)
   );
 
   let limitedFiles = filesWithMetadata;
@@ -74,16 +80,24 @@ export async function buildSearchResult(
     ? (stats?.matchCount ?? summedMatches)
     : summedMatches;
 
+  // Cross-tool aligned knobs: `itemsPerPage` = files (top-level page size),
+  // `matchesPerFile` = matches shown per file (inner axis), `page` = file page
+  // number. Internal var names keep the file/match wording for clarity.
+  const aligned = configuredQuery as {
+    itemsPerPage?: number;
+    matchesPerFile?: number;
+    page?: number;
+  };
   const filesPerPage =
-    configuredQuery.filesPerPage || RESOURCE_LIMITS.DEFAULT_FILES_PER_PAGE;
-  const filePageNumber = configuredQuery.filePageNumber || 1;
+    aligned.itemsPerPage || RESOURCE_LIMITS.DEFAULT_FILES_PER_PAGE;
+  const filePageNumber = aligned.page || 1;
   const totalFilePages = Math.ceil(totalFiles / filesPerPage);
   const startIdx = (filePageNumber - 1) * filesPerPage;
   const endIdx = Math.min(startIdx + filesPerPage, totalFiles);
   const paginatedFiles = limitedFiles.slice(startIdx, endIdx);
 
   const matchesPerPage =
-    configuredQuery.matchesPerPage || RESOURCE_LIMITS.DEFAULT_MATCHES_PER_PAGE;
+    aligned.matchesPerFile || RESOURCE_LIMITS.DEFAULT_MATCHES_PER_PAGE;
 
   const finalFiles: LocalSearchCodeFile[] = paginatedFiles.map(
     (file: LocalSearchCodeFile & { modified?: string }) => {
@@ -115,13 +129,18 @@ export async function buildSearchResult(
     }
   );
 
-  const paginationHints = [
-    `File page ${filePageNumber}/${totalFilePages} (showing ${finalFiles.length} of ${totalFiles})`,
-    `Total: ${totalMatches} matches across ${totalFiles} files`,
+  const paginationHints: string[] =
     filePageNumber < totalFilePages
-      ? `Next: filePageNumber=${filePageNumber + 1}`
-      : 'Final page',
-  ];
+      ? [
+          `File page ${filePageNumber}/${totalFilePages} (showing ${finalFiles.length} of ${totalFiles}, ${totalMatches} matches). Next: page=${filePageNumber + 1}`,
+        ]
+      : // Overshoot: requested a page past the last one. Say so explicitly
+        // instead of returning an empty page with no explanation.
+        totalFilePages > 0 && filePageNumber > totalFilePages
+        ? [
+            `Requested page ${filePageNumber} is outside available range (1-${totalFilePages}). Use page=${totalFilePages} for the last page.`,
+          ]
+        : [];
 
   if (wasLimited) {
     paginationHints.push(
@@ -132,7 +151,7 @@ export async function buildSearchResult(
   const filesWithMoreMatches = finalFiles.filter(f => f.pagination?.hasMore);
   if (filesWithMoreMatches.length > 0) {
     paginationHints.push(
-      `Note: ${filesWithMoreMatches.length} file(s) have more matches - use matchesPerPage to see more`
+      `Note: ${filesWithMoreMatches.length} file(s) have more matches - use matchesPerFile to see more`
     );
   }
 
@@ -142,10 +161,35 @@ export async function buildSearchResult(
     totalMatches
   );
 
+  // Active-filter echo-back: agents need to know which constraints were applied
+  // so they can diagnose empty results or unexpected narrowing.
+  const q = configuredQuery as Record<string, unknown>;
+  const activeFilters: string[] = [];
+  const includeGlobs = q.include as string[] | undefined;
+  if (Array.isArray(includeGlobs) && includeGlobs.length > 0) {
+    activeFilters.push(`include: ${includeGlobs.join(', ')}`);
+  }
+  const excludeGlobs = q.exclude as string[] | undefined;
+  if (Array.isArray(excludeGlobs) && excludeGlobs.length > 0) {
+    activeFilters.push(`exclude: ${excludeGlobs.join(', ')}`);
+  }
+  const excludeDir = q.excludeDir as string[] | undefined;
+  if (Array.isArray(excludeDir) && excludeDir.length > 0) {
+    activeFilters.push(`excludeDir: ${excludeDir.join(', ')}`);
+  }
+  const fileType = q.type as string | undefined;
+  if (fileType) activeFilters.push(`type: ${fileType}`);
+  if (q.caseSensitive) activeFilters.push('case-sensitive');
+  if (q.wholeWord) activeFilters.push('whole-word');
+  if (activeFilters.length > 0) {
+    refinementHints.unshift(`Active filters — ${activeFilters.join(' | ')}`);
+  }
+
   const fullResult: LocalSearchCodeToolResult = {
-    status: 'hasResults',
+    // status omitted on success (absent ≡ "hasResults"); empty/error
+    // branches set it explicitly. searchEngine also omitted — only one
+    // engine, marker carries no information.
     files: finalFiles,
-    searchEngine: _searchEngine,
     pagination: {
       currentPage: filePageNumber,
       totalPages: totalFilePages,
@@ -153,13 +197,8 @@ export async function buildSearchResult(
       totalFiles,
       hasMore: filePageNumber < totalFilePages,
     },
-    warnings,
-    hints: [
-      ...paginationHints,
-      ...refinementHints,
-      ...getHints(TOOL_NAMES.LOCAL_RIPGREP, 'hasResults'),
-      'files[].matches[].line = use as lineHint for LSP tools',
-    ],
+    ...(warnings.length > 0 ? { warnings } : {}),
+    hints: [...paginationHints, ...refinementHints],
   };
 
   return applyRipgrepVerbosity(fullResult, configuredQuery, {
@@ -169,41 +208,40 @@ export async function buildSearchResult(
 }
 
 /**
- * RFC §4.7.1: when `verbosity:"ultra"` is requested, drop `files[]` and emit
- * a one-line summary plus a path:line drill-back hint pointing at the first
- * matching file. `compact` (default) and `verbose` remain byte-identical to
- * today's behaviour — only `ultra` is lossy.
- *
- * Exported for direct unit testing in `tests/scheme/verbosity_ultra.test.ts`.
+ * When `verbosity:"concise"` is requested, drop `files[]` and emit a one-line
+ * summary plus a path:line drill-back hint pointing at the first matching
+ * file. Omitted / `"basic"` preserves `files[]`; compact trims advisory hints.
  */
 export function applyRipgrepVerbosity(
   result: LocalSearchCodeToolResult,
   query: RipgrepQuery,
   totals: { totalMatches: number; totalFiles: number }
 ): LocalSearchCodeToolResult {
-  if (!isUltra(query.verbosity)) return result;
-  if (result.status !== 'hasResults') return result;
-
-  const topFile = result.files?.[0];
-  const topMatch = topFile?.matches?.[0];
-  const topHint =
-    topFile && topMatch
-      ? `${topFile.path}:${topMatch.line}`
-      : (topFile?.path ?? '');
-  const summary =
-    `${totals.totalMatches} matches in ${totals.totalFiles} files` +
-    (topHint ? ` (top: ${topHint})` : '');
-
-  return {
-    ...result,
-    files: [],
-    hints: [
-      summary,
-      ...ultraDrillBackHint(
-        're-call with verbosity:"compact" (default) or scope the pattern to the top path'
-      ),
-    ],
-  };
+  if (isConcise(query.verbosity)) {
+    // hasResults ≡ absent status; only 'empty'/'error' carry a marker.
+    if (result.status !== undefined) return result;
+    const topFile = result.files?.[0];
+    const topMatch = topFile?.matches?.[0];
+    const topHint =
+      topFile && topMatch
+        ? `${topFile.path}:${topMatch.line}`
+        : (topFile?.path ?? '');
+    const summary =
+      `${totals.totalMatches} matches in ${totals.totalFiles} files` +
+      (topHint ? ` (top: ${topHint})` : '');
+    return {
+      ...result,
+      files: [],
+      hints: [summary],
+    };
+  }
+  if (isCompact(query.verbosity)) {
+    return {
+      ...result,
+      hints: compactTrimHints(result.hints, isAdvisoryRipgrepHint, 2),
+    };
+  }
+  return result;
 }
 
 function _getStructuredResultSizeHints(
@@ -213,20 +251,18 @@ function _getStructuredResultSizeHints(
 ): string[] {
   const hints: string[] = [];
 
+  // Strict policy: only emit a recovery hint when the result set is
+  // genuinely too large; one concise line, no headings or empty separators.
   if (totalMatches > 100 || files.length > 20) {
-    hints.push('', 'Large result set - refine search:');
-    if (!query.type && !query.include)
+    const recoveries: string[] = [];
+    if (!query.type && !query.include) recoveries.push('add type or include');
+    if (!query.excludeDir?.length) recoveries.push('add excludeDir');
+    if (query.pattern.length < 5) recoveries.push('lengthen pattern');
+    if (recoveries.length > 0) {
       hints.push(
-        '  - Narrow by file type: type="ts" or include=["*.{ts,tsx}"]'
+        `Large result set (${totalMatches} matches in ${files.length} files). Narrow: ${recoveries.join(', ')}.`
       );
-    if (!query.excludeDir?.length)
-      hints.push(
-        '  - Exclude directories: excludeDir=["test", "vendor", "generated"]'
-      );
-    if (query.pattern.length < 5)
-      hints.push(
-        '  - Use more specific pattern (current pattern is very short)'
-      );
+    }
   }
 
   return hints;
@@ -241,4 +277,20 @@ async function getFileModifiedTime(
   } catch {
     return undefined;
   }
+}
+
+function compareRipgrepFilesByRelevance(
+  a: LocalSearchCodeFile & { modified?: string },
+  b: LocalSearchCodeFile & { modified?: string },
+  query: RipgrepQuery
+): number {
+  const matchDelta = b.matchCount - a.matchCount;
+  if (matchDelta !== 0) return matchDelta;
+
+  if (query.showFileLastModified) {
+    const modifiedDelta = compareIsoDateDescending(a.modified, b.modified);
+    if (modifiedDelta !== 0) return modifiedDelta;
+  }
+
+  return a.path.localeCompare(b.path);
 }

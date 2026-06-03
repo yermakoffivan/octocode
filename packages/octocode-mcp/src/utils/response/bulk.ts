@@ -9,15 +9,18 @@ import type {
   ProcessedBulkResult,
   FlatQueryResult,
   QueryError,
-  BulkResponseConfig,
-  BulkToolResponse,
-  PromiseResult,
-} from '../../types.js';
+  EvidenceMetadata,
+} from '../../types/toolResults.js';
+import type { BulkResponseConfig, BulkToolResponse } from '../../types/bulk.js';
+import type { PromiseResult } from '../../types/promise.js';
 import {
   applyBulkResponsePagination,
   applyQueryOutputPagination,
 } from './structuredPagination.js';
 import { countSerializedChars, getRawResponseChars } from './charSavings.js';
+import { relativizeResultPaths, hoistSharedFields } from './pathRelativize.js';
+import { isConcise } from '../../scheme/verbosity.js';
+import type { Verbosity } from '../../scheme/localSchemaOverlay.js';
 
 /** Default concurrency for bulk operations */
 const DEFAULT_BULK_CONCURRENCY = 3;
@@ -69,10 +72,13 @@ export function computeQueryTimeout(
   return minTimeoutMs ? Math.max(computed, minTimeoutMs) : computed;
 }
 
-export async function executeBulkOperation<TQuery extends object>(
+export async function executeBulkOperation<
+  TQuery extends object,
+  TOutput extends Record<string, unknown> = Record<string, unknown>,
+>(
   queries: Array<TQuery>,
   processor: (query: TQuery, index: number) => Promise<ProcessedBulkResult>,
-  config: BulkResponseConfig
+  config: BulkResponseConfig<TQuery, TOutput>
 ): Promise<CallToolResult> {
   const concurrency = config.concurrency ?? DEFAULT_BULK_CONCURRENCY;
   const { results, errors } = await processBulkQueries<TQuery>(
@@ -81,11 +87,14 @@ export async function executeBulkOperation<TQuery extends object>(
     concurrency,
     config.minQueryTimeoutMs
   );
-  return createBulkResponse<TQuery>(config, results, errors, queries);
+  return createBulkResponse<TQuery, TOutput>(config, results, errors, queries);
 }
 
-function createBulkResponse<TQuery extends object>(
-  config: BulkResponseConfig,
+function createBulkResponse<
+  TQuery extends object,
+  TOutput extends Record<string, unknown>,
+>(
+  config: BulkResponseConfig<TQuery, TOutput>,
   results: Array<{
     result: ProcessedBulkResult;
     queryIndex: number;
@@ -94,8 +103,8 @@ function createBulkResponse<TQuery extends object>(
   errors: QueryError[],
   queries: Array<TQuery>
 ): CallToolResult {
-  const topLevelFields = ['results'];
-  const resultFields = ['id', 'status', 'data', 'hints'];
+  const topLevelFields = ['results', 'hints', 'evidence', 'base', 'shared'];
+  const resultFields = ['id', 'status', 'data'];
   const fullKeysPriority = [
     ...new Set([
       ...topLevelFields,
@@ -109,9 +118,12 @@ function createBulkResponse<TQuery extends object>(
   );
 
   results.forEach(r => {
+    // Omit status when absent — success is signaled by the lack of a
+    // status field. Only 'empty' / 'error' are emitted.
+    const status = r.result.status;
     orderedQueries[r.queryIndex] = {
       id: resolveQueryId(r.originalQuery, r.queryIndex),
-      status: r.result.status,
+      ...(status !== undefined ? { status } : {}),
       data: extractToolData(r.result),
     };
   });
@@ -131,6 +143,32 @@ function createBulkResponse<TQuery extends object>(
     (query): query is FlatQueryResult => query !== undefined
   );
 
+  // Finalizer hook — tools with a non-default response shape (e.g. flat
+  // owner/repo grouped responses) own the rest of the pipeline from here.
+  if (config.finalize) {
+    const finalized = config.finalize({
+      queries,
+      results: flatQueries,
+      config,
+    });
+    recordBulkCharSavings(
+      config.toolName,
+      results,
+      errors,
+      finalized.text.length
+    );
+    return {
+      content: [{ type: 'text' as const, text: finalized.text }],
+      // No cast needed — TOutput is constrained to `Record<string, unknown>`,
+      // so it is structurally compatible with `CallToolResult.structuredContent`.
+      structuredContent: finalized.structuredContent,
+      isError:
+        finalized.isError ??
+        (flatQueries.length > 0 &&
+          flatQueries.every(queryResult => queryResult.status === 'error')),
+    };
+  }
+
   const queryPaginatedResults = flatQueries.map((queryResult, index) =>
     applyQueryOutputPagination(
       queryResult,
@@ -138,6 +176,31 @@ function createBulkResponse<TQuery extends object>(
       config.toolName
     )
   );
+
+  // Lift hints out of each query's `data` so they appear once at peer level.
+  // Opt-in: some output schemas (local/lsp) are strict about top-level keys,
+  // so callers explicitly enable this with `config.peerHints` once they have
+  // widened their output schema to accept `hints` at root.
+  const aggregatedHints = config.peerHints
+    ? dedupePeerHints(queryPaginatedResults)
+    : [];
+
+  // When every query asked for concise, the bulk runs in probe mode: the
+  // display arrays are dropped and the per-query counts are the answer, so
+  // display-pagination "has more" must not mark the aggregate incomplete.
+  const allConcise =
+    queries.length > 0 &&
+    queries.every((q): boolean =>
+      isConcise((q as { verbosity?: Verbosity } | undefined)?.verbosity)
+    );
+
+  // Same idea for `evidence`: lift per-query `data.evidence` blocks into a
+  // single top-level summary (kind taken from first present; answerReady /
+  // complete combined with AND; confidence is the weakest of all).
+  const aggregatedEvidence = config.peerEvidence
+    ? aggregatePeerEvidence(queryPaginatedResults, allConcise)
+    : undefined;
+
   const responseData: BulkToolResponse = applyBulkResponsePagination(
     {
       results: queryPaginatedResults,
@@ -148,6 +211,63 @@ function createBulkResponse<TQuery extends object>(
     },
     config.toolName
   );
+
+  // Leanness: hoist redundancy out of the canonical structuredContent (the
+  // payload the model reads). Both are lossless and reconstructable.
+  //   - `base`: common directory of absolute `path`/`uri` fields; abs =
+  //     `${base}/${path}`. No-op for repo-relative github paths.
+  //   - `shared`: scalar fields identical across every leaf object; each leaf
+  //     re-gains every `shared` key on reconstruction.
+  if (!allConcise && Array.isArray(responseData.results)) {
+    const dataBase = relativizeResultPaths(
+      responseData.results as Array<{ data?: unknown }>
+    );
+    if (dataBase) responseData.base = dataBase;
+
+    const shared = hoistSharedFields(
+      responseData.results as Array<{ data?: unknown }>
+    );
+    if (shared) responseData.shared = shared;
+  }
+
+  // Second lift-and-dedupe pass: applyBulkResponsePagination can re-introduce
+  // hints into per-query `data` (via withPaginationHints) AFTER the initial
+  // dedupePeerHints pass ran. Lift those once more so each pagination
+  // breadcrumb shows up exactly once at the top-level `hints[]`.
+  const postPaginationHints = config.peerHints
+    ? dedupePeerHints(
+        Array.isArray(responseData.results)
+          ? (responseData.results as FlatQueryResult[])
+          : []
+      )
+    : [];
+
+  const mergedHints = config.peerHints
+    ? Array.from(new Set([...aggregatedHints, ...postPaginationHints]))
+    : aggregatedHints;
+
+  if (mergedHints.length > 0) {
+    responseData.hints = mergedHints;
+  }
+
+  const finalEvidence = aggregatedEvidence
+    ? dropRedundantPaginationReason(
+        withEvidenceReasons(
+          aggregatedEvidence,
+          responsePaginationReasons(responseData)
+        ),
+        mergedHints
+      )
+    : undefined;
+
+  if (finalEvidence) {
+    responseData.evidence = finalEvidence;
+  }
+
+  // Structured YAML/JSON output: the full per-query `results` array is the
+  // single source of truth, surfaced identically in content[0].text and
+  // structuredContent. `base` relativization keeps paths compact; evidence /
+  // pagination / hints carry the response-state signal.
   const text = createResponseFormat(responseData, fullKeysPriority);
   recordBulkCharSavings(config.toolName, results, errors, text.length);
 
@@ -158,6 +278,10 @@ function createBulkResponse<TQuery extends object>(
         text,
       },
     ],
+    // structuredContent holds the canonical structured records (results +
+    // pagination + hints + evidence + `base`). `base` is retained here:
+    // canonical paths are relativized against it, so the model reconstructs
+    // abs = `${base}/${path}`. (#A1)
     structuredContent: sanitizeStructuredContent(responseData) as Record<
       string,
       unknown
@@ -166,6 +290,201 @@ function createBulkResponse<TQuery extends object>(
       flatQueries.length > 0 &&
       flatQueries.every(queryResult => queryResult.status === 'error'),
   };
+}
+
+/**
+ * Walk every flattened query and lift `data.hints` out into a deduped
+ * top-level array. Mutates each query result to drop its local `hints` so
+ * the field appears once at response root instead of repeated per query.
+ */
+function dedupePeerHints(queries: FlatQueryResult[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const q of queries) {
+    const data = q.data as Record<string, unknown> | undefined;
+    const raw =
+      data && Array.isArray(data.hints) ? (data.hints as unknown[]) : [];
+    for (const h of raw) {
+      if (typeof h === 'string' && h.trim().length > 0 && !seen.has(h)) {
+        seen.add(h);
+        out.push(h);
+      }
+    }
+    if (data && 'hints' in data) {
+      delete (data as Record<string, unknown>).hints;
+    }
+  }
+  return out;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function hasMorePagination(value: unknown): boolean {
+  return isRecord(value) && value.hasMore === true;
+}
+
+function queryPaginationReasons(data: Record<string, unknown>): string[] {
+  const reasons: string[] = [];
+  if (
+    hasMorePagination(data.outputPagination) ||
+    hasMorePagination(data.charPagination)
+  ) {
+    reasons.push('One or more query-level output pages have more data.');
+  }
+  if (hasMorePagination(data.pagination)) {
+    reasons.push('Result pagination has more results.');
+  }
+  return reasons;
+}
+
+function responsePaginationReasons(data: BulkToolResponse): string[] {
+  return hasMorePagination(data.responsePagination)
+    ? ['Bulk response pagination has more data.']
+    : [];
+}
+
+function withEvidenceReasons(
+  evidence: EvidenceMetadata,
+  extraReasons: readonly string[]
+): EvidenceMetadata {
+  const reasons = Array.from(
+    new Set(
+      [
+        typeof evidence.reason === 'string' ? evidence.reason : '',
+        ...extraReasons,
+      ]
+        .map(reason => reason.trim())
+        .filter(Boolean)
+    )
+  );
+  if (reasons.length === 0) {
+    return evidence;
+  }
+  return {
+    ...evidence,
+    complete: false,
+    reason: reasons.join('; '),
+  };
+}
+
+const RESULT_PAGINATION_REASON = 'Result pagination has more results.';
+
+/** True when a hint already carries the actionable result-page cursor. */
+function hasResultPageCursorHint(hints: readonly string[]): boolean {
+  return hints.some(h => /\bNext:\s*page=|\bPage\s+\d+\/\d+/i.test(h));
+}
+
+/**
+ * #B2: when a cursor hint (e.g. "Page 1/10 … Next: page=2") already tells the
+ * agent there's more, the generic `evidence.reason` "Result pagination has more
+ * results." is pure redundancy — drop it. `complete` stays false (the hint
+ * conveys incompleteness); other reasons are preserved.
+ */
+export function dropRedundantPaginationReason(
+  evidence: EvidenceMetadata,
+  hints: readonly string[]
+): EvidenceMetadata {
+  if (!evidence.reason || !hasResultPageCursorHint(hints)) return evidence;
+  const parts = evidence.reason
+    .split(';')
+    .map(part => part.trim())
+    .filter(Boolean);
+  const kept = parts.filter(part => part !== RESULT_PAGINATION_REASON);
+  if (kept.length === parts.length) return evidence; // nothing removed
+  const next: EvidenceMetadata = { ...evidence };
+  if (kept.length > 0) next.reason = kept.join('; ');
+  else delete next.reason;
+  return next;
+}
+
+/**
+ * Walk every query and combine their `data.evidence` blocks into one
+ * top-level summary. Mutates each query to drop its local `evidence` so the
+ * field appears once at root. Combination rules:
+ *   - `kind`          → first non-empty value (most tools emit one kind).
+ *   - `answerReady`   → true only if every query that set it is true.
+ *   - `complete`      → true only if every query that set it is true.
+ *   - `confidence`    → weakest of all present (low < medium < high).
+ *   - `missingFields` → deduped union of all entries.
+ *   - `reason`        → joined when multiple queries supplied one.
+ */
+export function aggregatePeerEvidence(
+  queries: FlatQueryResult[],
+  allConcise = false
+): EvidenceMetadata | undefined {
+  const rankConfidence: Record<
+    NonNullable<EvidenceMetadata['confidence']>,
+    number
+  > = { low: 0, medium: 1, high: 2 };
+  let combinedKind: EvidenceMetadata['kind'];
+  let answerReadyAll: boolean | undefined;
+  let completeAll: boolean | undefined;
+  let weakestConfidence: EvidenceMetadata['confidence'];
+  const reasons: string[] = [];
+  const missing = new Set<string>();
+  let sawAny = false;
+
+  for (const q of queries) {
+    const data = q.data as Record<string, unknown> | undefined;
+    const raw = data?.evidence as EvidenceMetadata | undefined;
+    if (!data || !raw || typeof raw !== 'object') continue;
+    sawAny = true;
+    if (!combinedKind && raw.kind) combinedKind = raw.kind;
+    if (typeof raw.answerReady === 'boolean') {
+      answerReadyAll =
+        answerReadyAll === undefined
+          ? raw.answerReady
+          : answerReadyAll && raw.answerReady;
+    }
+    if (typeof raw.complete === 'boolean') {
+      completeAll =
+        completeAll === undefined ? raw.complete : completeAll && raw.complete;
+    }
+    if (raw.confidence) {
+      if (
+        !weakestConfidence ||
+        rankConfidence[raw.confidence] < rankConfidence[weakestConfidence]
+      ) {
+        weakestConfidence = raw.confidence;
+      }
+    }
+    if (typeof raw.reason === 'string' && raw.reason.trim().length > 0) {
+      reasons.push(raw.reason.trim());
+    }
+    // In all-concise probe mode the display arrays were dropped and the counts
+    // are the answer, so display-pagination "has more" is expected and must not
+    // mark the aggregate incomplete. (The per-query builders already suppress
+    // their own pagination reasons under concise.)
+    if (!allConcise) {
+      const paginationReasons = queryPaginationReasons(data);
+      if (paginationReasons.length > 0) {
+        completeAll = false;
+        reasons.push(...paginationReasons);
+      }
+    }
+    if (Array.isArray(raw.missingFields)) {
+      for (const f of raw.missingFields) {
+        if (typeof f === 'string' && f.length > 0) missing.add(f);
+      }
+    }
+    if (data && 'evidence' in data) {
+      delete (data as Record<string, unknown>).evidence;
+    }
+  }
+
+  if (!sawAny) return undefined;
+
+  const out: EvidenceMetadata = {};
+  if (combinedKind) out.kind = combinedKind;
+  if (answerReadyAll !== undefined) out.answerReady = answerReadyAll;
+  if (completeAll !== undefined) out.complete = completeAll;
+  if (weakestConfidence) out.confidence = weakestConfidence;
+  const uniqueReasons = Array.from(new Set(reasons));
+  if (uniqueReasons.length > 0) out.reason = uniqueReasons.join('; ');
+  if (missing.size > 0) out.missingFields = Array.from(missing);
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function recordBulkCharSavings(

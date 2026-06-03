@@ -53,7 +53,6 @@ vi.mock('../../src/utils/exec/commandAvailability.js', () => ({
 }));
 
 vi.mock('../../src/utils/exec/npm.js', () => ({
-  getGithubCLIToken: vi.fn().mockResolvedValue(null),
   checkNpmAvailability: vi.fn().mockResolvedValue({ available: true }),
   executeNpmCommand: vi.fn().mockResolvedValue({ success: true, stdout: '' }),
 }));
@@ -102,6 +101,118 @@ describe('LSP Call Hierarchy Handler Tests', () => {
       const config = mockServer.registerTool.mock.calls[0]![1];
       expect(config.annotations.title).toBe('Call Hierarchy');
       expect(config.annotations.readOnlyHint).toBe(true);
+    });
+
+    it('should validate rich empty call hierarchy structured content', async () => {
+      vi.resetModules();
+
+      const { registerLSPCallHierarchyTool } =
+        await import('../../src/tools/lsp_call_hierarchy/register.js');
+
+      const mockServer = {
+        registerTool: vi.fn().mockReturnValue('registered'),
+      };
+
+      registerLSPCallHierarchyTool(mockServer as any);
+
+      const config = mockServer.registerTool.mock.calls[0]![1];
+      const validation = config.outputSchema.safeParse({
+        results: [
+          {
+            id: 'call-hierarchy-empty',
+            status: 'empty',
+            data: {
+              item: {
+                name: 'registerTools',
+                kind: 'function',
+                uri: '/workspace/src/tools/toolsManager.ts',
+                range: {
+                  start: { line: 35, character: 22 },
+                  end: { line: 35, character: 35 },
+                },
+                content: 'export async function registerTools() {}',
+              },
+              direction: 'incoming',
+              depth: 1,
+              incomingCalls: [],
+              hints: ['No callers found'],
+            },
+          },
+        ],
+        hints: ['No callers found'],
+      });
+
+      expect(validation.success).toBe(true);
+    });
+
+    it('should validate rich incoming call hierarchy structured content', async () => {
+      vi.resetModules();
+
+      const { registerLSPCallHierarchyTool } =
+        await import('../../src/tools/lsp_call_hierarchy/register.js');
+
+      const mockServer = {
+        registerTool: vi.fn().mockReturnValue('registered'),
+      };
+
+      registerLSPCallHierarchyTool(mockServer as any);
+
+      const config = mockServer.registerTool.mock.calls[0]![1];
+      const validation = config.outputSchema.safeParse({
+        results: [
+          {
+            id: 'call-hierarchy-incoming',
+            // status: 'hasResults' omitted — the lean contract signals
+            // the happy path by ABSENCE of status; only empty/error emit.
+            data: {
+              item: {
+                name: 'registerTools',
+                kind: 'function',
+                uri: '/workspace/src/tools/toolsManager.ts',
+                range: {
+                  start: { line: 35, character: 22 },
+                  end: { line: 35, character: 35 },
+                },
+                content: 'export async function registerTools() {}',
+              },
+              direction: 'incoming',
+              depth: 1,
+              incomingCalls: [
+                {
+                  from: {
+                    name: 'main',
+                    kind: 'function',
+                    uri: '/workspace/src/index.ts',
+                    range: {
+                      start: { line: 100, character: 0 },
+                      end: { line: 110, character: 1 },
+                    },
+                    content: 'await registerTools(server);',
+                  },
+                  fromRanges: [
+                    {
+                      start: { line: 104, character: 8 },
+                      end: { line: 104, character: 21 },
+                    },
+                  ],
+                },
+              ],
+              pagination: {
+                currentPage: 1,
+                totalPages: 1,
+                totalResults: 1,
+                hasMore: false,
+                resultsPerPage: 5,
+              },
+              // lspMode omitted — absent ≡ semantic per the lean contract.
+              hints: ['Found 1 caller'],
+            },
+          },
+        ],
+        hints: ['Found 1 caller'],
+      });
+
+      expect(validation.success).toBe(true);
     });
 
     it('should handle empty queries array', async () => {
@@ -430,7 +541,6 @@ describe('LSP Call Hierarchy Handler Tests', () => {
   describe('Result structure', () => {
     it('should create valid incoming call result', () => {
       const result = {
-        status: 'hasResults' as const,
         item: {
           name: 'myFunction',
           kind: 'function' as const,
@@ -460,14 +570,13 @@ describe('LSP Call Hierarchy Handler Tests', () => {
         hints: ['No callers found'],
       };
 
-      expect(result.status).toBe('hasResults');
+      expect(result.status).toBeUndefined();
       expect(result.direction).toBe('incoming');
       expect(result.item.name).toBe('myFunction');
     });
 
     it('should create valid outgoing call result', () => {
       const result = {
-        status: 'hasResults' as const,
         item: {
           name: 'myFunction',
           kind: 'function' as const,
@@ -497,7 +606,7 @@ describe('LSP Call Hierarchy Handler Tests', () => {
         hints: ['No callees found'],
       };
 
-      expect(result.status).toBe('hasResults');
+      expect(result.status).toBeUndefined();
       expect(result.direction).toBe('outgoing');
     });
 

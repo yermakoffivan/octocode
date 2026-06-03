@@ -66,32 +66,6 @@ function createTestParams(overrides: Record<string, unknown> = {}) {
 }
 
 describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
-  describe('Schema defaults', () => {
-    it('should have correct schema defaults', async () => {
-      const { FileContentQuerySchema } =
-        await import('@octocodeai/octocode-core');
-
-      // Test minimal valid input (only required fields)
-      const minimalInput = {
-        id: 'test:file-ops',
-        owner: 'test',
-        repo: 'repo',
-        path: 'test.js',
-        mainResearchGoal: 'Test research goal',
-        researchGoal: 'Testing schema defaults',
-        reasoning: 'Unit test for schema',
-      };
-
-      const parsed = FileContentQuerySchema.parse(minimalInput);
-
-      expect(parsed.fullContent).toBe(false); // Should default to false
-      expect(parsed.startLine).toBeUndefined(); // Should be optional
-      expect(parsed.endLine).toBeUndefined(); // Should be optional
-      expect(parsed.matchString).toBeUndefined(); // Should be optional
-      expect(parsed.matchStringContextLines).toBe(5); // Should have default
-      // minified and sanitize are now always enabled (not schema parameters)
-    });
-  });
   let mockOctokit: {
     rest: {
       repos: {
@@ -200,6 +174,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           path: 'test.txt',
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
+          totalLines: 5,
         },
       });
     });
@@ -218,6 +193,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           path: 'test.txt',
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
+          totalLines: 5,
         },
       });
     });
@@ -238,6 +214,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           path: 'test.txt',
           branch: 'master',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
+          totalLines: 5,
         },
       });
     });
@@ -259,19 +236,19 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           path: 'test.txt',
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
+          totalLines: 5,
         },
       });
     });
 
-    it('should always apply minification', async () => {
+    it('returns content verbatim — base processor never minifies (minify is concise-only)', async () => {
       const params = createTestParams();
 
       const result = await fetchGitHubFileContentAPI(params);
 
-      expect(mockminifyContent).toHaveBeenCalledWith(
-        'line 1\nline 2\nline 3\nline 4\nline 5',
-        'test.txt'
-      );
+      // Contract (src/scheme/verbosity.ts): basic/default = verbatim. The base
+      // processor must not minify; that is the concise finalizer's job.
+      expect(mockminifyContent).not.toHaveBeenCalled();
       expect(result).toEqual({
         status: 200,
         rawResponseChars: expect.any(Number),
@@ -281,6 +258,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           path: 'test.txt',
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
+          totalLines: 5,
         },
       });
     });
@@ -303,6 +281,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           path: 'test.txt',
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
+          totalLines: 5,
         },
       });
     });
@@ -662,7 +641,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
       }
     });
 
-    it('should apply minification to line-selected content', async () => {
+    it('returns line-selected content verbatim (no base minify)', async () => {
       const params = createTestParams({
         startLine: 5,
         endLine: 8,
@@ -670,10 +649,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
 
       const result = await fetchGitHubFileContentAPI(params);
 
-      expect(mockminifyContent).toHaveBeenCalledWith(
-        'line 5\nline 6\nline 7\nline 8',
-        'test.txt'
-      );
+      expect(mockminifyContent).not.toHaveBeenCalled();
       expect(result.status).toBe(200);
       if ('data' in result) {
         expect(result.data.content).toBe('line 5\nline 6\nline 7\nline 8');
@@ -681,7 +657,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
       }
     });
 
-    it('should apply minification to match-selected content', async () => {
+    it('returns match-selected content verbatim (no base minify)', async () => {
       const params = createTestParams({
         matchString: 'line 15',
         matchStringContextLines: 1,
@@ -689,10 +665,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
 
       const result = await fetchGitHubFileContentAPI(params);
 
-      expect(mockminifyContent).toHaveBeenCalledWith(
-        'line 14\nline 15\nline 16',
-        'test.txt'
-      );
+      expect(mockminifyContent).not.toHaveBeenCalled();
       expect(result.status).toBe(200);
       if ('data' in result) {
         expect(result.data.content).toBe('line 14\nline 15\nline 16');

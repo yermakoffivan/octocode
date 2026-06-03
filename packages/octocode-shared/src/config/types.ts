@@ -24,22 +24,6 @@ export interface GitHubConfigOptions {
 }
 
 /**
- * GitLab-specific configuration
- */
-export interface GitLabConfigOptions {
-  /** GitLab instance URL (default: https://gitlab.com) */
-  host?: string;
-}
-
-/**
- * Bitbucket-specific configuration
- */
-export interface BitbucketConfigOptions {
-  /** Bitbucket API base URL (default: https://api.bitbucket.org/2.0) */
-  host?: string;
-}
-
-/**
  * Local filesystem tools configuration
  */
 export interface LocalConfigOptions {
@@ -49,8 +33,6 @@ export interface LocalConfigOptions {
   enableClone?: boolean;
   /** Restrict to specific paths (empty = all allowed) */
   allowedPaths?: string[];
-  /** Root directory for path validation (default: cwd()) */
-  workspaceRoot?: string;
 }
 
 /**
@@ -63,8 +45,6 @@ export interface ToolsConfigOptions {
   enableAdditional?: string[] | null;
   /** Blacklist of tools to disable */
   disabled?: string[] | null;
-  /** Disable MCP prompts/slash commands (default: false) */
-  disablePrompts?: boolean;
 }
 
 /**
@@ -118,10 +98,6 @@ export interface OctocodeConfig {
   version?: number;
   /** GitHub configuration */
   github?: GitHubConfigOptions;
-  /** GitLab configuration */
-  gitlab?: GitLabConfigOptions;
-  /** Bitbucket configuration */
-  bitbucket?: BitbucketConfigOptions;
   /** Local tools configuration */
   local?: LocalConfigOptions;
   /** Tool enable/disable */
@@ -143,26 +119,16 @@ export interface RequiredGitHubConfig {
   apiUrl: string;
 }
 
-export interface RequiredGitLabConfig {
-  host: string;
-}
-
-export interface RequiredBitbucketConfig {
-  host: string;
-}
-
 export interface RequiredLocalConfig {
   enabled: boolean;
   enableClone: boolean;
   allowedPaths: string[];
-  workspaceRoot: string | undefined;
 }
 
 export interface RequiredToolsConfig {
   enabled: string[] | null;
   enableAdditional: string[] | null;
   disabled: string[] | null;
-  disablePrompts: boolean;
 }
 
 export interface RequiredNetworkConfig {
@@ -195,10 +161,6 @@ export interface ResolvedConfig {
   version: number;
   /** GitHub configuration */
   github: RequiredGitHubConfig;
-  /** GitLab configuration */
-  gitlab: RequiredGitLabConfig;
-  /** Bitbucket configuration */
-  bitbucket: RequiredBitbucketConfig;
   /** Local tools configuration */
   local: RequiredLocalConfig;
   /** Tool enable/disable */

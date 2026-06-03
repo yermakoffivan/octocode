@@ -78,11 +78,14 @@ describe('findFiles sortBy branches', () => {
       details: true,
     });
 
-    expect(result.status).toBe('hasResults');
+    expect(result.status).toBeUndefined();
     const files = result.files!;
-    expect(files[0]!.size).toBe(5000);
-    expect(files[1]!.size).toBe(2000);
-    expect(files[2]!.size).toBe(100);
+    // sortBy='size' still sorts by underlying size, but the response field
+    // is `sizeFormatted` (human-readable) — raw `size` was dropped to remove
+    // redundancy. Verify ordering via sizeFormatted.
+    expect(files[0]!.sizeFormatted).toBe('4.9KB');
+    expect(files[1]!.sizeFormatted).toBe('2.0KB');
+    expect(files[2]!.sizeFormatted).toBe('100.0B');
   });
 
   it('should sort by name alphabetically when sortBy is "name"', async () => {
@@ -109,7 +112,7 @@ describe('findFiles sortBy branches', () => {
       details: true,
     });
 
-    expect(result.status).toBe('hasResults');
+    expect(result.status).toBeUndefined();
     const files = result.files!;
     expect(files[0]!.path).toContain('alpha');
     expect(files[1]!.path).toContain('bravo');
@@ -140,7 +143,7 @@ describe('findFiles sortBy branches', () => {
       details: true,
     });
 
-    expect(result.status).toBe('hasResults');
+    expect(result.status).toBeUndefined();
     const files = result.files!;
     expect(files[0]!.path).toContain('/a/');
     expect(files[1]!.path).toContain('/m/');
@@ -194,10 +197,39 @@ describe('findFiles sortBy branches', () => {
       details: true,
     });
 
-    expect(result.status).toBe('hasResults');
+    expect(result.status).toBeUndefined();
     const files = result.files!;
     expect(files[0]!.path).toContain('new.ts');
     expect(files[1]!.path).toContain('old.ts');
+  });
+
+  it('warns when sortBy="modified" cannot be honored without showFileLastModified', async () => {
+    mockSafeExec.mockResolvedValue({
+      success: true,
+      code: 0,
+      stdout: '/test/b.ts\0/test/a.ts\0',
+      stderr: '',
+    });
+
+    mockFs.promises.lstat.mockResolvedValue({
+      isFile: () => true,
+      isDirectory: () => false,
+      isSymbolicLink: () => false,
+      size: 100,
+      mode: parseInt('100644', 8),
+      mtime: new Date('2024-01-01'),
+    } as unknown as import('fs').Stats);
+
+    const result = await findFiles({
+      path: '/test',
+      sortBy: 'modified',
+      showFileLastModified: false,
+    });
+
+    expect(result.status).toBeUndefined();
+    expect(result.hints).toContain(
+      'sortBy="modified" ignored: showFileLastModified=false; sorted by path instead.'
+    );
   });
 
   it('should return empty files when charOffset >= totalChars (line 262)', async () => {
@@ -223,7 +255,7 @@ describe('findFiles sortBy branches', () => {
       charOffset: 10000,
     });
 
-    expect(result.status).toBe('hasResults');
+    expect(result.status).toBeUndefined();
     expect(result.files).toEqual([]);
     expect(result.charPagination?.hasMore).toBe(false);
   });

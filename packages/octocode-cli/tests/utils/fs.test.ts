@@ -1,7 +1,3 @@
-/**
- * File System Utilities Tests
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,22 +12,21 @@ import {
   writeJsonFile,
   copyDirectory,
   listSubdirectories,
+  removeDirectory,
 } from '../../src/utils/fs.js';
 
 describe('File System Utilities', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    // Create a unique temp directory for each test
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fs-test-'));
   });
 
   afterEach(() => {
-    // Clean up temp directory
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
     } catch {
-      // Ignore cleanup errors
+      // ignore cleanup errors
     }
   });
 
@@ -51,7 +46,6 @@ describe('File System Utilities', () => {
     });
 
     it('should return false on error (invalid path)', () => {
-      // Test with null byte which is invalid on most systems
       expect(dirExists('\0')).toBe(false);
     });
   });
@@ -235,7 +229,6 @@ describe('File System Utilities', () => {
 
   describe('copyDirectory', () => {
     it('should copy directory recursively', () => {
-      // Create source structure
       const srcDir = path.join(tempDir, 'src');
       fs.mkdirSync(srcDir);
       fs.writeFileSync(path.join(srcDir, 'file1.txt'), 'content1');
@@ -295,12 +288,10 @@ describe('File System Utilities', () => {
     });
 
     it('should work when destination directory already exists', () => {
-      // Create source structure
       const srcDir = path.join(tempDir, 'existing-src');
       fs.mkdirSync(srcDir);
       fs.writeFileSync(path.join(srcDir, 'file.txt'), 'content');
 
-      // Create destination directory beforehand
       const destDir = path.join(tempDir, 'existing-dest');
       fs.mkdirSync(destDir);
 
@@ -351,6 +342,27 @@ describe('File System Utilities', () => {
     it('should return empty array on error (invalid path)', () => {
       const result = listSubdirectories('\0');
       expect(result).toEqual([]);
+    });
+
+    it('should include symlinked directories', () => {
+      const realDir = path.join(tempDir, 'real-dir');
+      const linkDir = path.join(tempDir, 'link-dir');
+      fs.mkdirSync(realDir);
+      fs.symlinkSync(realDir, linkDir);
+
+      const result = listSubdirectories(tempDir);
+
+      expect(result).toContain('real-dir');
+      expect(result).toContain('link-dir');
+    });
+
+    it('should skip broken symlinks', () => {
+      const brokenLink = path.join(tempDir, 'broken-link');
+      fs.symlinkSync(path.join(tempDir, 'nonexistent'), brokenLink);
+
+      const result = listSubdirectories(tempDir);
+
+      expect(result).not.toContain('broken-link');
     });
   });
 
@@ -421,6 +433,50 @@ describe('File System Utilities', () => {
       expect(listSubdirectories(tempDir)).toEqual([]);
 
       readdirSyncSpy.mockRestore();
+    });
+
+    it('copyDirectory returns false when recursive subdirectory copy fails', () => {
+      const srcDir = path.join(tempDir, 'nested-src');
+      const subDir = path.join(srcDir, 'sub');
+      fs.mkdirSync(subDir, { recursive: true });
+
+      // First readdirSync returns the subdirectory; second throws (recursive copy fails)
+      let callCount = 0;
+      const readdirSyncSpy = vi
+        .spyOn(fs, 'readdirSync')
+        // Cast to `never`: readdirSync has many overloads (the buffer-encoding
+        // one expects Dirent<NonSharedBuffer>[]); the test only needs a stub
+        // that returns one Dirent then throws.
+        .mockImplementation(((_p: unknown, _opts: unknown) => {
+          callCount++;
+          if (callCount === 1) {
+            return [
+              {
+                name: 'sub',
+                isDirectory: () => true,
+                isFile: () => false,
+              } as fs.Dirent,
+            ];
+          }
+          throw new Error('Subdirectory read failed');
+        }) as never);
+
+      expect(copyDirectory(srcDir, path.join(tempDir, 'nested-dest'))).toBe(
+        false
+      );
+
+      readdirSyncSpy.mockRestore();
+    });
+
+    it('removeDirectory returns false when dir does not exist', () => {
+      expect(removeDirectory('/nonexistent/path/12345')).toBe(false);
+    });
+
+    it('removeDirectory removes dir and returns true when it exists', () => {
+      const dir = path.join(tempDir, 'to-remove');
+      fs.mkdirSync(dir);
+      expect(removeDirectory(dir)).toBe(true);
+      expect(fs.existsSync(dir)).toBe(false);
     });
   });
 });

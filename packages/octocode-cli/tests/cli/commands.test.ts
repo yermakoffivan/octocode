@@ -1,10 +1,5 @@
-/**
- * CLI Commands Tests - Token and Status Commands
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock node:fs to prevent any real file operations
 vi.mock('node:fs', () => ({
   existsSync: vi.fn().mockReturnValue(false),
   readFileSync: vi.fn(),
@@ -22,7 +17,6 @@ vi.mock('node:fs', () => ({
   },
 }));
 
-// Mock node:crypto to prevent real encryption
 vi.mock('node:crypto', () => ({
   randomBytes: vi.fn().mockReturnValue(Buffer.alloc(32)),
   createCipheriv: vi.fn().mockReturnValue({
@@ -37,7 +31,6 @@ vi.mock('node:crypto', () => ({
   }),
 }));
 
-// Mock all external dependencies
 vi.mock('../../src/features/github-oauth.js', () => ({
   login: vi.fn(),
   logout: vi.fn(),
@@ -178,11 +171,10 @@ describe('CLI Commands', () => {
         options: {},
       });
 
-      // Should not output a token
       expect(consoleSpy).not.toHaveBeenCalledWith(
         expect.stringMatching(/^gho_/)
       );
-      // Should show warning about not authenticated (default type is now 'auto')
+
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Not authenticated')
       );
@@ -206,7 +198,6 @@ describe('CLI Commands', () => {
         options: { hostname: 'github.enterprise.com' },
       });
 
-      // getToken is now called with hostname and tokenSource ('auto' is the new default)
       expect(getToken).toHaveBeenCalledWith('github.enterprise.com', 'auto');
       expect(consoleSpy).toHaveBeenCalledWith('gho_enterprise_token');
     });
@@ -237,6 +228,27 @@ describe('CLI Commands', () => {
 
       expect(getToken).toHaveBeenCalledWith('github.com', 'gh');
       expect(consoleSpy).toHaveBeenCalledWith('gho_gh_cli_token');
+    });
+
+    it('should accept octocode-cli as a compatibility alias for octocode token source', async () => {
+      const { getToken } = await import('../../src/features/github-oauth.js');
+      vi.mocked(getToken).mockResolvedValue({
+        token: 'gho_octocode_cli_alias',
+        source: 'octocode',
+        username: 'octouser',
+      });
+
+      const { findCommand } = await import('../../src/cli/commands.js');
+      const tokenCmd = findCommand('token');
+
+      await tokenCmd!.handler!({
+        command: 'token',
+        args: [],
+        options: { type: 'octocode-cli' },
+      });
+
+      expect(getToken).toHaveBeenCalledWith('github.com', 'octocode');
+      expect(consoleSpy).toHaveBeenCalledWith('gho_octocode_cli_alias');
     });
 
     it('should use auto type when --type=auto is provided', async () => {
@@ -294,7 +306,6 @@ describe('CLI Commands', () => {
           options: { json: true },
         });
 
-        // Get the output from console.log
         const output = consoleSpy.mock.calls.find(
           (call: unknown[]) =>
             typeof call[0] === 'string' && call[0].includes('"token"')
@@ -540,7 +551,6 @@ describe('CLI Commands', () => {
         options: {},
       });
 
-      // Check that logged in message is shown
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Logged in')
       );
@@ -836,9 +846,8 @@ describe('CLI Commands', () => {
         configurable: true,
       });
 
-      const { getOctocodeToken } =
-        await import('../../src/features/github-oauth.js');
-      vi.mocked(getOctocodeToken).mockResolvedValue({
+      const { getToken } = await import('../../src/features/github-oauth.js');
+      vi.mocked(getToken).mockResolvedValue({
         token: 'ghp_auth_secret_token_xyz',
         source: 'octocode',
       } as any);
@@ -866,13 +875,8 @@ describe('CLI Commands', () => {
         configurable: true,
       });
 
-      const { getOctocodeToken, getGhCliToken } =
-        await import('../../src/features/github-oauth.js');
-      vi.mocked(getOctocodeToken).mockResolvedValue({
-        token: null,
-        source: 'none',
-      } as any);
-      vi.mocked(getGhCliToken).mockReturnValue({
+      const { getToken } = await import('../../src/features/github-oauth.js');
+      vi.mocked(getToken).mockResolvedValue({
         token: 'ghp_fallback_cli_token_end',
         source: 'gh-cli',
       } as any);

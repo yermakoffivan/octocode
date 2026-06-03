@@ -45,7 +45,7 @@ await Promise.all([
     ...shared,
     entryPoints: ['src/public.ts'],
     outfile: 'dist/public.js',
-    sourcemap: true,
+    banner: { js: shimBanner },
   }),
 ]);
 

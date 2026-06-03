@@ -1,3 +1,15 @@
+export interface PackageSearchInput {
+  ecosystem: 'npm';
+  name: string;
+  itemsPerPage?: number;
+  /** 1-based result page; maps to the registry `from` offset (page-1)*itemsPerPage. */
+  page?: number;
+  npmFetchMetadata?: boolean;
+  mainResearchGoal?: string;
+  researchGoal?: string;
+  reasoning?: string;
+}
+
 export interface MinimalPackageResult {
   name: string;
   repository: string | null;
@@ -25,28 +37,11 @@ export interface NpmPackageResult {
   peerDependencies?: Record<string, string>;
 }
 
-export interface PythonPackageResult {
-  name: string;
-  version: string;
-  description: string | null;
-  keywords: string[];
-  repository: string | null;
-  homepage?: string;
-  author?: string;
-  license?: string;
-  lastPublished?: string;
-  owner?: string;
-  repo?: string;
-}
-
-export type PackageResult =
-  | MinimalPackageResult
-  | NpmPackageResult
-  | PythonPackageResult;
+export type PackageResult = MinimalPackageResult | NpmPackageResult;
 
 export interface PackageSearchAPIResult {
   packages: PackageResult[];
-  ecosystem: 'npm' | 'python';
+  ecosystem: 'npm';
   totalFound: number;
   rawResponseChars?: number;
 }

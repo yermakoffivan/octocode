@@ -1,4 +1,7 @@
-import type { ViewStructureQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { ViewStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type ViewStructureQuery = z.infer<typeof ViewStructureQuerySchema>;
 import { checkRegexSafety } from '../../utils/core/safeRegex.js';
 
 /**
@@ -8,6 +11,8 @@ export interface DirectoryEntry {
   name: string;
   type: 'file' | 'directory' | 'symlink';
   size?: string;
+  /** Raw size in bytes — used for numeric sort to avoid parseFileSize round-trip loss. */
+  sizeBytes?: number;
   modified?: string;
   permissions?: string;
   extension?: string;
@@ -145,7 +150,7 @@ export function formatEntryString(
   }
 }
 
-export interface EntryOutput {
+interface EntryOutput {
   name: string;
   type: 'file' | 'dir' | 'link';
   depth?: number;

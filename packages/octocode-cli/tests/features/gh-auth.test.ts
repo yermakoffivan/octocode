@@ -1,11 +1,6 @@
-/**
- * GitHub Auth Tests
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 
-// Mock child_process
 vi.mock('node:child_process', () => ({
   spawnSync: vi.fn(),
   spawn: vi.fn(),
@@ -70,7 +65,6 @@ describe('GitHub Auth', () => {
     it('should return authenticated with username', async () => {
       vi.mocked(spawnSync)
         .mockReturnValueOnce({
-          // which gh
           status: 0,
           stdout: '/usr/local/bin/gh',
           stderr: '',
@@ -79,7 +73,6 @@ describe('GitHub Auth', () => {
           signal: null,
         })
         .mockReturnValueOnce({
-          // gh auth status
           status: 0,
           stdout: 'Logged in to github.com account testuser (keyring)',
           stderr: '',
@@ -99,7 +92,6 @@ describe('GitHub Auth', () => {
     it('should return not authenticated when auth fails', async () => {
       vi.mocked(spawnSync)
         .mockReturnValueOnce({
-          // which gh
           status: 0,
           stdout: '/usr/local/bin/gh',
           stderr: '',
@@ -108,7 +100,6 @@ describe('GitHub Auth', () => {
           signal: null,
         })
         .mockReturnValueOnce({
-          // gh auth status
           status: 1,
           stdout: '',
           stderr: 'You are not logged in',
@@ -389,128 +380,6 @@ describe('GitHub Auth', () => {
 
       expect(result.success).toBe(false);
       expect(result.exitCode).toBe(1);
-    });
-  });
-
-  describe('getGitHubCLIToken', () => {
-    it('should return null if gh CLI is not installed', async () => {
-      vi.mocked(spawnSync).mockReturnValue({
-        status: 1,
-        stdout: '',
-        stderr: 'command not found',
-        pid: 123,
-        output: [],
-        signal: null,
-      });
-
-      const { getGitHubCLIToken } =
-        await import('../../src/features/gh-auth.js');
-      const token = getGitHubCLIToken();
-
-      expect(token).toBeNull();
-    });
-
-    it('should return token when authenticated', async () => {
-      // First call - which gh (check if installed)
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 0,
-        stdout: '/usr/local/bin/gh',
-        stderr: '',
-        pid: 123,
-        output: [],
-        signal: null,
-      });
-
-      // Second call - gh auth token
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 0,
-        stdout: 'gho_test_token_123',
-        stderr: '',
-        pid: 124,
-        output: [],
-        signal: null,
-      });
-
-      const { getGitHubCLIToken } =
-        await import('../../src/features/gh-auth.js');
-      const token = getGitHubCLIToken();
-
-      expect(token).toBe('gho_test_token_123');
-    });
-
-    it('should return token with custom hostname', async () => {
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 0,
-        stdout: '/usr/local/bin/gh',
-        stderr: '',
-        pid: 123,
-        output: [],
-        signal: null,
-      });
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 0,
-        stdout: 'gho_enterprise_token',
-        stderr: '',
-        pid: 124,
-        output: [],
-        signal: null,
-      });
-
-      const { getGitHubCLIToken } =
-        await import('../../src/features/gh-auth.js');
-      const token = getGitHubCLIToken('github.enterprise.com');
-
-      expect(token).toBe('gho_enterprise_token');
-    });
-
-    it('should return null when token command fails', async () => {
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 0,
-        stdout: '/usr/local/bin/gh',
-        stderr: '',
-        pid: 123,
-        output: [],
-        signal: null,
-      });
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 1,
-        stdout: '',
-        stderr: 'not authenticated',
-        pid: 124,
-        output: [],
-        signal: null,
-      });
-
-      const { getGitHubCLIToken } =
-        await import('../../src/features/gh-auth.js');
-      const token = getGitHubCLIToken();
-
-      expect(token).toBeNull();
-    });
-
-    it('should return null when token is empty', async () => {
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 0,
-        stdout: '/usr/local/bin/gh',
-        stderr: '',
-        pid: 123,
-        output: [],
-        signal: null,
-      });
-      vi.mocked(spawnSync).mockReturnValueOnce({
-        status: 0,
-        stdout: '  \n',
-        stderr: '',
-        pid: 124,
-        output: [],
-        signal: null,
-      });
-
-      const { getGitHubCLIToken } =
-        await import('../../src/features/gh-auth.js');
-      const token = getGitHubCLIToken();
-
-      expect(token).toBeNull();
     });
   });
 });

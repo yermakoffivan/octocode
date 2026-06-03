@@ -1,71 +1,93 @@
 /**
- * Dynamic hints for githubSearchCode tool
+ * Response-state hints for githubSearchCode.
+ * Fires only on empty/error. Pagination + non-canonical-path signals live in
+ * the structured response (pagination / matches array); usage guidance lives
+ * in the tool description.
+ *
  * @module tools/github_search_code/hints
  */
 
-import { getMetadataDynamicHints } from '../../hints/static.js';
 import type { HintContext, ToolHintGenerators } from '../../types/metadata.js';
-import { getActiveProvider } from '../../serverConfig.js';
-
-const TOOL_NAME = 'githubSearchCode';
 
 export const hints: ToolHintGenerators = {
-  hasResults: (ctx: HintContext = {}) => {
-    // Context-aware hints based on single vs multi-repo results
-    const hints: (string | undefined)[] = [];
-    if (ctx.hasOwnerRepo) {
-      hints.push(...getMetadataDynamicHints(TOOL_NAME, 'singleRepo'));
-    } else {
-      hints.push(...getMetadataDynamicHints(TOOL_NAME, 'multiRepo'));
-    }
-    return hints;
-  },
-
   empty: (ctx: HintContext = {}) => {
-    // Context-aware hints - static hints cover generic cases
-    const hints: (string | undefined)[] = [];
+    const out: string[] = [];
+    const c = ctx as Record<string, unknown>;
+    const keywords = Array.isArray(c.keywords) ? c.keywords : undefined;
+    const owner = typeof c.owner === 'string' ? c.owner : undefined;
+    const repo = typeof c.repo === 'string' ? c.repo : undefined;
+    const filters: string[] = [];
+    if (typeof c.extension === 'string') filters.push('extension');
+    if (typeof c.filename === 'string') filters.push('filename');
+    if (typeof c.path === 'string') filters.push('path');
 
-    // Path-specific guidance when match="path" returns empty
-    if (ctx.match === 'path') {
-      hints.push(...getMetadataDynamicHints(TOOL_NAME, 'pathEmpty'));
-    } else if (!ctx.hasOwnerRepo) {
-      hints.push(...getMetadataDynamicHints(TOOL_NAME, 'crossRepoEmpty'));
+    // Nonexistent scope (GitHub 422): empty means the scope doesn't exist, not
+    // "no matches". Lead with this so the agent fixes the scope, not the query.
+    if (c.nonExistentScope === true) {
+      const scope = owner && repo ? `${owner}/${repo}` : owner || 'target';
+      out.push(
+        `"${scope}" doesn't exist or isn't searchable (not "no matches") — check spelling/access.`
+      );
+      return out;
     }
-    // Note: "Try semantic variants" is in static hints, not duplicated here
-    return hints;
+
+    if (ctx.hasOwnerRepo && owner && repo) {
+      const filterList = filters.length > 0 ? ` (${filters.join('+')})` : '';
+      out.push(`No matches in ${owner}/${repo}${filterList}.`);
+
+      // Recovery for the most common silent-zero causes. NOTE: the builder
+      // already auto-splits a file-pointing path (dir/file.ext) into
+      // filename: + directory path:, so a path that survives to here is a
+      // directory. GitHub matches path: against a file's DIRECTORY only — so
+      // the lever is broadening the directory, not dropping the phrase (a
+      // single token + a file-pointing path returns zero just the same).
+      const hasPhrase =
+        Array.isArray(keywords) &&
+        keywords.some(k => typeof k === 'string' && /\s/.test(k));
+      if (filters.includes('path')) {
+        out.push(
+          'GitHub path: matches a directory, not a file — broaden path: to a parent directory (use filename: to target one file).'
+        );
+      } else if (hasPhrase) {
+        out.push(
+          'A multi-word phrase is matched literally — broaden with fewer/looser keyword terms.'
+        );
+      }
+      // (2) archived repos are under-indexed by GitHub code search, so a
+      // zero result is NOT proof of absence. Verify before concluding.
+      out.push(
+        'For archived repos a zero isn\'t proof — code search is unindexed; confirm via githubGetFileContent before "not found".'
+      );
+    }
+
+    // Cross-tool pivot: scoped/dotted single keyword → likely a package.
+    if (
+      !ctx.hasOwnerRepo &&
+      keywords &&
+      keywords.length === 1 &&
+      typeof keywords[0] === 'string' &&
+      /^(@[\w-]+\/)?[\w.-]+$/.test(keywords[0])
+    ) {
+      out.push(
+        `"${keywords[0]}" looks like a package name — try packageSearch.`
+      );
+    }
+    return out;
   },
 
   error: (ctx: HintContext = {}) => {
-    const hints: (string | undefined)[] = [];
-
-    // Rate limit specific hints
+    const out: string[] = [];
     if (ctx.isRateLimited) {
-      hints.push(
-        `Rate limited. ${ctx.retryAfter ? `Retry after ${ctx.retryAfter}s.` : 'Wait before retrying.'}`
-      );
-      hints.push(
-        'Consider: Use a different token, reduce request frequency, or use pagination.'
+      out.push(
+        `Rate limited.${ctx.retryAfter ? ` Retry after ${ctx.retryAfter}s.` : ''}`
       );
     }
-
-    // Authentication hints
     if (ctx.status === 401) {
-      const provider = getActiveProvider();
-      const tokenVarMap: Record<string, string> = {
-        gitlab: 'GITLAB_TOKEN',
-        bitbucket: 'BITBUCKET_TOKEN',
-      };
-      const tokenVar = tokenVarMap[provider] ?? 'GITHUB_TOKEN';
-      hints.push(`Check ${tokenVar} is valid and not expired.`);
+      out.push('GITHUB_TOKEN missing/expired.');
     }
-
-    // Permission hints
     if (ctx.status === 403 && !ctx.isRateLimited) {
-      hints.push(
-        'Check token permissions. Required scopes: repo (for private repos).'
-      );
+      out.push('Token lacks `repo` scope.');
     }
-
-    return hints;
+    return out;
   },
 };

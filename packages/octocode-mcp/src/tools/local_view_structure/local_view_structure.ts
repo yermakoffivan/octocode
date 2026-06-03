@@ -1,21 +1,28 @@
-import { LsCommandBuilder } from '../../commands/LsCommandBuilder.js';
 import { parseFileSize } from '../../utils/file/size.js';
-import { safeExec } from '../../utils/exec/safe.js';
+import { getHints } from '../../hints/index.js';
+import { TOOL_NAMES } from '../toolMetadata/proxies.js';
+import { LsCommandBuilder } from '../../commands/LsCommandBuilder.js';
 import {
   checkCommandAvailability,
   getMissingCommandError,
 } from '../../utils/exec/commandAvailability.js';
-import { getHints } from '../../hints/index.js';
-import { TOOL_NAMES } from '../toolMetadata/proxies.js';
+import { safeExec } from '../../utils/exec/safe.js';
 import {
   validateToolPath,
   createErrorResult,
 } from '../../utils/file/toolHelpers.js';
-import type {
-  LocalViewStructureToolResult,
-  ViewStructureQuery as UpstreamViewStructureQuery,
-} from '@octocodeai/octocode-core';
-import type { Verbosity } from '../../scheme/localSchemaOverlay.js';
+import type { z } from 'zod/v4';
+import type { ViewStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
+import type { LocalViewStructureToolResult } from '@octocodeai/octocode-core/extra-types';
+
+type UpstreamViewStructureQuery = z.infer<typeof ViewStructureQuerySchema>;
+import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
+import {
+  isConcise,
+  isCompact,
+  compactTrimHints,
+  makeAdvisoryPredicate,
+} from '../../scheme/verbosity.js';
 import type { WithOptionalMeta } from '../../types/execution.js';
 
 /**
@@ -24,9 +31,24 @@ import type { WithOptionalMeta } from '../../types/execution.js';
  * preserves the existing input-shape contract — callers that pass partial
  * queries continue to type-check while the handler still sees `verbosity`.
  */
-type ViewStructureQuery = WithOptionalMeta<UpstreamViewStructureQuery> & {
-  verbosity?: Verbosity;
-};
+type ViewStructureQuery = WithVerbosity<
+  WithOptionalMeta<UpstreamViewStructureQuery>
+>;
+
+function buildActiveViewStructureFilters(query: ViewStructureQuery): string[] {
+  const activeFilters: string[] = [`path: ${query.path}`];
+  if (query.depth !== undefined) activeFilters.push(`depth: ${query.depth}`);
+  if (query.extension) activeFilters.push(`extension: ${query.extension}`);
+  if (query.extensions?.length) {
+    activeFilters.push(`extensions: ${query.extensions.join(', ')}`);
+  }
+  if (query.pattern) activeFilters.push(`pattern: ${query.pattern}`);
+  if (query.filesOnly) activeFilters.push('filesOnly');
+  if (query.directoriesOnly) activeFilters.push('directoriesOnly');
+  if (query.hidden) activeFilters.push('hidden');
+  return [`Active filters — ${activeFilters.join(' | ')}`];
+}
+
 import { ToolErrors } from '../../errors/errorFactories.js';
 import {
   applyEntryFilters,
@@ -124,11 +146,15 @@ export async function viewStructure(
     const totalEntries = filteredEntries.length;
     const { paginatedEntries, endIdx, pagination } = paginateEntries(
       filteredEntries,
-      query
+      query as { itemsPerPage?: number; page?: number }
     );
-    const outputEntries = paginatedEntries.map(entry => toEntryObject(entry));
+    const sanitizedBasePath = pathValidation.sanitizedPath!;
+    const outputEntries = paginatedEntries.map(entry => ({
+      ...toEntryObject(entry),
+      path: `${sanitizedBasePath}/${entry.name}`,
+    }));
     const warnings: string[] = [];
-    const status = totalEntries > 0 ? 'hasResults' : 'empty';
+    const isEmpty = totalEntries === 0;
     const entryPaginationHints = buildEntryPaginationHints(
       filteredEntries,
       paginatedEntries.length,
@@ -138,21 +164,30 @@ export async function viewStructure(
     const summary = summarizeEntries(filteredEntries);
 
     return attachRawResponseChars(
-      applyVerbosity(
+      applyViewStructureVerbosity(
         {
-          status,
+          ...(isEmpty ? { status: 'empty' as const } : {}),
           entries: outputEntries,
           summary,
           pagination,
           ...(warnings.length > 0 && { warnings }),
           hints: [
+            ...buildActiveViewStructureFilters(query),
             ...entryPaginationHints,
-            ...getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, status, {
-              entryCount: totalEntries,
-            }),
+            ...(isEmpty
+              ? getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'empty', {
+                  entryCount: totalEntries,
+                  path: query.path,
+                  extension: query.extension,
+                  pattern:
+                    typeof (query as { pattern?: unknown }).pattern === 'string'
+                      ? (query as { pattern?: string }).pattern
+                      : undefined,
+                } as Record<string, unknown>)
+              : []),
           ],
         },
-        query.verbosity
+        query
       ),
       result.stdout.length
     );
@@ -212,12 +247,8 @@ async function viewStructureRecursive(
     return createErrorResult(toolError, query, {
       toolName: TOOL_NAMES.LOCAL_VIEW_STRUCTURE,
       customHints: isNotFound
-        ? [
-            'Path does not exist or is not a directory',
-            'Verify the path using localFindFiles',
-            'To read a file, use localGetFileContent instead',
-          ]
-        : ['Check file/directory permissions'],
+        ? [`Path not found: ${basePath}`]
+        : [`Permission denied: ${basePath}`],
     }) as LocalViewStructureToolResult;
   }
 
@@ -228,9 +259,10 @@ async function viewStructureRecursive(
       let comparison = 0;
       switch (query.sortBy) {
         case 'size': {
-          // Use numeric comparison instead of string comparison
-          const aSize = a.size ? parseFileSize(a.size) : 0;
-          const bSize = b.size ? parseFileSize(b.size) : 0;
+          // Use raw byte count to avoid parseFileSize round-trip loss on
+          // the formatted size string (e.g. "12.4KB" → parse → float).
+          const aSize = a.sizeBytes ?? (a.size ? parseFileSize(a.size) : 0);
+          const bSize = b.sizeBytes ?? (b.size ? parseFileSize(b.size) : 0);
           comparison = aSize - bSize;
           break;
         }
@@ -261,12 +293,17 @@ async function viewStructureRecursive(
   const totalEntries = filteredEntries.length;
   const { paginatedEntries, endIdx, pagination } = paginateEntries(
     filteredEntries,
-    query
+    query as { itemsPerPage?: number; page?: number }
   );
-  const outputEntries = paginatedEntries.map(entry => toEntryObject(entry));
+  const outputEntries = paginatedEntries.map(entry => ({
+    ...toEntryObject(entry),
+    path: `${basePath}/${entry.name}`,
+  }));
   const warnings = buildWalkWarnings(walkStats);
-  const status = totalEntries > 0 ? 'hasResults' : 'empty';
-  const baseHints = getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, status);
+  const isEmpty = totalEntries === 0;
+  const baseHints = isEmpty
+    ? getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'empty')
+    : [];
   const entryPaginationHints = buildEntryPaginationHints(
     filteredEntries,
     paginatedEntries.length,
@@ -276,44 +313,80 @@ async function viewStructureRecursive(
   const summary = summarizeEntries(filteredEntries);
 
   return attachRawResponseChars(
-    applyVerbosity(
+    applyViewStructureVerbosity(
       {
-        status,
+        // status omitted on success (absent ≡ "hasResults"); 'empty' set
+        // explicitly when totalEntries === 0.
+        ...(isEmpty ? { status: 'empty' as const } : {}),
         entries: outputEntries,
         summary,
         pagination,
         ...(warnings.length > 0 && { warnings }),
-        hints: [...baseHints, ...entryPaginationHints],
+        hints: [
+          ...buildActiveViewStructureFilters(query),
+          ...baseHints,
+          ...entryPaginationHints,
+        ],
       },
-      query.verbosity
+      query
     ),
     countSerializedChars(entries)
   );
 }
 
+/** How many entry names concise samples into the `top:` hint for drill-down. */
+const CONCISE_TOP_ENTRIES = 5;
+
+/**
+ * Predicate identifying advisory hints this tool emits — recovery prose,
+ * monorepo suggestions, large-tree warnings. Stripped under `compact`.
+ * Substring-OR, case-insensitive.
+ */
+const isAdvisoryViewStructureHint = makeAdvisoryPredicate([
+  'monorepo',
+  'workspace root',
+  'auto-excludes',
+  'large tree',
+  'large payload',
+  'large directory',
+]);
+
 /**
  * Shape the result for the requested verbosity.
  *
- * RFC §4.7.2 + §4.7.9: when the agent opts into `verbosity: "ultra"`, drop
- * `entries[]` and return the one-line `summary` only. `pagination` is kept so
- * the agent still sees `totalEntries` and can decide whether to drill in.
- *
- * Compact / verbose / omitted → byte-identical to today (§3.1 contract).
+ * - concise: drop `entries[]`; keep `summary` + `pagination` so the agent still
+ *   sees `totalEntries`. No verbosity-feature hints are emitted.
+ * - compact: trim advisory hints via `compactTrimHints()`; `entries[]`
+ *   unchanged.
+ * - omitted / basic: passthrough.
  */
-function applyVerbosity(
+export function applyViewStructureVerbosity(
   result: LocalViewStructureToolResult,
-  verbosity: ViewStructureQuery['verbosity']
+  query: ViewStructureQuery
 ): LocalViewStructureToolResult {
-  if (verbosity !== 'ultra') return result;
-  if (result.status === 'error' || result.status === 'empty') return result;
-
-  return {
-    ...result,
-    entries: [],
-    hints: [
-      `verbosity:"ultra" — entries[] dropped. summary: ${result.summary ?? ''}`,
-      'Drill-back: re-call with verbosity:"compact" (default) to see entries; ' +
-        'use entryPageNumber + entriesPerPage if there are many.',
-    ],
-  };
+  if (isConcise(query.verbosity)) {
+    // hasResults ≡ absent status; only 'empty'/'error' carry a marker.
+    if (result.status !== undefined) return result;
+    // Drop entries[] but keep concise research-grade: emit the count summary
+    // PLUS a sample of top entry names so the agent has a concrete path to
+    // drill into. A bare count is a dead-end; names give the next move.
+    const names = (result.entries ?? [])
+      .slice(0, CONCISE_TOP_ENTRIES)
+      .map(e => e.name)
+      .filter(Boolean);
+    const total =
+      result.pagination?.totalEntries ?? result.entries?.length ?? 0;
+    const more = total > names.length ? ` (+${total - names.length} more)` : '';
+    const hints: string[] = [];
+    if (result.summary) hints.push(`summary: ${result.summary}`);
+    if (names.length > 0) hints.push(`top: ${names.join(', ')}${more}`);
+    return { ...result, entries: [], hints };
+  }
+  if (isCompact(query.verbosity)) {
+    return {
+      ...result,
+      hints: compactTrimHints(result.hints, isAdvisoryViewStructureHint, 2),
+    };
+  }
+  return result;
 }

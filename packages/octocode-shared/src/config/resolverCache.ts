@@ -13,8 +13,6 @@ import { validateConfig } from './validator.js';
 import { createLogger } from '../logger/index.js';
 import {
   resolveGitHub,
-  resolveGitLab,
-  resolveBitbucket,
   resolveLocal,
   resolveTools,
   resolveNetwork,
@@ -39,16 +37,12 @@ function buildResolvedConfig(
   const hasFile = fileConfig !== undefined;
   const hasEnvOverrides =
     process.env.GITHUB_API_URL !== undefined ||
-    process.env.GITLAB_HOST !== undefined ||
-    process.env.BITBUCKET_HOST !== undefined ||
     process.env.ENABLE_LOCAL !== undefined ||
     process.env.ENABLE_CLONE !== undefined ||
-    process.env.WORKSPACE_ROOT !== undefined ||
     process.env.ALLOWED_PATHS !== undefined ||
     process.env.TOOLS_TO_RUN !== undefined ||
     process.env.ENABLE_TOOLS !== undefined ||
     process.env.DISABLE_TOOLS !== undefined ||
-    process.env.DISABLE_PROMPTS !== undefined ||
     process.env.REQUEST_TIMEOUT !== undefined ||
     process.env.MAX_RETRIES !== undefined ||
     process.env.LOG !== undefined ||
@@ -69,8 +63,6 @@ function buildResolvedConfig(
   return {
     version: fileConfig?.version ?? DEFAULT_CONFIG.version,
     github: resolveGitHub(fileConfig?.github),
-    gitlab: resolveGitLab(fileConfig?.gitlab),
-    bitbucket: resolveBitbucket(fileConfig?.bitbucket),
     local: resolveLocal(fileConfig?.local),
     tools: resolveTools(fileConfig?.tools),
     network: resolveNetwork(fileConfig?.network),

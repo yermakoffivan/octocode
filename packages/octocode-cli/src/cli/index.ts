@@ -19,6 +19,8 @@ async function loadToolCommandModule(): Promise<{
   executeToolCommand(args: ParsedArgs): Promise<boolean>;
   printToolsContext(): Promise<void>;
   showToolHelp(toolName: string): Promise<boolean>;
+  showAvailableTools(): Promise<void>;
+  showMultipleToolSchemas(toolNames: string[]): Promise<void>;
 }> {
   return import('./tool-command.js');
 }
@@ -38,10 +40,10 @@ async function loadHelpModule(): Promise<{
 function printLegacyToolCommandError(): void {
   console.log();
   console.log(
-    "  Use octocode-cli --tool <toolName> --queries '<json-stringified-input>'."
+    "  Use octocode --tool <toolName> --queries '<json-stringified-input>'."
   );
   console.log(
-    '  Example: octocode-cli --tool localSearchCode --queries \'{"path":".","pattern":"runCLI"}\''
+    '  Example: octocode --tool localSearchCode --queries \'{"path":".","pattern":"runCLI"}\''
   );
   console.log();
 }
@@ -49,7 +51,7 @@ function printLegacyToolCommandError(): void {
 function showVersion(): void {
   const version =
     typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown';
-  console.log(`octocode-cli v${version}`);
+  console.log(`octocode v${version}`);
 }
 
 export async function runCLI(argv?: string[]): Promise<boolean> {
@@ -76,6 +78,18 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
     if (args.command === 'tool') {
       const { showHelp } = await loadMainHelpModule();
       showHelp();
+      return true;
+    }
+
+    if (args.command === 'tools') {
+      if (typeof args.args[0] === 'string') {
+        const { showToolHelp } = await loadToolCommandModule();
+        if (await showToolHelp(args.args[0])) {
+          return true;
+        }
+      }
+      const { showAvailableTools } = await loadToolCommandModule();
+      await showAvailableTools();
       return true;
     }
 
@@ -132,13 +146,28 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
     return true;
   }
 
+  if (args.command === 'tools') {
+    const { executeToolCommand } = await loadToolCommandModule();
+    const success = await executeToolCommand(args);
+    if (!success) {
+      process.exitCode = 1;
+    }
+    return true;
+  }
+
+  if (args.command === 'instructions') {
+    const { printToolsContext } = await loadToolCommandModule();
+    await printToolsContext();
+    return true;
+  }
+
   const { findCommand } = await loadCommandsModule();
   const command = findCommand(args.command);
 
   if (!command) {
     console.log();
     console.log(`  Unknown command: ${args.command}`);
-    console.log(`  Run 'octocode-cli --help' to see available commands.`);
+    console.log(`  Run 'octocode --help' to see available commands.`);
     console.log();
     process.exitCode = 1;
     return true;

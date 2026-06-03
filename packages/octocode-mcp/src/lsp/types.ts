@@ -31,18 +31,6 @@ export interface UserLanguageServerConfig {
 }
 
 /**
- * Config file schema for user-defined language servers
- * File locations (in priority order):
- * 1. OCTOCODE_LSP_CONFIG environment variable
- * 2. .octocode/lsp-servers.json (workspace-level)
- * 3. ${OCTOCODE_HOME:-~/.octocode}/lsp-servers.json (user-level)
- */
-export interface LSPConfigFile {
-  /** Language servers by file extension (e.g., ".py", ".java") */
-  languageServers?: Record<string, UserLanguageServerConfig>;
-}
-
-/**
  * Server command info from the registry
  */
 export interface LanguageServerCommand {
@@ -132,6 +120,22 @@ export interface ReferenceLocation extends CodeSnippet {
 }
 
 /**
+ * Per-file reference rollup emitted by lspFindReferences when groupByFile=true.
+ */
+export interface ReferencesByFile {
+  /** File containing references */
+  uri: string;
+  /** Number of references in the file */
+  count: number;
+  /** First reference line in this file, 1-indexed for follow-up calls */
+  firstLine: number;
+  /** First reference character in this file, 0-indexed */
+  firstCharacter: number;
+  /** Whether this file includes the declaration/definition reference */
+  hasDefinition?: boolean;
+}
+
+/**
  * Call hierarchy item
  */
 export interface CallHierarchyItem {
@@ -182,7 +186,10 @@ export interface LSPPaginationInfo {
   totalPages: number;
   totalResults: number;
   hasMore: boolean;
-  resultsPerPage: number;
+  // Optional: omitted when it would be the "return everything" sentinel
+  // (Number.MAX_SAFE_INTEGER), which carries no information and only bloats
+  // the payload (e.g. groupByFile / global-merge reference results).
+  resultsPerPage?: number;
 }
 
 /**
@@ -210,14 +217,14 @@ type LSPErrorType =
  * char-budget pagination and lets agents branch on it without parsing
  * hint strings.
  */
-export type LspMode = 'semantic' | 'fallback';
+type LspMode = 'semantic' | 'fallback';
 
 /**
  * Base LSP tool result
  */
 interface LSPToolResultBase {
-  /** Result status */
-  status: 'hasResults' | 'empty' | 'error';
+  // Omitted ≡ success ("hasResults"). Only 'empty' / 'error' are emitted.
+  status?: 'empty' | 'error';
   /** Error message if status is 'error' */
   error?: string;
   /** Error type for hint generation (lowercase, internal) */
@@ -266,6 +273,12 @@ export interface GotoDefinitionResult extends LSPToolResultBase {
 export interface FindReferencesResult extends LSPToolResultBase {
   /** Reference locations */
   locations?: ReferenceLocation[];
+  /** Ranked per-file reference counts when groupByFile=true */
+  byFile?: ReferencesByFile[];
+  /** Total reference count before groupByFile compaction */
+  totalReferences?: number;
+  /** Total file count before groupByFile compaction */
+  totalFiles?: number;
   /** Pagination info */
   pagination?: LSPPaginationInfo;
 

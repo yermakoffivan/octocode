@@ -16,7 +16,10 @@ import type {
   SymbolKind,
   LSPPaginationInfo,
 } from '../../lsp/types.js';
-import type { LSPCallHierarchyQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { LSPCallHierarchyQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type LSPCallHierarchyQuery = z.infer<typeof LSPCallHierarchyQuerySchema>;
 import type { WithOptionalMeta } from '../../types/execution.js';
 import {
   CallSite,
@@ -62,9 +65,10 @@ export async function callHierarchyWithPatternMatching(
   foundAtLine: number,
   _resolver: SymbolResolver
 ): Promise<CallHierarchyResult> {
+  const symbolName = query.symbolName!;
   const lines = content.split(/\r?\n/);
   const targetItem = createCallHierarchyItem(
-    query.symbolName,
+    symbolName,
     absolutePath,
     foundAtLine,
     lines,
@@ -112,7 +116,7 @@ async function findIncomingCallsWithPatternMatching(
     page,
     contextLines,
   } = options;
-  const symbolName = query.symbolName;
+  const symbolName = query.symbolName!;
 
   const searchPattern = `\\b${escapeRegex(symbolName)}\\s*\\(`;
 
@@ -224,13 +228,17 @@ async function findIncomingCallsWithPatternMatching(
   };
 
   return {
-    status: 'hasResults',
     item: targetItem,
     direction: 'incoming',
     depth,
     incomingCalls,
     pagination,
-    hints: [...getHints(TOOL_NAME, 'hasResults')],
+    hints:
+      page < totalPages
+        ? [
+            `Showing page ${page} of ${totalPages}. Use page=${page + 1} for more.`,
+          ]
+        : [],
   };
 }
 
@@ -424,16 +432,17 @@ async function findOutgoingCallsWithPatternMatching(
   };
 
   return {
-    status: 'hasResults',
     item: targetItem,
     direction: 'outgoing',
     depth,
     outgoingCalls,
     pagination,
-    hints: [
-      ...getHints(TOOL_NAME, 'hasResults'),
-      'Use lspGotoDefinition to find where each callee is defined',
-    ],
+    hints:
+      page < totalPages
+        ? [
+            `Showing page ${page} of ${totalPages}. Use page=${page + 1} for more.`,
+          ]
+        : [],
   };
 }
 
@@ -509,15 +518,25 @@ export function parseRipgrepJsonOutput(output: string): CallSite[] {
  * Extract function body starting from a line
  * @internal Exported for testing
  */
-export function extractFunctionBody(
+/** Net brace balance of a string: `+1` per `{`, `-1` per `}`. */
+function countBraceDelta(text: string): number {
+  let delta = 0;
+  for (const ch of text) {
+    if (ch === '{') delta++;
+    else if (ch === '}') delta--;
+  }
+  return delta;
+}
+
+/**
+ * Find the line holding the function's opening `{` (within 5 lines of the
+ * declaration). Returns the brace line index, the open-brace count after that
+ * line, and the body segment that follows the `{`, or null if none found.
+ */
+function findFunctionBodyStart(
   lines: string[],
   startLineIndex: number
-): { lines: string[]; startLine: number; endLine: number } | null {
-  let braceCount = 0;
-  let foundStart = false;
-  let bodyStartLine = startLineIndex;
-  const bodyLines: string[] = [];
-
+): { bodyStartLine: number; braceCount: number; firstSegment: string } | null {
   for (
     let i = startLineIndex;
     i < Math.min(lines.length, startLineIndex + 5);
@@ -528,21 +547,27 @@ export function extractFunctionBody(
 
     const braceIndex = line.indexOf('{');
     if (braceIndex !== -1) {
-      foundStart = true;
-      bodyStartLine = i;
-      braceCount = 1;
-
-      for (let j = braceIndex + 1; j < line.length; j++) {
-        if (line[j] === '{') braceCount++;
-        if (line[j] === '}') braceCount--;
-      }
-
-      bodyLines.push(line.slice(braceIndex + 1));
-      break;
+      const firstSegment = line.slice(braceIndex + 1);
+      return {
+        bodyStartLine: i,
+        braceCount: 1 + countBraceDelta(firstSegment),
+        firstSegment,
+      };
     }
   }
+  return null;
+}
 
-  if (!foundStart) return null;
+export function extractFunctionBody(
+  lines: string[],
+  startLineIndex: number
+): { lines: string[]; startLine: number; endLine: number } | null {
+  const start = findFunctionBodyStart(lines, startLineIndex);
+  if (!start) return null;
+
+  const { bodyStartLine } = start;
+  let braceCount = start.braceCount;
+  const bodyLines: string[] = [start.firstSegment];
 
   for (let i = bodyStartLine + 1; i < lines.length && braceCount > 0; i++) {
     const line = lines[i];
@@ -551,10 +576,7 @@ export function extractFunctionBody(
       continue;
     }
 
-    for (const char of line) {
-      if (char === '{') braceCount++;
-      if (char === '}') braceCount--;
-    }
+    braceCount += countBraceDelta(line);
 
     if (braceCount > 0) {
       bodyLines.push(line);

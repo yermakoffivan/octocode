@@ -14,7 +14,7 @@ const registeredTools = [
     executionFiles: ['src/tools/github_fetch_content/execution.ts'],
     rawEvidence: [
       /rawResponse:\s*providerResult\.response\.rawResponseChars/,
-      /rawResponse:\s*result\.totalSize\s*\|\|\s*countSerializedChars\(result\)/,
+      /rawResponse:\s*result\.totalSize\s*\?\?\s*countSerializedChars\(result\)/,
     ],
   },
   {
@@ -138,9 +138,7 @@ describe('tool stats emission contract', () => {
   it('records final sent response length once per bulk tool invocation', async () => {
     const bulk = await readProjectFile('src/utils/response/bulk.ts');
 
-    expect(bulk).toMatch(
-      /const text = createResponseFormat\(responseData, fullKeysPriority\);/
-    );
+    expect(bulk).toMatch(/createResponseFormat\(/);
     expect(bulk).toMatch(
       /recordBulkCharSavings\(config\.toolName, results, errors, text\.length\);/
     );

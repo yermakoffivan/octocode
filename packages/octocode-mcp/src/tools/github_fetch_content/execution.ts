@@ -1,17 +1,24 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type { FileContentQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { FileContentQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
 import type { WithOptionalMeta } from '../../types/execution.js';
 
 type PartialFileContentQuery = WithOptionalMeta<FileContentQuery>;
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import type { ToolExecutionArgs } from '../../types/execution.js';
-import { handleCatchError, createSuccessResult } from '../utils.js';
+import {
+  handleCatchError,
+  createSuccessResult,
+  createErrorResult,
+} from '../utils.js';
+import { FileContentQueryLocalSchema } from '../../scheme/remoteSchemaOverlay.js';
 import { isCloneEnabled } from '../../serverConfig.js';
 import { fetchDirectoryContents } from '../../github/directoryFetch.js';
 import { resolveDefaultBranch } from '../../github/client.js';
-import { LOCAL_TOOL_LIST } from '../../hints/localToolUsageHints.js';
 import { countSerializedChars } from '../../utils/response/charSavings.js';
 import {
   mapFileContentProviderResult,
@@ -23,40 +30,10 @@ import {
   executeProviderOperation,
   providerSupports,
 } from '../providerExecution.js';
+import { buildGithubFetchContentFinalizer } from './finalizer.js';
 
-const DIRECTORY_FETCH_HINTS: string[] = [
-  'Directory fetched and saved to disk.',
-  'Use `localPath` as the `path` parameter for local tools:',
-  ...LOCAL_TOOL_LIST,
-  'Tip: start with localViewStructure to explore the fetched directory.',
-];
-
-const DIRECTORY_CACHE_HIT_HINT =
-  'Served from 24-hour cache (no network call). To force refresh, wait for expiry or manually delete the localPath.';
-
-const DIRECTORY_KEYS_PRIORITY = [
-  'resolvedBranch',
-  'localPath',
-  'fileCount',
-  'totalSize',
-  'files',
-  'cached',
-  'expiresAt',
-  'error',
-];
-
-const FILE_KEYS_PRIORITY = [
-  'content',
-  'resolvedBranch',
-  'pagination',
-  'isPartial',
-  'startLine',
-  'endLine',
-  'lastModified',
-  'lastModifiedBy',
-  'matchLocations',
-  'error',
-];
+// Re-exported so every tool exposes `apply<Tool>Verbosity` from execution.ts.
+export { applyGithubFetchContentVerbosity } from './finalizer.js';
 
 export async function fetchMultipleGitHubFileContents(
   args: ToolExecutionArgs<PartialFileContentQuery>
@@ -64,18 +41,22 @@ export async function fetchMultipleGitHubFileContents(
   const { queries, authInfo, responseCharOffset, responseCharLength } = args;
   const getProviderContext = createLazyProviderContext(authInfo);
 
-  const hasDirectoryQuery = queries.some(q => q.type === 'directory');
-  const hasFileQuery = queries.some(q => q.type !== 'directory');
-
-  const keysPriority =
-    hasDirectoryQuery && !hasFileQuery
-      ? DIRECTORY_KEYS_PRIORITY
-      : FILE_KEYS_PRIORITY;
-
   return executeBulkOperation(
     queries,
     async (query: PartialFileContentQuery, _index: number) => {
       try {
+        // Per-query extraction-mode mutex. The bulk envelope is relaxed (so one
+        // malformed query never rejects the whole batch at MCP validation);
+        // enforce the fullContent/matchString/lineRange mutex here instead so a
+        // bad query errors on its own while valid siblings still run.
+        const validated = FileContentQueryLocalSchema.safeParse(query);
+        if (!validated.success) {
+          const messages = validated.error.issues
+            .map(i => i.message)
+            .join('; ');
+          return createErrorResult(messages, query);
+        }
+
         const providerContext = getProviderContext();
 
         if (query.type === 'directory') {
@@ -89,9 +70,11 @@ export async function fetchMultipleGitHubFileContents(
     },
     {
       toolName: TOOL_NAMES.GITHUB_FETCH_CONTENT,
-      keysPriority,
       responseCharOffset,
       responseCharLength,
+      peerHints: true,
+      peerEvidence: true,
+      finalize: buildGithubFetchContentFinalizer<PartialFileContentQuery>(),
     }
   );
 }
@@ -125,13 +108,23 @@ async function handleDirectoryFetch(
     );
   }
 
+  if (!query.owner || !query.repo) {
+    return createErrorResult(
+      'Directory fetch requires both owner and repo.',
+      query,
+      {
+        rawResponse: 0,
+      }
+    );
+  }
+
   const branch =
     query.branch ??
-    (await resolveDefaultBranch(query.owner!, query.repo!, authInfo));
+    (await resolveDefaultBranch(query.owner, query.repo, authInfo));
 
   const result = await fetchDirectoryContents(
-    query.owner!,
-    query.repo!,
+    query.owner,
+    query.repo,
     String(query.path),
     branch,
     authInfo,
@@ -149,19 +142,13 @@ async function handleDirectoryFetch(
       : {}),
   };
 
-  const hints = [...DIRECTORY_FETCH_HINTS];
-  if (result.cached) {
-    hints.unshift(DIRECTORY_CACHE_HIT_HINT);
-  }
-
   return createSuccessResult(
     query,
     resultData,
     true,
     TOOL_NAMES.GITHUB_FETCH_CONTENT,
     {
-      extraHints: hints,
-      rawResponse: result.totalSize || countSerializedChars(result),
+      rawResponse: result.totalSize ?? countSerializedChars(result),
     }
   );
 }
@@ -188,20 +175,22 @@ async function handleFileFetch(
     providerResult.response.data.content.length > 0
   );
 
-  const paginationHints = providerResult.response.hints || [];
-  const isLarge = providerResult.response.data.size > 50000;
-  const isPartial = providerResult.response.data.isPartial;
-  const endLine = providerResult.response.data.endLine;
-
   return createSuccessResult(
     query,
     resultData,
     hasContent,
     TOOL_NAMES.GITHUB_FETCH_CONTENT,
     {
-      hintContext: { isLarge, isPartial, endLine },
-      extraHints: paginationHints,
       rawResponse: providerResult.response.rawResponseChars,
+      // Path drives the non-canonical (examples/__tests__/docs/fixtures)
+      // warning in hints.hasResults. isPartial/endLine keep continuation
+      // hints working alongside.
+      hintContext: {
+        path: query.path,
+        branch: query.branch,
+        isPartial: (resultData as { isPartial?: boolean }).isPartial,
+        endLine: (resultData as { endLine?: number }).endLine,
+      },
     }
   );
 }

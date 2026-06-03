@@ -9,7 +9,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 vi.mock('@modelcontextprotocol/sdk/server/mcp.js');
 vi.mock('@modelcontextprotocol/sdk/server/stdio.js');
 vi.mock('../src/utils/http/cache.js');
-vi.mock('../src/prompts/prompts.js');
 vi.mock('../src/tools/github_search_code/github_search_code.js');
 vi.mock('../src/tools/github_fetch_content/github_fetch_content.js');
 vi.mock('../src/tools/github_search_repos/github_search_repos.js');
@@ -64,19 +63,16 @@ vi.mock('../src/utils/core/logger.js', () => {
 });
 
 // Import mocked functions
-import { registerPrompts } from '../src/prompts/prompts.js';
 import { registerGitHubSearchCodeTool } from '../src/tools/github_search_code/github_search_code.js';
 import { registerFetchGitHubFileContentTool } from '../src/tools/github_fetch_content/github_fetch_content.js';
 import { registerSearchGitHubReposTool } from '../src/tools/github_search_repos/github_search_repos.js';
 import { registerSearchGitHubPullRequestsTool } from '../src/tools/github_search_pull_requests/github_search_pull_requests.js';
 import { registerViewGitHubRepoStructureTool } from '../src/tools/github_view_repo_structure/github_view_repo_structure.js';
-import { getGithubCLIToken } from '../src/utils/exec/npm.js';
 import {
   initialize,
   cleanup,
   getServerConfig,
   getGitHubToken,
-  arePromptsEnabled,
   isCloneEnabled,
   getActiveProvider,
 } from '../src/serverConfig.js';
@@ -97,16 +93,13 @@ const mockTransport = {
   start: vi.fn(function () {}),
 };
 
-const mockRegisterPrompts = vi.mocked(registerPrompts);
 const mockMcpServerConstructor = vi.mocked(McpServer);
 const mockStdioServerTransport = vi.mocked(StdioServerTransport);
-const mockGetGithubCLIToken = vi.mocked(getGithubCLIToken);
 const mockRegisterTools = vi.mocked(registerTools);
 const mockGetGitHubToken = vi.mocked(getGitHubToken);
 const mockInitialize = vi.mocked(initialize);
 const mockCleanup = vi.mocked(cleanup);
 const mockGetServerConfig = vi.mocked(getServerConfig);
-const mockArePromptsEnabled = vi.mocked(arePromptsEnabled);
 const mockIsCloneEnabled = vi.mocked(isCloneEnabled);
 const mockGetActiveProvider = vi.mocked(getActiveProvider);
 
@@ -161,9 +154,6 @@ describe('Index Module', () => {
       >;
     });
 
-    // Mock GitHub CLI token
-    mockGetGithubCLIToken.mockResolvedValue('cli-token');
-
     // Create spies for process methods - use a safer mock that doesn't throw by default
     processExitSpy = vi.spyOn(process, 'exit').mockImplementation(function (
       _code?: string | number | null | undefined
@@ -205,9 +195,6 @@ describe('Index Module', () => {
       update: vi.fn(function () {}),
       remove: vi.fn(function () {}),
     } as unknown as RegisteredTool;
-    mockRegisterPrompts.mockImplementation(function () {
-      return mockRegisteredTool;
-    });
     mockRegisterGitHubSearchCodeTool.mockImplementation(function () {
       return mockRegisteredTool;
     });
@@ -238,7 +225,6 @@ describe('Index Module', () => {
       loggingEnabled: true,
       enableLocal: false,
       enableClone: false,
-      disablePrompts: false,
       outputFormat: 'yaml',
       tokenSource: 'env:GITHUB_TOKEN',
     });
@@ -247,9 +233,6 @@ describe('Index Module', () => {
     mockRegisterTools.mockImplementation(async () => {
       return { successCount: 4, failedTools: [] }; // Default tools count
     });
-
-    // Mock arePromptsEnabled to return true by default (prompts enabled)
-    mockArePromptsEnabled.mockReturnValue(true);
 
     // Mock isCloneEnabled and getActiveProvider
     mockIsCloneEnabled.mockReturnValue(false);
@@ -295,7 +278,6 @@ describe('Index Module', () => {
         }),
         expect.objectContaining({
           capabilities: expect.objectContaining({
-            prompts: {},
             tools: { listChanged: false },
           }),
         })
@@ -351,7 +333,6 @@ describe('Index Module', () => {
     it('should use CLI token when no env tokens are present', async () => {
       delete process.env.GITHUB_TOKEN;
       delete process.env.GH_TOKEN;
-      mockGetGithubCLIToken.mockResolvedValue('cli-token');
 
       await import('../src/index.js');
       await waitForAsyncOperations();
@@ -362,7 +343,6 @@ describe('Index Module', () => {
     it('should exit when no token is available', async () => {
       delete process.env.GITHUB_TOKEN;
       delete process.env.GH_TOKEN;
-      mockGetGithubCLIToken.mockResolvedValue(null);
 
       // Mock getToken to throw when no token is available
       mockGetGitHubToken.mockRejectedValue(new Error('No token available'));
@@ -632,55 +612,6 @@ describe('Index Module', () => {
       stderrSpy.mockRestore();
     });
 
-    it('should not warn about a missing GitHub token when GitLab is the active provider', async () => {
-      mockGetActiveProvider.mockReturnValue('gitlab');
-      mockGetGitHubToken.mockResolvedValue(null);
-
-      const { LoggerFactory } = await import('../src/utils/core/logger.js');
-      const mockLogger = {
-        info: vi.fn().mockResolvedValue(undefined),
-        warning: vi.fn().mockResolvedValue(undefined),
-        error: vi.fn().mockResolvedValue(undefined),
-      };
-      vi.mocked(LoggerFactory.getLogger).mockReturnValue(
-        mockLogger as unknown as ReturnType<typeof LoggerFactory.getLogger>
-      );
-
-      const { registerAllTools } = await import('../src/index.js');
-      const stderrSpy = vi
-        .spyOn(process.stderr, 'write')
-        .mockImplementation(() => true);
-
-      const mockContent = {
-        instructions: 'test',
-        prompts: {},
-        toolNames: TOOL_NAMES,
-        baseSchema: {
-          mainResearchGoal: '',
-          researchGoal: '',
-          reasoning: '',
-          bulkQuery: () => '',
-        },
-        tools: {},
-        baseHints: { hasResults: [], empty: [] },
-        genericErrorHints: [],
-      };
-
-      await registerAllTools(
-        mockMcpServer as unknown as McpServer,
-        mockContent
-      );
-
-      expect(mockRegisterTools).toHaveBeenCalled();
-      expect(mockGetGitHubToken).not.toHaveBeenCalled();
-      expect(mockLogger.warning).not.toHaveBeenCalledWith(
-        'No GitHub token - limited functionality'
-      );
-      expect(stderrSpy).not.toHaveBeenCalled();
-
-      stderrSpy.mockRestore();
-    });
-
     it('should handle GitHub token available', async () => {
       mockGetGitHubToken.mockResolvedValue('test-token');
       const { registerAllTools } = await import('../src/index.js');
@@ -706,52 +637,6 @@ describe('Index Module', () => {
       );
 
       expect(mockRegisterTools).toHaveBeenCalled();
-    });
-  });
-
-  describe('Prompts Configuration', () => {
-    it('should register prompts when arePromptsEnabled returns true', async () => {
-      mockArePromptsEnabled.mockReturnValue(true);
-
-      await import('../src/index.js');
-      await waitForAsyncOperations();
-
-      expect(mockRegisterPrompts).toHaveBeenCalled();
-    });
-
-    it('should not register prompts when arePromptsEnabled returns false', async () => {
-      mockArePromptsEnabled.mockReturnValue(false);
-
-      await import('../src/index.js');
-      await waitForAsyncOperations();
-
-      expect(mockRegisterPrompts).not.toHaveBeenCalled();
-    });
-
-    it('should include prompts capability when prompts are enabled', async () => {
-      mockArePromptsEnabled.mockReturnValue(true);
-
-      await import('../src/index.js');
-      await waitForAsyncOperations();
-
-      expect(mockMcpServerConstructor).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          capabilities: expect.objectContaining({
-            prompts: {},
-          }),
-        })
-      );
-    });
-
-    it('should exclude prompts capability when prompts are disabled', async () => {
-      mockArePromptsEnabled.mockReturnValue(false);
-
-      await import('../src/index.js');
-      await waitForAsyncOperations();
-
-      const serverOptions = mockMcpServerConstructor.mock.calls[0]?.[1];
-      expect(serverOptions?.capabilities).not.toHaveProperty('prompts');
     });
   });
 

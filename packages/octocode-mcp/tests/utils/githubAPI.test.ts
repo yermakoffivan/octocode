@@ -97,10 +97,6 @@ vi.mock('../../src/github/client.js', () => ({
   clearOctokitInstances: vi.fn(),
 }));
 
-vi.mock('../../src/utils/exec/npm.js', () => ({
-  getGithubCLIToken: vi.fn().mockResolvedValue('mocked-cli-token'),
-}));
-
 // Import after mocking
 import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
 import { searchGitHubReposAPI } from '../../src/github/repoSearch.js';
@@ -668,7 +664,9 @@ describe('GitHub API Utils', () => {
             },
           },
           status: 200,
-          headers: undefined,
+          // normalizeResponseHeaders() returns a clean {} when the provider
+          // omits headers (was previously `undefined` cast as a Record).
+          headers: {},
           rawResponseChars: expect.any(Number),
         });
       });

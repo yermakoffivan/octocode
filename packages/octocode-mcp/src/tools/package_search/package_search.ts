@@ -1,73 +1,51 @@
+import { TOOL_NAMES } from '../toolMetadata/proxies.js';
+import type { z } from 'zod/v4';
+import type { NpmPackageQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type NpmPackageQuery = z.infer<typeof NpmPackageQuerySchema>;
+type PackageSearchQuery = Omit<NpmPackageQuery, 'ecosystem'> & {
+  ecosystem?: 'npm';
+};
 import {
-  McpServer,
-  RegisteredTool,
-} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { toMCPSchema } from '../../types/toolTypes.js';
-import { withSecurityValidation } from '../../utils/securityBridge.js';
-import type { ToolInvocationCallback } from '../../types.js';
-import { TOOL_NAMES, DESCRIPTIONS } from '../toolMetadata/proxies.js';
-import type { PackageSearchQuery } from '@octocodeai/octocode-core';
-import { PackageSearchBulkQueryLocalSchema } from '../../scheme/remoteSchemaOverlay.js';
-import { invokeCallbackSafely } from '../utils.js';
-import { checkNpmAvailability } from '../../utils/exec/npm.js';
-import { checkNpmRegistryReachable } from '../../utils/package/npm.js';
+  PackageSearchBulkQueryLocalSchema,
+  PackageSearchOutputLocalSchema,
+} from '../../scheme/remoteSchemaOverlay.js';
 import { searchPackages } from './execution.js';
-import { PackageSearchOutputSchema } from '@octocodeai/octocode-core';
+import { createRemoteToolRegistration } from '../registerRemoteTool.js';
 
-export async function registerPackageSearchTool(
-  server: McpServer,
-  callback?: ToolInvocationCallback
-): Promise<RegisteredTool | null> {
-  const npmAvailable = await checkNpmAvailability(10000);
-  if (!npmAvailable) {
-    return null;
-  }
-
-  const registryReachable = await checkNpmRegistryReachable();
-  if (!registryReachable) {
-    return null;
-  }
-
-  return server.registerTool(
-    TOOL_NAMES.PACKAGE_SEARCH,
-    {
-      description: DESCRIPTIONS[TOOL_NAMES.PACKAGE_SEARCH],
-      inputSchema: toMCPSchema(PackageSearchBulkQueryLocalSchema),
-      outputSchema: toMCPSchema(PackageSearchOutputSchema),
-      annotations: {
-        title: 'Package Search',
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-      },
-    },
-    withSecurityValidation(
-      TOOL_NAMES.PACKAGE_SEARCH,
-      async (
-        args: {
-          queries: PackageSearchQuery[];
-          responseCharOffset?: number;
-          responseCharLength?: number;
-        },
-        _authInfo,
-        _sessionId
-      ): Promise<CallToolResult> => {
-        const queries = args.queries || [];
-
-        await invokeCallbackSafely(
-          callback,
-          TOOL_NAMES.PACKAGE_SEARCH,
-          queries
-        );
-
-        return searchPackages({
-          queries,
-          responseCharOffset: args.responseCharOffset,
-          responseCharLength: args.responseCharLength,
-        });
-      }
-    )
-  );
+/**
+ * Correct the agent-facing packageSearch description.
+ *
+ * The upstream metadata (octocode-core default.json) still documents the legacy
+ * `searchLimit` knob, but this server's overlay removed it in favour of the
+ * cross-tool `itemsPerPage` (see remoteSchemaOverlay.ts — "ONE result-count
+ * knob: itemsPerPage"). Left as-is, the description tells the agent to pass a
+ * field the schema strips, so the cap silently no-ops. `searchLimit` maps 1:1
+ * to `itemsPerPage`, so a literal rename keeps every example correct.
+ */
+export function describePackageSearch(base: string): string {
+  const corrected = base.replaceAll('searchLimit', 'itemsPerPage');
+  return `${corrected}
+<when>Use packageSearch when you know a registry package name and need the canonical repository URL; use githubSearchRepositories for broad repo discovery.</when>`;
 }
+
+export const registerPackageSearchTool =
+  createRemoteToolRegistration<PackageSearchQuery>({
+    name: TOOL_NAMES.PACKAGE_SEARCH,
+    title: 'Package Search',
+    inputSchema: PackageSearchBulkQueryLocalSchema,
+    outputSchema: PackageSearchOutputLocalSchema,
+    executionFn: searchPackages,
+    describe: describePackageSearch,
+    // No registrationGuard: packageSearch is ALWAYS registered. npm/registry
+    // reachability is a per-CALL concern, handled gracefully by searchPackages
+    // (try/catch → structured error result). A startup probe would otherwise
+    // make the tool silently vanish on a transient blip / offline startup and
+    // add npm-probe latency to every server init. (#T4 — guard removed)
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  });

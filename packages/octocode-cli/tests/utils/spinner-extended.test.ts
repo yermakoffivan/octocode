@@ -1,7 +1,3 @@
-/**
- * Spinner process signal / exception handlers and cleanup guard
- */
-
 import {
   describe,
   it,

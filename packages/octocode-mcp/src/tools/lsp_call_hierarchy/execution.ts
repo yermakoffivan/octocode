@@ -1,7 +1,14 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { LSPCallHierarchyQuery as UpstreamLSPCallHierarchyQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { LSPCallHierarchyQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type UpstreamLSPCallHierarchyQuery = z.infer<
+  typeof LSPCallHierarchyQuerySchema
+>;
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import { processCallHierarchy } from './callHierarchy.js';
+import type { CallHierarchyResult } from '../../lsp/types.js';
+import { attachLspEvidence } from '../../lsp/evidence.js';
 import type {
   ToolExecutionArgs,
   WithOptionalMeta,
@@ -12,6 +19,9 @@ type LSPCallHierarchyQuery = WithOptionalMeta<UpstreamLSPCallHierarchyQuery> & {
 };
 import { TOOL_NAME } from './constants.js';
 import { executeWithToolBoundary } from '../executionGuard.js';
+
+// Re-exported so every tool exposes `apply<Tool>Verbosity` from execution.ts.
+export { applyCallHierarchyVerbosity } from './callHierarchy.js';
 
 /**
  * Execute bulk LSP call hierarchy operation.
@@ -29,13 +39,27 @@ export async function executeCallHierarchy(
         toolName: TOOL_NAME,
         query,
         contextMessage: 'lspCallHierarchy execution failed',
-        execute: async () => processCallHierarchy(query),
+        execute: async () =>
+          attachCallHierarchyEvidence(await processCallHierarchy(query)),
       }),
     {
       toolName: TOOL_NAME,
       responseCharOffset,
       responseCharLength,
+      peerHints: true,
+      peerEvidence: true,
       minQueryTimeoutMs: 30_000,
     }
   );
+}
+
+function attachCallHierarchyEvidence(
+  result: CallHierarchyResult
+): CallHierarchyResult {
+  return attachLspEvidence(result, {
+    kind: 'calls',
+    paginationKey: 'outputPagination',
+    fallbackReason:
+      'Call graph derived from text pattern matching; cross-file edges may be missed and naive identifier matches may produce false positives.',
+  });
 }

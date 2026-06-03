@@ -3,18 +3,18 @@
  */
 import { RipgrepCommandBuilder } from '../../commands/RipgrepCommandBuilder.js';
 import { safeExec } from '../../utils/exec/safe.js';
-import { getLargeFileWorkflowHints } from '../../hints/dynamic.js';
-import {
-  validateRipgrepQuery,
-  type RipgrepQuery,
-} from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import { validateRipgrepQuery } from '@octocodeai/octocode-core/schemas/runtime';
+import type { RipgrepQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type RipgrepQuery = z.infer<typeof RipgrepQuerySchema>;
 import {
   validateToolPath,
   createErrorResult,
 } from '../../utils/file/toolHelpers.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
-import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core';
+import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-types';
 import { LOCAL_TOOL_ERROR_CODES } from '../../errors/localToolErrors.js';
 import { getHints } from '../../hints/index.js';
 import { parseRipgrepOutput } from './ripgrepParser.js';
@@ -91,7 +91,7 @@ export async function executeRipgrepSearchInternal(
 
   const result = await safeExec(command, args);
 
-  if (result.stderr?.includes('timeout') || result.code === null) {
+  if (result.code === null) {
     const timeoutMs = RESOURCE_LIMITS.DEFAULT_EXEC_TIMEOUT_MS;
     return attachRawResponseChars(
       {
@@ -117,7 +117,18 @@ export async function executeRipgrepSearchInternal(
         status: 'empty',
         searchEngine: 'rg',
         warnings: [...validation.warnings, ...chunkingWarnings],
-        hints: getHints(TOOL_NAMES.LOCAL_RIPGREP, 'empty'),
+        // Pass full query shape so the per-tool empty branch can name the
+        // actual filters in play (type/include/excludeDir/path/case) and
+        // suggest a concrete next move.
+        hints: getHints(TOOL_NAMES.LOCAL_RIPGREP, 'empty', {
+          pattern: configuredQuery.pattern,
+          path: configuredQuery.path,
+          type: configuredQuery.type,
+          include: configuredQuery.include,
+          excludeDir: configuredQuery.excludeDir,
+          fixedString: configuredQuery.fixedString,
+          caseSensitive: configuredQuery.caseSensitive,
+        } as Record<string, unknown>),
       } as LocalSearchCodeToolResult,
       result.stdout.length
     );
@@ -136,15 +147,15 @@ export async function executeRipgrepSearchInternal(
 
   const parsed = parseRipgrepOutput(result.stdout, configuredQuery);
 
-  // Post-flight large-result guidance based on ripgrep's own output size.
+  // Post-flight large-result evidence — single conditional warning carrying
+  // the actual payload size. Recovery moves are described in the tool spec.
   if (
     !queryForExec.filesOnly &&
     result.stdout.length > RESOURCE_LIMITS.LARGE_RESULT_BYTES_HINT
   ) {
     chunkingWarnings.push(
-      `Result payload is large (~${Math.round(result.stdout.length / 1024)}KB). Narrow the search with type/include filters or use filesOnly=true.`
+      `Result payload is large (~${Math.round(result.stdout.length / 1024)}KB).`
     );
-    chunkingWarnings.push(...getLargeFileWorkflowHints('search'));
   }
 
   const searchResult = await buildSearchResult(

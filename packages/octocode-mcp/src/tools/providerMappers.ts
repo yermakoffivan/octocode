@@ -5,16 +5,30 @@ import type {
   RepoSearchResult as ProviderRepoSearchResult,
   RepoStructureResult as ProviderRepoStructureResult,
 } from '../providers/types.js';
+import type { z } from 'zod/v4';
 import type {
-  FileContentQuery,
-  GitHubCodeSearchQuery,
-  GitHubPullRequestSearchQuery,
-  GitHubReposSearchQuery,
-  GitHubRepositoryOutput,
-  GitHubSearchCodeData,
-  GitHubViewRepoStructureQuery,
-} from '@octocodeai/octocode-core';
+  FileContentQuerySchema,
+  GitHubCodeSearchQuerySchema,
+  GitHubPullRequestSearchQuerySchema,
+  GitHubReposSearchSingleQuerySchema,
+  GitHubViewRepoStructureQuerySchema,
+} from '@octocodeai/octocode-core/schemas';
+import type { GitHubRepositoryOutput } from '@octocodeai/octocode-core/extra-types';
 import type { WithOptionalMeta } from '../types/execution.js';
+import { resolveGithubPerPage } from '../scheme/localSchemaOverlay.js';
+import { GITHUB_STRUCTURE_DEFAULTS } from './github_view_repo_structure/constants.js';
+
+type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
+type GitHubCodeSearchQuery = z.infer<typeof GitHubCodeSearchQuerySchema>;
+type GitHubPullRequestSearchQuery = z.infer<
+  typeof GitHubPullRequestSearchQuerySchema
+>;
+type GitHubReposSearchSingleQuery = z.infer<
+  typeof GitHubReposSearchSingleQuerySchema
+>;
+type GitHubViewRepoStructureQuery = z.infer<
+  typeof GitHubViewRepoStructureQuerySchema
+>;
 
 type PRDefaultKeys =
   | 'order'
@@ -47,28 +61,22 @@ export function buildPaginationHints(
   },
   label: string
 ): string[] {
+  if (pagination.totalPages <= 1) {
+    return [];
+  }
+
   const hints: string[] = [];
   const perPage = pagination.entriesPerPage || pagination.perPage || 10;
   const totalMatches = pagination.totalMatches || 0;
   const startItem = (pagination.currentPage - 1) * perPage + 1;
   const endItem = Math.min(pagination.currentPage * perPage, totalMatches);
 
-  hints.push(
-    `Page ${pagination.currentPage}/${pagination.totalPages} (showing ${startItem}-${endItem} of ${totalMatches} ${label})`
-  );
-
+  // Strict policy: emit only when there's more to fetch. Page/Previous/Jump
+  // are data echoes of pagination.{currentPage,totalPages} the agent already
+  // has — `Final page` is the same tautology in negative form.
   if (pagination.hasMore) {
-    hints.push(`Next: page=${pagination.currentPage + 1}`);
-  }
-  if (pagination.currentPage > 1) {
-    hints.push(`Previous: page=${pagination.currentPage - 1}`);
-  }
-  if (!pagination.hasMore) {
-    hints.push('Final page');
-  }
-  if (pagination.totalPages > 2) {
     hints.push(
-      `Jump to: page=1 (first) or page=${pagination.totalPages} (last)`
+      `Page ${pagination.currentPage}/${pagination.totalPages} (showing ${startItem}-${endItem} of ${totalMatches} ${label}). Next: page=${pagination.currentPage + 1}`
     );
   }
 
@@ -86,7 +94,9 @@ export function mapCodeSearchToolQuery(
     filename: query.filename,
     extension: query.extension,
     match: query.match,
-    limit: query.limit,
+    limit: resolveGithubPerPage(
+      query as { githubAPILimit?: number; itemsPerPage?: number }
+    ),
     page: query.page,
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
@@ -94,63 +104,94 @@ export function mapCodeSearchToolQuery(
   };
 }
 
+export interface CodeSearchGroupedMatch {
+  path: string;
+  value?: string;
+  /** Char start/end positions of the keyword within `value`. Populated from
+   *  the provider's `positions` field when available. */
+  matchIndices?: Array<{ start: number; end: number }>;
+}
+
+export interface CodeSearchGroupedResult {
+  id: string;
+  owner: string;
+  repo: string;
+  matches: CodeSearchGroupedMatch[];
+}
+
+export interface CodeSearchPagination {
+  currentPage: number;
+  totalPages: number;
+  perPage: number;
+  totalMatches: number;
+  hasMore: boolean;
+}
+
+export interface CodeSearchFlatResult {
+  results: CodeSearchGroupedResult[];
+  pagination?: CodeSearchPagination;
+  /** True when the searched owner/repo/user does not exist (GitHub 422). */
+  nonExistentScope?: boolean;
+}
+
+function splitRepositoryPath(repositoryPath: string): {
+  owner: string;
+  repo: string;
+} {
+  const slashIdx = repositoryPath.lastIndexOf('/');
+  if (slashIdx <= 0) {
+    return { owner: '', repo: repositoryPath };
+  }
+  return {
+    owner: repositoryPath.substring(0, slashIdx),
+    repo: repositoryPath.substring(slashIdx + 1),
+  };
+}
+
 export function mapCodeSearchProviderResult(
   data: CodeSearchResult,
   query: WithOptionalMeta<GitHubCodeSearchQuery>
-): GitHubSearchCodeData {
-  const splitRepositoryPath = (repositoryPath: string) => {
-    const slashIdx = repositoryPath.lastIndexOf('/');
-    if (slashIdx <= 0) {
-      return {
-        owner: '',
-        repo: repositoryPath,
-      };
-    }
+): CodeSearchFlatResult {
+  const isPathMatch = query.match === 'path';
+  const groups = new Map<string, CodeSearchGroupedResult>();
 
-    return {
-      owner: repositoryPath.substring(0, slashIdx),
-      repo: repositoryPath.substring(slashIdx + 1),
-    };
-  };
-
-  const files = data.items.map(item => {
+  for (const item of data.items) {
     const repoFullName = item.repository.name || '';
-    const { owner, repo: repoName } = splitRepositoryPath(repoFullName);
+    const { owner, repo } = splitRepositoryPath(repoFullName);
+    const id = `${owner}/${repo}`;
 
-    const baseFile = {
-      path: item.path,
-      owner,
-      repo: repoName,
-      ...(item.lastModifiedAt && { lastModifiedAt: item.lastModifiedAt }),
-    };
-
-    if (query.match === 'path') {
-      return baseFile;
+    let group = groups.get(id);
+    if (!group) {
+      group = { id, owner, repo, matches: [] };
+      groups.set(id, group);
     }
 
-    return {
-      ...baseFile,
-      text_matches: item.matches.map(match => ({
-        value: match.context,
-        ...(match.positions?.length && {
-          matchIndices: match.positions.map(([start, end]) => ({
-            start,
-            end,
-          })),
-        }),
-      })),
-    };
-  });
+    if (isPathMatch || !item.matches?.length) {
+      group.matches.push({ path: item.path });
+      continue;
+    }
 
-  const result: GitHubSearchCodeData = { files };
-
-  if (data.repositoryContext?.branch) {
-    result.repositoryContext = {
-      branch: data.repositoryContext.branch,
-    };
+    for (const m of item.matches) {
+      const match: CodeSearchGroupedMatch = {
+        path: item.path,
+        value: m.context,
+      };
+      if (m.positions?.length > 0) {
+        match.matchIndices = m.positions.map(([start, end]) => ({
+          start,
+          end,
+        }));
+      }
+      group.matches.push(match);
+    }
   }
 
-  if (data.pagination) {
+  const result: CodeSearchFlatResult = {
+    results: Array.from(groups.values()),
+    ...(data.nonExistentScope ? { nonExistentScope: true } : {}),
+  };
+
+  if (data.pagination && data.pagination.totalPages > 1) {
     result.pagination = {
       currentPage: data.pagination.currentPage,
       totalPages: data.pagination.totalPages,
@@ -164,7 +205,7 @@ export function mapCodeSearchProviderResult(
 }
 
 export function mapRepoSearchToolQuery(
-  query: WithOptionalMeta<GitHubReposSearchQuery>
+  query: WithOptionalMeta<GitHubReposSearchSingleQuery>
 ) {
   return {
     keywords: query.keywordsToSearch,
@@ -174,6 +215,10 @@ export function mapRepoSearchToolQuery(
     size: query.size,
     created: query.created,
     updated: query.updated,
+    language: (query as Record<string, unknown>).language as string | undefined,
+    archived: (query as Record<string, unknown>).archived as
+      | boolean
+      | undefined,
     match: query.match,
     sort: query.sort as
       | 'stars'
@@ -182,7 +227,9 @@ export function mapRepoSearchToolQuery(
       | 'created'
       | 'best-match'
       | undefined,
-    limit: query.limit,
+    limit: resolveGithubPerPage(
+      query as { githubAPILimit?: number; itemsPerPage?: number }
+    ),
     page: query.page,
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
@@ -233,6 +280,7 @@ export function mapPullRequestToolQuery(query: PartialPRQuery) {
   return {
     projectId: toProviderProjectId(query.owner, query.repo),
     owner: query.owner,
+    query: query.query,
     number: query.prNumber,
     state: query.state as 'open' | 'closed' | 'merged' | 'all' | undefined,
     author: query.author,
@@ -260,9 +308,13 @@ export function mapPullRequestToolQuery(query: PartialPRQuery) {
     comments: query.comments,
     reactions: query.reactions,
     interactions: query.interactions,
-    merged: query.merged,
     draft: query.draft,
-    match: query.match as Array<'title' | 'body' | 'comments'> | undefined,
+    matchScope: query.matchScope as
+      | Array<'title' | 'body' | 'comments'>
+      | undefined,
+    archived: (query as Record<string, unknown>).archived as
+      | boolean
+      | undefined,
     withComments: query.withComments,
     withCommits: query.withCommits,
     type: query.type as
@@ -273,7 +325,9 @@ export function mapPullRequestToolQuery(query: PartialPRQuery) {
     partialContentMetadata: query.partialContentMetadata,
     sort: query.sort as 'created' | 'updated' | 'best-match' | undefined,
     order: query.order as 'asc' | 'desc' | undefined,
-    limit: query.limit,
+    limit: resolveGithubPerPage(
+      query as { githubAPILimit?: number; itemsPerPage?: number }
+    ),
     page: query.page,
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
@@ -281,18 +335,8 @@ export function mapPullRequestToolQuery(query: PartialPRQuery) {
   };
 }
 
-const MAX_PR_BODY_LENGTH = 500;
-const MAX_FILE_CHANGES_DEFAULT = 20;
-
-function truncatePrBody(body: string | undefined | null): string | undefined {
-  if (!body) return body ?? undefined;
-  if (body.length <= MAX_PR_BODY_LENGTH) return body;
-  return `${body.substring(0, MAX_PR_BODY_LENGTH)}... (${body.length} chars total, use prNumber for full body)`;
-}
-
 function capFileChanges(
-  fileChanges: ProviderPullRequestSearchResult['items'][number]['fileChanges'],
-  cap: number = MAX_FILE_CHANGES_DEFAULT
+  fileChanges: ProviderPullRequestSearchResult['items'][number]['fileChanges']
 ): {
   capped: typeof fileChanges;
   totalCount: number;
@@ -300,22 +344,98 @@ function capFileChanges(
 } {
   if (!fileChanges)
     return { capped: undefined, totalCount: 0, wasTruncated: false };
-  const totalCount = fileChanges.length;
-  if (totalCount <= cap)
-    return { capped: fileChanges, totalCount, wasTruncated: false };
-  return { capped: fileChanges.slice(0, cap), totalCount, wasTruncated: true };
+  // No count cap: return EVERY file change. Output size is bounded losslessly
+  // by the response char-paginator (agents page for more via responseCharOffset),
+  // never by silently dropping files. Nothing is omitted.
+  return {
+    capped: fileChanges,
+    totalCount: fileChanges.length,
+    wasTruncated: false,
+  };
+}
+
+/**
+ * Strip patches from a file-changes list, keeping path + status + counts.
+ * Lets metadata (triage) mode answer "which files changed?" without the diff
+ * payload — and without forcing a second partialContent/fullContent call.
+ */
+function toLightweightFileChanges(
+  fileChanges: ProviderPullRequestSearchResult['items'][number]['fileChanges']
+): ProviderPullRequestSearchResult['items'][number]['fileChanges'] {
+  if (!fileChanges) return fileChanges;
+  return fileChanges.map(({ patch: _patch, ...rest }) => rest);
+}
+
+type ProviderPrComment = NonNullable<
+  ProviderPullRequestSearchResult['items'][number]['comments']
+>[number];
+
+function detectReviewThemes(comments: readonly ProviderPrComment[]): string[] {
+  const bodies = comments.map(comment => comment.body.toLowerCase());
+  const themes: string[] = [];
+
+  if (
+    bodies.some(body => /\b(lgtm|looks good|approved|ship it)\b/.test(body))
+  ) {
+    themes.push('approval');
+  }
+  if (
+    bodies.some(body =>
+      /\b(change|fix|concern|blocker|blocking|request changes?)\b/.test(body)
+    )
+  ) {
+    themes.push('changes-requested');
+  }
+  if (bodies.some(body => body.includes('?'))) {
+    themes.push('question');
+  }
+
+  return themes.length > 0 ? themes : ['discussion'];
+}
+
+function buildReviewSummary(
+  comments: readonly ProviderPrComment[] | undefined
+):
+  | {
+      totalComments: number;
+      commenters: string[];
+      latestCommentAt?: string;
+      themes: string[];
+    }
+  | undefined {
+  if (!comments || comments.length === 0) return undefined;
+  const commenters = Array.from(
+    new Set(comments.map(comment => comment.author))
+  );
+  const latestCommentAt = comments
+    .map(comment => comment.updatedAt || comment.createdAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  return {
+    totalComments: comments.length,
+    commenters: commenters.slice(0, 8),
+    ...(latestCommentAt ? { latestCommentAt } : {}),
+    themes: detectReviewThemes(comments),
+  };
 }
 
 export function mapPullRequestProviderResultData(
-  data: ProviderPullRequestSearchResult
+  data: ProviderPullRequestSearchResult,
+  options: { includeFileChanges?: boolean } = {}
 ) {
+  const { includeFileChanges = true } = options;
   const pullRequests = data.items.map(pr => {
     const { capped: cappedFileChanges, totalCount: originalFileChangeCount } =
       capFileChanges(pr.fileChanges);
+    const comments = Array.isArray(pr.comments) ? pr.comments : undefined;
+    const reviewSummary = buildReviewSummary(comments);
     return {
       number: pr.number,
       title: pr.title,
-      body: truncatePrBody(pr.body),
+      // Full body, never truncated — response size is bounded losslessly by
+      // the char-paginator (agents page for more), not by a 500-char preview.
+      body: pr.body ?? undefined,
       url: pr.url,
       state: pr.state,
       draft: pr.draft,
@@ -324,6 +444,8 @@ export function mapPullRequestProviderResultData(
       labels: pr.labels,
       sourceBranch: pr.sourceBranch,
       targetBranch: pr.targetBranch,
+      sourceSha: pr.sourceSha,
+      targetSha: pr.targetSha,
       createdAt: pr.createdAt,
       updatedAt: pr.updatedAt,
       closedAt: pr.closedAt,
@@ -333,7 +455,18 @@ export function mapPullRequestProviderResultData(
       additions: pr.additions,
       deletions: pr.deletions,
       ...(pr.comments && { comments: pr.comments }),
-      ...(cappedFileChanges && { fileChanges: cappedFileChanges }),
+      ...(reviewSummary && { reviewSummary }),
+      // In metadata (triage) mode we keep a LIGHTWEIGHT file list — paths +
+      // additions/deletions, no patch — so "which files changed?" is answered
+      // without a second partialContent/fullContent round-trip. Full patches
+      // still require type="partialContent"/"fullContent".
+      ...(cappedFileChanges
+        ? {
+            fileChanges: includeFileChanges
+              ? cappedFileChanges
+              : toLightweightFileChanges(cappedFileChanges),
+          }
+        : {}),
     };
   });
 
@@ -386,7 +519,11 @@ export function mapFileContentProviderResult(
   query: WithOptionalMeta<FileContentQuery>
 ): Record<string, unknown> {
   return {
+    path: data.path,
     content: data.content,
+    ...(typeof data.totalLines === 'number' && {
+      totalLines: data.totalLines,
+    }),
     ...(data.isPartial && {
       isPartial: data.isPartial,
     }),
@@ -403,6 +540,9 @@ export function mapFileContentProviderResult(
     ...(data.pagination && {
       pagination: data.pagination,
     }),
+    ...(data.warnings?.length && {
+      warnings: data.warnings,
+    }),
     ...(data.ref && query.branch !== data.ref
       ? { resolvedBranch: data.ref }
       : {}),
@@ -418,14 +558,20 @@ export function mapRepoStructureToolQuery(
     ref: resolvedBranch,
     path: query.path ? String(query.path) : undefined,
     depth: typeof query.depth === 'number' ? query.depth : undefined,
-    entriesPerPage:
-      typeof query.entriesPerPage === 'number'
-        ? query.entriesPerPage
-        : undefined,
-    entryPageNumber:
-      typeof query.entryPageNumber === 'number'
-        ? query.entryPageNumber
-        : undefined,
+    // Tool surface uses the cross-tool `itemsPerPage` (page size) + `page`
+    // (page number); the provider/structure layer still calls its params
+    // `entriesPerPage` / `entryPageNumber` internally.
+    // Default to 100 so typical monorepo roots return in a single call.
+    entriesPerPage: (() => {
+      const ipp = (query as { itemsPerPage?: number }).itemsPerPage;
+      return typeof ipp === 'number'
+        ? ipp
+        : GITHUB_STRUCTURE_DEFAULTS.ENTRIES_PER_PAGE;
+    })(),
+    entryPageNumber: (() => {
+      const p = (query as { page?: number }).page;
+      return typeof p === 'number' ? p : undefined;
+    })(),
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
     reasoning: query.reasoning,

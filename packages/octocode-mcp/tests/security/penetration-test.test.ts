@@ -15,11 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContentSanitizer } from 'octocode-security-utils/contentSanitizer';
 import { maskSensitiveData } from 'octocode-security-utils/mask';
 import { validateCommand } from 'octocode-security-utils/commandValidator';
-import {
-  PathValidator,
-  reinitializePathValidator,
-} from 'octocode-security-utils/pathValidator';
-import { validateExecutionContext } from 'octocode-security-utils/executionContextValidator';
+import { PathValidator } from 'octocode-security-utils/pathValidator';
 import {
   shouldIgnore,
   shouldIgnorePath,
@@ -38,7 +34,13 @@ import { executeBulkOperation } from '../../src/utils/response/bulk.js';
 import { sanitizeCallToolResult } from '../../src/utils/secureServer.js';
 
 vi.mock('octocode-shared', () => ({
-  getConfigSync: () => ({ output: { format: 'yaml' } }),
+  getConfigSync: () => ({
+    output: { format: 'yaml', pagination: { defaultCharLength: 2000 } },
+  }),
+  DEFAULT_OUTPUT_CONFIG: {
+    format: 'yaml',
+    pagination: { defaultCharLength: 2000 },
+  },
   resolveTokenFull: vi.fn(async () => null),
   getTokenFromEnv: vi.fn(() => null),
   getEnvTokenSource: vi.fn(() => null),
@@ -46,7 +48,7 @@ vi.mock('octocode-shared', () => ({
     sessionId: '00000000-0000-4000-8000-000000000000',
     createdAt: new Date().toISOString(),
     lastActiveAt: new Date().toISOString(),
-    stats: { toolCalls: 0, promptCalls: 0, errors: 0, rateLimits: 0 },
+    stats: { toolCalls: 0, errors: 0, rateLimits: 0 },
   })),
   incrementToolCalls: vi.fn(() => ({ success: true })),
   incrementErrors: vi.fn(() => ({ success: true })),
@@ -485,29 +487,6 @@ describe('ATTACK-03: Path Traversal', () => {
   });
 });
 
-describe('ATTACK-04: Execution Context Escape', () => {
-  it('should block execution in /tmp', () => {
-    expect(validateExecutionContext('/tmp').isValid).toBe(false);
-  });
-
-  it('should block execution in /etc', () => {
-    expect(validateExecutionContext('/etc').isValid).toBe(false);
-  });
-
-  it('should block execution in root', () => {
-    expect(validateExecutionContext('/').isValid).toBe(false);
-  });
-
-  it('should block empty cwd', () => {
-    expect(validateExecutionContext('').isValid).toBe(false);
-  });
-
-  it('should block traversal in cwd', () => {
-    const ws = process.cwd();
-    expect(validateExecutionContext(`${ws}/../../etc`).isValid).toBe(false);
-  });
-});
-
 describe('ATTACK-05: Prototype Pollution', () => {
   it('should block __proto__ key from JSON-parsed input', () => {
     // Real attack vector: JSON.parse creates __proto__ as own property
@@ -619,7 +598,6 @@ describe('ATTACK-07: Output Channel Bypass', () => {
     const result = await executeBulkOperation(
       [{ id: 'q1', query: 'test' }],
       async () => ({
-        status: 'hasResults' as const,
         content: `File contains ${SECRETS.AWS_KEY} and ${SECRETS.PRIVATE_KEY}`,
         matches: [SECRETS.GITHUB_TOKEN, SECRETS.STRIPE_KEY],
       }),
@@ -885,7 +863,9 @@ describe('ATTACK-12: Environment Variable Attacks', () => {
 
   it('should not allow ALLOWED_PATHS to grant access to /etc', () => {
     process.env.ALLOWED_PATHS = '/etc';
-    const validator = new PathValidator({
+    // Construct validator to exercise constructor path; assertions below
+    // hit the module-level shouldIgnoreFile/shouldIgnorePath helpers.
+    new PathValidator({
       workspaceRoot: '/workspace',
       includeHomeDir: false,
     });
@@ -893,19 +873,6 @@ describe('ATTACK-12: Environment Variable Attacks', () => {
     // But shouldIgnore should still block sensitive files
     expect(shouldIgnoreFile('.env')).toBe(true);
     expect(shouldIgnorePath('.ssh')).toBe(true);
-  });
-
-  it('should handle empty WORKSPACE_ROOT gracefully', () => {
-    process.env.WORKSPACE_ROOT = '';
-    const result = validateExecutionContext(process.cwd());
-    expect(result.isValid).toBe(true);
-  });
-
-  it('should handle WORKSPACE_ROOT with traversal', () => {
-    process.env.WORKSPACE_ROOT = '/workspace/project/../../';
-    // The path.resolve will normalize this
-    const result = validateExecutionContext('/tmp/evil');
-    expect(result.isValid).toBe(false);
   });
 });
 

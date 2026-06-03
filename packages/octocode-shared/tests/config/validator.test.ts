@@ -25,9 +25,6 @@ describe('config/validator', () => {
         github: {
           apiUrl: 'https://api.github.com',
         },
-        gitlab: {
-          host: 'https://gitlab.com',
-        },
         local: {
           enabled: true,
           allowedPaths: ['/home/user/projects'],
@@ -183,23 +180,6 @@ describe('config/validator', () => {
         expect(result.valid).toBe(true);
       });
 
-      it('rejects non-boolean disablePrompts', () => {
-        const result = validateConfig({
-          tools: { disablePrompts: 'true' },
-        });
-        expect(result.valid).toBe(false);
-        expect(
-          result.errors.some(e => e.includes('tools.disablePrompts'))
-        ).toBe(true);
-      });
-
-      it('accepts valid boolean disablePrompts', () => {
-        const result = validateConfig({
-          tools: { disablePrompts: true },
-        });
-        expect(result.valid).toBe(true);
-      });
-
       it('rejects non-object tools', () => {
         const result = validateConfig({ tools: 'invalid' });
         expect(result.valid).toBe(false);
@@ -322,67 +302,7 @@ describe('config/validator', () => {
       });
     });
 
-    describe('gitlab validation', () => {
-      it('accepts valid host URL', () => {
-        const result = validateConfig({
-          gitlab: { host: 'https://gitlab.example.com' },
-        });
-        expect(result.valid).toBe(true);
-      });
-
-      it('rejects invalid host URL', () => {
-        const result = validateConfig({
-          gitlab: { host: 'not-a-url' },
-        });
-        expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.includes('gitlab.host'))).toBe(true);
-      });
-
-      it('rejects non-http/https host URL', () => {
-        const result = validateConfig({
-          gitlab: { host: 'ftp://gitlab.example.com' },
-        });
-        expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.includes('Only http/https'))).toBe(
-          true
-        );
-      });
-
-      it('rejects non-object gitlab', () => {
-        const result = validateConfig({ gitlab: 'invalid' });
-        expect(result.valid).toBe(false);
-        expect(
-          result.errors.some(e => e.includes('gitlab: Must be an object'))
-        ).toBe(true);
-      });
-
-      it('rejects array gitlab', () => {
-        const result = validateConfig({ gitlab: [] });
-        expect(result.valid).toBe(false);
-        expect(
-          result.errors.some(e => e.includes('gitlab: Must be an object'))
-        ).toBe(true);
-      });
-    });
-
     describe('local validation (extended)', () => {
-      it('rejects non-string workspaceRoot', () => {
-        const result = validateConfig({
-          local: { workspaceRoot: 123 },
-        });
-        expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.includes('local.workspaceRoot'))).toBe(
-          true
-        );
-      });
-
-      it('accepts valid workspaceRoot string', () => {
-        const result = validateConfig({
-          local: { workspaceRoot: '/home/user/project' },
-        });
-        expect(result.valid).toBe(true);
-      });
-
       it('rejects non-string items in allowedPaths', () => {
         const result = validateConfig({
           local: { allowedPaths: [123, '/valid/path'] },

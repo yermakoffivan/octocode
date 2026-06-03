@@ -1,17 +1,11 @@
-/**
- * Node Check Feature Tests
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { execSync, exec } from 'node:child_process';
 
-// Mock child_process
 vi.mock('node:child_process', () => ({
   execSync: vi.fn(),
   exec: vi.fn(),
 }));
 
-// Mock fetch for registry tests
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
@@ -184,12 +178,10 @@ describe('Node Check', () => {
 
   describe('checkNodeEnvironment', () => {
     it('should return complete environment status', async () => {
-      // Mock all execSync calls (for sync checks)
       vi.mocked(execSync)
-        .mockReturnValueOnce('v20.10.0\n') // node --version
-        .mockReturnValueOnce('10.2.3\n'); // npm --version
+        .mockReturnValueOnce('v20.10.0\n')
+        .mockReturnValueOnce('10.2.3\n');
 
-      // Mock exec for async octocode check
       vi.mocked(exec).mockImplementation(
         (_cmd: string, _opts: unknown, callback?: unknown) => {
           if (typeof callback === 'function') {
@@ -199,7 +191,6 @@ describe('Node Check', () => {
         }
       );
 
-      // Mock fetch for registry
       mockFetch.mockResolvedValue({ ok: true });
 
       const { checkNodeEnvironment } =
@@ -219,7 +210,6 @@ describe('Node Check', () => {
         throw new Error('Command not found');
       });
 
-      // Mock exec to also fail for async octocode check
       vi.mocked(exec).mockImplementation(
         (_cmd: string, _opts: unknown, callback?: unknown) => {
           if (typeof callback === 'function') {

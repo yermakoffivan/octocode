@@ -1,13 +1,3 @@
-/**
- * TDD: OAuth Security Gaps
- *
- * Fills gaps:
- * - getAuthStatusAsync: async path (uses await getCredentials) — zero tests existed
- * - logout with clientSecret: token revocation path — never tested
- * - getOctocodeToken / getGhCliToken: direct calls — never tested
- * - Token NOT leaked in error messages
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('node:fs', () => ({
@@ -106,13 +96,13 @@ vi.mock('../../src/utils/token-storage.js', () => ({
   resolveTokenFull: vi.fn(),
   refreshAuthToken: vi.fn(),
   getTokenWithRefresh: mockGetTokenWithRefresh,
+  getGhCliToken: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock('../../src/features/gh-auth.js', () => ({
   checkGitHubAuth: vi
     .fn()
     .mockReturnValue({ authenticated: false, username: null }),
-  getGitHubCLIToken: vi.fn().mockReturnValue(null),
 }));
 
 const savedEnv: Record<string, string | undefined> = {};
@@ -277,23 +267,23 @@ describe('OAuth Security Gaps', () => {
 
   describe('getGhCliToken', () => {
     it('returns gh-cli source when gh auth provides token', async () => {
-      const ghAuth = await import('../../src/features/gh-auth.js');
-      vi.mocked(ghAuth.getGitHubCLIToken).mockReturnValue('ghp_clitoken');
+      const tokenStorage = await import('../../src/utils/token-storage.js');
+      vi.mocked(tokenStorage.getGhCliToken).mockResolvedValue('ghp_clitoken');
 
       const { getGhCliToken } =
         await import('../../src/features/github-oauth.js');
-      const result = getGhCliToken();
+      const result = await getGhCliToken();
       expect(result.source).toBe('gh-cli');
       expect(result.token).toBe('ghp_clitoken');
     });
 
     it('returns source=none when gh CLI has no token', async () => {
-      const ghAuth = await import('../../src/features/gh-auth.js');
-      vi.mocked(ghAuth.getGitHubCLIToken).mockReturnValue(null);
+      const tokenStorage = await import('../../src/utils/token-storage.js');
+      vi.mocked(tokenStorage.getGhCliToken).mockResolvedValue(null);
 
       const { getGhCliToken } =
         await import('../../src/features/github-oauth.js');
-      const result = getGhCliToken();
+      const result = await getGhCliToken();
       expect(result.source).toBe('none');
       expect(result.token).toBeNull();
     });

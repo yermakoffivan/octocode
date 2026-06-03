@@ -20,17 +20,29 @@ import type {
 import { searchGitHubCodeAPI } from '../../github/codeSearch.js';
 import { searchGitHubReposAPI } from '../../github/repoSearch.js';
 
+import type { z } from 'zod/v4';
 import type {
-  GitHubCodeSearchQuery,
-  GitHubReposSearchQuery,
+  GitHubCodeSearchQuerySchema,
+  GitHubReposSearchSingleQuerySchema,
+} from '@octocodeai/octocode-core/schemas';
+import type {
   GitHubRepositoryOutput,
   GitHubSearchRepositoriesData,
-} from '@octocodeai/octocode-core';
+} from '@octocodeai/octocode-core/extra-types';
+
+type GitHubCodeSearchQuery = z.infer<typeof GitHubCodeSearchQuerySchema>;
+type GitHubReposSearchSingleQuery = z.infer<
+  typeof GitHubReposSearchSingleQuerySchema
+>;
 import type { OptimizedCodeSearchResult } from '../../github/githubAPI.js';
 import { isGitHubAPIError } from '../../github/githubAPI.js';
 import { countSerializedChars } from '../../utils/response/charSavings.js';
 
-import { createGitHubProviderError, parseGitHubProjectId } from './utils.js';
+import {
+  createGitHubProviderError,
+  createGitHubProviderErrorFromResult,
+  parseGitHubProjectId,
+} from './utils.js';
 export { parseGitHubProjectId } from './utils.js';
 
 /**
@@ -62,8 +74,14 @@ export function transformCodeSearchResult(
       totalPages: data.pagination?.totalPages || 1,
       hasMore: data.pagination?.hasMore || false,
       totalMatches: data.pagination?.totalMatches,
+      // Carry the real page size so downstream pagination + "showing X-Y"
+      // hints reflect the caller's itemsPerPage/limit instead of defaulting
+      // to 10 in buildPaginationHints (same fix as transformRepoSearchResult).
+      entriesPerPage: (data.pagination as { perPage?: number } | undefined)
+        ?.perPage,
     },
     repositoryContext: data._researchContext?.repositoryContext,
+    nonExistentScope: data.nonExistentScope,
   };
 }
 
@@ -103,7 +121,13 @@ export function transformRepoSearchResult(
       totalPages: data.pagination?.totalPages || 1,
       hasMore: data.pagination?.hasMore || false,
       totalMatches: data.pagination?.totalMatches,
+      // Carry the real page size so downstream pagination + item-range hints
+      // reflect the caller's `limit` instead of defaulting to 10. PaginationInfo
+      // exposes `entriesPerPage`; the API layer reports it as `perPage`.
+      entriesPerPage: (data.pagination as { perPage?: number } | undefined)
+        ?.perPage,
     },
+    nonExistentScope: (data as { nonExistentScope?: boolean }).nonExistentScope,
   };
 }
 
@@ -174,7 +198,11 @@ export async function searchRepos(
     size: query.size,
     created: query.created,
     updated: query.updated,
+    language: query.language,
     match: query.match,
+    // `archived` is not part of the upstream schema; it is carried through as
+    // an extra runtime property and read by the repo query builder.
+    archived: query.archived,
     sort:
       query.sort === 'best-match'
         ? undefined
@@ -184,30 +212,18 @@ export async function searchRepos(
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
     reasoning: query.reasoning,
-  } as GitHubReposSearchQuery;
+  } as GitHubReposSearchSingleQuery & { archived?: boolean };
 
   const result = await searchGitHubReposAPI(githubQuery, authInfo);
 
   if ('error' in result) {
-    const errorResult = result as {
-      error: string | { toString(): string };
-      status?: number;
-      hints?: string[];
-      rateLimitRemaining?: number;
-      rateLimitReset?: number;
-      retryAfter?: number;
-    };
-    return createGitHubProviderError({
-      error:
-        typeof errorResult.error === 'string'
-          ? errorResult.error
-          : String(errorResult.error),
-      status: errorResult.status || 500,
-      hints: errorResult.hints,
-      rateLimitRemaining: errorResult.rateLimitRemaining,
-      rateLimitReset: errorResult.rateLimitReset,
-      retryAfter: errorResult.retryAfter,
-    });
+    return (
+      createGitHubProviderErrorFromResult(result) ?? {
+        error: 'Unknown GitHub API error',
+        status: 500,
+        provider: 'github',
+      }
+    );
   }
 
   if (!('data' in result) || !result.data) {

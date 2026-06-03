@@ -1,84 +1,29 @@
 import type { ProviderType } from './providers/types.js';
-import { getGithubCLIToken } from './utils/exec/npm.js';
 import {
   resolveTokenFull,
   type FullTokenResolution,
-  type GhCliTokenGetter,
   getConfigSync,
   invalidateConfigCache,
 } from 'octocode-shared';
 import { version } from '../package.json';
-import type { ServerConfig, TokenSourceType } from './types.js';
+import type { ServerConfig, TokenSourceType } from './types/server.js';
 import { CONFIG_ERRORS } from './errors/domainErrors.js';
 import { maskSensitiveData } from 'octocode-security-utils/mask';
-import {
-  getGitLabConfig as resolveGitLabConfig,
-  getGitLabToken,
-  getGitLabHost,
-  isGitLabConfigured,
-} from './gitlabConfig.js';
-import {
-  getBitbucketConfig as resolveBitbucketConfig,
-  getBitbucketToken,
-  getBitbucketHost,
-  isBitbucketConfigured,
-} from './bitbucketConfig.js';
-
-/** Result of token resolution with source tracking */
-interface TokenResolutionResult {
-  token: string | null;
-  source: TokenSourceType;
-}
 
 let config: ServerConfig | null = null;
 let initializationPromise: Promise<void> | null = null;
 
-// Injectable function for testing (gh CLI is passed to resolveTokenFull)
-let _getGithubCLIToken = getGithubCLIToken;
-
 // Injectable resolveTokenFull for testing
-type ResolveTokenFullFn = (options?: {
-  hostname?: string;
-  clientId?: string;
-  getGhCliToken?: GhCliTokenGetter;
-}) => Promise<FullTokenResolution | null>;
+type ResolveTokenFullFn = typeof resolveTokenFull;
 let _resolveTokenFull: ResolveTokenFullFn = resolveTokenFull;
-
-/**
- * Maps source strings from octocode-shared to internal TokenSourceType.
- *
- * @param source - Source string from resolver ('env:*', 'gh-cli', 'file')
- */
-function mapSharedSourceToInternal(
-  source: string | null | undefined
-): TokenSourceType {
-  if (!source) return 'none';
-
-  // Already prefixed env source
-  if (source.startsWith('env:')) return source as TokenSourceType;
-
-  // CLI source
-  if (source === 'gh-cli') return 'gh-cli';
-
-  // Storage sources
-  if (source === 'file' || source === 'octocode-storage') {
-    return 'octocode-storage';
-  }
-
-  return 'none';
-}
 
 /**
  * @internal - For testing only
  * Use `resolveTokenFull` to mock the entire resolution chain
  */
 export function _setTokenResolvers(resolvers: {
-  getGithubCLIToken?: typeof getGithubCLIToken;
   resolveTokenFull?: ResolveTokenFullFn;
 }): void {
-  if (resolvers.getGithubCLIToken) {
-    _getGithubCLIToken = resolvers.getGithubCLIToken;
-  }
   if (resolvers.resolveTokenFull) {
     _resolveTokenFull = resolvers.resolveTokenFull;
   }
@@ -88,26 +33,36 @@ export function _setTokenResolvers(resolvers: {
  * @internal - For testing only
  */
 export function _resetTokenResolvers(): void {
-  _getGithubCLIToken = getGithubCLIToken;
   _resolveTokenFull = resolveTokenFull;
 }
 
-async function resolveGitHubToken(): Promise<TokenResolutionResult> {
-  // Delegate to octocode-shared's resolveTokenFull for centralized logic
-  // Priority: env vars (1-3) → octocode storage (4-5) → gh CLI (6)
-  try {
-    const result = await _resolveTokenFull({
-      hostname: 'github.com',
-      getGhCliToken: _getGithubCLIToken,
-    });
+const VALID_TOKEN_SOURCES = new Set<string>([
+  'env:OCTOCODE_TOKEN',
+  'env:GH_TOKEN',
+  'env:GITHUB_TOKEN',
+  'octocode-storage',
+  'gh-cli',
+  'none',
+]);
 
+async function resolveGitHubToken(): Promise<{
+  token: string | null;
+  source: TokenSourceType;
+}> {
+  // Delegate fully to octocode-shared's resolveTokenFull for centralized logic.
+  // Priority: env vars (1-3) → octocode storage → gh CLI
+  // The gh CLI fallback uses the default getGhCliToken from octocode-shared.
+  try {
+    const result = await _resolveTokenFull({ hostname: 'github.com' });
     if (result?.token) {
+      const raw = result.source ?? 'none';
       return {
         token: result.token,
-        source: mapSharedSourceToInternal(result.source),
+        source: VALID_TOKEN_SOURCES.has(raw)
+          ? (raw as TokenSourceType)
+          : 'none',
       };
     }
-
     return { token: null, source: 'none' };
   } catch {
     return { token: null, source: 'none' };
@@ -142,11 +97,8 @@ export async function initialize(): Promise<void> {
       loggingEnabled: resolved.telemetry.logging,
       enableLocal: resolved.local.enabled,
       enableClone: resolved.local.enableClone,
-      disablePrompts: resolved.tools.disablePrompts,
       outputFormat: resolved.output.format,
       tokenSource: tokenResult.source,
-      gitlab: resolveGitLabConfig(),
-      bitbucket: resolveBitbucketConfig(),
     };
   })();
 
@@ -190,10 +142,6 @@ export async function getGitHubToken(): Promise<string | null> {
   return result.token;
 }
 
-export async function getToken(): Promise<string | null> {
-  return getGitHubToken();
-}
-
 export function isLocalEnabled(): boolean {
   return getServerConfig().enableLocal;
 }
@@ -206,10 +154,6 @@ export function isCloneEnabled(): boolean {
 
 export function isLoggingEnabled(): boolean {
   return config?.loggingEnabled ?? false;
-}
-
-export function arePromptsEnabled(): boolean {
-  return !(config?.disablePrompts ?? false);
 }
 
 /**
@@ -227,39 +171,21 @@ export async function getTokenSource(): Promise<TokenSourceType> {
 }
 
 /**
- * Get the active provider based on environment configuration.
- * Priority: GITLAB_TOKEN → 'gitlab', BITBUCKET_TOKEN → 'bitbucket', otherwise → 'github' (default)
+ * Get the active provider. Always 'github'.
  */
 export function getActiveProvider(): ProviderType {
-  if (isGitLabConfigured()) return 'gitlab';
-  if (isBitbucketConfigured()) return 'bitbucket';
   return 'github';
 }
 
 /**
  * Get active provider configuration for tool execution.
- * Returns provider type and base URL based on environment and global config.
- * Priority: env vars > config file > defaults
+ * Returns provider type and base URL based on global config.
  */
 export function getActiveProviderConfig(): {
   provider: ProviderType;
   baseUrl?: string;
   token?: string;
 } {
-  if (isGitLabConfigured()) {
-    return {
-      provider: 'gitlab',
-      baseUrl: getGitLabHost(),
-      token: getGitLabToken() ?? undefined,
-    };
-  }
-  if (isBitbucketConfigured()) {
-    return {
-      provider: 'bitbucket',
-      baseUrl: getBitbucketHost(),
-      token: getBitbucketToken() ?? undefined,
-    };
-  }
   const githubApiUrl = getConfigSync().github.apiUrl;
   const baseUrl =
     githubApiUrl !== 'https://api.github.com' ? githubApiUrl : undefined;
@@ -267,11 +193,4 @@ export function getActiveProviderConfig(): {
     provider: 'github',
     baseUrl,
   };
-}
-
-/**
- * Check if the active provider is GitLab.
- */
-export function isGitLabActive(): boolean {
-  return getActiveProvider() === 'gitlab';
 }

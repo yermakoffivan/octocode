@@ -1,17 +1,11 @@
-/**
- * MCP Config Coverage Tests - Additional tests to achieve 90%+ coverage
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MCPConfig } from '../../src/types/index.js';
 import type { MCPRegistryEntry } from '../../src/configs/mcp-registry.js';
 
-// Mock platform module
 vi.mock('../../src/utils/platform.js', () => ({
   isWindows: false,
 }));
 
-// Mock mcp-paths
 vi.mock('../../src/utils/mcp-paths.js', () => ({
   getMCPConfigPath: vi.fn(),
   clientConfigExists: vi.fn(),
@@ -21,7 +15,6 @@ vi.mock('../../src/utils/mcp-paths.js', () => ({
   MCP_CLIENTS: {},
 }));
 
-// Mock mcp-io
 vi.mock('../../src/utils/mcp-io.js', () => ({
   readMCPConfig: vi.fn(),
   writeMCPConfig: vi.fn(),
@@ -88,48 +81,20 @@ describe('MCP Config Coverage Tests', () => {
       expect(result.env).toBeUndefined();
     });
 
-    it('should include env options for direct method', async () => {
+    it('should throw for removed direct method', async () => {
       const { getOctocodeServerConfig } =
         await import('../../src/utils/mcp-config.js');
 
-      const result = getOctocodeServerConfig('direct', {
-        enableLocal: true,
-        githubToken: 'ghp_token',
-      });
-
-      expect(result.command).toBe('bash');
-      expect(result.env).toBeDefined();
-      expect(result.env!.ENABLE_LOCAL).toBe('true');
-      expect(result.env!.GITHUB_TOKEN).toBe('ghp_token');
+      expect(() =>
+        getOctocodeServerConfig('direct' as any, {
+          enableLocal: true,
+          githubToken: 'ghp_token',
+        })
+      ).toThrow('Unknown install method');
     });
   });
 
   describe('getOctocodeServerConfigWindows with env options', () => {
-    it('should include env options for direct method on Windows', async () => {
-      const { getOctocodeServerConfigWindows } =
-        await import('../../src/utils/mcp-config.js');
-
-      const result = getOctocodeServerConfigWindows('direct', {
-        enableLocal: true,
-        githubToken: 'ghp_wintoken',
-      });
-
-      expect(result.command).toBe('powershell');
-      expect(result.env).toBeDefined();
-      expect(result.env!.ENABLE_LOCAL).toBe('true');
-      expect(result.env!.GITHUB_TOKEN).toBe('ghp_wintoken');
-    });
-
-    it('should not include env when envOptions is empty for Windows direct', async () => {
-      const { getOctocodeServerConfigWindows } =
-        await import('../../src/utils/mcp-config.js');
-
-      const result = getOctocodeServerConfigWindows('direct', {});
-
-      expect(result.command).toBe('powershell');
-      expect(result.env).toBeUndefined();
-    });
-
     it('should delegate to getOctocodeServerConfig for npx method with env', async () => {
       const { getOctocodeServerConfigWindows } =
         await import('../../src/utils/mcp-config.js');
@@ -164,7 +129,7 @@ describe('MCP Config Coverage Tests', () => {
       const { mergeOctocodeConfig } =
         await import('../../src/utils/mcp-config.js');
 
-      const result = mergeOctocodeConfig({ mcpServers: {} }, 'direct', {
+      const result = mergeOctocodeConfig({ mcpServers: {} }, 'npx', {
         enableLocal: true,
       });
 
@@ -239,7 +204,6 @@ describe('MCP Config Coverage Tests', () => {
 
       const result = registryEntryToServerConfig(mockEntry, {
         API_KEY: 'my-api-key',
-        // ENDPOINT is missing
       });
 
       expect(result.args).toContain('my-api-key');
@@ -619,7 +583,6 @@ describe('MCP Config Coverage Tests', () => {
 
       const result = validateRequiredEnvVars(entryWithRequiredVars, {
         API_KEY: 'key123',
-        // SECRET and ENDPOINT are missing
       });
 
       expect(result.valid).toBe(false);
@@ -759,7 +722,7 @@ describe('MCP Config Coverage Tests', () => {
       let callIndex = 0;
       vi.mocked(readMCPConfig).mockImplementation((): MCPConfig | null => {
         callIndex++;
-        // cursor (1st) and claude-code (3rd) have octocode installed
+
         if (callIndex === 1 || callIndex === 3) {
           return { mcpServers: { octocode: { command: 'npx', args: [] } } };
         }
@@ -815,7 +778,6 @@ describe('MCP Config Coverage Tests', () => {
 
   describe('mergeOctocodeConfig Windows behavior', () => {
     it('should use Windows config when isWindows is true', async () => {
-      // Reset and re-mock with Windows flag
       vi.resetModules();
 
       vi.doMock('../../src/utils/platform.js', () => ({
@@ -839,10 +801,9 @@ describe('MCP Config Coverage Tests', () => {
       const { mergeOctocodeConfig } =
         await import('../../src/utils/mcp-config.js');
 
-      const result = mergeOctocodeConfig({ mcpServers: {} }, 'direct');
+      const result = mergeOctocodeConfig({ mcpServers: {} }, 'npx');
 
-      // On Windows, direct method should use powershell
-      expect(result.mcpServers!.octocode.command).toBe('powershell');
+      expect(result.mcpServers!.octocode.command).toBe('npx');
     });
   });
 });

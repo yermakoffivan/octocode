@@ -11,14 +11,17 @@
 npx octocode-cli install
 # -> Choose "Manage Auth", then "Login to GitHub"
 
-# Option B: Set a token manually
+# Option B: Direct CLI login
+npx octocode-cli login
+
+# Option C: Set a token manually
 export GITHUB_TOKEN="ghp_xxxxxxxxxxxx"
 
 # Start Octocode MCP — GitHub is the default provider
 npx octocode-mcp
 ```
 
-GitHub is the **default provider**. When no GitLab or Bitbucket token is set, Octocode uses GitHub automatically.
+GitHub is the only supported provider.
 
 ---
 
@@ -35,7 +38,7 @@ npx octocode-cli install
 # -> Choose "Manage Auth", then "Login to GitHub"
 ```
 
-This opens a browser window to authorize Octocode safely. The token is stored in Octocode's encrypted credential store (`~/.octocode/credentials.json`, encrypted with `~/.octocode/.key`).
+You can also run `npx octocode-cli login` directly. Both paths open a browser window to authorize Octocode safely. The token is stored in Octocode's encrypted credential store (`~/.octocode/credentials.json`, encrypted with `~/.octocode/.key`).
 
 ### Option 2: GitHub CLI (`gh`)
 
@@ -119,7 +122,7 @@ export GITHUB_API_URL="https://github.mycompany.com/api/v3"
 
 The default is `https://api.github.com` if `GITHUB_API_URL` is not set.
 
-For available tools and detailed usage, see the [GitHub, GitLab & Bitbucket Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_GITLAB_TOOLS_REFERENCE.md). For all configuration options, see the [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md).
+For available tools and detailed usage, see the [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_TOOLS_REFERENCE.md). For all configuration options, see the [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md).
 
 ---
 
@@ -127,7 +130,7 @@ For available tools and detailed usage, see the [GitHub, GitLab & Bitbucket Tool
 
 ### "No GitHub token found"
 
-- Run `npx octocode-cli install` and choose **Manage Auth** to check status, or run `npx octocode-cli status`.
+- Run `npx octocode-cli status` to check status, or `npx octocode-cli login` to authenticate directly.
 - Ensure you have run `gh auth login` if using the GitHub CLI.
 - Check if your environment variable is set: `echo $GITHUB_TOKEN`.
 
@@ -139,12 +142,12 @@ For available tools and detailed usage, see the [GitHub, GitLab & Bitbucket Tool
 
 ### Token Expired
 
-- Run `npx octocode-cli install`, choose **Manage Auth**, then choose **Login to GitHub** again to refresh it.
+- Run `npx octocode-cli login` again to refresh it.
 - Or run `gh auth refresh` if using the GitHub CLI.
 
 ### Switching Accounts
 
-- Run `npx octocode-cli install`, choose **Manage Auth**, then switch accounts. Octocode picks up the change immediately (no restart needed).
+- Run `npx octocode-cli auth`, choose **Switch account**, then log in again. Octocode picks up the change immediately (no restart needed).
 
 ### Clone/Directory Tools Disabled
 
@@ -155,7 +158,7 @@ For available tools and detailed usage, see the [GitHub, GitLab & Bitbucket Tool
 ## See Also
 
 - [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) — Overview of all provider authentication
-- [GitHub, GitLab & Bitbucket Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_GITLAB_TOOLS_REFERENCE.md) — Full tool documentation
+- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_TOOLS_REFERENCE.md) — Full tool documentation
 - [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) — All configuration options
 - [Troubleshooting](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md) — General troubleshooting guide
 

@@ -25,7 +25,7 @@ describe('package_search execution branches', () => {
     vi.clearAllMocks();
   });
 
-  describe('missing ecosystem or name validation', () => {
+  describe('input validation', () => {
     it('should return error when name is missing', async () => {
       const result = await searchPackages({
         queries: [{ ...baseQuery, ecosystem: 'npm' } as never],
@@ -43,29 +43,26 @@ describe('package_search execution branches', () => {
       expect(mockSearchPackage).not.toHaveBeenCalled();
     });
 
-    it('should return error when ecosystem is missing', async () => {
+    it('should reject non-npm ecosystems without searching the registry', async () => {
       const result = await searchPackages({
-        queries: [{ ...baseQuery, name: 'axios' } as never],
+        queries: [
+          { ...baseQuery, name: 'requests', ecosystem: 'pypi' } as never,
+        ],
       });
 
-      expect(result.content).toBeDefined();
-      const content = Array.isArray(result.content)
-        ? result.content
-        : [{ type: 'text', text: JSON.stringify(result.content) }];
-      const text = content
-        .map((c: { text?: string }) => c.text)
-        .join('')
-        .toLowerCase();
-      expect(text).toContain('required');
+      const text = (result.content as { text?: string }[])?.[0]?.text ?? '';
+      expect(result.isError).toBe(true);
+      expect(text).toContain('Only ecosystem');
+      expect(text).toContain('npm');
       expect(mockSearchPackage).not.toHaveBeenCalled();
     });
 
-    it('should return error when both ecosystem and name are empty', async () => {
+    it('should return error when name is empty', async () => {
       const result = await searchPackages({
         queries: [
           {
             ...baseQuery,
-            ecosystem: '',
+            ecosystem: 'npm',
             name: '',
           } as never,
         ],
@@ -76,7 +73,7 @@ describe('package_search execution branches', () => {
     });
   });
 
-  describe('parseRepoInfo - repoUrl does not match github/gitlab/bitbucket', () => {
+  describe('parseRepoInfo - repoUrl does not match github', () => {
     it('should return package without owner/repo when repository URL is not from supported hosts', async () => {
       mockSearchPackage.mockResolvedValue({
         packages: [
@@ -148,67 +145,57 @@ describe('package_search execution branches', () => {
       expect(text).toContain('DEPRECATED');
       expect(text).toContain('Use new-pkg instead');
     });
+  });
 
-    it('should add Explore hint when repo URL matches github/gitlab/bitbucket (line 181)', async () => {
-      mockSearchPackage.mockResolvedValue({
-        packages: [
-          {
-            path: 'my-pkg',
-            version: '1.0.0',
-            repoUrl: 'https://github.com/owner/my-repo',
-            mainEntry: null,
-            typeDefinitions: null,
+  describe('packageSearch verbosity shaping', () => {
+    it('concise keeps the top three package candidates', async () => {
+      const { applyPackageSearchVerbosity } =
+        await import('../../src/tools/package_search/execution.js');
+
+      const out = applyPackageSearchVerbosity(
+        {
+          data: {
+            packages: [
+              {
+                path: 'one',
+                version: '1.0.0',
+                repoUrl: null,
+                mainEntry: null,
+                typeDefinitions: null,
+              },
+              {
+                path: 'two',
+                version: '2.0.0',
+                repoUrl: null,
+                mainEntry: null,
+                typeDefinitions: null,
+              },
+              {
+                path: 'three',
+                version: '3.0.0',
+                repoUrl: null,
+                mainEntry: null,
+                typeDefinitions: null,
+              },
+              {
+                path: 'four',
+                version: '4.0.0',
+                repoUrl: null,
+                mainEntry: null,
+                typeDefinitions: null,
+              },
+            ],
+            totalFound: 4,
           },
-        ],
-        ecosystem: 'npm',
-        totalFound: 1,
-      });
-      vi.mocked(packageCommon.checkNpmDeprecation).mockResolvedValue(null);
+          extraHints: [],
+        },
+        { name: 'pkg', ecosystem: 'npm', verbosity: 'concise' } as never
+      );
 
-      const result = await searchPackages({
-        queries: [
-          {
-            ...baseQuery,
-            ecosystem: 'npm',
-            name: 'my-pkg',
-          } as never,
-        ],
-      });
-
-      const text = (result.content as { text?: string }[])?.[0]?.text ?? '';
-      expect(text).toContain('githubViewRepoStructure');
-      expect(text).toContain('owner');
-      expect(text).toContain('my-repo');
-    });
-
-    it('should add pip install hint for python ecosystem (line 210)', async () => {
-      mockSearchPackage.mockResolvedValue({
-        packages: [
-          {
-            name: 'requests',
-            version: '2.28.0',
-            description: 'Python HTTP library',
-            keywords: [],
-            repository: null,
-          },
-        ],
-        ecosystem: 'python',
-        totalFound: 1,
-      });
-
-      const result = await searchPackages({
-        queries: [
-          {
-            ...baseQuery,
-            ecosystem: 'python',
-            name: 'requests',
-          } as never,
-        ],
-      });
-
-      const text = (result.content as { text?: string }[])?.[0]?.text ?? '';
-      expect(text).toContain('pip install');
-      expect(text).not.toContain('npm install');
+      expect(out.data.packages).toHaveLength(3);
+      expect(
+        (out.data.packages as Array<Record<string, unknown>>).map(p => p.name)
+      ).toEqual(['one', 'two', 'three']);
     });
   });
 });

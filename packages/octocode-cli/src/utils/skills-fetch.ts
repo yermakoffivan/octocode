@@ -8,13 +8,18 @@ import {
   writeFileContent,
   readFileContent,
   fileExists,
-  copyDirectory,
 } from './fs.js';
-import { join, resolve, relative, isAbsolute, sep } from 'node:path';
+import { join, isAbsolute } from 'node:path';
 import { mkdirSync, statSync, readdirSync, unlinkSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import { trySafe } from './try-safe.js';
-import { getSkillsSourcePath, getAvailableSkills } from './skills.js';
+import {
+  getSkillsSourcePath,
+  getAvailableSkills,
+  installSkillToDestination,
+  isPathInside,
+  resolveSkillDestination,
+} from './skills.js';
 import { parseSkillFrontmatter } from './parsers/frontmatter.js';
 import { z } from 'zod/v4';
 
@@ -59,18 +64,6 @@ function ensureCacheDir(): string {
     mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
   }
   return cacheDir;
-}
-
-function isPathInside(baseDir: string, targetPath: string): boolean {
-  const normalizedBase = resolve(baseDir);
-  const normalizedTarget = resolve(targetPath);
-  const relativePath = relative(normalizedBase, normalizedTarget);
-
-  return (
-    relativePath !== '..' &&
-    !relativePath.startsWith(`..${sep}`) &&
-    !isAbsolute(relativePath)
-  );
 }
 
 function getCacheFilePath(source: MarketplaceSource): string {
@@ -202,18 +195,28 @@ function installLocalSkill(
 ): { success: boolean; error?: string } {
   try {
     const skillsSourcePath = getSkillsSourcePath();
-    const sourcePath = join(skillsSourcePath, skill.name);
-    const destPath = join(destDir, skill.name);
+    const sourcePath = resolveSkillDestination(skillsSourcePath, skill.name);
+    const destPath = resolveSkillDestination(destDir, skill.name);
+
+    if (!sourcePath || !destPath) {
+      return { success: false, error: 'Invalid skill name' };
+    }
 
     if (!dirExists(sourcePath)) {
       return { success: false, error: 'Skill not found in bundled source' };
     }
 
-    if (dirExists(destPath)) {
-      rmSync(destPath, { recursive: true, force: true });
+    const installResult = installSkillToDestination({
+      sourcePath,
+      destinationPath: destPath,
+      mode: 'copy',
+      force: true,
+    });
+
+    if (installResult !== 'installed') {
+      return { success: false, error: 'Failed to copy bundled skill' };
     }
 
-    copyDirectory(sourcePath, destPath);
     return { success: true };
   } catch (error) {
     return {
@@ -254,6 +257,7 @@ export async function fetchMarketplaceTree(
 }
 
 const MAX_CONTENT_SIZE_BYTES = 1024 * 1024;
+const MAX_SKILL_FILES = 500;
 
 export async function fetchRawContent(
   source: MarketplaceSource,
@@ -436,9 +440,9 @@ export async function installMarketplaceSkill(
 
     const tree = await fetchMarketplaceTree(source);
 
-    const skillDestDir = join(destDir, skill.name);
-    if (!dirExists(skillDestDir)) {
-      mkdirSync(skillDestDir, { recursive: true, mode: 0o700 });
+    const skillDestDir = resolveSkillDestination(destDir, skill.name);
+    if (!skillDestDir) {
+      return { success: false, error: 'Invalid skill name' };
     }
 
     if (source.skillPattern === 'flat-md') {
@@ -447,14 +451,23 @@ export async function installMarketplaceSkill(
       if (!isPathInside(skillDestDir, skillMdPath)) {
         throw new Error('Invalid skill destination path');
       }
-      writeFileContent(skillMdPath, content);
+      prepareSkillDestination(skillDestDir);
+      if (!writeFileContent(skillMdPath, content)) {
+        throw new Error('Failed to write skill file');
+      }
     } else {
       const prefix = `${skill.path}/`;
       const files = tree.filter(
         item => item.type === 'blob' && item.path.startsWith(prefix)
       );
 
-      for (const file of files) {
+      if (files.length > MAX_SKILL_FILES) {
+        throw new Error(
+          `Skill has too many files: ${files.length} exceeds ${MAX_SKILL_FILES}`
+        );
+      }
+
+      const plannedFiles = files.map(file => {
         const relativePath = file.path.slice(prefix.length);
         if (!relativePath || isAbsolute(relativePath)) {
           throw new Error('Invalid skill file path');
@@ -463,23 +476,30 @@ export async function installMarketplaceSkill(
         if (!isPathInside(skillDestDir, destPath)) {
           throw new Error('Invalid skill file path traversal');
         }
+        return { relativePath, destPath, sourcePath: file.path };
+      });
+
+      const fetchedFiles = await Promise.all(
+        plannedFiles.map(async file => ({
+          ...file,
+          content: await fetchRawContent(source, file.sourcePath),
+        }))
+      );
+
+      prepareSkillDestination(skillDestDir);
+
+      for (const file of fetchedFiles) {
         const destSubDir = join(
           skillDestDir,
-          relativePath.split('/').slice(0, -1).join('/')
+          file.relativePath.split('/').slice(0, -1).join('/')
         );
         if (destSubDir !== skillDestDir && !dirExists(destSubDir)) {
           mkdirSync(destSubDir, { recursive: true, mode: 0o700 });
         }
+        if (!writeFileContent(file.destPath, file.content)) {
+          throw new Error(`Failed to write skill file: ${file.relativePath}`);
+        }
       }
-
-      await Promise.all(
-        files.map(async file => {
-          const relativePath = file.path.slice(prefix.length);
-          const destPath = join(skillDestDir, relativePath);
-          const content = await fetchRawContent(source, file.path);
-          writeFileContent(destPath, content);
-        })
-      );
     }
 
     return { success: true };
@@ -488,6 +508,16 @@ export async function installMarketplaceSkill(
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
+  }
+}
+
+function prepareSkillDestination(skillDestDir: string): void {
+  if (dirExists(skillDestDir)) {
+    rmSync(skillDestDir, { recursive: true, force: true });
+  }
+
+  if (!dirExists(skillDestDir)) {
+    mkdirSync(skillDestDir, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -572,4 +602,102 @@ export function getCacheInfo(source: MarketplaceSource): {
 
 export function getSkillsCacheDir(): string {
   return getCacheDir();
+}
+
+// --- Remote skill reader ---
+
+export async function readSkillFromGitHub(
+  owner: string,
+  repo: string,
+  skillPath: string,
+  branch = 'main'
+): Promise<string> {
+  const normalized = skillPath.endsWith('/SKILL.md')
+    ? skillPath
+    : skillPath.endsWith('SKILL.md')
+      ? skillPath
+      : `${skillPath}/SKILL.md`;
+
+  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${normalized}`;
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'octocode-cli' },
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (response.status === 404) {
+    // Try common branch names as fallback
+    if (branch === 'main') {
+      return readSkillFromGitHub(owner, repo, skillPath, 'master');
+    }
+    throw new Error(
+      `SKILL.md not found at ${owner}/${repo}/${normalized} (tried main and master)`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch SKILL.md: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const content = await response.text();
+  if (content.length > MAX_CONTENT_SIZE_BYTES) {
+    throw new Error(`SKILL.md too large (${content.length} bytes)`);
+  }
+  return content;
+}
+
+// --- skills.sh public registry search ---
+
+export interface SkillsShResult {
+  /** Full id: "owner/repo/skillId" */
+  id: string;
+  skillId: string;
+  name: string;
+  installs: number;
+  /** "owner/repo" */
+  source: string;
+}
+
+export interface SkillsShSearchResponse {
+  results: SkillsShResult[];
+  count: number;
+}
+
+const SKILLS_SH_API = 'https://www.skills.sh/api/search';
+
+export async function fetchSkillsShSearch(
+  query: string,
+  limit = 20
+): Promise<SkillsShSearchResponse> {
+  const url = `${SKILLS_SH_API}?q=${encodeURIComponent(query)}&limit=${Math.min(limit, 100)}`;
+
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0',
+      Accept: 'application/json',
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `skills.sh search failed: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const data = (await response.json()) as {
+    skills: SkillsShResult[];
+    count: number;
+  };
+
+  const sorted = [...(data.skills ?? [])].sort(
+    (a, b) => b.installs - a.installs
+  );
+
+  return {
+    results: sorted.slice(0, limit),
+    count: data.count ?? sorted.length,
+  };
 }

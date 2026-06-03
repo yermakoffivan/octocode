@@ -184,34 +184,6 @@ function validateGitHub(github: unknown, errors: string[]): void {
   if (apiUrlError) errors.push(apiUrlError);
 }
 
-function validateGitLab(gitlab: unknown, errors: string[]): void {
-  if (gitlab === undefined || gitlab === null) return;
-
-  if (typeof gitlab !== 'object' || Array.isArray(gitlab)) {
-    errors.push('gitlab: Must be an object');
-    return;
-  }
-
-  const gl = gitlab as Record<string, unknown>;
-
-  const hostError = validateUrl(gl.host, 'gitlab.host');
-  if (hostError) errors.push(hostError);
-}
-
-function validateBitbucket(bitbucket: unknown, errors: string[]): void {
-  if (bitbucket === undefined || bitbucket === null) return;
-
-  if (typeof bitbucket !== 'object' || Array.isArray(bitbucket)) {
-    errors.push('bitbucket: Must be an object');
-    return;
-  }
-
-  const bb = bitbucket as Record<string, unknown>;
-
-  const hostError = validateUrl(bb.host, 'bitbucket.host');
-  if (hostError) errors.push(hostError);
-}
-
 function validateLocal(local: unknown, errors: string[]): void {
   if (local === undefined || local === null) return;
 
@@ -243,12 +215,6 @@ function validateLocal(local: unknown, errors: string[]): void {
     );
     errors.push(...pathErrors);
   }
-
-  const workspaceRootError = validateString(
-    loc.workspaceRoot,
-    'local.workspaceRoot'
-  );
-  if (workspaceRootError) errors.push(workspaceRootError);
 }
 
 function validateTools(tools: unknown, errors: string[]): void {
@@ -275,12 +241,6 @@ function validateTools(tools: unknown, errors: string[]): void {
     'tools.disabled'
   );
   if (disabledError) errors.push(disabledError);
-
-  const disablePromptsError = validateBoolean(
-    t.disablePrompts,
-    'tools.disablePrompts'
-  );
-  if (disablePromptsError) errors.push(disablePromptsError);
 }
 
 function validateNetwork(network: unknown, errors: string[]): void {
@@ -406,8 +366,6 @@ export function validateConfig(config: unknown): ValidationResult {
 
   // Validate each section
   validateGitHub(cfg.github, errors);
-  validateGitLab(cfg.gitlab, errors);
-  validateBitbucket(cfg.bitbucket, errors);
   validateLocal(cfg.local, errors);
   validateTools(cfg.tools, errors);
   validateNetwork(cfg.network, errors);
@@ -420,8 +378,6 @@ export function validateConfig(config: unknown): ValidationResult {
     '$schema',
     'version',
     'github',
-    'gitlab',
-    'bitbucket',
     'local',
     'tools',
     'network',

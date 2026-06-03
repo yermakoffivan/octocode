@@ -5,8 +5,6 @@
 import type {
   OctocodeConfig,
   RequiredGitHubConfig,
-  RequiredGitLabConfig,
-  RequiredBitbucketConfig,
   RequiredLocalConfig,
   RequiredToolsConfig,
   RequiredNetworkConfig,
@@ -16,8 +14,6 @@ import type {
 } from './types.js';
 import {
   DEFAULT_GITHUB_CONFIG,
-  DEFAULT_GITLAB_CONFIG,
-  DEFAULT_BITBUCKET_CONFIG,
   DEFAULT_LOCAL_CONFIG,
   DEFAULT_TOOLS_CONFIG,
   DEFAULT_NETWORK_CONFIG,
@@ -117,42 +113,14 @@ export function resolveGitHub(
 }
 
 /**
- * Resolve GitLab configuration.
- */
-export function resolveGitLab(
-  fileConfig?: OctocodeConfig['gitlab']
-): RequiredGitLabConfig {
-  // Env var: GITLAB_HOST
-  const envHost = process.env.GITLAB_HOST?.trim();
-
-  return {
-    host: envHost || fileConfig?.host || DEFAULT_GITLAB_CONFIG.host,
-  };
-}
-
-/**
- * Resolve Bitbucket configuration.
- */
-export function resolveBitbucket(
-  fileConfig?: OctocodeConfig['bitbucket']
-): RequiredBitbucketConfig {
-  const envHost = process.env.BITBUCKET_HOST?.trim();
-
-  return {
-    host: envHost || fileConfig?.host || DEFAULT_BITBUCKET_CONFIG.host,
-  };
-}
-
-/**
  * Resolve local tools configuration.
  */
 export function resolveLocal(
   fileConfig?: OctocodeConfig['local']
 ): RequiredLocalConfig {
-  // Env vars: ENABLE_LOCAL, ENABLE_CLONE, WORKSPACE_ROOT, ALLOWED_PATHS
+  // Env vars: ENABLE_LOCAL, ENABLE_CLONE, ALLOWED_PATHS
   const envEnableLocal = parseBooleanEnv(process.env.ENABLE_LOCAL);
   const envEnableClone = parseBooleanEnv(process.env.ENABLE_CLONE);
-  const envWorkspaceRoot = process.env.WORKSPACE_ROOT?.trim() || undefined;
   const envAllowedPaths = parseStringArrayEnv(process.env.ALLOWED_PATHS);
 
   return {
@@ -166,10 +134,6 @@ export function resolveLocal(
       envAllowedPaths ??
       fileConfig?.allowedPaths ??
       DEFAULT_LOCAL_CONFIG.allowedPaths,
-    workspaceRoot:
-      envWorkspaceRoot ??
-      fileConfig?.workspaceRoot ??
-      DEFAULT_LOCAL_CONFIG.workspaceRoot,
   };
 }
 
@@ -179,11 +143,10 @@ export function resolveLocal(
 export function resolveTools(
   fileConfig?: OctocodeConfig['tools']
 ): RequiredToolsConfig {
-  // Env vars: TOOLS_TO_RUN, ENABLE_TOOLS, DISABLE_TOOLS, DISABLE_PROMPTS
+  // Env vars: TOOLS_TO_RUN, ENABLE_TOOLS, DISABLE_TOOLS
   const envToolsToRun = parseStringArrayEnv(process.env.TOOLS_TO_RUN);
   const envEnableTools = parseStringArrayEnv(process.env.ENABLE_TOOLS);
   const envDisableTools = parseStringArrayEnv(process.env.DISABLE_TOOLS);
-  const envDisablePrompts = parseBooleanEnv(process.env.DISABLE_PROMPTS);
 
   return {
     enabled:
@@ -194,10 +157,6 @@ export function resolveTools(
       DEFAULT_TOOLS_CONFIG.enableAdditional,
     disabled:
       envDisableTools ?? fileConfig?.disabled ?? DEFAULT_TOOLS_CONFIG.disabled,
-    disablePrompts:
-      envDisablePrompts ??
-      fileConfig?.disablePrompts ??
-      DEFAULT_TOOLS_CONFIG.disablePrompts,
   };
 }
 

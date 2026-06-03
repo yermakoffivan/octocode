@@ -34,7 +34,6 @@ describe('config/resolver', () => {
     _resetConfigCache();
     // Reset ALL config-related env vars (must match resolver.ts env var checks)
     delete process.env.GITHUB_API_URL;
-    delete process.env.GITLAB_HOST;
     delete process.env.ENABLE_LOCAL;
     delete process.env.ENABLE_CLONE;
     delete process.env.WORKSPACE_ROOT;
@@ -42,7 +41,6 @@ describe('config/resolver', () => {
     delete process.env.TOOLS_TO_RUN;
     delete process.env.ENABLE_TOOLS;
     delete process.env.DISABLE_TOOLS;
-    delete process.env.DISABLE_PROMPTS;
     delete process.env.REQUEST_TIMEOUT;
     delete process.env.MAX_RETRIES;
     delete process.env.LOG;
@@ -66,7 +64,9 @@ describe('config/resolver', () => {
       expect(config.version).toBe(DEFAULT_CONFIG.version);
       expect(config.github.apiUrl).toBe(DEFAULT_CONFIG.github.apiUrl);
       expect(config.local.enabled).toBe(DEFAULT_CONFIG.local.enabled);
-      expect(config.output.pagination.defaultCharLength).toBe(8000);
+      expect(config.output.pagination.defaultCharLength).toBe(
+        DEFAULT_CONFIG.output.pagination.defaultCharLength
+      );
       expect(config.source).toBe('defaults');
     });
 
@@ -143,12 +143,6 @@ describe('config/resolver', () => {
         process.env.GITHUB_API_URL = 'https://custom.github.com/api';
         const config = resolveConfigSync();
         expect(config.github.apiUrl).toBe('https://custom.github.com/api');
-      });
-
-      it('parses GITLAB_HOST', () => {
-        process.env.GITLAB_HOST = 'https://gitlab.example.com';
-        const config = resolveConfigSync();
-        expect(config.gitlab.host).toBe('https://gitlab.example.com');
       });
 
       it('parses ENABLE_LOCAL as boolean', () => {
@@ -267,12 +261,6 @@ describe('config/resolver', () => {
         expect(config.telemetry.logging).toBe(true);
       });
 
-      it('parses WORKSPACE_ROOT', () => {
-        process.env.WORKSPACE_ROOT = '/custom/workspace';
-        const config = resolveConfigSync();
-        expect(config.local.workspaceRoot).toBe('/custom/workspace');
-      });
-
       it('parses OCTOCODE_OUTPUT_DEFAULT_CHAR_LENGTH', () => {
         process.env.OCTOCODE_OUTPUT_DEFAULT_CHAR_LENGTH = '12000';
         const config = resolveConfigSync();
@@ -289,20 +277,6 @@ describe('config/resolver', () => {
         process.env.OCTOCODE_OUTPUT_DEFAULT_CHAR_LENGTH = '999999';
         expect(resolveConfigSync().output.pagination.defaultCharLength).toBe(
           50000
-        );
-      });
-
-      it('trims whitespace from WORKSPACE_ROOT', () => {
-        process.env.WORKSPACE_ROOT = '  /custom/workspace  ';
-        const config = resolveConfigSync();
-        expect(config.local.workspaceRoot).toBe('/custom/workspace');
-      });
-
-      it('ignores empty WORKSPACE_ROOT', () => {
-        process.env.WORKSPACE_ROOT = '   ';
-        const config = resolveConfigSync();
-        expect(config.local.workspaceRoot).toBe(
-          DEFAULT_CONFIG.local.workspaceRoot
         );
       });
 
@@ -326,23 +300,6 @@ describe('config/resolver', () => {
         process.env.ALLOWED_PATHS = '/path/a,,/path/b,';
         const config = resolveConfigSync();
         expect(config.local.allowedPaths).toEqual(['/path/a', '/path/b']);
-      });
-
-      it('parses DISABLE_PROMPTS as boolean', () => {
-        process.env.DISABLE_PROMPTS = 'true';
-        expect(resolveConfigSync().tools.disablePrompts).toBe(true);
-
-        _resetConfigCache();
-        process.env.DISABLE_PROMPTS = '1';
-        expect(resolveConfigSync().tools.disablePrompts).toBe(true);
-
-        _resetConfigCache();
-        process.env.DISABLE_PROMPTS = 'false';
-        expect(resolveConfigSync().tools.disablePrompts).toBe(false);
-
-        _resetConfigCache();
-        process.env.DISABLE_PROMPTS = '0';
-        expect(resolveConfigSync().tools.disablePrompts).toBe(false);
       });
 
       it('parses OCTOCODE_LSP_CONFIG', () => {
@@ -418,40 +375,6 @@ describe('config/resolver', () => {
       });
     });
 
-    describe('gitlab.host', () => {
-      it('env overrides file', () => {
-        vi.mocked(existsSync).mockReturnValue(true);
-        vi.mocked(readFileSync).mockReturnValue(
-          JSON.stringify({
-            gitlab: { host: 'https://file.gitlab.com' },
-          })
-        );
-        process.env.GITLAB_HOST = 'https://env.gitlab.com';
-
-        const config = resolveConfigSync();
-        expect(config.gitlab.host).toBe('https://env.gitlab.com');
-      });
-
-      it('file overrides default', () => {
-        vi.mocked(existsSync).mockReturnValue(true);
-        vi.mocked(readFileSync).mockReturnValue(
-          JSON.stringify({
-            gitlab: { host: 'https://file.gitlab.com' },
-          })
-        );
-
-        const config = resolveConfigSync();
-        expect(config.gitlab.host).toBe('https://file.gitlab.com');
-      });
-
-      it('falls back to default when neither env nor file', () => {
-        vi.mocked(existsSync).mockReturnValue(false);
-
-        const config = resolveConfigSync();
-        expect(config.gitlab.host).toBe(DEFAULT_CONFIG.gitlab.host);
-      });
-    });
-
     describe('local.enabled', () => {
       it('env overrides file', () => {
         vi.mocked(existsSync).mockReturnValue(true);
@@ -509,42 +432,6 @@ describe('config/resolver', () => {
 
         const config = resolveConfigSync();
         expect(config.local.enableClone).toBe(DEFAULT_CONFIG.local.enableClone);
-      });
-    });
-
-    describe('local.workspaceRoot', () => {
-      it('env overrides file', () => {
-        vi.mocked(existsSync).mockReturnValue(true);
-        vi.mocked(readFileSync).mockReturnValue(
-          JSON.stringify({
-            local: { workspaceRoot: '/file/workspace' },
-          })
-        );
-        process.env.WORKSPACE_ROOT = '/env/workspace';
-
-        const config = resolveConfigSync();
-        expect(config.local.workspaceRoot).toBe('/env/workspace');
-      });
-
-      it('file overrides default', () => {
-        vi.mocked(existsSync).mockReturnValue(true);
-        vi.mocked(readFileSync).mockReturnValue(
-          JSON.stringify({
-            local: { workspaceRoot: '/file/workspace' },
-          })
-        );
-
-        const config = resolveConfigSync();
-        expect(config.local.workspaceRoot).toBe('/file/workspace');
-      });
-
-      it('falls back to default when neither env nor file', () => {
-        vi.mocked(existsSync).mockReturnValue(false);
-
-        const config = resolveConfigSync();
-        expect(config.local.workspaceRoot).toBe(
-          DEFAULT_CONFIG.local.workspaceRoot
-        );
       });
     });
 
@@ -688,42 +575,6 @@ describe('config/resolver', () => {
 
         const config = resolveConfigSync();
         expect(config.tools.disabled).toBe(DEFAULT_CONFIG.tools.disabled);
-      });
-    });
-
-    describe('tools.disablePrompts (DISABLE_PROMPTS)', () => {
-      it('env overrides file', () => {
-        vi.mocked(existsSync).mockReturnValue(true);
-        vi.mocked(readFileSync).mockReturnValue(
-          JSON.stringify({
-            tools: { disablePrompts: false },
-          })
-        );
-        process.env.DISABLE_PROMPTS = 'true';
-
-        const config = resolveConfigSync();
-        expect(config.tools.disablePrompts).toBe(true);
-      });
-
-      it('file overrides default', () => {
-        vi.mocked(existsSync).mockReturnValue(true);
-        vi.mocked(readFileSync).mockReturnValue(
-          JSON.stringify({
-            tools: { disablePrompts: true },
-          })
-        );
-
-        const config = resolveConfigSync();
-        expect(config.tools.disablePrompts).toBe(true);
-      });
-
-      it('falls back to default when neither env nor file', () => {
-        vi.mocked(existsSync).mockReturnValue(false);
-
-        const config = resolveConfigSync();
-        expect(config.tools.disablePrompts).toBe(
-          DEFAULT_CONFIG.tools.disablePrompts
-        );
       });
     });
 
@@ -903,35 +754,17 @@ describe('config/resolver', () => {
 
     it('source is "defaults" when no file even with env overrides', () => {
       vi.mocked(existsSync).mockReturnValue(false);
-      process.env.WORKSPACE_ROOT = '/some/path';
+      process.env.ALLOWED_PATHS = '/some/path';
 
       const config = resolveConfigSync();
       // No file → source is 'defaults' even though env overrides exist
       expect(config.source).toBe('defaults');
     });
 
-    it('detects WORKSPACE_ROOT as env override for mixed source', () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ version: 1 }));
-      process.env.WORKSPACE_ROOT = '/env/workspace';
-
-      const config = resolveConfigSync();
-      expect(config.source).toBe('mixed');
-    });
-
     it('detects ALLOWED_PATHS as env override for mixed source', () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ version: 1 }));
       process.env.ALLOWED_PATHS = '/path/a';
-
-      const config = resolveConfigSync();
-      expect(config.source).toBe('mixed');
-    });
-
-    it('detects DISABLE_PROMPTS as env override for mixed source', () => {
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ version: 1 }));
-      process.env.DISABLE_PROMPTS = 'true';
 
       const config = resolveConfigSync();
       expect(config.source).toBe('mixed');
@@ -1115,8 +948,6 @@ describe('config/resolver', () => {
 
       expect(config.version).toBe(DEFAULT_CONFIG.version);
       expect(config.github).toEqual(DEFAULT_CONFIG.github);
-      expect(config.gitlab).toEqual(DEFAULT_CONFIG.gitlab);
-      expect(config.bitbucket).toEqual(DEFAULT_CONFIG.bitbucket);
       expect(config.local).toEqual(DEFAULT_CONFIG.local);
       expect(config.tools).toEqual(DEFAULT_CONFIG.tools);
       expect(config.network).toEqual(DEFAULT_CONFIG.network);
@@ -1133,8 +964,6 @@ describe('config/resolver', () => {
 
       expect(config.version).toBe(DEFAULT_CONFIG.version);
       expect(config.github).toEqual(DEFAULT_CONFIG.github);
-      expect(config.gitlab).toEqual(DEFAULT_CONFIG.gitlab);
-      expect(config.bitbucket).toEqual(DEFAULT_CONFIG.bitbucket);
       expect(config.local).toEqual(DEFAULT_CONFIG.local);
       expect(config.tools).toEqual(DEFAULT_CONFIG.tools);
       expect(config.network).toEqual(DEFAULT_CONFIG.network);
@@ -1159,8 +988,6 @@ describe('config/resolver', () => {
       vi.mocked(readFileSync).mockReturnValue(
         JSON.stringify({
           github: {},
-          gitlab: {},
-          bitbucket: {},
           local: {},
           tools: {},
           network: {},
@@ -1173,8 +1000,6 @@ describe('config/resolver', () => {
       const config = resolveConfigSync();
 
       expect(config.github).toEqual(DEFAULT_CONFIG.github);
-      expect(config.gitlab).toEqual(DEFAULT_CONFIG.gitlab);
-      expect(config.bitbucket).toEqual(DEFAULT_CONFIG.bitbucket);
       expect(config.local).toEqual(DEFAULT_CONFIG.local);
       expect(config.tools).toEqual(DEFAULT_CONFIG.tools);
       expect(config.network).toEqual(DEFAULT_CONFIG.network);
@@ -1231,9 +1056,6 @@ describe('config/resolver', () => {
       expect(config.local.enableClone).toBe(DEFAULT_CONFIG.local.enableClone);
       expect(config.local.allowedPaths).toEqual(
         DEFAULT_CONFIG.local.allowedPaths
-      );
-      expect(config.local.workspaceRoot).toBe(
-        DEFAULT_CONFIG.local.workspaceRoot
       );
     });
   });

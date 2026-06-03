@@ -412,6 +412,52 @@ describe('GitHub File Operations - processFileContentAPI coverage', () => {
       }
     });
 
+    it('should resolve a whitespace-stripped (minified) anchor against the raw line (FC-1)', async () => {
+      // Raw file has spaces; the anchor was copied from a minified search
+      // snippet with whitespace removed. Exact includes() would miss it.
+      const fileContent =
+        'Line 1\nattachPingListener(root, wakeable, rootRenderLanes)\nLine 3';
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getContent: vi.fn().mockResolvedValue({
+              data: {
+                type: 'file',
+                content: Buffer.from(fileContent).toString('base64'),
+                size: fileContent.length,
+                sha: 'abc123',
+                name: 'test.txt',
+                path: 'test.txt',
+              },
+            }),
+          },
+        },
+      };
+
+      vi.mocked(getOctokit).mockResolvedValue(
+        mockOctokit as unknown as ReturnType<typeof getOctokit>
+      );
+      vi.mocked(minifierModule.minifyContent).mockImplementation(
+        async content => ({ content, failed: false, type: 'general' })
+      );
+
+      const result = await fetchGitHubFileContentAPI({
+        owner: 'test',
+        repo: 'repo',
+        path: 'test.txt',
+        matchString: 'attachPingListener(root,wakeable,rootRenderLanes)',
+        matchStringContextLines: 0,
+      });
+
+      expect(result.status).toBe(200);
+      expect('data' in result).toBe(true);
+      if ('data' in result) {
+        expect(result.data.matchNotFound).toBeUndefined();
+        expect(result.data.content).toContain('attachPingListener');
+      }
+    });
+
     it('should find matchString and include it in response', async () => {
       const fileContent = 'Line 1\nTarget Line\nLine 3\nLine 4\nLine 5';
 
@@ -740,6 +786,60 @@ describe('GitHub File Operations - processFileContentAPI coverage', () => {
       });
 
       expect(result).toHaveProperty('data');
+    });
+  });
+
+  describe('fetchGitHubFileContentAPI - basic verbosity is verbatim (no pre-finalizer minify)', () => {
+    // Contract (src/scheme/verbosity.ts): "Content is reduced ONLY in concise.
+    // basic and compact never drop a returned value." Minification is owned by
+    // the concise finalizer (applyGithubFetchContentVerbosity), NOT the base
+    // content processor. The base processor must return content verbatim so a
+    // basic/default fullContent read matches the bytes on disk.
+    it('does NOT minify fullContent in the base processor', async () => {
+      const fileContent = '{\n  "name": "demo",\n  "version": "1.0.0"\n}';
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getContent: vi.fn().mockResolvedValue({
+              data: {
+                type: 'file',
+                content: Buffer.from(fileContent).toString('base64'),
+                size: fileContent.length,
+                sha: 'abc123',
+                name: 'package.json',
+                path: 'package.json',
+              },
+            }),
+          },
+        },
+      };
+
+      vi.mocked(getOctokit).mockResolvedValue(
+        mockOctokit as unknown as ReturnType<typeof getOctokit>
+      );
+      // Sentinel: if the base processor minifies, this marker leaks into output.
+      const minifySpy = vi
+        .mocked(minifierModule.minifyContent)
+        .mockResolvedValue({
+          content: 'SHOULD_NOT_APPEAR',
+          failed: false,
+          type: 'json',
+        });
+
+      const result = await fetchGitHubFileContentAPI({
+        owner: 'test',
+        repo: 'repo',
+        path: 'package.json',
+        fullContent: true,
+      });
+
+      expect('data' in result).toBe(true);
+      if ('data' in result && result.data) {
+        // Verbatim — original whitespace/newlines preserved, sentinel absent.
+        expect(result.data.content).toBe(fileContent);
+      }
+      expect(minifySpy).not.toHaveBeenCalled();
     });
   });
 

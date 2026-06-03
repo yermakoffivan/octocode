@@ -153,6 +153,12 @@ export const MCP_CLIENTS: Record<MCPClient, MCPClientInfo> = {
   },
 };
 
+export type DetectableMCPClient = Exclude<MCPClient, 'custom'>;
+
+export const DETECTABLE_MCP_CLIENTS = Object.keys(MCP_CLIENTS).filter(
+  (client): client is DetectableMCPClient => client !== 'custom'
+);
+
 export function getMCPConfigPath(
   client: MCPClient,
   customPath?: string
@@ -266,10 +272,6 @@ export function getMCPConfigPath(
   }
 }
 
-/**
- * Checks whether the client's config directory exists (NOT the config file itself).
- * Use `configFileExists()` to check for the actual config file.
- */
 export function clientConfigExists(
   client: MCPClient,
   customPath?: string
@@ -351,25 +353,7 @@ export function detectCurrentClient(): MCPClient | null {
 export function detectAvailableClients(): MCPClient[] {
   const available: MCPClient[] = [];
 
-  const clients: MCPClient[] = [
-    'cursor',
-    'claude-desktop',
-    'claude-code',
-    'vscode-cline',
-    'vscode-roo',
-    'vscode-continue',
-    'windsurf',
-    'trae',
-    'antigravity',
-    'zed',
-    'opencode',
-    'codex',
-    'gemini-cli',
-    'goose',
-    'kiro',
-  ];
-
-  for (const client of clients) {
+  for (const client of DETECTABLE_MCP_CLIENTS) {
     if (clientConfigExists(client)) {
       available.push(client);
     }

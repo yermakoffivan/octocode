@@ -6,7 +6,10 @@
  */
 
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { CloneRepoQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { CloneRepoQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type CloneRepoQuery = z.infer<typeof CloneRepoQuerySchema>;
 import { getDirectorySizeBytes } from 'octocode-shared';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
@@ -23,32 +26,8 @@ import {
   providerSupports,
 } from '../providerExecution.js';
 import { cloneRepo } from './cloneRepo.js';
-import {
-  LOCAL_TOOL_LIST,
-  LSP_TOOL_LIST,
-} from '../../hints/localToolUsageHints.js';
-
-/** Hints for full clones */
-const FULL_CLONE_HINTS: string[] = [
-  'Repository cloned locally (full, shallow depth=1).',
-  'Use `localPath` as the `path` parameter for local tools:',
-  ...LOCAL_TOOL_LIST,
-  ...LSP_TOOL_LIST,
-  'Tip: start with localViewStructure to understand the project layout.',
-];
-
-/** Hints for sparse (partial) checkouts */
-const SPARSE_CLONE_HINTS: string[] = [
-  'Partial tree fetched (sparse checkout – only the requested path was downloaded).',
-  'Use `localPath` as the `path` parameter for local tools:',
-  ...LOCAL_TOOL_LIST,
-  'Note: LSP may have limited cross-file resolution in sparse checkouts.',
-  'If you need full project context, re-clone without sparse_path.',
-];
-
-/** Hints for cached results */
-const CACHE_HIT_HINT =
-  'Served from 24-hour cache (no network call). To force refresh, set forceRefresh: true in the query.';
+/** Evidence-conditional cache marker; followups are covered by the tool description. */
+const CACHE_HIT_HINT = 'Served from 24-hour cache.';
 
 export async function executeCloneRepo(
   args: ToolExecutionArgs<PartialCloneRepoQuery>
@@ -91,13 +70,8 @@ export async function executeCloneRepo(
               : {}),
           };
 
-          const baseHints = result.sparse_path
-            ? [...SPARSE_CLONE_HINTS]
-            : [...FULL_CLONE_HINTS];
-
-          if (result.cached) {
-            baseHints.unshift(CACHE_HIT_HINT);
-          }
+          const baseHints: string[] = [];
+          if (result.cached) baseHints.push(CACHE_HIT_HINT);
 
           return createSuccessResult(
             query,
@@ -107,6 +81,15 @@ export async function executeCloneRepo(
             {
               extraHints: baseHints,
               rawResponse: getDirectorySizeBytes(result.localPath),
+              evidence: {
+                kind: 'content',
+                answerReady: true,
+                confidence: 'high',
+                complete: true,
+                reason: result.sparse_path
+                  ? 'Repository sparse checkout is available locally.'
+                  : 'Repository full shallow clone is available locally.',
+              },
             }
           );
         },
@@ -116,6 +99,8 @@ export async function executeCloneRepo(
       keysPriority: ['resolvedBranch', 'localPath', 'cached', 'error'],
       responseCharOffset,
       responseCharLength,
+      peerHints: true,
+      peerEvidence: true,
     }
   );
 }

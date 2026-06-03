@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { initializeToolMetadata } from '../src/tools/toolMetadata/state.js';
+import { resetCircuitBreaker } from '../src/utils/http/circuitBreaker.js';
 import {
   consumeExpectedStderrWarning,
   resetExpectedStderrWarnings,
@@ -49,23 +50,15 @@ const mockDefaultConfig = {
   github: {
     apiUrl: 'https://api.github.com',
   },
-  gitlab: {
-    host: 'https://gitlab.com',
-  },
-  bitbucket: {
-    host: 'https://api.bitbucket.org/2.0',
-  },
   local: {
     enabled: true,
     enableClone: false,
     allowedPaths: [],
-    workspaceRoot: undefined,
   },
   tools: {
     enabled: null,
     enableAdditional: null,
     disabled: null,
-    disablePrompts: false,
   },
   network: {
     timeout: 30000,
@@ -134,12 +127,9 @@ const buildMockConfig = () => {
   const envTimeout = mockParseIntEnv(process.env.REQUEST_TIMEOUT);
   const envMaxRetries = mockParseIntEnv(process.env.MAX_RETRIES);
   const envApiUrl = process.env.GITHUB_API_URL?.trim();
-  const envGitlabHost = process.env.GITLAB_HOST?.trim();
-  const envBitbucketHost = process.env.BITBUCKET_HOST?.trim();
   const envToolsToRun = mockParseStringArrayEnv(process.env.TOOLS_TO_RUN);
   const envEnableTools = mockParseStringArrayEnv(process.env.ENABLE_TOOLS);
   const envDisableTools = mockParseStringArrayEnv(process.env.DISABLE_TOOLS);
-  const envDisablePrompts = mockParseBooleanEnv(process.env.DISABLE_PROMPTS);
 
   let timeout = envTimeout ?? mockDefaultConfig.network.timeout;
   timeout = Math.max(5000, Math.min(300000, timeout));
@@ -152,19 +142,10 @@ const buildMockConfig = () => {
     github: {
       apiUrl: envApiUrl || mockDefaultConfig.github.apiUrl,
     },
-    gitlab: {
-      host: envGitlabHost || mockDefaultConfig.gitlab.host,
-    },
-    bitbucket: {
-      host: envBitbucketHost || mockDefaultConfig.bitbucket.host,
-    },
     local: {
       ...mockDefaultConfig.local,
       enabled: envEnableLocal ?? mockDefaultConfig.local.enabled,
       enableClone: envEnableClone ?? mockDefaultConfig.local.enableClone,
-      workspaceRoot:
-        process.env.WORKSPACE_ROOT?.trim() ||
-        mockDefaultConfig.local.workspaceRoot,
       allowedPaths:
         mockParseStringArrayEnv(process.env.ALLOWED_PATHS) ??
         mockDefaultConfig.local.allowedPaths,
@@ -174,8 +155,6 @@ const buildMockConfig = () => {
       enableAdditional:
         envEnableTools ?? mockDefaultConfig.tools.enableAdditional,
       disabled: envDisableTools ?? mockDefaultConfig.tools.disabled,
-      disablePrompts:
-        envDisablePrompts ?? mockDefaultConfig.tools.disablePrompts,
     },
     network: {
       timeout,
@@ -205,11 +184,10 @@ vi.mock('octocode-shared', () => ({
       sessionId: sessionMockState.sessionId,
       createdAt: '2024-01-01T00:00:00.000Z',
       lastActiveAt: '2024-01-01T00:00:00.000Z',
-      stats: { toolCalls: 0, promptCalls: 0, errors: 0, rateLimits: 0 },
+      stats: { toolCalls: 0, errors: 0, rateLimits: 0 },
     };
   }),
   incrementToolCalls: vi.fn(() => ({ success: true })),
-  incrementPromptCalls: vi.fn(() => ({ success: true })),
   incrementErrors: vi.fn(() => ({ success: true })),
   incrementRateLimits: vi.fn(() => ({ success: true })),
   updateSessionStats: vi.fn(() => ({ success: true })),
@@ -536,8 +514,133 @@ const _coreMock = vi.hoisted(() => ({ ref: null as unknown }));
 vi.mock('@octocodeai/octocode-core', async importOriginal => {
   const actual =
     await importOriginal<typeof import('@octocodeai/octocode-core')>();
+
+  // The installed core@1.0.2 only exports octocodeConfig + completeMetadata,
+  // but src/ imports many additional schemas/validators/constants that exist
+  // in newer builds of the host repo. We stub them here with minimal Zod
+  // shapes so the test imports resolve. Tests that need richer behavior
+  // re-mock specific symbols locally.
+  const { z } = await import('zod/v4');
+  // Stubs need `.shape.charOffset`, `.shape.queries`, etc. accessed by the
+  // overlay code in src/scheme/. Include the keys that are actually read.
+  const passthrough = () =>
+    z
+      .object({
+        charOffset: z.number().optional().default(0),
+      })
+      .passthrough();
+  const identityValidator = <T>(v: T) => v;
+  const stubBulkSchema = () =>
+    z.object({ queries: z.array(z.unknown()) }).passthrough();
+
+  const schemaStubs = {
+    // Local tools
+    RipgrepQuerySchema: passthrough(),
+    BulkRipgrepQuerySchema: stubBulkSchema(),
+    FindFilesQuerySchema: passthrough(),
+    BulkFindFilesQuerySchema: stubBulkSchema(),
+    ViewStructureQuerySchema: passthrough(),
+    BulkViewStructureQuerySchema: stubBulkSchema(),
+    FetchContentQuerySchema: passthrough(),
+    FetchContentBulkQuerySchema: stubBulkSchema(),
+    LocalSearchCodeOutputSchema: passthrough(),
+    LocalFindFilesOutputSchema: passthrough(),
+    LocalViewStructureOutputSchema: passthrough(),
+    LocalGetFileContentOutputSchema: passthrough(),
+    // GitHub tools
+    FileContentQuerySchema: passthrough(),
+    FileContentBulkQuerySchema: stubBulkSchema(),
+    GitHubCodeSearchQuerySchema: passthrough(),
+    GitHubCodeSearchBulkQuerySchema: stubBulkSchema(),
+    GitHubCodeSearchOutputSchema: passthrough(),
+    GitHubReposSearchQuerySchema: passthrough(),
+    GitHubReposSearchSingleQuerySchema: passthrough(),
+    GitHubReposSearchBulkQuerySchema: stubBulkSchema(),
+    GitHubSearchRepositoriesOutputSchema: passthrough(),
+    GitHubPullRequestSearchQuerySchema: passthrough(),
+    GitHubPullRequestSearchBulkQuerySchema: stubBulkSchema(),
+    GitHubSearchPullRequestsOutputSchema: passthrough(),
+    GitHubViewRepoStructureQuerySchema: passthrough(),
+    GitHubViewRepoStructureBulkQuerySchema: stubBulkSchema(),
+    GitHubViewRepoStructureOutputSchema: passthrough(),
+    BulkCloneRepoSchema: stubBulkSchema(),
+    GitHubCloneRepoOutputSchema: passthrough(),
+    // Package search
+    NpmPackageQuerySchema: passthrough(),
+    PackageSearchBulkQuerySchema: stubBulkSchema(),
+    PackageSearchOutputSchema: passthrough(),
+    // LSP
+    LSPGotoDefinitionQuerySchema: passthrough(),
+    BulkLSPGotoDefinitionSchema: stubBulkSchema(),
+    BulkLSPGotoDefinitionQuerySchema: stubBulkSchema(),
+    LspGotoDefinitionOutputSchema: passthrough(),
+    LSPFindReferencesQuerySchema: passthrough(),
+    BulkLSPFindReferencesSchema: stubBulkSchema(),
+    BulkLSPFindReferencesQuerySchema: stubBulkSchema(),
+    LspFindReferencesOutputSchema: passthrough(),
+    LSPCallHierarchyQuerySchema: passthrough(),
+    BulkLSPCallHierarchySchema: stubBulkSchema(),
+    BulkLSPCallHierarchyQuerySchema: stubBulkSchema(),
+    LspCallHierarchyOutputSchema: passthrough(),
+    // Base / shared
+    BaseQuerySchema: passthrough(),
+    BaseQuerySchemaLocal: passthrough(),
+    ErrorDataSchema: passthrough(),
+    BulkFetchContentSchema: stubBulkSchema(),
+    BulkViewStructureSchema: stubBulkSchema(),
+    BulkFindFilesSchema: stubBulkSchema(),
+    // Tool name constants (used by registration)
+    GITHUB_FETCH_CONTENT: 'githubGetFileContent',
+    GITHUB_SEARCH_CODE: 'githubSearchCode',
+    GITHUB_SEARCH_PULL_REQUESTS: 'githubSearchPullRequests',
+    GITHUB_SEARCH_REPOSITORIES: 'githubSearchRepositories',
+    GITHUB_VIEW_REPO_STRUCTURE: 'githubViewRepoStructure',
+    GITHUB_CLONE_REPO: 'githubCloneRepo',
+    PACKAGE_SEARCH: 'packageSearch',
+    LOCAL_RIPGREP: 'localSearchCode',
+    LOCAL_FETCH_CONTENT: 'localGetFileContent',
+    LOCAL_FIND_FILES: 'localFindFiles',
+    LOCAL_VIEW_STRUCTURE: 'localViewStructure',
+    LSP_GOTO_DEFINITION: 'lspGotoDefinition',
+    LSP_FIND_REFERENCES: 'lspFindReferences',
+    LSP_CALL_HIERARCHY: 'lspCallHierarchy',
+    // Validators (identity — runtime checks delegated to overlay schemas)
+    validateRipgrepQuery: identityValidator,
+    validateFindFilesQuery: identityValidator,
+    validateViewStructureQuery: identityValidator,
+    validateFetchContentQuery: identityValidator,
+    applyWorkflowMode: identityValidator,
+    createBulkQuerySchema: stubBulkSchema,
+    // Description constants
+    LOCAL_RIPGREP_DESCRIPTION: 'localSearchCode',
+    LOCAL_FIND_FILES_DESCRIPTION: 'localFindFiles',
+    LOCAL_VIEW_STRUCTURE_DESCRIPTION: 'localViewStructure',
+    LOCAL_FETCH_CONTENT_DESCRIPTION: 'localGetFileContent',
+    LSP_GOTO_DEFINITION_DESCRIPTION: 'lspGotoDefinition',
+    LSP_FIND_REFERENCES_DESCRIPTION: 'lspFindReferences',
+    LSP_CALL_HIERARCHY_DESCRIPTION: 'lspCallHierarchy',
+    GITHUB_CLONE_REPO_DESCRIPTION: 'githubCloneRepo',
+    // Additional schemas
+    PackageSearchQuerySchema: passthrough(),
+    LocalSearchCodeDataSchema: passthrough(),
+    LocalFindFilesDataSchema: passthrough(),
+    LocalViewStructureDataSchema: passthrough(),
+    LocalGetFileContentDataSchema: passthrough(),
+    LspGotoDefinitionDataSchema: passthrough(),
+    LspFindReferencesDataSchema: passthrough(),
+    LspCallHierarchyDataSchema: passthrough(),
+    GitHubSearchCodeDataSchema: passthrough(),
+    GitHubGetFileContentDataSchema: passthrough(),
+    GitHubSearchPullRequestsDataSchema: passthrough(),
+    GitHubSearchRepositoriesDataSchema: passthrough(),
+    GitHubViewRepoStructureDataSchema: passthrough(),
+    GitHubCloneRepoDataSchema: passthrough(),
+    PackageSearchDataSchema: passthrough(),
+  };
+
   return {
     ...actual,
+    ...schemaStubs,
     get octocodeConfig() {
       return _coreMock.ref;
     },
@@ -610,6 +713,9 @@ beforeEach(() => {
   sessionMockState.deleted = false;
   capturedWarnings = [];
   resetExpectedStderrWarnings();
+  // #T13: clear circuit-breaker state so a host that tripped in one test
+  // doesn't fail-fast unrelated tests sharing the same host.
+  resetCircuitBreaker();
 
   if (enforceWarningFreeTests) {
     vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {

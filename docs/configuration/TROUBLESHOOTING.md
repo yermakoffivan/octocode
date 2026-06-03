@@ -36,11 +36,11 @@ If you set `OCTOCODE_HOME`, all of these paths move under that directory.
 
 ## Table of Contents
 
-- [1. npm Registry Issues](#1-npm-registry-issues)
-- [2. Node.js Version and Process Issues](#2-nodejs-version-and-process-issues)
-- [3. Authentication Issues](#3-authentication-issues)
-- [4. MCP Server Connection Issues](#4-mcp-server-connection-issues)
-- [5. Still Having Issues?](#5-still-having-issues)
+- [1. npm Registry Issues](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md#1-npm-registry-issues)
+- [2. Node.js Version and Process Issues](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md#2-nodejs-version-and-process-issues)
+- [3. Authentication Issues](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md#3-authentication-issues)
+- [4. MCP Server Connection Issues](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md#4-mcp-server-connection-issues)
+- [5. Still Having Issues?](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md#5-still-having-issues)
 
 ---
 
@@ -184,7 +184,6 @@ For detailed authentication setup and troubleshooting, see the [Authentication S
 
 **Quick tips not covered there:**
 - **401/bad credentials:** Verify token: `curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user`. Ensure scopes include `repo`, `read:user`, `read:org`.
-- **GitLab:** Test connection: `curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" https://gitlab.com/api/v4/user`
 
 ---
 
@@ -246,5 +245,5 @@ We actively monitor and respond to issues!
 ## See Also
 
 - [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) — All env vars and `.octocoderc` options
-- [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) — GitHub/GitLab auth guide
+- [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) — GitHub auth guide
 - [Development Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/DEVELOPMENT_GUIDE.md) — Build commands, testing, code standards

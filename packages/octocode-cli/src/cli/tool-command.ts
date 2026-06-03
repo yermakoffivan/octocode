@@ -1,69 +1,33 @@
-import { z } from 'zod/v4';
 import type { CLICommand, ParsedArgs } from './types.js';
+import './cjs-shim.js';
 import { c, bold, dim } from '../utils/colors.js';
 import {
-  initialize as initializeMcp,
-  initializeProviders,
+  buildDirectToolExampleQuery,
+  DIRECT_TOOL_CATEGORIES,
+  DIRECT_TOOL_DEFINITIONS,
+  DirectToolInputError,
+  executeDirectTool,
+  findDirectToolDefinition,
+  formatCallToolResultForOutput,
+  formatDirectToolOutputSchemaText,
+  formatDirectToolMetadataSchemaText,
+  formatDirectToolSchemaText,
+  getDirectToolAutoFilledFields,
+  getDirectToolCategory,
+  getDirectToolDescription,
+  getDirectToolDisplayFields,
+  getDirectToolOutputFields,
   loadToolContent,
-  fetchMultipleGitHubFileContents,
-  searchMultipleGitHubCode,
-  searchMultipleGitHubPullRequests,
-  searchMultipleGitHubRepos,
-  exploreMultipleRepositoryStructures,
-  executeFetchContent,
-  executeFindFiles,
-  executeRipgrepSearch,
-  executeViewStructure,
-  executeGotoDefinition,
-  executeFindReferences,
-  executeCallHierarchy,
-  searchPackages,
-  GitHubCodeSearchQuerySchema,
-  GitHubViewRepoStructureQuerySchema,
-  GitHubReposSearchSingleQuerySchema,
-  GitHubPullRequestSearchQuerySchema,
-  FileContentQuerySchema,
-  RipgrepQuerySchema,
-  FetchContentQuerySchema,
-  FindFilesQuerySchema,
-  ViewStructureQuerySchema,
-  LSPGotoDefinitionQuerySchema,
-  LSPFindReferencesQuerySchema,
-  LSPCallHierarchyQuerySchema,
-  PackageSearchQuerySchema,
+  prepareDirectToolInputFromJsonText,
+  sortDirectToolNames,
+  type DirectToolDefinition,
+  type DirectToolDisplayField,
 } from 'octocode-mcp/public';
 
-type ToolResult = {
-  content?: Array<{ type?: string; text?: string }>;
-  structuredContent?: unknown;
-  isError?: boolean;
-};
+type ToolResult = Parameters<typeof formatCallToolResultForOutput>[0];
 
-type ToolExecutor = (input: unknown) => Promise<ToolResult>;
-
-export interface ToolDefinition {
-  name: string;
-  schema: z.ZodType;
-  execute: ToolExecutor;
-  requiresServerRuntime?: boolean;
-  requiresProviders?: boolean;
-}
-
-interface JsonSchemaObject extends Record<string, unknown> {
-  type?: string | string[];
-  description?: string;
-  enum?: unknown[];
-  required?: string[];
-  properties?: Record<string, unknown>;
-  items?: unknown;
-}
-
-export const AUTO_FILLED_FIELDS = new Set([
-  'id',
-  'mainResearchGoal',
-  'researchGoal',
-  'reasoning',
-]);
+export type ToolDefinition = DirectToolDefinition;
+export const TOOL_CATEGORIES = DIRECT_TOOL_CATEGORIES;
 
 const TOOL_RUNTIME_OPTION_KEYS = new Set([
   'tool',
@@ -80,152 +44,34 @@ const TOOL_RUNTIME_OPTION_KEYS = new Set([
   'tools-context',
 ]);
 
-const CANONICAL_TOOL_USAGE =
-  "octocode-cli --tool <toolName> --queries '<json-stringified-input>'";
+const CANONICAL_TOOL_USAGE = [
+  'octocode tools                                   # list all tools',
+  'octocode tools <name>                            # show input schema',
+  'octocode tools <n1> <n2> ...                     # batch input schemas',
+  "octocode tools <name> --queries '<json>'         # run a tool",
+  "octocode tools <name> --queries '<json>' --json  # run, raw JSON output",
+  'octocode instructions                            # MCP instructions + all schemas',
+].join('\n');
 
-/** Wraps a typed executor into an untyped ToolExecutor.
- * SAFETY: callers MUST validate via tool.schema.safeParse() before invoking. */
-function wrapExecutor<TInput>(
-  fn: (input: TInput) => Promise<ToolResult>
-): ToolExecutor {
-  return async (input: unknown) => fn(input as TInput);
-}
-
-export const TOOL_DEFINITIONS: ToolDefinition[] = [
-  {
-    name: 'githubSearchCode',
-    schema: GitHubCodeSearchQuerySchema,
-    execute: wrapExecutor(searchMultipleGitHubCode),
-    requiresServerRuntime: true,
-    requiresProviders: true,
-  },
-  {
-    name: 'githubGetFileContent',
-    schema: FileContentQuerySchema,
-    execute: wrapExecutor(fetchMultipleGitHubFileContents),
-    requiresServerRuntime: true,
-    requiresProviders: true,
-  },
-  {
-    name: 'githubViewRepoStructure',
-    schema: GitHubViewRepoStructureQuerySchema,
-    execute: wrapExecutor(exploreMultipleRepositoryStructures),
-    requiresServerRuntime: true,
-    requiresProviders: true,
-  },
-  {
-    name: 'githubSearchRepositories',
-    schema: GitHubReposSearchSingleQuerySchema,
-    execute: wrapExecutor(searchMultipleGitHubRepos),
-    requiresServerRuntime: true,
-    requiresProviders: true,
-  },
-  {
-    name: 'githubSearchPullRequests',
-    schema: GitHubPullRequestSearchQuerySchema,
-    execute: wrapExecutor(searchMultipleGitHubPullRequests),
-    requiresServerRuntime: true,
-    requiresProviders: true,
-  },
-  {
-    name: 'packageSearch',
-    schema: PackageSearchQuerySchema,
-    execute: wrapExecutor(searchPackages),
-    requiresServerRuntime: true,
-  },
-  {
-    name: 'localSearchCode',
-    schema: RipgrepQuerySchema,
-    execute: wrapExecutor(executeRipgrepSearch),
-  },
-  {
-    name: 'localGetFileContent',
-    schema: FetchContentQuerySchema,
-    execute: wrapExecutor(executeFetchContent),
-  },
-  {
-    name: 'localFindFiles',
-    schema: FindFilesQuerySchema,
-    execute: wrapExecutor(executeFindFiles),
-  },
-  {
-    name: 'localViewStructure',
-    schema: ViewStructureQuerySchema,
-    execute: wrapExecutor(executeViewStructure),
-  },
-  {
-    name: 'lspGotoDefinition',
-    schema: LSPGotoDefinitionQuerySchema,
-    execute: wrapExecutor(executeGotoDefinition),
-    requiresServerRuntime: true,
-  },
-  {
-    name: 'lspFindReferences',
-    schema: LSPFindReferencesQuerySchema,
-    execute: wrapExecutor(executeFindReferences),
-    requiresServerRuntime: true,
-  },
-  {
-    name: 'lspCallHierarchy',
-    schema: LSPCallHierarchyQuerySchema,
-    execute: wrapExecutor(executeCallHierarchy),
-    requiresServerRuntime: true,
-  },
-];
-
-let serverRuntimeInitPromise: Promise<void> | null = null;
-let providerRuntimeInitPromise: Promise<void> | null = null;
+export const TOOL_DEFINITIONS: ToolDefinition[] = DIRECT_TOOL_DEFINITIONS;
 let toolMetadataPromise: Promise<
   Awaited<ReturnType<typeof loadToolContent>>
 > | null = null;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isJsonSchemaObject(value: unknown): value is JsonSchemaObject {
-  return isRecord(value);
-}
-
 export function findToolDefinition(name: string): ToolDefinition | undefined {
-  return TOOL_DEFINITIONS.find(tool => tool.name === name);
+  return findDirectToolDefinition(name);
 }
 
 export function getToolCategory(
   toolName: string
-): 'GitHub' | 'Local' | 'LSP' | 'Package' | 'Other' {
-  if (toolName.startsWith('github')) {
-    return 'GitHub';
-  }
-
-  if (toolName.startsWith('local')) {
-    return 'Local';
-  }
-
-  if (toolName.startsWith('lsp')) {
-    return 'LSP';
-  }
-
-  if (toolName === 'packageSearch') {
-    return 'Package';
-  }
-
-  return 'Other';
+): ReturnType<typeof getDirectToolCategory> {
+  return getDirectToolCategory(toolName);
 }
 
-function sortToolNames(toolNames: string[]): string[] {
-  const categoryOrder = ['GitHub', 'Local', 'LSP', 'Package', 'Other'];
-
-  return [...toolNames].sort((left, right) => {
-    const leftCategory = categoryOrder.indexOf(getToolCategory(left));
-    const rightCategory = categoryOrder.indexOf(getToolCategory(right));
-
-    if (leftCategory !== rightCategory) {
-      return leftCategory - rightCategory;
-    }
-
-    return 0;
-  });
+export function getDisplayFields(
+  tool: ToolDefinition
+): DirectToolDisplayField[] {
+  return getDirectToolDisplayFields(tool.name);
 }
 
 async function loadToolMetadata(): Promise<
@@ -248,96 +94,9 @@ async function getOptionalToolMetadata(): Promise<Awaited<
   }
 }
 
-function getToolDescription(
-  toolName: string,
-  metadata?: Awaited<ReturnType<typeof loadToolContent>> | null
-): string {
-  return metadata?.tools[toolName]?.description ?? toolName;
-}
-
-function formatSchemaText(toolName: string): string {
-  const tool = findToolDefinition(toolName);
-  if (!tool) {
-    return '{}';
-  }
-
-  return JSON.stringify(z.toJSONSchema(tool.schema), null, 2);
-}
-
-function formatMetadataSchemaText(
-  schema: Record<string, string> | undefined
-): string {
-  return JSON.stringify(schema ?? {}, null, 2);
-}
-
-function normalizeKey(key: string): string {
-  return key.replace(/[-_]+([a-zA-Z0-9])/g, (_, char: string) =>
-    char.toUpperCase()
-  );
-}
-
-function buildDefaultGoal(toolName: string): string {
-  return `Execute ${toolName} via octocode-cli`;
-}
-
-function applyDefaultQueryFields(
-  toolName: string,
-  index: number,
-  query: Record<string, unknown>
-): Record<string, unknown> {
-  const nextQuery = { ...query };
-  const category = getToolCategory(toolName);
-
-  if (typeof nextQuery.id !== 'string' || nextQuery.id.trim().length === 0) {
-    nextQuery.id = `${toolName}-${index + 1}`;
-  }
-
-  if (category === 'GitHub' || category === 'Package') {
-    if (
-      typeof nextQuery.mainResearchGoal !== 'string' ||
-      nextQuery.mainResearchGoal.trim().length === 0
-    ) {
-      nextQuery.mainResearchGoal = buildDefaultGoal(toolName);
-    }
-  }
-
-  if (
-    typeof nextQuery.researchGoal !== 'string' ||
-    nextQuery.researchGoal.trim().length === 0
-  ) {
-    nextQuery.researchGoal = buildDefaultGoal(toolName);
-  }
-
-  if (
-    typeof nextQuery.reasoning !== 'string' ||
-    nextQuery.reasoning.trim().length === 0
-  ) {
-    nextQuery.reasoning = 'Executed via octocode-cli tool command';
-  }
-
-  return nextQuery;
-}
-
-function normalizeQueryObject(query: unknown): Record<string, unknown> {
-  if (!isRecord(query)) {
-    throw new Error('Tool input must be a JSON object or an array of objects.');
-  }
-
-  const normalized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(query)) {
-    normalized[normalizeKey(key)] = value;
-  }
-
-  return normalized;
-}
-
 function formatToolExampleCommand(toolName: string): string {
-  const tool = findToolDefinition(toolName);
-  const exampleInput = tool
-    ? JSON.stringify(buildExampleQuery(tool))
-    : '{"path":".","pattern":"needle"}';
-
-  return `octocode-cli --tool ${toolName} --queries '${exampleInput}'`;
+  const exampleInput = JSON.stringify(buildDirectToolExampleQuery(toolName));
+  return `octocode tools ${toolName} --queries '${exampleInput}'`;
 }
 
 function getUnexpectedToolOptionKeys(args: ParsedArgs): string[] {
@@ -346,16 +105,9 @@ function getUnexpectedToolOptionKeys(args: ParsedArgs): string[] {
   );
 }
 
-function buildToolPayload(
-  toolName: string,
-  args: ParsedArgs
-): {
-  queries: Array<Record<string, unknown>>;
-  responseCharLength?: number;
-  responseCharOffset?: number;
-} | null {
+function getInputText(toolName: string, args: ParsedArgs): string | undefined {
   if (args.options.input !== undefined) {
-    throw new Error(
+    throw new DirectToolInputError(
       `Legacy --input is not supported. Use ${formatToolExampleCommand(toolName)}.`
     );
   }
@@ -366,176 +118,27 @@ function buildToolPayload(
       .map(key => `--${key}`)
       .join(', ');
 
-    throw new Error(
+    throw new DirectToolInputError(
       `Unsupported tool flags: ${formattedKeys}. Use ${formatToolExampleCommand(toolName)}.`
     );
   }
 
   if (args.args.length > 2) {
-    throw new Error(
+    throw new DirectToolInputError(
       `Pass tool input as one quoted JSON string. Use ${formatToolExampleCommand(toolName)}.`
     );
   }
 
-  const inputText =
-    typeof args.options.queries === 'string'
-      ? args.options.queries
-      : args.args[1];
-  if (typeof inputText !== 'string') {
-    return null;
-  }
-
-  let rawPayload: unknown;
-
-  try {
-    rawPayload = JSON.parse(inputText) as unknown;
-  } catch {
-    throw new Error(
-      `Tool input must be valid JSON. Use ${formatToolExampleCommand(toolName)}.`
-    );
-  }
-
-  let queriesInput: unknown[] = [];
-  let responseCharLength: number | undefined;
-  let responseCharOffset: number | undefined;
-
-  if (Array.isArray(rawPayload)) {
-    queriesInput = rawPayload;
-  } else if (isRecord(rawPayload) && Array.isArray(rawPayload.queries)) {
-    queriesInput = rawPayload.queries;
-    if (typeof rawPayload.responseCharLength === 'number') {
-      responseCharLength = rawPayload.responseCharLength;
-    }
-    if (typeof rawPayload.responseCharOffset === 'number') {
-      responseCharOffset = rawPayload.responseCharOffset;
-    }
-  } else if (isRecord(rawPayload)) {
-    queriesInput = [rawPayload];
-  } else {
-    throw new Error(
-      'Tool input must be a JSON object, an array of query objects, or { "queries": [...] }.'
-    );
-  }
-
-  if (queriesInput.length === 0) {
-    throw new Error('At least one query is required.');
-  }
-
-  return {
-    queries: queriesInput.map((query, index) =>
-      applyDefaultQueryFields(toolName, index, normalizeQueryObject(query))
-    ),
-    responseCharLength,
-    responseCharOffset,
-  };
+  return typeof args.options.queries === 'string'
+    ? args.options.queries
+    : args.args[1];
 }
 
-export function getDisplayFields(tool: ToolDefinition): Array<{
-  name: string;
-  required: boolean;
-  type: string;
-  description?: string;
-}> {
-  const jsonSchema = z.toJSONSchema(tool.schema);
-  if (!isJsonSchemaObject(jsonSchema)) {
-    return [];
-  }
-
-  const requiredFields = new Set(
-    Array.isArray(jsonSchema.required)
-      ? jsonSchema.required.filter(name => !AUTO_FILLED_FIELDS.has(name))
-      : []
-  );
-
-  const properties = isRecord(jsonSchema.properties)
-    ? jsonSchema.properties
-    : {};
-
-  return Object.entries(properties)
-    .filter(([name]) => !AUTO_FILLED_FIELDS.has(name))
-    .map(([name, value]) => {
-      const schema = isJsonSchemaObject(value) ? value : {};
-      return {
-        name,
-        required: requiredFields.has(name),
-        type: describeSchemaType(schema),
-        description:
-          typeof schema.description === 'string'
-            ? schema.description
-            : undefined,
-      };
-    });
-}
-
-function describeSchemaType(schema: JsonSchemaObject): string {
-  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
-    return `enum(${schema.enum.map(String).join(', ')})`;
-  }
-
-  if (schema.type === 'array') {
-    const items = isJsonSchemaObject(schema.items) ? schema.items : undefined;
-    return `array<${items ? describeSchemaType(items) : 'value'}>`;
-  }
-
-  if (Array.isArray(schema.type)) {
-    return schema.type.join(' | ');
-  }
-
-  if (typeof schema.type === 'string') {
-    return schema.type;
-  }
-
-  return 'value';
-}
-
-function buildExampleQuery(tool: ToolDefinition): Record<string, unknown> {
-  const fields = getDisplayFields(tool);
-  const requiredFields = fields.filter(field => field.required);
-  const sourceFields =
-    requiredFields.length > 0 ? requiredFields : fields.slice(0, 4);
-  const example: Record<string, unknown> = {};
-
-  for (const field of sourceFields) {
-    example[field.name] = buildExampleValue(field.name, field.type);
-  }
-
-  return example;
-}
-
-function buildExampleValue(name: string, type: string): unknown {
-  if (type.startsWith('array<')) {
-    return [name];
-  }
-
-  if (type === 'integer' || type === 'number') {
-    return 1;
-  }
-
-  if (type === 'boolean') {
-    return true;
-  }
-
-  if (type.startsWith('enum(')) {
-    const match = /^enum\(([^,)]+)/.exec(type);
-    return match?.[1] ?? name;
-  }
-
-  switch (name) {
-    case 'path':
-      return '.';
-    case 'owner':
-      return 'bgauryy';
-    case 'repo':
-      return 'octocode-mcp';
-    case 'keywordsToSearch':
-      return ['toolName'];
-    case 'ecosystem':
-      return 'npm';
-    case 'name':
-      return 'react';
-    default:
-      return name;
-  }
+function extractShortDescription(fullDescription: string): string {
+  return fullDescription
+    .split('\n')[0]
+    .trim()
+    .replace(/^##\s*/, '');
 }
 
 export async function showAvailableTools(): Promise<void> {
@@ -543,14 +146,17 @@ export async function showAvailableTools(): Promise<void> {
 
   console.log();
   console.log(`  ${c('magenta', bold('Octocode Tools'))}`);
+  console.log(
+    `  ${dim('tools <name>')} ${dim('→ schema')}   ${dim("tools <name> --queries '<json>'")} ${dim('→ run')}`
+  );
 
-  const categories = ['GitHub', 'Local', 'LSP', 'Package'] as const;
+  const toolNames = sortDirectToolNames(
+    TOOL_DEFINITIONS.map(tool => tool.name)
+  );
 
-  const toolNames = sortToolNames(TOOL_DEFINITIONS.map(tool => tool.name));
-
-  for (const category of categories) {
+  for (const category of TOOL_CATEGORIES) {
     const toolsInCategory = toolNames.filter(
-      toolName => getToolCategory(toolName) === category
+      toolName => getDirectToolCategory(toolName) === category
     );
     if (toolsInCategory.length === 0) {
       continue;
@@ -559,16 +165,14 @@ export async function showAvailableTools(): Promise<void> {
     console.log();
     console.log(`  ${bold(category)}`);
     for (const toolName of toolsInCategory) {
-      console.log(
-        `    ${c('cyan', toolName)} ${dim('-')} ${getToolDescription(toolName, metadata)}`
+      const shortDesc = extractShortDescription(
+        getDirectToolDescription(toolName, metadata)
       );
+      const padded = toolName.padEnd(32);
+      console.log(`    ${c('cyan', padded)} ${dim(shortDesc)}`);
     }
   }
 
-  console.log();
-  console.log(
-    `  ${dim('Tip:')} ${c('yellow', 'octocode-cli --tool localSearchCode --queries \'{"path":".","pattern":"runCLI"}\'')}`
-  );
   console.log();
 }
 
@@ -579,81 +183,116 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
   }
 
   const metadata = await getOptionalToolMetadata();
-  const fields = getDisplayFields(tool);
+  const fields = getDirectToolDisplayFields(tool.name);
+  const autoFilledFields = getDirectToolAutoFilledFields(tool.name);
+  const shortDesc = extractShortDescription(
+    getDirectToolDescription(tool.name, metadata)
+  );
 
   console.log();
-  console.log(`  ${c('magenta', bold(tool.name))}`);
-  console.log(`  ${getToolDescription(tool.name, metadata)}`);
+  console.log(`  ${c('magenta', bold(tool.name))}  ${dim(shortDesc)}`);
   console.log();
 
   console.log(`  ${bold('Input Schema')}`);
   for (const field of fields) {
     const reqTag = field.required ? c('red', ' [required]') : '';
     console.log(
-      `    ${c('cyan', field.name)} (${field.type})${reqTag}${field.description ? dim(` — ${field.description}`) : ''}`
+      `    ${c('cyan', field.name)} (${field.type})${reqTag}${field.description ? dim(` - ${field.description}`) : ''}`
     );
   }
   console.log();
 
-  console.log(
-    `  ${dim('Auto-filled')}: id, researchGoal, reasoning${
-      getToolCategory(tool.name) === 'GitHub' ||
-      getToolCategory(tool.name) === 'Package'
-        ? ', mainResearchGoal'
-        : ''
-    }`
-  );
+  console.log(`  ${dim('Auto-filled')}: ${autoFilledFields.join(', ')}`);
   console.log();
 
   console.log(`  ${bold('Output Schema')}`);
-  console.log(`    ${dim('content')}: Array<{ type: string; text: string }>`);
-  console.log(`    ${dim('structuredContent')}: object (optional)`);
-  console.log(`    ${dim('isError')}: boolean (optional)`);
+  for (const field of getDirectToolOutputFields()) {
+    const optional = field.optional ? ' (optional)' : '';
+    console.log(`    ${dim(field.name)}: ${field.type}${optional}`);
+  }
   console.log();
 
-  const exampleQuery = buildExampleQuery(tool);
-  console.log(`  ${bold('Example')}`);
+  console.log(`  ${bold('Flags')}`);
   console.log(
-    `    ${c('yellow', `octocode-cli --tool ${tool.name} --queries '${JSON.stringify(exampleQuery)}'`)}`
+    `    ${c('cyan', '--json')}   ${dim('Output raw JSON (structuredContent + content + isError)')}`
+  );
+  console.log();
+
+  console.log(`  ${bold('Example')}`);
+  console.log(`    ${c('yellow', formatToolExampleCommand(tool.name))}`);
+  console.log(
+    `    ${c('yellow', formatToolExampleCommand(tool.name) + ' --json')}`
   );
   console.log();
 
   return true;
 }
 
+export async function showMultipleToolSchemas(
+  toolNames: string[]
+): Promise<void> {
+  const metadata = await getOptionalToolMetadata();
+
+  for (const toolName of toolNames) {
+    const tool = findToolDefinition(toolName);
+    if (!tool) {
+      console.log();
+      console.log(`  ${c('red', 'x')} Unknown tool: ${toolName}`);
+      continue;
+    }
+
+    const shortDesc = extractShortDescription(
+      getDirectToolDescription(tool.name, metadata)
+    );
+    const fields = getDirectToolDisplayFields(tool.name);
+    const autoFilledFields = getDirectToolAutoFilledFields(tool.name);
+
+    console.log();
+    console.log(`  ${c('magenta', bold(tool.name))}  ${dim(shortDesc)}`);
+    console.log(`  ${bold('Input Schema')}`);
+    for (const field of fields) {
+      const reqTag = field.required ? c('red', ' [required]') : '';
+      console.log(
+        `    ${c('cyan', field.name)} (${field.type})${reqTag}${field.description ? dim(` - ${field.description}`) : ''}`
+      );
+    }
+    console.log(`  ${dim('Auto-filled')}: ${autoFilledFields.join(', ')}`);
+    console.log(
+      `  ${bold('Example')}  ${c('yellow', formatToolExampleCommand(tool.name))}`
+    );
+  }
+
+  console.log();
+}
+
 export async function getToolsContextString(): Promise<string> {
   const metadata = await loadToolMetadata();
-  const toolNames = sortToolNames(Object.keys(metadata.tools));
+  const toolNames = sortDirectToolNames(Object.keys(metadata.tools));
 
   const sections: string[] = [
-    'CLI Contract:',
-    `- ${CANONICAL_TOOL_USAGE}`,
-    '- octocode-cli --tools-context',
+    'CLI Usage:',
+    CANONICAL_TOOL_USAGE,
     '',
     'Octocode MCP Instructions:',
     metadata.instructions.trim(),
     '',
     'Output schema (all tools):',
-    JSON.stringify(
-      {
-        content: 'Array<{ type: string; text: string }>',
-        structuredContent: 'object (optional)',
-        isError: 'boolean (optional)',
-      },
-      null,
-      2
-    ),
+    formatDirectToolOutputSchemaText(),
     '',
     'Tools:',
   ];
 
   toolNames.forEach((toolName, index) => {
-    const schemaText = findToolDefinition(toolName)
-      ? formatSchemaText(toolName)
-      : formatMetadataSchemaText(metadata.tools[toolName]?.schema);
+    const schemaText = findDirectToolDefinition(toolName)
+      ? formatDirectToolSchemaText(toolName)
+      : formatDirectToolMetadataSchemaText(metadata.tools[toolName]?.schema);
+
+    const shortDesc = extractShortDescription(
+      getDirectToolDescription(toolName, metadata)
+    );
 
     sections.push(`${index + 1}. ${toolName}`);
-    sections.push(`Description: ${getToolDescription(toolName, metadata)}`);
+    sections.push(`Description: ${shortDesc}`);
     sections.push('Input schema:');
     sections.push(schemaText);
     sections.push('');
@@ -683,74 +322,20 @@ function printToolResult(
   result: ToolResult,
   outputMode: 'text' | 'json'
 ): void {
-  if (outputMode === 'json') {
-    const payload =
-      result.structuredContent !== undefined
-        ? result.structuredContent
-        : result;
-    console.log(JSON.stringify(payload));
-    return;
-  }
-
-  const textBlocks = Array.isArray(result.content)
-    ? result.content
-        .map(block => (typeof block.text === 'string' ? block.text : ''))
-        .filter(block => block.length > 0)
-    : [];
-
-  if (textBlocks.length > 0) {
-    console.log(textBlocks.join('\n\n'));
-    return;
-  }
-
-  if (result.structuredContent !== undefined) {
-    console.log(JSON.stringify(result.structuredContent, null, 2));
-    return;
-  }
-
-  console.log(JSON.stringify(result, null, 2));
+  console.log(formatCallToolResultForOutput(result, outputMode));
 }
 
 function printToolError(message: string, details: string[] = []): void {
   console.log();
-  console.log(`  ${c('red', '✗')} ${message}`);
+  console.log(`  ${c('red', 'x')} ${message}`);
   for (const detail of details) {
     console.log(`  ${dim('-')} ${detail}`);
   }
   console.log();
 }
 
-function formatValidationIssues(error: z.ZodError): string[] {
-  return error.issues.map(issue => {
-    const path = issue.path.length > 0 ? issue.path.join('.') : 'input';
-    return `${path}: ${issue.message}`;
-  });
-}
-
-async function ensureServerRuntimeReady(): Promise<void> {
-  if (!serverRuntimeInitPromise) {
-    serverRuntimeInitPromise = initializeMcp();
-  }
-
-  await serverRuntimeInitPromise;
-}
-
-async function ensureProvidersReady(): Promise<void> {
-  if (!providerRuntimeInitPromise) {
-    providerRuntimeInitPromise = initializeProviders().then(() => undefined);
-  }
-
-  await providerRuntimeInitPromise;
-}
-
-async function ensureToolRuntimeReady(tool: ToolDefinition): Promise<void> {
-  if (tool.requiresServerRuntime) {
-    await ensureServerRuntimeReady();
-  }
-
-  if (tool.requiresProviders) {
-    await ensureProvidersReady();
-  }
+function getErrorDetails(error: unknown): string[] {
+  return error instanceof DirectToolInputError ? error.details : [];
 }
 
 export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
@@ -767,6 +352,16 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
     return true;
   }
 
+  // Batch schema mode: multiple positional args, no --queries
+  if (
+    args.args.length > 1 &&
+    typeof args.options.queries !== 'string' &&
+    args.args.every(n => findToolDefinition(n) !== undefined)
+  ) {
+    await showMultipleToolSchemas(args.args);
+    return true;
+  }
+
   const tool = findToolDefinition(toolName);
   if (!tool) {
     printToolError(`Unknown tool: ${toolName}`, [
@@ -780,51 +375,38 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
     return true;
   }
 
-  let payload;
+  let inputText: string | undefined;
   try {
-    payload = buildToolPayload(tool.name, args);
+    inputText = getInputText(tool.name, args);
   } catch (error) {
     printToolError(
-      error instanceof Error ? error.message : 'Failed to parse tool input.'
+      error instanceof Error ? error.message : 'Failed to parse tool input.',
+      getErrorDetails(error)
     );
     return false;
   }
 
-  if (!payload) {
+  if (!inputText) {
     await showToolHelp(tool.name);
     return true;
   }
 
-  const validationResults = payload.queries.map(query =>
-    tool.schema.safeParse(query)
-  );
-  const validationFailure = validationResults.find(result => !result.success);
-  if (validationFailure && !validationFailure.success) {
-    printToolError('Tool input does not match the expected schema.', [
-      ...formatValidationIssues(validationFailure.error),
-    ]);
-    return false;
-  }
-
-  const queries = validationResults
-    .filter(
-      (result): result is z.ZodSafeParseSuccess<Record<string, unknown>> =>
-        result.success
-    )
-    .map(result => result.data);
-
   try {
-    await ensureToolRuntimeReady(tool);
-    const result = await tool.execute({
-      queries,
-      responseCharLength: payload.responseCharLength,
-      responseCharOffset: payload.responseCharOffset,
+    const input = prepareDirectToolInputFromJsonText(tool.name, inputText, {
+      sourceLabel: 'octocode-cli',
     });
+    if (!input) {
+      await showToolHelp(tool.name);
+      return true;
+    }
+
+    const result = await executeDirectTool(tool.name, input);
     printToolResult(result, getOutputMode(args));
     return !result.isError;
   } catch (error) {
     printToolError(
-      error instanceof Error ? error.message : 'Tool execution failed.'
+      error instanceof Error ? error.message : 'Tool execution failed.',
+      getErrorDetails(error)
     );
     return false;
   }
@@ -833,7 +415,7 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
 export const toolCommand: CLICommand = {
   name: 'tool',
   description: 'Run an Octocode tool directly',
-  usage: `octocode-cli --tool <toolName> --queries '<json-stringified-input>'`,
+  usage: `octocode --tool <toolName> --queries '<json-stringified-input>'`,
   options: [
     {
       name: 'tool',

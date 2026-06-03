@@ -407,7 +407,7 @@ describe('GitHub Search Pull Requests Tool', () => {
             {
               owner: 'test',
               repo: 'repo',
-              limit: 10,
+              itemsPerPage: 10,
               page: 1,
             },
           ],
@@ -430,7 +430,7 @@ describe('GitHub Search Pull Requests Tool', () => {
             owner: 'test',
             repo: 'repo',
             state: 'open',
-            limit: 5,
+            itemsPerPage: 5,
             page: 3,
           },
         ],
@@ -464,81 +464,6 @@ describe('GitHub Search Pull Requests Tool', () => {
       expect(providerQuery).toBeDefined();
       expect(providerQuery.page).toBe(1);
     });
-
-    it('should include pagination hints with next/previous for middle pages', async () => {
-      mockProvider.searchPullRequests.mockResolvedValue({
-        data: {
-          items: [createMockPRProviderResponse().data.items[0]],
-          totalCount: 25,
-          pagination: {
-            currentPage: 3,
-            totalPages: 5,
-            hasMore: true,
-            entriesPerPage: 5,
-            totalMatches: 25,
-          },
-        },
-        status: 200,
-        provider: 'github',
-      });
-
-      const result = await mockServer.callTool(
-        TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
-        {
-          queries: [
-            {
-              owner: 'test',
-              repo: 'repo',
-              limit: 5,
-              page: 3,
-            },
-          ],
-        }
-      );
-
-      expect(result.isError).toBe(false);
-      const responseText = getTextContent(result.content);
-      expect(responseText).toContain('Page 3/5');
-      expect(responseText).toContain('page=4');
-      expect(responseText).toContain('page=2');
-    });
-
-    it('should show final page hint on last page', async () => {
-      mockProvider.searchPullRequests.mockResolvedValue({
-        data: {
-          items: [createMockPRProviderResponse().data.items[0]],
-          totalCount: 15,
-          pagination: {
-            currentPage: 3,
-            totalPages: 3,
-            hasMore: false,
-            entriesPerPage: 5,
-            totalMatches: 15,
-          },
-        },
-        status: 200,
-        provider: 'github',
-      });
-
-      const result = await mockServer.callTool(
-        TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
-        {
-          queries: [
-            {
-              owner: 'test',
-              repo: 'repo',
-              limit: 5,
-              page: 3,
-            },
-          ],
-        }
-      );
-
-      expect(result.isError).toBe(false);
-      const responseText = getTextContent(result.content);
-      expect(responseText).toContain('Final page');
-    });
-
     it('should forward different page values correctly across bulk queries', async () => {
       mockProvider.searchPullRequests
         .mockResolvedValueOnce(
@@ -584,7 +509,6 @@ describe('GitHub Search Pull Requests Tool', () => {
             researchGoal: 'test',
             reasoning: 'test',
             state: 'open',
-            merged: false,
             draft: false,
           },
         ],
@@ -629,7 +553,6 @@ describe('GitHub Search Pull Requests Tool', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('35+ file changes');
-      expect(responseText).toContain('charOffset/charLength');
     });
   });
 

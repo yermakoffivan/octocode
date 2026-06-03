@@ -15,7 +15,10 @@ import type {
 
 import { fetchGitHubFileContentAPI } from '../../github/fileContent.js';
 
-import type { FileContentQuery as GHFileContentQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { FileContentQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type GHFileContentQuery = z.infer<typeof FileContentQuerySchema>;
 import type { GitHubFileContentApiData } from '../../tools/github_fetch_content/types.js';
 import { isGitHubAPIError } from '../../github/githubAPI.js';
 import { countSerializedChars } from '../../utils/response/charSavings.js';
@@ -35,6 +38,7 @@ export function transformFileContentResult(
     content: data.content || '',
     encoding: 'utf-8',
     size: data.content?.length || 0,
+    totalLines: data.totalLines,
     ref: data.branch || query.ref || '',
     lastModified: data.lastModified,
     lastModifiedBy: data.lastModifiedBy,
@@ -42,7 +46,31 @@ export function transformFileContentResult(
     isPartial: data.isPartial,
     startLine: data.startLine,
     endLine: data.endLine,
+    warnings: buildContentWarnings(data, query),
   };
+}
+
+/**
+ * A matchString miss collapses `content` to '' upstream (`matchNotFound:true`).
+ * Surface it as a warning — mirroring localGetFileContent's `noMatches` signal —
+ * so an empty read is never silently indistinguishable from an empty file.
+ * Otherwise pass through any existing warnings / match-location notes.
+ */
+function buildContentWarnings(
+  data: GitHubFileContentApiData,
+  query: FileContentQuery
+): string[] | undefined {
+  if (data.matchNotFound === true) {
+    const anchor = data.searchedFor ?? query.matchString ?? '';
+    const scanned =
+      typeof data.totalLines === 'number'
+        ? ` (${data.totalLines} lines scanned)`
+        : '';
+    return [
+      `No matches for "${anchor}" in file${scanned}. Try matchStringIsRegex=true, a different anchor, or fullContent=true.`,
+    ];
+  }
+  return data.warnings ?? data.matchLocations;
 }
 
 /**

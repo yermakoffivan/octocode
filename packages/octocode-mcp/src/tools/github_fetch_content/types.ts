@@ -1,7 +1,8 @@
-import type { FileContentQuery } from '@octocodeai/octocode-core';
-import type { PaginationInfo } from '../../utils/core/types.js';
+import type { z } from 'zod/v4';
+import type { FileContentQuerySchema } from '@octocodeai/octocode-core/schemas';
 
-export type ContentFetchType = 'file' | 'directory';
+type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
+import type { PaginationInfo } from '../../utils/core/types.js';
 
 /**
  * Extension of FileContentQuery with internal execution fields
@@ -21,7 +22,9 @@ export interface GitHubFileContentApiData {
   startLine?: number;
   endLine?: number;
   isPartial?: boolean;
+  totalLines?: number;
   matchLocations?: string[];
+  warnings?: string[];
   lastModified?: string;
   lastModifiedBy?: string;
   pagination?: PaginationInfo;

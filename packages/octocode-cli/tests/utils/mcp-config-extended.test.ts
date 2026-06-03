@@ -1,16 +1,10 @@
-/**
- * MCP Config Extended Tests - Additional coverage for mcp-config.ts
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MCPConfig } from '../../src/types/index.js';
 
-// Mock platform module
 vi.mock('../../src/utils/platform.js', () => ({
   isWindows: false,
 }));
 
-// Mock mcp-paths
 vi.mock('../../src/utils/mcp-paths.js', () => ({
   getMCPConfigPath: vi.fn(),
   clientConfigExists: vi.fn(),
@@ -20,7 +14,6 @@ vi.mock('../../src/utils/mcp-paths.js', () => ({
   MCP_CLIENTS: {},
 }));
 
-// Mock mcp-io
 vi.mock('../../src/utils/mcp-io.js', () => ({
   readMCPConfig: vi.fn(),
   writeMCPConfig: vi.fn(),
@@ -43,18 +36,6 @@ describe('MCP Config Extended', () => {
       expect(result.args).toContain('octocode-mcp@latest');
     });
 
-    it('should return direct config with bash', async () => {
-      const { getOctocodeServerConfig } =
-        await import('../../src/utils/mcp-config.js');
-
-      const result = getOctocodeServerConfig('direct');
-
-      expect(result.command).toBe('bash');
-      expect(result.args).toBeDefined();
-      expect(result.args![0]).toBe('-c');
-      expect(result.args![1]).toContain('curl');
-    });
-
     it('should throw error for unknown method', async () => {
       const { getOctocodeServerConfig } =
         await import('../../src/utils/mcp-config.js');
@@ -66,18 +47,6 @@ describe('MCP Config Extended', () => {
   });
 
   describe('getOctocodeServerConfigWindows', () => {
-    it('should return powershell config for direct method', async () => {
-      const { getOctocodeServerConfigWindows } =
-        await import('../../src/utils/mcp-config.js');
-
-      const result = getOctocodeServerConfigWindows('direct');
-
-      expect(result.command).toBe('powershell');
-      expect(result.args).toBeDefined();
-      expect(result.args![0]).toBe('-Command');
-      expect(result.args![1]).toContain('Invoke-WebRequest');
-    });
-
     it('should return npx config for npx method', async () => {
       const { getOctocodeServerConfigWindows } =
         await import('../../src/utils/mcp-config.js');
@@ -182,7 +151,7 @@ describe('MCP Config Extended', () => {
       expect(getConfiguredMethod(config)).toBe('npx');
     });
 
-    it('should return direct when command is bash', async () => {
+    it('should return null for legacy bash command', async () => {
       const { getConfiguredMethod } =
         await import('../../src/utils/mcp-config.js');
 
@@ -192,10 +161,10 @@ describe('MCP Config Extended', () => {
         },
       };
 
-      expect(getConfiguredMethod(config)).toBe('direct');
+      expect(getConfiguredMethod(config)).toBeNull();
     });
 
-    it('should return direct when command is powershell', async () => {
+    it('should return null for legacy powershell command', async () => {
       const { getConfiguredMethod } =
         await import('../../src/utils/mcp-config.js');
 
@@ -205,7 +174,7 @@ describe('MCP Config Extended', () => {
         },
       };
 
-      expect(getConfiguredMethod(config)).toBe('direct');
+      expect(getConfiguredMethod(config)).toBeNull();
     });
 
     it('should return null when no octocode config', async () => {
@@ -338,7 +307,7 @@ describe('MCP Config Extended', () => {
       let callCount = 0;
       vi.mocked(readMCPConfig).mockImplementation((): MCPConfig => {
         callCount++;
-        // Only first call returns octocode installed
+
         if (callCount === 1) {
           return { mcpServers: { octocode: { command: 'npx', args: [] } } };
         }

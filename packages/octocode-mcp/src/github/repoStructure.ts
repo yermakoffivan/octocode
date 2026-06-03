@@ -6,7 +6,12 @@
  *   - repoStructureRecursive.ts: recursive directory content fetching
  */
 import { RequestError } from 'octokit';
-import type { GitHubViewRepoStructureQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { GitHubViewRepoStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type GitHubViewRepoStructureQuery = z.infer<
+  typeof GitHubViewRepoStructureQuerySchema
+>;
 import type {
   GitHubApiFileItem,
   GitHubRepositoryStructureResult,
@@ -66,7 +71,7 @@ async function resolveContentWithBranchFallback(
     const result = await octokit.rest.repos.getContent({
       owner,
       repo,
-      path: cleanPath || undefined,
+      path: cleanPath || '',
       ref: branch,
     });
     return { data: result.data, workingBranch };
@@ -127,7 +132,7 @@ async function resolveContentWithBranchFallback(
         const result = await octokit.rest.repos.getContent({
           owner,
           repo,
-          path: cleanPath || undefined,
+          path: cleanPath || '',
           ref: candidate,
         });
         return {
@@ -181,7 +186,10 @@ function buildStructureTree(
   items: GitHubApiFileItem[],
   basePath: string
 ): Record<string, { files: string[]; folders: string[] }> {
-  const structure: Record<string, { files: string[]; folders: string[] }> = {};
+  // Object.create(null): keys come from GitHub paths — defense against any
+  // pathological path that would otherwise pollute Object.prototype.
+  const structure: Record<string, { files: string[]; folders: string[] }> =
+    Object.create(null);
 
   const getRelativeParent = (itemPath: string): string => {
     let relativePath = itemPath;
@@ -228,7 +236,7 @@ function buildStructureTree(
   const sortedStructure: Record<
     string,
     { files: string[]; folders: string[] }
-  > = {};
+  > = Object.create(null);
   for (const key of sortedKeys) {
     const entry = structure[key];
     if (entry) {
@@ -381,10 +389,6 @@ async function viewGitHubRepositoryStructureAPIInternal(
       allFolders,
     });
 
-    const noPaginationRequested =
-      params.entriesPerPage === undefined &&
-      params.entryPageNumber === undefined;
-
     return {
       owner,
       repo,
@@ -405,12 +409,14 @@ async function viewGitHubRepositoryStructureAPIInternal(
       pagination: paginationInfo,
       hints,
       rawResponseChars,
-      ...(noPaginationRequested && {
-        _cachedItems: filteredItems.map(item => ({
-          path: item.path,
-          type: item.type as 'file' | 'dir',
-        })),
-      }),
+      // Always carry the full filtered list so the post-cache
+      // `applyStructurePagination` can slice ANY requested page from one cached
+      // tree. The cache key intentionally omits entryPageNumber/entriesPerPage;
+      // without this, a cached page would be served for every page request.
+      _cachedItems: filteredItems.map(item => ({
+        path: item.path,
+        type: item.type as 'file' | 'dir',
+      })),
     };
   } catch (error: unknown) {
     const apiError = handleGitHubAPIError(error);

@@ -1,3 +1,8 @@
+// The single pagination char limit lives in the resolved config
+// (octocode-shared `output.pagination.defaultCharLength`) and is read through
+// `utils/pagination/charLimit.ts#getOutputCharLimit()`. There is no code-level
+// alias constant — one flow, one number, no drift.
+
 /**
  * Default configuration values
  */
@@ -6,7 +11,6 @@ export const DEFAULTS = {
   MAX_OUTPUT_SIZE: 10 * 1024 * 1024, // 10MB
   MAX_RESULTS: 100, // Default limit for result sets
   CONTEXT_LINES: 5, // Default context lines for ripgrep (0 = only matching lines)
-  MAX_OUTPUT_CHARS: 2000, // Maximum output characters (~500 tokens) - use charLength for pagination
 } as const;
 
 /**
@@ -18,11 +22,6 @@ export const RESOURCE_LIMITS = {
   MCP_MAX_TOKENS: 25000,
   /** Average characters per token (used for estimation) */
   CHARS_PER_TOKEN: 4,
-
-  /** Default character length for pagination (10K chars ~2.5K tokens) */
-  DEFAULT_CHAR_LENGTH: 10000,
-  /** Recommended character length for safe pagination */
-  RECOMMENDED_CHAR_LENGTH: 10000,
 
   /** Maximum characters for fetch_content operations (50K chars ~12.5K tokens) */
   MAX_FETCH_CONTENT_CHARS: 50000,
@@ -36,9 +35,9 @@ export const RESOURCE_LIMITS = {
   /** Default maximum number of files to process */
   MAX_FILES_DEFAULT: 1000,
   /** Default entries per page for view_structure */
-  DEFAULT_ENTRIES_PER_PAGE: 20,
+  DEFAULT_ENTRIES_PER_PAGE: 100,
   /** Maximum entries per page for view_structure */
-  MAX_ENTRIES_PER_PAGE: 20,
+  MAX_ENTRIES_PER_PAGE: 200,
   /** Maximum list items to return in detailed mode (with size/permissions) */
   MAX_LIST_ITEMS_DETAILED: 100,
   /** Maximum list items to return in simple mode (paths only) */

@@ -1,5 +1,10 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { LSPFindReferencesQuery as UpstreamLSPFindReferencesQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod/v4';
+import type { LSPFindReferencesQuerySchema } from '@octocodeai/octocode-core/schemas';
+
+type UpstreamLSPFindReferencesQuery = z.infer<
+  typeof LSPFindReferencesQuerySchema
+>;
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import { findReferences } from './lsp_find_references.js';
 import type {
@@ -12,6 +17,9 @@ type LSPFindReferencesQuery =
 import { TOOL_NAME } from './constants.js';
 import { executeWithToolBoundary } from '../executionGuard.js';
 
+// Re-exported so every tool exposes `apply<Tool>Verbosity` from execution.ts.
+export { applyFindReferencesVerbosity } from './lsp_find_references.js';
+
 /**
  * Execute bulk find references operation.
  * Wraps findReferences with bulk operation handling for multiple queries.
@@ -19,7 +27,11 @@ import { executeWithToolBoundary } from '../executionGuard.js';
 export async function executeFindReferences(
   args: ToolExecutionArgs<LSPFindReferencesQuery>
 ): Promise<CallToolResult> {
-  const { queries, responseCharOffset, responseCharLength } = args;
+  const { queries, responseCharOffset } = args;
+  // LSP reference results must always be returned in full — char-based
+  // pagination forces agents to make multiple calls to reconstruct a complete
+  // reference list, breaking research flow. Bypass the env-var default.
+  const responseCharLength = Number.MAX_SAFE_INTEGER;
 
   return executeBulkOperation(
     queries || [],
@@ -34,6 +46,8 @@ export async function executeFindReferences(
       toolName: TOOL_NAME,
       responseCharOffset,
       responseCharLength,
+      peerHints: true,
+      peerEvidence: true,
       minQueryTimeoutMs: 30_000,
     }
   );
