@@ -11,13 +11,6 @@
 //                     total time the agent spent on the Q (incl. reasoning
 //                     between calls). NOT comparable across hardware.
 //
-// MCP init cost (q=0):
-//   mcp-meas.mjs logs `initialize` and `tools/list` responses at q=0 with
-//   cmd="_initialize" / "_tools/list". These represent the one-time character
-//   cost of loading tool schemas + server instructions into the agent's context.
-//   gh has no equivalent. finalize.mjs reads them from log.jsonl and surfaces
-//   them in output.md + summary.json so the judge agent can include them.
-//
 // Usage: node finalize.mjs <run_dir>
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
@@ -48,23 +41,12 @@ const questionNumbers = N_QS > 0
   : discoveredQs;
 
 const logPath = join(run, 'log.jsonl');
-let mcpInit = { calls: 0, in_chars: 0, out_chars: 0, elapsed_ms: 0, rows: [] };
 let preQOrphans = 0;
 if (existsSync(logPath)) {
   const lines = readFileSync(logPath, 'utf8').split('\n').filter(Boolean);
   for (const l of lines) {
     let r; try { r = JSON.parse(l); } catch { continue; }
-    if (typeof r.cmd === 'string' && r.cmd.startsWith('_')) {
-      if (!Number.isFinite(r.in_chars) || !Number.isFinite(r.out_chars)) {
-        console.error(`finalize: init row lacks character fields in ${logPath} — rerun with character-based metering`);
-        process.exit(2);
-      }
-      mcpInit.calls++;
-      mcpInit.in_chars += r.in_chars || 0;
-      mcpInit.out_chars += r.out_chars || 0;
-      mcpInit.elapsed_ms += r.elapsed_ms || 0;
-      mcpInit.rows.push({ cmd: r.cmd, in_chars: r.in_chars, out_chars: r.out_chars });
-    } else if (r.q === 0) {
+    if (r.q === 0 && typeof r.cmd === 'string' && !r.cmd.startsWith('_')) {
       preQOrphans++;
     }
   }
@@ -112,9 +94,7 @@ const tot = {
   q_ms: sum('q_ms'),
   reason_ms: sum('reason_ms'),
 };
-const perQChars = tot.in + tot.out;
-const mcpInitChars = mcpInit.in_chars + mcpInit.out_chars;
-const totalCharsWithInit = perQChars + mcpInitChars;
+const totalChars = tot.in + tot.out;
 
 if (preQOrphans > 0) {
   console.error(`finalize: ${preQOrphans} non-init log row(s) tagged q=0 — likely a metered call before set-q.sh. Re-run the affected question so every call is attributed.`);
@@ -124,23 +104,13 @@ if (preQOrphans > 0) {
 const slug = basename(run);
 const agent = slug || basename(run);
 
-const initSection = mcpInit.calls > 0
-  ? `\n## MCP init context (one-time per-session cost)\n\n` +
-    `| Calls | In chars | Out chars (schemas + instructions loaded into agent context) | ms |\n` +
-    `|------:|---------:|-------------------------------------------------------------:|---:|\n` +
-    `| ${mcpInit.calls} | ${fmt(mcpInit.in_chars)} | ${fmt(mcpInit.out_chars)} | ${fmt(mcpInit.elapsed_ms)} |\n\n` +
-    `Breakdown: ${mcpInit.rows.map(r => `\`${r.cmd}\`=${fmt(r.out_chars)} chars`).join(', ')}.\n\n` +
-    `> This cost is attributed to octocode (loaded once at session start). gh has no equivalent context-loading step — surfacing it is what makes the comparison honest.\n`
-  : '';
-
 const body = `# Run ${slug}
 
-| Agent | Questions | Calls | In Chars | Out Chars | Per-Q Chars | MCP Init Chars | Total Chars | Approx Tokens | Tool ms | Q wall ms | Reasoning ms |
-|-------|----------:|------:|---------:|----------:|------------:|---------------:|------------:|--------------:|--------:|----------:|-------------:|
-| ${agent} | ${ok.length} / ${N_QS} | ${tot.calls} | ${fmt(tot.in)} | ${fmt(tot.out)} | ${fmt(perQChars)} | ${fmt(mcpInitChars)} | ${fmt(totalCharsWithInit)} | ${fmt(approxTokens(totalCharsWithInit))} | ${fmt(tot.tool_ms)} | ${fmt(tot.q_ms)} | ${fmt(tot.reason_ms)} |
+| Agent | Questions | Calls | In Chars | Out Chars | Total Chars | Approx Tokens | Tool ms | Q wall ms | Reasoning ms |
+|-------|----------:|------:|---------:|----------:|------------:|--------------:|--------:|----------:|-------------:|
+| ${agent} | ${ok.length} / ${N_QS} | ${tot.calls} | ${fmt(tot.in)} | ${fmt(tot.out)} | ${fmt(totalChars)} | ${fmt(approxTokens(totalChars))} | ${fmt(tot.tool_ms)} | ${fmt(tot.q_ms)} | ${fmt(tot.reason_ms)} |
 
-> **Total Chars** = per-question \`in_chars + out_chars\` plus MCP init/context chars when present. **Approx Tokens** = \`ceil(Total Chars / 4)\` and is a rough display-only token proxy; characters remain the canonical measurement. **Tool/Q/Reasoning ms** are context only for token-usage judging.
-${initSection}
+> **Total Chars** = per-question \`in_chars + out_chars\`. **Approx Tokens** = \`ceil(Total Chars / 4)\` and is a rough display-only token proxy; characters remain the canonical measurement. **Tool/Q/Reasoning ms** are context only for token-usage judging.
 
 | Q | Calls | In Chars | Out Chars | Total Chars | Approx Tokens | Tool ms | Q wall ms | Reasoning ms | Answer (one line) |
 |---|------:|---------:|----------:|------------:|--------------:|--------:|----------:|-------------:|-------------------|
@@ -148,7 +118,7 @@ ${rows.map(r => r.missing
   ? `| Q${r.q} | — | — | — | — | — | — | — | — | ⚠️ missing |`
   : `| Q${r.q} | ${r.calls} | ${fmt(r.in)} | ${fmt(r.out)} | ${fmt(r.in + r.out)} | ${fmt(approxTokens(r.in + r.out))} | ${fmt(r.tool_ms)} | ${fmt(r.q_ms)} | ${fmt(r.reason_ms)} | ${trunc(r.one)} |`
 ).join('\n')}
-| **Σ** | **${tot.calls}** | **${fmt(tot.in)}** | **${fmt(tot.out)}** | **${fmt(perQChars)}** | **${fmt(approxTokens(perQChars))}** | **${fmt(tot.tool_ms)}** | **${fmt(tot.q_ms)}** | **${fmt(tot.reason_ms)}** | |
+| **Σ** | **${tot.calls}** | **${fmt(tot.in)}** | **${fmt(tot.out)}** | **${fmt(totalChars)}** | **${fmt(approxTokens(totalChars))}** | **${fmt(tot.tool_ms)}** | **${fmt(tot.q_ms)}** | **${fmt(tot.reason_ms)}** | |
 `;
 
 writeFileSync(join(run, 'output.md'), body);
@@ -161,23 +131,12 @@ const summary = {
     calls: tot.calls,
     in_chars: tot.in,
     out_chars: tot.out,
-    per_q_chars: perQChars,
-    total_chars_with_init: totalCharsWithInit,
-    approx_tokens_with_init: approxTokens(totalCharsWithInit),
+    total_chars: totalChars,
+    approx_tokens: approxTokens(totalChars),
     tool_elapsed_ms: tot.tool_ms,
     q_elapsed_ms: tot.q_ms,
     reasoning_ms: tot.reason_ms,
   },
-  mcp_init: mcpInit.calls > 0
-    ? {
-        calls: mcpInit.calls,
-        in_chars: mcpInit.in_chars,
-        out_chars: mcpInit.out_chars,
-        elapsed_ms: mcpInit.elapsed_ms,
-        rows: mcpInit.rows,
-      }
-    : null,
-  pre_q_orphans: preQOrphans,
   per_q: rows.map(r => r.missing
     ? { q: r.q, missing: true }
     : {
@@ -196,10 +155,7 @@ writeFileSync(join(run, 'summary.json'), JSON.stringify(summary, null, 2));
 
 console.log(`wrote ${join(run, 'output.md')}`);
 console.log(`wrote ${join(run, 'summary.json')}`);
-console.log(`questions=${ok.length}/${N_QS}  calls=${tot.calls}  in_chars=${fmt(tot.in)}  out_chars=${fmt(tot.out)}  total_chars=${fmt(totalCharsWithInit)}  approx_tokens=${fmt(approxTokens(totalCharsWithInit))}  tool_ms=${fmt(tot.tool_ms)}  q_ms=${fmt(tot.q_ms)}  reason_ms=${fmt(tot.reason_ms)}`);
-if (mcpInit.calls > 0) {
-  console.log(`mcp_init: calls=${mcpInit.calls}  in_chars=${fmt(mcpInit.in_chars)}  out_chars=${fmt(mcpInit.out_chars)} chars  ms=${fmt(mcpInit.elapsed_ms)}  (one-time session cost)`);
-}
+console.log(`questions=${ok.length}/${N_QS}  calls=${tot.calls}  in_chars=${fmt(tot.in)}  out_chars=${fmt(tot.out)}  total_chars=${fmt(totalChars)}  approx_tokens=${fmt(approxTokens(totalChars))}  tool_ms=${fmt(tot.tool_ms)}  q_ms=${fmt(tot.q_ms)}  reason_ms=${fmt(tot.reason_ms)}`);
 const missing = rows.filter(r => r.missing).map(r => `Q${r.q}`);
 if (missing.length) {
   console.warn(`missing: ${missing.join(', ')}`);

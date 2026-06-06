@@ -1,6 +1,11 @@
 # RTK vs Octocode Benchmark
 
-This directory benchmarks two approaches to LLM-assisted code research on the same codebase: **rtk CLI filtering** vs **Octocode MCP tools**. The metric is **semantic answer quality per measured character**. Characters are the deterministic token-usage proxy: every metered call records `in_chars + out_chars`. Elapsed time is recorded for context only.
+This directory benchmarks two approaches to LLM-assisted code research on the same codebase: **rtk CLI filtering** vs **Octocode CLI tools**. The metric is **semantic answer quality per measured character**. Characters are the deterministic token-usage proxy: every metered call records `in_chars + out_chars`. Elapsed time is recorded for context only.
+
+Both agents use **CLI tools only** — no MCP server, no schema-loading overhead:
+
+- **`octocode` researcher**: calls Octocode tools via `octocode tools <name> --queries '<json>'`, routed through `scripts/octo-meas.sh`.
+- **`rtk` researcher**: runs `rtk` CLI commands, routed through `scripts/rtk-meas.sh`.
 
 ---
 
@@ -8,7 +13,7 @@ This directory benchmarks two approaches to LLM-assisted code research on the sa
 
 | Dimension | rtk researcher | octocode researcher |
 |---|---|---|
-| **How it works** | Runs native CLI tools (`rg`, `ls`, `find`, `cat`, `gh`) through rtk's output filter, which compresses text before the LLM sees it | Calls GitHub API and local filesystem directly via structured MCP tools |
+| **How it works** | Runs native CLI tools (`rg`, `ls`, `find`, `cat`, `gh`) through rtk's output filter, which compresses text before the LLM sees it | Calls GitHub API and local filesystem directly via structured Octocode CLI tools |
 | **Code search** | `rtk rg <pattern> <path>` — has configured result limits and long-line compression | `localSearchCode` — full results, explicit pagination, no line truncation |
 | **File content** | `rtk read <file>` — language-aware filter **strips comments by default** (`Minimal` level) | `localGetFileContent` — full fidelity, char-offset pagination, `matchString` anchor |
 | **Directory listing** | `rtk ls <path>` / `rtk tree <path>` — applies its configured directory filters | `localViewStructure` — full tree, structured metadata, configurable depth |
@@ -40,7 +45,7 @@ Questions Q6–Q9 and Q18 test structural, metadata, and registry capabilities t
 All questions are about **`rtk-ai/rtk`** (the Rust Token Killer itself).
 
 - The **rtk researcher** clones the repo locally and answers local questions using `rtk` CLI commands against the clone. For GitHub operations (PRs, remote file content), use `rtk gh` commands.
-- The **octocode researcher** answers entirely via remote Octocode MCP tools — no local clone needed.
+- The **octocode researcher** answers via Octocode CLI tools — both local (after cloning) and remote GitHub tools.
 
 Cloning for the rtk researcher:
 ```bash
@@ -55,7 +60,7 @@ Start by confirming which role you were assigned.
 
 | Assigned role | What you do | Output directory |
 |---|---|---|
-| `researcher: octocode` | Answer all questions using only metered Octocode MCP calls | `benchmark/rtk/output/octocode/` |
+| `researcher: octocode` | Answer all questions using only metered `octocode tools` calls | `benchmark/rtk/output/octocode/` |
 | `researcher: rtk` | Answer all questions using only metered `rtk` CLI commands | `benchmark/rtk/output/rtk/` |
 | `judge` | Compare completed runs semantically and by efficiency | `benchmark/rtk/output/summary.md` |
 
@@ -66,7 +71,7 @@ If your assigned role is unclear, ask before starting.
 ## Dependencies
 
 - **rtk researcher**: `rtk` ≥ 0.28 installed, `git`, `node` (for metering script), repo cloned at `/tmp/rtk-bench`
-- **octocode researcher**: Octocode MCP server, `node` (for `mcp-meas.mjs`)
+- **octocode researcher**: `octocode` CLI installed (`brew install bgauryy/octocode/octocode` or `npm install -g octocode-cli`), `node` (for `octo-meas.mjs`)
 - Metering is character-only. Tokenizer libraries are outside this benchmark's ruler.
 
 ---
@@ -119,16 +124,12 @@ Every tool call goes through a wrapper that logs:
 {"q": 1, "agent": "rtk", "cmd": "rtk rg ...", "in_chars": 42, "out_chars": 1800, "elapsed_ms": 12, "exit": 0}
 ```
 
+Both agents use the same ruler — no init overhead for either side.
+
 | Agent | Hook | `in_chars` | `out_chars` |
 |---|---|---|---|
-| `octocode` | `scripts/mcp-meas.mjs` proxies MCP stdio | Unicode codepoints of `JSON.stringify(params.arguments)` for `tools/call` | Unicode codepoints of `result.content[].text` joined in order |
-| `rtk` | `scripts/rtk-meas.sh` → `rtk-meas.mjs` | Unicode codepoints of the full rtk command argv (no `rtk ` prefix) | Unicode codepoints of exact stdout + stderr |
-
-### MCP init/context cost
-
-The Octocode run pays a one-time init cost for `initialize` and `tools/list` (server instructions + all tool schemas enter agent context). `mcp-meas.mjs` logs these as `q=0` rows. The judge must include them in total Octocode chars.
-
-The rtk run has no equivalent schema-loading cost.
+| `octocode` | `scripts/octo-meas.sh` delegates to `octo-meas.mjs`, which spawns `octocode tools` and captures stdout | Unicode codepoints of the queries JSON string passed to `--queries` | Unicode codepoints of exact stdout decoded as UTF-8 |
+| `rtk` | `scripts/rtk-meas.sh` delegates to `rtk-meas.mjs`, which spawns `rtk` and captures the subprocess output | Unicode codepoints of the full rtk command argv (no `rtk ` prefix) | Unicode codepoints of exact stdout + stderr |
 
 ---
 
@@ -138,7 +139,8 @@ The rtk run has no equivalent schema-loading cost.
 |---|---|---|
 | `scripts/init-run.sh <agent>` | operator | Creates `output/<agent>/`, exports `$SESSION`, `$RUN`, `$LOG` |
 | `scripts/set-q.sh <n>` | researcher | Sets current question sentinel, starts Q wall-clock |
-| `scripts/mcp-meas.mjs <server-cmd>` | octocode researcher MCP config | Transparent MCP proxy; logs init + every `tools/call` |
+| `scripts/octo-meas.sh <tool> '<queries-json>'` | octocode researcher | Thin wrapper → `octo-meas.mjs`; logs queries/stdout char I/O |
+| `scripts/octo-meas.mjs <tool> '<queries-json>'` | octocode researcher via wrapper | Spawns `octocode tools`; measures char I/O |
 | `scripts/rtk-meas.sh <rtk args>` | rtk researcher | Wraps `rtk`; logs argv/stdout/stderr |
 | `scripts/rtk-meas.mjs <rtk args>` | rtk researcher via wrapper | Spawns `rtk`; measures char I/O |
 | `scripts/record.sh <n> <model> /tmp/answer.md` | researcher | Writes `q<n>.md` + `q<n>.json` |
@@ -156,8 +158,8 @@ Use this section only if your assigned role is `researcher: octocode`.
 
 - Read `benchmark/rtk/QUESTIONS.md`.
 - Keep the run blind: leave the rtk researcher's output and `summary.md` unread during the run.
-- Use **any Octocode MCP tool** when every call goes through `scripts/mcp-meas.mjs`.
-- Keep research inside the metered Octocode path; bare Octocode tools, `rtk`, `rg`, `cat`, `find`, `gh`, web search, and local clone files are outside this run.
+- Use **any Octocode tool** needed, routed through `scripts/octo-meas.sh`.
+- Keep research inside the metered path; bare `octocode tools`, `rtk`, `rg`, `cat`, `find`, `gh`, web search, and local clone files are outside this run.
 - Run questions sequentially.
 
 ## Setup
@@ -167,26 +169,54 @@ rm -rf benchmark/rtk/output/octocode
 source benchmark/rtk/scripts/init-run.sh octocode
 ```
 
-Configure MCP client:
-```text
-command: node
-args: [benchmark/rtk/scripts/mcp-meas.mjs, <octocode-server-cmd>]
-env: { RUN, LOG }
+## How to call Octocode tools
+
+Every Octocode tool call must use the wrapper:
+
+```bash
+bash benchmark/rtk/scripts/octo-meas.sh <tool-name> '<queries-json>'
 ```
 
-Verify init was logged before Q1:
+Examples:
+
 ```bash
-grep '"cmd":"_initialize"' "$RUN/log.jsonl"
-grep '"cmd":"_tools/list"' "$RUN/log.jsonl"
+bash benchmark/rtk/scripts/octo-meas.sh localSearchCode \
+  '{"path":"/tmp/rtk-bench/src","pattern":"fn run"}'
+
+bash benchmark/rtk/scripts/octo-meas.sh localGetFileContent \
+  '{"path":"/tmp/rtk-bench/src/core/runner.rs"}'
+
+bash benchmark/rtk/scripts/octo-meas.sh localViewStructure \
+  '{"path":"/tmp/rtk-bench/src"}'
+
+bash benchmark/rtk/scripts/octo-meas.sh localFindFiles \
+  '{"path":"/tmp/rtk-bench","pattern":"*.rs"}'
+
+bash benchmark/rtk/scripts/octo-meas.sh githubSearchPullRequests \
+  '{"owner":"rtk-ai","repo":"rtk","query":"performance"}'
+
+bash benchmark/rtk/scripts/octo-meas.sh githubGetFileContent \
+  '{"owner":"rtk-ai","repo":"rtk","path":"src/core/runner.rs"}'
+
+bash benchmark/rtk/scripts/octo-meas.sh packageSearch \
+  '{"packageName":"rtk"}'
 ```
+
+Bare `octocode tools ...` (without the wrapper) is unmetered, so redo that question through the wrapper before recording it.
 
 ## Per-question loop
 
 ```bash
 bash benchmark/rtk/scripts/set-q.sh <n>
-# research with metered MCP tools
+# research with metered octo-meas.sh calls
 # write answer to /tmp/answer.md
 bash benchmark/rtk/scripts/record.sh <n> "<model-id>" /tmp/answer.md
+```
+
+After the first tool call for Q`n`, verify the call was attributed:
+
+```bash
+grep '"q":<n>' "$RUN/log.jsonl"
 ```
 
 ## Finalize
@@ -206,7 +236,7 @@ Use this section only if your assigned role is `researcher: rtk`.
 - Read `benchmark/rtk/QUESTIONS.md`.
 - Keep the run blind: leave the octocode researcher's output and `summary.md` unread during the run.
 - Route every `rtk` command through `scripts/rtk-meas.sh`. Bare `rtk` is unmetered.
-- Keep research inside the metered `rtk` wrapper; Octocode MCP tools, bare `rg`, bare `cat`, bare `gh`, and web search are outside this run.
+- Keep research inside the metered `rtk` wrapper; Octocode tools, bare `rg`, bare `cat`, bare `gh`, and web search are outside this run.
 - For local operations: use the clone at `/tmp/rtk-bench`.
 - For GitHub operations: use `rtk gh` (through the wrapper).
 - Run questions sequentially.
@@ -290,13 +320,12 @@ No expected-facts file. Independently verify against the live `rtk-ai/rtk` GitHu
 
 ## Token-usage scoring
 
+Both agents use a symmetric ruler — no init amortization for either side:
+
 ```text
-effective_chars = in_chars + out_chars + amortized_mcp_init_chars
+effective_chars = in_chars + out_chars
 token_score     = quality / (effective_chars / 1000)
 ```
-
-For octocode: `amortized_mcp_init_chars = (mcp_init.in_chars + mcp_init.out_chars) / N`
-For rtk: `amortized_mcp_init_chars = 0`
 
 A zero-quality answer scores zero regardless of char efficiency.
 
@@ -322,8 +351,7 @@ Write one judge summary file: `benchmark/rtk/output/summary.md`
 | Σ calls | | | |
 | Σ in_chars (per-Q) | | | |
 | Σ out_chars (per-Q) | | | |
-| MCP init chars | | 0 | |
-| TOTAL chars (per-Q + init) | | | |
+| TOTAL chars | | | |
 | Approx tokens (TOTAL chars / 4) | | | |
 | Quality per 1k chars | | | |
 
@@ -347,9 +375,9 @@ For each question where rtk scored lower than Octocode, cite the specific capabi
 |---|---|
 | rtk researcher uses bare `rtk` without wrapper | Redo question through `rtk-meas.sh` |
 | rtk researcher uses bare `rg`, `cat`, `gh` directly | Only `rtk` commands allowed |
-| Octocode MCP not through `mcp-meas.mjs` | Reconfigure and rerun |
-| Missing `_initialize` / `_tools/list` rows | MCP context cost not counted — rerun |
+| Octocode researcher uses bare `octocode tools` without wrapper | Redo question through `octo-meas.sh` |
 | Skipped `set-q.sh` | Tool calls attributed to a different Q |
+| `record.sh --allow-zero` used | Broken metering is hidden |
 | rtk researcher does not clone repo | Local commands have no target |
 
 ---

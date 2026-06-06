@@ -41,16 +41,25 @@ ALLOWED TOOLS — branches on TOOLSET
 ═══════════════════════════════════════════════════════════════════
 
 IF TOOLSET = octocode:
-  Call Octocode tools through the MCP client that is routed via
-  `scripts/mcp-meas.mjs`. Valid Octocode calls appear in `$RUN/log.jsonl`.
+  Run every Octocode tool call through the wrapper:
+    bash benchmark/rtk/scripts/octo-meas.sh <tool-name> '<queries-json>'
 
-  Before the first question, verify `$RUN/log.jsonl` contains an initialization
-  row with `cmd="_initialize"`. If it does not, pause and ask the operator to
-  route the MCP client through the metering proxy.
+  CLI reference for tools you may use:
+    bash octo-meas.sh localSearchCode      '{"path":"/tmp/rtk-bench/src","pattern":"fn run"}'
+    bash octo-meas.sh localGetFileContent  '{"path":"/tmp/rtk-bench/src/core/runner.rs"}'
+    bash octo-meas.sh localViewStructure   '{"path":"/tmp/rtk-bench/src"}'
+    bash octo-meas.sh localFindFiles       '{"path":"/tmp/rtk-bench","pattern":"*.rs"}'
+    bash octo-meas.sh githubSearchPullRequests '{"owner":"rtk-ai","repo":"rtk","query":"performance"}'
+    bash octo-meas.sh githubGetFileContent '{"owner":"rtk-ai","repo":"rtk","path":"src/core/runner.rs"}'
+    bash octo-meas.sh githubViewRepoStructure  '{"owner":"rtk-ai","repo":"rtk"}'
+    bash octo-meas.sh githubSearchCode     '{"keywordsToSearch":["fn run"],"owner":"rtk-ai","repo":"rtk"}'
+    bash octo-meas.sh packageSearch        '{"packageName":"rtk"}'
 
-  Outside this run: direct/built-in Octocode tools that bypass `mcp-meas.mjs`,
-                    rtk CLI, gh CLI, web search, curl/fetch/wget, git clone,
-                    reading local files.
+  Every valid metered call appears in `$RUN/log.jsonl`.
+
+  Outside this run: bare `octocode tools` without wrapper, rtk CLI, gh CLI,
+                    web search, curl/fetch/wget, reading local files (unless
+                    you've cloned the repo as part of your research).
 
 IF TOOLSET = rtk:
   Run rtk commands through the wrapper:
@@ -86,15 +95,10 @@ source benchmark/rtk/scripts/init-run.sh <TOOLSET>
 IF TOOLSET = rtk — clone the repo:
   git clone https://github.com/rtk-ai/rtk /tmp/rtk-bench
 
-IF TOOLSET = octocode — configure MCP through the metering proxy:
-
-  command: node
-  args:    [benchmark/rtk/scripts/mcp-meas.mjs, <octocode-server-cmd>]
-  env:     { RUN, LOG }
-
-  Verification before Q1:
-    grep '"cmd":"_initialize"' "$RUN/log.jsonl"
-  If not found, pause before answering and fix the metered MCP configuration.
+IF TOOLSET = octocode — no extra setup beyond init-run.sh. The wrapper
+  `octo-meas.sh` delegates to `octocode tools` directly. Verify octocode CLI
+  is installed:
+    octocode --version
 
 ═══════════════════════════════════════════════════════════════════
 PER-QUESTION LOOP — sequential, one question at a time
@@ -117,8 +121,8 @@ For each n from 1 to N (where N = `cat $RUN/.q-count`):
      confident you have found all items (or until tool limits prevent it —
      note the limit if so). Preserve answer completeness over token thrift.
 
-     IF TOOLSET = octocode: after the first tool call for Q<n>, confirm
-     `$RUN/log.jsonl` gained a row with `"q":<n>`.
+     After the first tool call for Q<n>, confirm metering:
+     grep '"q":<n>' "$RUN/log.jsonl"
 
   4. Write your answer to /tmp/answer.md:
        - Start directly with the first bullet. No `## Answer` header.

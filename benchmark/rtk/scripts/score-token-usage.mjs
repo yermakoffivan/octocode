@@ -3,8 +3,11 @@
 //
 // This script does NOT judge semantic answer quality. The judge supplies quality
 // scores (0..3) in a JSON file, and this script combines them with metered
-// character usage from <run>/summary.json. Winner axis: quality per measured
-// character budget, with Octocode MCP init/context amortized per question.
+// character usage from <run>/summary.json.
+//
+// Both agents (octocode CLI and rtk CLI) use the same ruler:
+//   effective_chars = in_chars + out_chars   (no init amortization; CLI has none)
+//   token_score     = quality / (effective_chars / 1000)
 //
 // Quality file shape:
 // {
@@ -41,13 +44,12 @@ const quality = JSON.parse(readFileSync(qualityPath, 'utf8'));
 const drift = new Set((quality.drift ?? []).map(Number));
 const exclude = new Set((quality.exclude ?? []).map(Number));
 
-const initChars = s => (s.mcp_init?.in_chars ?? 0) + (s.mcp_init?.out_chars ?? 0);
 const comparableQs = octo.per_q
   .filter(q => !q.missing)
   .map(q => q.q)
-  .filter(q => rtk.per_q.some(r => !r.missing && r.q === q))
+  .filter(q => rtk.per_q.some(g => !g.missing && g.q === q))
   .filter(q => !drift.has(q) && !exclude.has(q));
-const amortizedInit = comparableQs.length > 0 ? initChars(octo) / comparableQs.length : 0;
+
 const fmt = n => Number(n).toLocaleString('en', { maximumFractionDigits: 3 });
 const score = (q, chars) => q <= 0 ? 0 : q / (chars / 1000);
 const winnerByScore = (octocodeScore, rtkScore) => {
@@ -75,7 +77,8 @@ for (const oq of octo.per_q.filter(q => !q.missing)) {
   if (!rq) continue;
   const oqv = qScore('octocode', q);
   const rqv = qScore('rtk', q);
-  const oc = oq.in_chars + oq.out_chars + amortizedInit;
+  // Symmetric ruler: both agents pay only their per-Q in+out chars
+  const oc = oq.in_chars + oq.out_chars;
   const rc = rq.in_chars + rq.out_chars;
   const os = score(oqv, oc);
   const rs = score(rqv, rc);
@@ -99,9 +102,9 @@ const totalWinner = winnerByScore(totalScoreOcto, totalScoreRtk);
 
 console.log(JSON.stringify({
   runs: { octocode: basename(octoRun), rtk: basename(rtkRun) },
-  amortized_mcp_init_chars: amortizedInit,
   rows,
   totals: {
+    comparable_questions: comparableQs.length,
     octocode_quality: sums.octocodeQuality,
     rtk_quality: sums.rtkQuality,
     octocode_effective_chars: sums.octocodeChars,
