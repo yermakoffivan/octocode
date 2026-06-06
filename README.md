@@ -92,35 +92,61 @@ https://github.com/user-attachments/assets/de8d14c0-2ead-46ed-895e-09144c9b5071
 
 ## 💻 As a CLI
 
-Install the `octocode` command globally with [Homebrew](https://brew.sh) and run all 14 tools straight from your terminal, no MCP wiring required:
+The same 14 tools, straight from your terminal — no MCP server, no IDE required.
+
+### Install
 
 ```bash
-brew install bgauryy/octocode/octocode    # → octocode v1.5.0
+# Homebrew (macOS / Linux) — recommended
+brew install bgauryy/octocode/octocode
+
+# or tap once, then use the short name
+brew tap bgauryy/octocode
+brew install octocode
+
+# npm global
+npm install -g octocode-cli
+
+# or run once, no install
+npx octocode-cli install
 ```
 
-> Or `brew tap bgauryy/octocode && brew install octocode` (short form), or run on demand with `npx octocode-cli`. Node is pulled in automatically. Run `octocode login` first for the GitHub-backed tools.
+> Node is pulled in automatically by Homebrew. The installed command is **`octocode`** (not `octocode-cli`).
 
-The CLI is both a **setup wizard** (install the MCP server + skills, manage GitHub auth, sync configs across editors) and a **standalone tool runner** (call any Octocode tool, pipe the JSON anywhere).
+**Verify and sign in:**
 
-**Commands**
+```bash
+octocode --version   # → octocode v1.5.3
+octocode login       # GitHub OAuth — required for the GitHub-backed tools
+```
+
+### What you get
+
+The CLI is two things in one binary:
+
+1. **Setup wizard** — install the MCP server + skills, manage GitHub OAuth, sync configs across 15 editors
+2. **Standalone tool runner** — call any of the 14 tools, pipe JSON to other tools, use in CI
+
+### Commands
 
 | Command | What it does |
 |---------|--------------|
-| `octocode install` | Configure `octocode-mcp` for an IDE/agent (`--ide <client>`, `-m npx\|direct`, `--force`, `--json`) |
-| `octocode auth` | Manage GitHub authentication (interactive menu) |
-| `octocode login` / `logout` | Sign in / out of GitHub via OAuth device flow (`--hostname` for Enterprise) |
-| `octocode status` | Octocode health: auth + installed MCPs + cache (`--sync`, `--json`) |
-| `octocode token` | Print the GitHub token using the MCP server's resolution order (`--source`, `--validate`) |
-| `octocode skills` | Search / install / remove / sync Agent Skills (`--targets`, `--mode copy\|symlink`) |
-| `octocode mcp` | MCP marketplace: `list` / `install` / `remove` / `status` (`--id`, `--client`, `--env`) |
-| `octocode sync` | Sync MCP configs across all installed IDE clients (`--dry-run`, `--status`) |
-| `octocode cache` | Inspect / clean cloned repos, skills, logs, and tool caches |
-| `octocode tools` | List tools, show a tool's schema, or run one with `--queries '<json>'` |
-| `octocode instructions` | Print MCP instructions + every tool schema |
+| `octocode login` / `logout` | GitHub OAuth device flow (`--hostname` for Enterprise) |
+| `octocode install --ide <client>` | Configure `octocode-mcp` for an IDE/agent |
+| `octocode status` | Full health check: auth + installed MCPs + cache |
+| `octocode token` | Print the resolved GitHub token (`--source`, `--validate`) |
+| `octocode skills` | Search / install / remove / sync Agent Skills |
+| `octocode mcp` | MCP marketplace: `list` / `install` / `remove` / `status` |
+| `octocode sync` | Sync MCP configs across all IDE clients (`--dry-run`, `--status`) |
+| `octocode cache` | Inspect / clean repos, skills, logs, and tool caches |
+| `octocode tools` | List, inspect schema, or run a tool with `--queries '<json>'` |
+| `octocode instructions` | Print full MCP instructions + every tool schema |
 
-Top-level flags: `--version`/`-v`, `--help`/`-h`, `--json`/`-j`.
+Top-level flags: `--version`/`-v`, `--help`/`-h`, `--json`/`-j`, `--agent` (agent bootstrap).
 
-**The 14 tools.** Run any directly with `octocode tools <name> --queries '<json>'`:
+### The 14 tools
+
+Run any directly with `octocode tools <name> --queries '<json>'`:
 
 | Group | Tools |
 |-------|-------|
@@ -129,18 +155,14 @@ Top-level flags: `--version`/`-v`, `--help`/`-h`, `--json`/`-j`.
 | LSP | `lspGotoDefinition` · `lspFindReferences` · `lspCallHierarchy` |
 | Package | `packageSearch` (npm / PyPI → source repo) |
 
-**Quick start**
-
 ```bash
-octocode login                                   # GitHub OAuth
-octocode install --ide cursor                    # wire MCP into an editor
-octocode skills install --targets claude-code    # add Agent Skills
-octocode tools                                    # list every tool
-octocode tools localSearchCode --queries '{"path":".","pattern":"fn"}'
+octocode tools                                                              # list all
+octocode tools localSearchCode                                              # inspect schema
+octocode tools localSearchCode --queries '{"path":".","pattern":"TODO"}'   # run
+octocode tools githubSearchCode --queries '{"keywordsToSearch":["useState"],"owner":"facebook","repo":"react"}'
 ```
 
-Install targets include Cursor, Claude Code, Claude Desktop, Windsurf, Zed, Trae, Antigravity, Kiro, Codex, Opencode, Gemini CLI, Goose, and the VS Code extensions Cline / Roo / Continue. Full details: [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/CLI_REFERENCE.md).
-
+Supported install targets: Cursor, Claude Code, Claude Desktop, Windsurf, Zed, Trae, Antigravity, Kiro, Codex, Opencode, Gemini CLI, Goose, VS Code Cline / Roo / Continue. Full reference: [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/CLI_REFERENCE.md).
 ---
 
 ## Packages
