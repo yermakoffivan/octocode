@@ -1,4 +1,4 @@
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { RipgrepQuerySchema } from '@octocodeai/octocode-core/schemas';
 import { RESOURCE_LIMITS } from '../core/constants.js';
 import type {
@@ -9,6 +9,10 @@ import type {
 type RipgrepQuery = z.infer<typeof RipgrepQuerySchema>;
 import type { SearchStats } from '../core/types.js';
 import { RipgrepJsonMessageSchema } from './schemas.js';
+
+function stripOneTrailingLineBreak(text: string): string {
+  return text.replace(/\r?\n$/, '');
+}
 
 export function parseRipgrepJson(
   jsonOutput: string,
@@ -51,7 +55,7 @@ export function parseRipgrepJson(
 
       if (msg.type === 'match') {
         const path = msg.data.path.text;
-        const lineText = msg.data.lines.text;
+        const lineText = stripOneTrailingLineBreak(msg.data.lines.text);
         const lineNumber = msg.data.line_number;
         const absoluteOffset = msg.data.absolute_offset;
 
@@ -77,7 +81,7 @@ export function parseRipgrepJson(
       } else if (msg.type === 'context') {
         const path = msg.data.path.text;
         const lineNumber = msg.data.line_number;
-        const lineText = msg.data.lines.text;
+        const lineText = stripOneTrailingLineBreak(msg.data.lines.text);
 
         if (!fileMap.has(path)) {
           fileMap.set(path, { rawMatches: [], contexts: new Map() });
@@ -97,11 +101,10 @@ export function parseRipgrepJson(
         };
       }
     } catch {
-      // Ripgrep JSON-RPC line was malformed; skip and continue streaming parse.
+      void 0;
     }
   }
 
-  // Specific before/after context takes precedence over general contextLines
   const before = query.beforeContext ?? query.contextLines ?? 0;
   const after = query.afterContext ?? query.contextLines ?? 0;
   const maxLength =
@@ -124,7 +127,6 @@ export function parseRipgrepJson(
         let value = contextLines.join('\n').replace(/\n+$/, '');
         const charArray = [...value];
         if (charArray.length > maxLength) {
-          // Slice to maxLength - 3 to leave room for '...'
           value = charArray.slice(0, maxLength - 3).join('') + '...';
         }
 

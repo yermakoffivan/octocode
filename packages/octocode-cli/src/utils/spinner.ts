@@ -28,6 +28,10 @@ function registerCleanupHandlers(): void {
   });
 }
 
+function spinnerEnabled(): boolean {
+  return Boolean(process.stdout.isTTY);
+}
+
 export class Spinner {
   private text: string;
   private frames: string[];
@@ -47,6 +51,10 @@ export class Spinner {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+
+    if (!spinnerEnabled()) {
+      return this;
     }
 
     registerCleanupHandlers();
@@ -74,6 +82,10 @@ export class Spinner {
 
     activeSpinners.delete(this);
 
+    if (!spinnerEnabled()) {
+      return this;
+    }
+
     process.stdout.write('\r\x1B[2K');
 
     process.stdout.write('\x1B[?25h');
@@ -88,6 +100,11 @@ export class Spinner {
     }
 
     activeSpinners.delete(this);
+
+    if (!spinnerEnabled()) {
+      process.stdout.write(`${c(color, symbol)} ${this.text}\n`);
+      return this;
+    }
 
     process.stdout.write(`\r\x1B[2K${c(color, symbol)} ${this.text}\n`);
 

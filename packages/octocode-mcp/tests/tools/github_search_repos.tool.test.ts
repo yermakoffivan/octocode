@@ -136,7 +136,6 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       const responseText = getTextContent(result.content);
 
       expect(result.isError).toBe(false);
-      // hasResults is now signaled by ABSENT status — emitted only for empty/error.
       expect(responseText).not.toContain('status: "hasResults"');
       expect(responseText).toContain('facebook/react');
       expect(responseText).toContain('vercel/next.js');
@@ -512,10 +511,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       expect(result.isError).toBe(false);
     });
 
-    it('paginates repositories at the WHOLE-ITEM level — never truncates a repo topics[] — and advances deterministically', async () => {
-      // A repository is the atomic pagination unit: char windowing slices
-      // BETWEEN repos, never inside one, so a repo's topics[] always comes
-      // through complete regardless of where the page boundary falls.
+    it('returns repositories with complete topics[] — never truncates mid-item', async () => {
       const topics = Array.from({ length: 5 }, (_, index) => `topic-${index}`);
       mockProvider.searchRepos.mockResolvedValue({
         data: {
@@ -542,59 +538,24 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
         provider: 'github',
       });
 
-      // charLength small enough that not all 6 repos fit → must paginate.
       const firstResult = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
-        { queries: [{ keywordsToSearch: ['repo'], charLength: 320 }] }
+        { queries: [{ keywordsToSearch: ['repo'], verbose: true }] }
       );
 
       const firstStructured = firstResult.structuredContent as {
         results: Array<{
           data: {
             repositories?: Array<{ repo: string; topics?: string[] }>;
-            outputPagination?: {
-              hasMore: boolean;
-              charOffset: number;
-              charLength: number;
-            };
           };
         }>;
       };
       const firstData = firstStructured.results[0]!.data;
-      const nextOffset =
-        (firstData.outputPagination?.charOffset ?? 0) +
-        (firstData.outputPagination?.charLength ?? 0);
 
-      // Item-atomic: every repo on the page carries its FULL topics[] (never a
-      // truncated fragment like the old `["dx","f"]`).
       expect(firstData.repositories?.length ?? 0).toBeGreaterThan(0);
       for (const r of firstData.repositories ?? []) {
         expect(r.topics).toEqual(topics);
       }
-      expect(firstData.outputPagination?.hasMore).toBe(true);
-
-      const secondResult = await mockServer.callTool(
-        TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
-        {
-          queries: [
-            {
-              keywordsToSearch: ['repo'],
-              charOffset: nextOffset,
-              charLength: 320,
-            },
-          ],
-        }
-      );
-
-      const secondStructured = secondResult.structuredContent as {
-        results: Array<{
-          data: { repositories?: Array<{ repo: string; topics?: string[] }> };
-        }>;
-      };
-      const secondRepos = secondStructured.results[0]!.data.repositories ?? [];
-      // Cursor advanced to different repos, each still with full topics intact.
-      expect(secondRepos[0]?.repo).not.toBe(firstData.repositories?.[0]?.repo);
-      for (const r of secondRepos) expect(r.topics).toEqual(topics);
     });
   });
 
@@ -680,16 +641,12 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
         ],
       });
 
-      // The provider should receive the raw stars string, not a parsed minStars
       expect(mockProvider.searchRepos).toHaveBeenCalled();
       const providerCall = mockProvider.searchRepos.mock.calls[0]![0] as Record<
         string,
         unknown
       >;
-      // stars should be preserved in some form that doesn't lose the range
-      // After fix: stars field should pass through as-is
       expect(providerCall.stars || providerCall.minStars).toBeDefined();
-      // The key test: if minStars is used, it should NOT discard the upper bound
       if (providerCall.stars) {
         expect(providerCall.stars).toBe('100..500');
       }

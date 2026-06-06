@@ -1,5 +1,5 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { GitHubViewRepoStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
 import type {
   GitHubViewRepoStructureToolResult,
@@ -14,23 +14,8 @@ import type { WithOptionalMeta } from '../../types/execution.js';
 type PartialRepoStructureQuery = WithOptionalMeta<GitHubViewRepoStructureQuery>;
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
-import {
-  isConcise,
-  isCompact,
-  compactTrimHints,
-  makeAdvisoryPredicate,
-} from '../../scheme/verbosity.js';
+import { isVerbose } from '../../scheme/verbosity.js';
 import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
-
-/** Advisory hints githubViewRepoStructure emits; stripped under compact.
- * Substring-OR, case-insensitive. */
-const isAdvisoryViewRepoStructureHint = makeAdvisoryPredicate([
-  'tree may report',
-  'truncated at depth',
-  'monorepo',
-  'sibling config',
-  'sibling files',
-]);
 import type { ToolExecutionArgs } from '../../types/execution.js';
 import { shouldIgnoreFile, shouldIgnoreDir } from '../../utils/file/filters.js';
 import { handleCatchError, createSuccessResult } from '../utils.js';
@@ -43,18 +28,9 @@ import {
   executeProviderOperation,
 } from '../providerExecution.js';
 
-/** How many entry names concise samples into the `top:` hint for drill-down. */
 const CONCISE_TOP_ENTRIES = 5;
 
-/**
- * Sample top entry names from a structure map for the concise `top:` hint.
- * Folders first (suffixed `/`), then files — folders are the more useful
- * drill targets during recon.
- */
-function collectTopStructureEntries(
-  structure: unknown,
-  limit: number
-): string[] {
+function collectAllStructureEntries(structure: unknown): string[] {
   if (!structure || typeof structure !== 'object') return [];
   const folders: string[] = [];
   const files: string[] = [];
@@ -66,7 +42,14 @@ function collectTopStructureEntries(
     if (Array.isArray(e.files))
       for (const f of e.files) if (typeof f === 'string') files.push(f);
   }
-  return [...folders, ...files].slice(0, limit);
+  return [...folders, ...files];
+}
+
+function collectTopStructureEntries(
+  structure: unknown,
+  limit: number
+): string[] {
+  return collectAllStructureEntries(structure).slice(0, limit);
 }
 
 function buildNextPathHints(
@@ -111,7 +94,7 @@ function filterStructure(
 export async function exploreMultipleRepositoryStructures(
   args: ToolExecutionArgs<PartialRepoStructureQuery>
 ): Promise<CallToolResult> {
-  const { queries, authInfo, responseCharOffset, responseCharLength } = args;
+  const { queries, authInfo } = args;
   const getProviderContext = createLazyProviderContext(authInfo);
 
   return executeBulkOperation(
@@ -152,6 +135,12 @@ export async function exploreMultipleRepositoryStructures(
             ? resultData.branchFallback
             : undefined;
         const apiHints = providerResult.response.data.hints || [];
+        const escalationHints: string[] =
+          hasContent && query.owner && query.repo
+            ? [
+                `Structure complete — use githubSearchCode(owner="${query.owner}", repo="${query.repo}") to find patterns, or githubGetFileContent to read specific files.`,
+              ]
+            : [];
         const branchHints: string[] = branchFallback
           ? [
               `WARNING: Branch '${String((branchFallback as { requestedBranch: string }).requestedBranch)}' not found. Showing '${String((branchFallback as { actualBranch: string }).actualBranch)}' (default branch). Re-query with the correct branch name if branch-specific results are required.`,
@@ -186,7 +175,7 @@ export async function exploreMultipleRepositoryStructures(
             data: resultData as Record<string, unknown>,
             entryCount,
             summary,
-            extraHints: apiHints,
+            extraHints: [...apiHints, ...escalationHints],
           },
           query
         );
@@ -197,12 +186,6 @@ export async function exploreMultipleRepositoryStructures(
           hasContent,
           TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE,
           {
-            // Pass path/depth/branch so empty-listing hints can name the
-            // exact location that came back empty and suggest a concrete
-            // probe (parent dir, depth=2, different branch).
-            // flagFiles lets hints.hasResults surface feature-flag /
-            // *Mode/*Config files that gate the implementation a direct
-            // search would miss.
             hintContext: {
               entryCount,
               path: query.path,
@@ -243,20 +226,12 @@ export async function exploreMultipleRepositoryStructures(
         'structure',
         'error',
       ] satisfies Array<keyof GitHubViewRepoStructureToolResult>,
-      responseCharOffset,
-      responseCharLength,
       peerHints: true,
       peerEvidence: true,
     }
   );
 }
 
-/**
- * Per-tool verbosity shaping for githubViewRepoStructure. Under concise, replaces
- * the full `structure` payload with `{path, summary, entryCount}` + a
- * drill-back hint. Under compact, advisory hints are trimmed to 2. Basic /
- * omitted: passthrough.
- */
 export function applyGithubViewRepoStructureVerbosity(
   input: {
     data: Record<string, unknown>;
@@ -266,53 +241,27 @@ export function applyGithubViewRepoStructureVerbosity(
   },
   query: PartialRepoStructureQuery
 ): { data: Record<string, unknown>; extraHints: string[] } {
-  const verbosity = (query as WithVerbosity<typeof query>).verbosity;
+  const queryWithVerbosity = query as WithVerbosity<typeof query>;
   const nextPathHints = buildNextPathHints(
     (input.data as { structure?: unknown }).structure,
     input.entryCount,
     Boolean(input.summary?.truncated)
   );
-  if (isConcise(verbosity)) {
-    // Keep concise research-grade: drop the full tree but surface a sample of
-    // top folder/file names so the agent has a concrete path to drill into.
-    // A bare entry count is a dead-end for repo recon; names give the next move.
-    const topEntries = collectTopStructureEntries(
-      (input.data as { structure?: unknown }).structure,
-      CONCISE_TOP_ENTRIES
-    );
-    const more =
-      input.entryCount > topEntries.length
-        ? ` (+${input.entryCount - topEntries.length} more)`
-        : '';
-    const topHint =
-      topEntries.length > 0 ? [`top: ${topEntries.join(', ')}${more}`] : [];
+
+  if (!isVerbose(queryWithVerbosity)) {
+    const {
+      resolvedBranch: _rb,
+      branchFallback: _bf,
+      ...coreData
+    } = input.data as Record<string, unknown>;
+    void _rb;
+    void _bf;
     return {
-      data: {
-        path: (input.data as { path?: string }).path,
-        summary: input.summary,
-        entryCount: input.entryCount,
-      },
-      // `topHint` already samples the same top entries (with the same
-      // "(+N more)" suffix) as `nextPathHints`, so emitting both is pure
-      // duplication in concise mode — keep only `top:`.
-      extraHints: [
-        `${input.entryCount} entries${input.summary ? ` (${JSON.stringify(input.summary)})` : ''}`,
-        ...topHint,
-        ...input.extraHints,
-      ],
+      data: coreData,
+      extraHints: [...nextPathHints, ...input.extraHints],
     };
   }
-  if (isCompact(verbosity)) {
-    return {
-      data: input.data,
-      extraHints:
-        compactTrimHints(
-          [...nextPathHints, ...input.extraHints],
-          isAdvisoryViewRepoStructureHint,
-          2
-        ) ?? [],
-    };
-  }
+
   return {
     data: input.data,
     extraHints: [...nextPathHints, ...input.extraHints],

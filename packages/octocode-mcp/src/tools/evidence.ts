@@ -11,6 +11,15 @@ type BuildEvidenceMetadataArgs = {
   readonly confidence?: NonNullable<EvidenceMetadata['confidence']>;
 };
 
+type BuildCollectionEvidenceArgs = {
+  readonly result: unknown;
+  readonly collectionField: string;
+  readonly totalKeys: readonly string[];
+  readonly paginationMoreReason: string;
+  readonly kind: NonNullable<EvidenceMetadata['kind']>;
+  readonly emptyReason: string;
+};
+
 export function attachEvidence<T extends ProcessedBulkResult>(
   result: T,
   evidence: EvidenceMetadata
@@ -34,14 +43,6 @@ export function hasMorePagination(value: unknown): boolean {
   return isRecord(value) && value.hasMore === true;
 }
 
-/**
- * Read the first present finite-number key from a pagination/summary record.
- *
- * Concise/discovery probes intentionally empty their display array (files,
- * entries, matches) but keep the logical total in pagination. Evidence builders
- * use this to derive `answerReady` from the true count instead of the dropped
- * array — otherwise a count-only probe reports `answerReady:false`.
- */
 export function paginationTotal(value: unknown, ...keys: string[]): number {
   if (!isRecord(value)) return 0;
   for (const key of keys) {
@@ -85,4 +86,30 @@ export function incompleteHintReasons(value: unknown): string[] {
   return hasIncompleteHint
     ? ['Result hints report capped, limited, or truncated output.']
     : [];
+}
+
+export function buildCollectionEvidence({
+  result,
+  collectionField,
+  totalKeys,
+  paginationMoreReason,
+  kind,
+  emptyReason,
+}: BuildCollectionEvidenceArgs): EvidenceMetadata {
+  const data = isRecord(result) ? result : {};
+  const items = records(data[collectionField]);
+  const hasResults =
+    items.length > 0 || paginationTotal(data.pagination, ...totalKeys) > 0;
+  const reasons: string[] = [];
+  if (hasMorePagination(data.pagination)) {
+    reasons.push(paginationMoreReason);
+  }
+  reasons.push(...incompleteHintReasons(data));
+
+  return buildEvidenceMetadata({
+    kind,
+    answerReady: hasResults,
+    incompleteReasons: reasons,
+    emptyReason,
+  });
 }

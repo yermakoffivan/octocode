@@ -106,6 +106,14 @@ export const syncCommand: CLICommand = {
         console.log(
           `    ${c('red', '!')} ${analysis.summary.conflictCount} have conflicts`
         );
+        for (const diff of analysis.conflicts) {
+          const clients = Array.from(diff.variants.keys())
+            .map(getClientDisplayName)
+            .join(' vs ');
+          console.log(
+            `       ${c('red', '•')} ${diff.mcpId}  ${dim(`(${clients})`)}`
+          );
+        }
       }
 
       console.log();
@@ -128,7 +136,6 @@ export const syncCommand: CLICommand = {
       return;
     }
 
-    // --dry-run / plan subcommand: structured per-MCP diff, no writes
     if (dryRun) {
       const planSpinner = jsonOutput
         ? null

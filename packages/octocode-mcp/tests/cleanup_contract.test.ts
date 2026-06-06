@@ -1,16 +1,3 @@
-/**
- * Cleanup contract — pins the no-fallback, no-redundancy invariants
- * agreed in the May-2026 audit:
- *
- *  - No grep fallback (bundled ripgrep is the only engine).
- *  - No dead estimator left behind (`estimateDirectoryStats`).
- *  - LSP tools use the pool, not the legacy spawn-per-request `createClient`.
- *  - No dangling prototype modules (`ripgrepStreamExecutor`,
- *    `spawnStream`, `gracefulDegradation`) with zero production consumers.
- *
- * If any of these come back, this test breaks loudly so the regression
- * gets a name in the failure trace.
- */
 import { access } from 'fs/promises';
 import { describe, expect, it } from 'vitest';
 
@@ -26,18 +13,18 @@ async function fileExists(relative: string): Promise<boolean> {
 }
 
 const FILES_THAT_MUST_BE_GONE = [
-  // Grep fallback was deleted — bundled ripgrep is the only engine.
   'src/commands/GrepCommandBuilder.ts',
   'tests/commands/GrepCommandBuilder.test.ts',
-  // Dead prototype with zero production consumers.
   'src/tools/local_ripgrep/ripgrepStreamExecutor.ts',
   'tests/tools/ripgrep_stream_executor.test.ts',
   'src/utils/exec/spawnStream.ts',
   'tests/utils/spawn_stream_lines.test.ts',
   'src/utils/response/gracefulDegradation.ts',
   'tests/utils/graceful_degradation.test.ts',
-  // Stranded TYPE_TO_EXTENSIONS lookup — only consumer was GrepCommandBuilder.
   'src/utils/file/types.ts',
+  'src/tools/lsp_call_hierarchy/callHierarchyPatterns.ts',
+  'src/tools/lsp_find_references/lspReferencesPatterns.ts',
+  'src/tools/lsp_find_references/lspReferencesProcess.ts',
 ];
 
 const SOURCE_FILES_THAT_MUST_NOT_REFERENCE: Array<{
@@ -107,59 +94,15 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
     ).toBe(false);
   });
 
-  it('callHierarchyPatterns ripgrep args stay inside the security allow-list', async () => {
-    // Regression: searchWithRipgrep used `--line-number` and `-e` which
-    // are NOT in RG_ALLOWED_FLAGS, so every pattern-fallback call hierarchy
-    // failed with "rg option '--line-number' is not allowed".
-    const { readFile } = await import('fs/promises');
-    const source = await readFile(
-      `${ROOT}/src/tools/lsp_call_hierarchy/callHierarchyPatterns.ts`,
-      'utf-8'
+  it('ripgrep resolver does not fall back to PATH rg', async () => {
+    const source = await import('fs/promises').then(fs =>
+      fs.readFile(`${ROOT}/src/utils/exec/ripgrepBinary.ts`, 'utf-8')
     );
-    expect(
-      source,
-      'searchWithRipgrep must use -n (short form is the only one on the allow-list)'
-    ).not.toMatch(/['"]--line-number['"]/);
-    expect(
-      source,
-      'searchWithRipgrep must pass pattern positionally (-e is not allow-listed)'
-    ).not.toMatch(/['"]-e['"]/);
+    expect(source).not.toMatch(/RIPGREP_PATH_FALLBACK/);
+    expect(source).not.toMatch(/return ['"]rg['"]/);
   });
 
-  it('callHierarchyPatterns error response stays inside the closed error.data schema', async () => {
-    // Regression: error responses leaked item/direction/depth/lspMode,
-    // which violate the closed `error.data` schema and surface as MCP
-    // -32602 "Structured content does not match the tool's output schema".
-    const { readFile } = await import('fs/promises');
-    const source = await readFile(
-      `${ROOT}/src/tools/lsp_call_hierarchy/callHierarchyPatterns.ts`,
-      'utf-8'
-    );
-    // Bound the slice to the single object literal that owns the
-    // `status: 'error'` line: from "{" up to the matching closing "};".
-    // Greedy ${[\s\S]*?\};} hits the nearest close, which is exactly the
-    // error-response object literal we want to inspect.
-    const errorObjectMatch = source.match(
-      /return\s*\{[\s\S]*?status:\s*['"]error['"][\s\S]*?\};/
-    );
-    expect(errorObjectMatch, 'error response object not found').toBeTruthy();
-    const block = errorObjectMatch![0];
-    expect(
-      block,
-      'error.data must not carry hasResults context fields'
-    ).not.toMatch(/^\s*item:/m);
-    expect(block).not.toMatch(/^\s*direction:/m);
-    expect(block).not.toMatch(/^\s*depth,/m);
-    expect(block).not.toMatch(/^\s*lspMode:/m);
-  });
-
-  it('LSP tools never tag lspMode on error responses (closed error.data schema)', async () => {
-    // Regression: every LSP tool unconditionally appended `lspMode: 'fallback'`
-    // to the result of its pattern-fallback path. When that path returned
-    // status: 'error' (e.g. ripgrep flag rejected), MCP failed validation
-    // with "Structured content does not match the tool's output schema".
-    //
-    // Contract: each tool MUST guard the lspMode injection with a status check.
+  it('LSP tools never assign lspMode into result objects (LSP-only, absent ≡ semantic)', async () => {
     const { readFile } = await import('fs/promises');
     const files = [
       'src/tools/lsp_call_hierarchy/callHierarchy.ts',
@@ -168,24 +111,21 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
     ];
     for (const file of files) {
       const src = await readFile(`${ROOT}/${file}`, 'utf-8');
-      // Must reference `status === 'error'` near where `lspMode: 'fallback'`
-      // is built, proving the guard exists.
+      const assignPattern = /lspMode\s*:\s*(?!_)/g;
+      const matches = [...src.matchAll(assignPattern)].filter(
+        m =>
+          !src
+            .slice(Math.max(0, (m.index ?? 0) - 10), m.index ?? 0)
+            .includes('{')
+      );
       expect(
-        src,
-        `${file} must guard lspMode injection on status==='error'`
-      ).toMatch(/status\s*===\s*['"]error['"]/);
+        matches,
+        `${file} must not emit lspMode into results`
+      ).toHaveLength(0);
     }
   });
 
   it('structured pagination never injects outputPagination into error/empty data', async () => {
-    // Regression: lspCallHierarchy (and any other tool) fails MCP output
-    // validation with `unrecognized_keys: ["outputPagination"]` whenever a
-    // big error/empty response triggers the pagination wrapper. The error
-    // and empty branches use strict schemas without `outputPagination`.
-    //
-    // Under the lean contract, success is signaled by ABSENT status — so
-    // both pagination entrypoints MUST guard via `status !== undefined`
-    // (i.e. skip empty/error branches).
     const { readFile } = await import('fs/promises');
     const source = await readFile(
       `${ROOT}/src/utils/response/structuredPagination.ts`,
@@ -212,9 +152,6 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
   });
 
   it('security validator accepts the bundled rg absolute path', async () => {
-    // Regression guard for: "Command '/.../bin/rg' is not allowed".
-    // Without this, every real MCP localSearchCode call 500s while
-    // unit tests pass (because they mock safeExec).
     const { validateCommand } =
       await import('octocode-security-utils/commandValidator');
     const { resolveRipgrepBinary } =

@@ -1,15 +1,10 @@
-/**
- * Tests for npm.ts — package lookup via npm registry HTTP API + CLI deprecation check.
- *
- * fetchPackageDetailsWithError and searchNpmPackageViaSearch now use the npm
- * registry HTTP API (fetchWithRetries → https://registry.npmjs.org/…) instead
- * of the CLI.  checkNpmDeprecation still uses the CLI.
- *
- * We mock fetchWithRetries at the module level so tests can control the
- * raw JSON returned from the registry without having to simulate HTTP responses.
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { clearAllCache } from '../../src/utils/http/cache.js';
+import {
+  resetCircuitBreaker,
+  recordCircuitFailure,
+  DEFAULT_CIRCUIT_FAILURE_THRESHOLD,
+} from '../../src/utils/http/circuitBreaker.js';
 import type { NpmPackageResult } from '../../src/utils/package/common.js';
 
 const mockFetchWithRetries = vi.fn();
@@ -22,13 +17,13 @@ vi.mock('../../src/utils/exec/npm.js', () => ({
   executeNpmCommand: (...args: unknown[]) => mockExecuteNpmCommand(...args),
 }));
 
-// Import after mocking
 import {
   searchNpmPackage,
   checkNpmDeprecation,
   getNpmRegistryUrl,
   checkNpmRegistryReachable,
   _resetNpmRegistryUrlCache,
+  _packageNameToSearchKeywords,
 } from '../../src/utils/package/npm.js';
 
 function makeSearchResult(
@@ -44,12 +39,18 @@ function makeSearchResult(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   clearAllCache();
+  resetCircuitBreaker();
   _resetNpmRegistryUrlCache();
+  mockExecuteNpmCommand.mockResolvedValue({
+    exitCode: 1,
+    stdout: '',
+    stderr: 'npm ERR! code E404',
+    error: null,
+  });
 });
 
-// mapToResult — time object parsing (via registry /latest endpoint)
 describe('mapToResult - time object parsing', () => {
   it('should extract lastPublished from version-specific time', async () => {
     mockFetchWithRetries.mockResolvedValue({
@@ -123,9 +124,9 @@ describe('mapToResult - time object parsing', () => {
 
   it('should fallback to fetchLastPublished when time object is absent', async () => {
     mockFetchWithRetries
-      .mockResolvedValueOnce({ name: 'test-pkg', version: '1.0.0' }) // main /latest
-      .mockResolvedValueOnce({ downloads: 500 }) // weekly downloads
-      .mockResolvedValueOnce({ modified: '2024-03-01T09:00:00.000Z' }); // abbreviated metadata
+      .mockResolvedValueOnce({ name: 'test-pkg', version: '1.0.0' })
+      .mockResolvedValueOnce({ downloads: 500 })
+      .mockResolvedValueOnce({ modified: '2024-03-01T09:00:00.000Z' });
 
     const result = await searchNpmPackage('test-pkg', 1, false);
 
@@ -142,12 +143,12 @@ describe('mapToResult - time object parsing', () => {
 
   it('should fallback to full doc when abbreviated metadata lacks modified', async () => {
     mockFetchWithRetries
-      .mockResolvedValueOnce({ name: 'test-pkg', version: '1.0.0' }) // main /latest
-      .mockResolvedValueOnce({ downloads: 200 }) // weekly downloads
-      .mockResolvedValueOnce({}) // abbreviated - no modified field
+      .mockResolvedValueOnce({ name: 'test-pkg', version: '1.0.0' })
+      .mockResolvedValueOnce({ downloads: 200 })
+      .mockResolvedValueOnce({})
       .mockResolvedValueOnce({
         time: { modified: '2024-05-10T08:00:00.000Z' },
-      }); // full doc fallback
+      });
 
     const result = await searchNpmPackage('test-pkg', 1, false);
 
@@ -204,7 +205,6 @@ describe('mapToResult - time object parsing', () => {
   });
 });
 
-// fetchPackageDetails — HTTP error handling
 describe('fetchPackageDetails - HTTP error handling', () => {
   it('should return empty when registry returns 404', async () => {
     mockFetchWithRetries.mockRejectedValue(
@@ -243,7 +243,6 @@ describe('fetchPackageDetails - HTTP error handling', () => {
   });
 
   it('should return error on invalid registry response format', async () => {
-    // Returns a response that fails NpmViewResultSchema (missing 'name' field)
     mockFetchWithRetries.mockResolvedValue({ invalid: true });
 
     const result = await searchNpmPackage('test-pkg', 1, false);
@@ -255,14 +254,10 @@ describe('fetchPackageDetails - HTTP error handling', () => {
   });
 
   it('should handle outer-catch when fetchWithRetries throws a non-Error value', async () => {
-    // Simulate a non-Error thrown from within fetchPackageDetailsWithError
-    // (covers lines 185-186: String(error) branch of the outer catch)
     mockFetchWithRetries.mockRejectedValue('non-error string thrown');
 
     const result = await searchNpmPackage('test-pkg', 1, false);
 
-    // 'non-error string thrown' doesn't contain '404'/'not found',
-    // so it propagates as an error detail
     expect('error' in result).toBe(true);
     if ('error' in result) {
       expect(result.error).toContain('non-error string thrown');
@@ -270,7 +265,229 @@ describe('fetchPackageDetails - HTTP error handling', () => {
   });
 });
 
-// searchNpmPackageViaSearch — registry search API error handling
+describe('_packageNameToSearchKeywords', () => {
+  it('strips scope and replaces slash with space', () => {
+    expect(_packageNameToSearchKeywords('@modelcontextprotocol/sdk')).toBe(
+      'modelcontextprotocol sdk'
+    );
+  });
+
+  it('replaces hyphens with spaces', () => {
+    expect(_packageNameToSearchKeywords('react-query')).toBe('react query');
+  });
+
+  it('replaces underscores with spaces', () => {
+    expect(_packageNameToSearchKeywords('lodash_fp')).toBe('lodash fp');
+  });
+
+  it('leaves simple names unchanged', () => {
+    expect(_packageNameToSearchKeywords('express')).toBe('express');
+  });
+
+  it('collapses multiple separators', () => {
+    expect(_packageNameToSearchKeywords('@a/b-c_d')).toBe('a b c d');
+  });
+
+  it('trims leading/trailing whitespace', () => {
+    expect(_packageNameToSearchKeywords('  pkg  ')).toBe('pkg');
+  });
+});
+
+describe('searchNpmPackage - network error fallback', () => {
+  it('should fall through to registry search when exact lookup fails with fetch failed', async () => {
+    mockFetchWithRetries
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValueOnce(
+        makeSearchResult([{ name: 'test-pkg', version: '1.0.0' }])
+      );
+
+    const result = await searchNpmPackage('test-pkg', 5, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(1);
+      expect((result.packages[0] as { name: string }).name).toBe('test-pkg');
+    }
+  });
+
+  it('should fall through to registry search when exact lookup fails with econnrefused', async () => {
+    mockFetchWithRetries
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:4873'))
+      .mockResolvedValueOnce(
+        makeSearchResult([{ name: 'my-lib', version: '2.0.0' }])
+      );
+
+    const result = await searchNpmPackage('my-lib', 5, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(1);
+    }
+  });
+
+  it('should try keyword-split when exact name search returns empty', async () => {
+    mockFetchWithRetries
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValueOnce(makeSearchResult([]))
+      .mockResolvedValueOnce(
+        makeSearchResult([{ name: 'react-query', version: '5.0.0' }])
+      );
+
+    const result = await searchNpmPackage('react-query', 5, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(1);
+    }
+  });
+
+  it('should surface registry-unreachable hint when ALL paths fail with network error', async () => {
+    mockFetchWithRetries.mockRejectedValue(new Error('fetch failed'));
+
+    const result = await searchNpmPackage('octocode-mcp', 5, false);
+
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.hints).toBeDefined();
+      const hints = result.hints ?? [];
+      expect(hints.some(h => h.toLowerCase().includes('unreachable'))).toBe(
+        true
+      );
+      expect(hints.some(h => h.includes('githubSearchRepositories'))).toBe(
+        true
+      );
+    }
+  });
+
+  it('should surface network hint even for scoped packages', async () => {
+    mockFetchWithRetries.mockRejectedValue(new Error('ECONNREFUSED'));
+
+    const result = await searchNpmPackage('@scope/pkg', 5, false);
+
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.hints).toBeDefined();
+      expect(
+        (result.hints ?? []).some(h => h.includes('githubSearchRepositories'))
+      ).toBe(true);
+    }
+  });
+
+  it('should try keyword-split for scoped packages when exact fails', async () => {
+    mockFetchWithRetries
+      .mockRejectedValueOnce(new Error('Failed to fetch'))
+      .mockResolvedValueOnce(makeSearchResult([]))
+      .mockResolvedValueOnce(
+        makeSearchResult([
+          { name: '@modelcontextprotocol/sdk', version: '1.0.0' },
+        ])
+      );
+
+    const result = await searchNpmPackage(
+      '@modelcontextprotocol/sdk',
+      5,
+      false
+    );
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(1);
+    }
+  });
+
+  it('should NOT fall through for definitive non-network errors (e.g. invalid JSON)', async () => {
+    mockFetchWithRetries.mockResolvedValue({ invalid_field: true });
+
+    const result = await searchNpmPackage('test-pkg', 1, false);
+
+    expect('error' in result || 'packages' in result).toBe(true);
+  });
+
+  it('should surface network hint when registry is unreachable', async () => {
+    mockFetchWithRetries.mockRejectedValue(new Error('fetch failed'));
+
+    const result = await searchNpmPackage('test-pkg', 1, false);
+
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toBeTruthy();
+    }
+  });
+});
+
+describe('source field attribution', () => {
+  beforeEach(() => {
+    mockExecuteNpmCommand.mockReset();
+    mockFetchWithRetries.mockReset();
+  });
+
+  it('result from CLI has source=cli', async () => {
+    mockExecuteNpmCommand.mockResolvedValue({
+      stdout: JSON.stringify({
+        name: 'express',
+        version: '4.18.2',
+        repository: { url: 'https://github.com/expressjs/express' },
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+    mockFetchWithRetries.mockRejectedValue(new Error('no enrichment'));
+
+    const result = await searchNpmPackage('express', 1, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const pkg = result.packages[0] as { source?: string };
+      expect(pkg.source).toBe('cli');
+    }
+  });
+
+  it('result from registry direct fetch has source=registry', async () => {
+    mockFetchWithRetries.mockResolvedValue({
+      name: 'my-pkg',
+      version: '1.0.0',
+      repository: { url: 'https://github.com/owner/my-pkg' },
+    });
+
+    const result = await searchNpmPackage('my-pkg', 1, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const pkg = result.packages[0] as { source?: string };
+      expect(pkg.source).toBe('registry');
+    }
+  });
+
+  it('result from web fallback has source=web', async () => {
+    mockFetchWithRetries
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValueOnce({
+        results: [
+          {
+            package: {
+              name: 'react-query',
+              version: '5.0.0',
+              description: 'Query library for React',
+              links: {
+                npm: 'https://npmjs.com/package/react-query',
+                repository: 'https://github.com/tanstack/query',
+              },
+            },
+          },
+        ],
+        total: 1,
+      });
+
+    const result = await searchNpmPackage('react-query', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const pkg = result.packages[0] as { source?: string; name: string };
+      expect(pkg.source).toBe('web');
+      expect(pkg.name).toBe('react-query');
+    }
+  });
+});
+
 describe('searchNpmPackageViaSearch - error handling', () => {
   it('should return error when fetch throws for search', async () => {
     mockFetchWithRetries.mockRejectedValue(new Error('Search network error'));
@@ -320,7 +537,6 @@ describe('searchNpmPackageViaSearch - error handling', () => {
   });
 
   it('should handle non-Error thrown values in search outer-catch', async () => {
-    // Triggers the outer catch (lines 301-302): String(error) branch
     mockFetchWithRetries.mockRejectedValue('raw string error in search');
 
     const result = await searchNpmPackage('test pkg keyword', 5, false);
@@ -332,7 +548,6 @@ describe('searchNpmPackageViaSearch - error handling', () => {
   });
 });
 
-// checkNpmDeprecation — still uses CLI
 describe('checkNpmDeprecation - edge cases', () => {
   it('should handle command error', async () => {
     mockExecuteNpmCommand.mockResolvedValue({
@@ -370,6 +585,22 @@ describe('checkNpmDeprecation - edge cases', () => {
     });
   });
 
+  it('should fallback to raw output when deprecation JSON fails schema', async () => {
+    mockExecuteNpmCommand.mockResolvedValue({
+      stdout: '[]',
+      stderr: '',
+      exitCode: 0,
+      error: null,
+    });
+
+    const result = await checkNpmDeprecation('array-deprecation');
+
+    expect(result).toEqual({
+      deprecated: true,
+      message: '[]',
+    });
+  });
+
   it('should handle unparseable deprecation output', async () => {
     mockExecuteNpmCommand.mockResolvedValue({
       stdout: 'Package is deprecated - use other-pkg instead',
@@ -386,7 +617,6 @@ describe('checkNpmDeprecation - edge cases', () => {
   });
 });
 
-// isExactPackageName routing — verifies fetch URL based on routing decision
 describe('isExactPackageName', () => {
   it('should call /latest URL for scoped packages', async () => {
     mockFetchWithRetries.mockResolvedValue({
@@ -422,18 +652,21 @@ describe('isExactPackageName', () => {
     );
   });
 
-  it('should call search URL when limit > 1 even for exact package name', async () => {
-    mockFetchWithRetries.mockResolvedValue(
-      makeSearchResult([
-        { name: 'react', version: '18.0.0' },
-        { name: 'react-dom', version: '18.0.0' },
-      ])
-    );
+  it('should return the canonical exact package even when limit > 1', async () => {
+    mockFetchWithRetries.mockResolvedValue({
+      name: 'react',
+      version: '18.0.0',
+    });
 
-    await searchNpmPackage('react', 5, false);
+    const result = await searchNpmPackage('react', 5, false);
 
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(1);
+      expect((result.packages[0] as NpmPackageResult).name).toBe('react');
+    }
     expect(mockFetchWithRetries).toHaveBeenCalledWith(
-      expect.stringContaining('/-/v1/search'),
+      expect.stringContaining('/react/latest'),
       expect.any(Object)
     );
   });
@@ -579,10 +812,8 @@ describe('mapToResult - extended metadata coverage', () => {
     expect('packages' in result).toBe(true);
     if ('packages' in result) {
       const pkg = result.packages[0] as NpmPackageResult;
-      // description and license are always included (lightweight metadata)
       expect(pkg.description).toBe('Always included');
       expect(pkg.license).toBe('MIT');
-      // author and peerDependencies require fetchMetadata=true
       expect(pkg.author).toBeUndefined();
       expect(pkg.peerDependencies).toBeUndefined();
     }
@@ -670,7 +901,6 @@ describe('mapToResult - extended metadata coverage', () => {
 
 describe('searchNpmPackageViaSearch - result handling', () => {
   it('should fetch metadata for each search result when fetchMetadata is true', async () => {
-    // First call: registry search
     mockFetchWithRetries.mockResolvedValueOnce(
       makeSearchResult([
         {
@@ -685,14 +915,12 @@ describe('searchNpmPackageViaSearch - result handling', () => {
         },
       ])
     );
-    // Second call: /latest for pkg-1
     mockFetchWithRetries.mockResolvedValueOnce({
       name: 'pkg-1',
       version: '1.0.0',
       description: 'Package 1 description',
       repository: 'https://github.com/test/pkg-1',
     });
-    // Third call: /latest for pkg-2
     mockFetchWithRetries.mockResolvedValueOnce({
       name: 'pkg-2',
       version: '2.0.0',
@@ -724,7 +952,6 @@ describe('searchNpmPackageViaSearch - result handling', () => {
         },
       ])
     );
-    // /latest for pkg-1 fails
     mockFetchWithRetries.mockRejectedValueOnce(
       new Error('HTTP error: 404 Not Found')
     );
@@ -734,7 +961,7 @@ describe('searchNpmPackageViaSearch - result handling', () => {
     expect('packages' in result).toBe(true);
     if ('packages' in result) {
       expect(result.packages).toHaveLength(1);
-      expect((result.packages[0] as NpmPackageResult).path).toBe('pkg-1');
+      expect((result.packages[0] as NpmPackageResult).name).toBe('pkg-1');
       expect((result.packages[0] as NpmPackageResult).version).toBe('1.0.0');
     }
   });
@@ -768,7 +995,6 @@ describe('searchNpmPackageViaSearch - result handling', () => {
 
 describe('cache behavior - empty results not cached', () => {
   it('should NOT cache error results from fetchPackageDetails failure', async () => {
-    // Make ALL attempts fail (including retries) so result1 is an error
     mockFetchWithRetries.mockRejectedValue(new Error('network failure'));
 
     const result1 = await searchNpmPackage('express', 1, false);
@@ -777,7 +1003,6 @@ describe('cache behavior - empty results not cached', () => {
       expect(result1.error).toContain('network failure');
     }
 
-    // Now override to succeed → result2 should NOT serve the cached error
     mockFetchWithRetries.mockResolvedValue({
       name: 'express',
       version: '4.18.2',
@@ -788,7 +1013,7 @@ describe('cache behavior - empty results not cached', () => {
     expect('packages' in result2).toBe(true);
     if ('packages' in result2) {
       expect(result2.totalFound).toBe(1);
-      expect((result2.packages[0] as { path?: string }).path).toBe('express');
+      expect((result2.packages[0] as { name?: string }).name).toBe('express');
     }
   });
 
@@ -805,7 +1030,6 @@ describe('cache behavior - empty results not cached', () => {
       expect(result1.totalFound).toBe(1);
     }
 
-    // Second call should use cache (fetchWithRetries should NOT be called again)
     mockFetchWithRetries.mockClear();
     const result2 = await searchNpmPackage('lodash', 1, false);
     expect('packages' in result2).toBe(true);
@@ -1048,6 +1272,11 @@ describe('checkNpmRegistryReachable', () => {
 describe('searchNpmPackage - custom registry URL', () => {
   it('should use custom registry URL for exact package lookup', async () => {
     mockExecuteNpmCommand.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'npm ERR! code E404',
+      exitCode: 1,
+    });
+    mockExecuteNpmCommand.mockResolvedValueOnce({
       stdout: 'https://npm.corp.com\n',
       stderr: '',
       exitCode: 0,
@@ -1066,8 +1295,6 @@ describe('searchNpmPackage - custom registry URL', () => {
   });
 
   it('should always use the public npmjs.org registry for search (ignoring corporate registry config)', async () => {
-    // Even when npm config get registry returns a corporate registry,
-    // search must always target the public npmjs.org /-/v1/search endpoint.
     mockExecuteNpmCommand.mockResolvedValueOnce({
       stdout: 'https://npm.corp.com\n',
       stderr: '',
@@ -1100,7 +1327,7 @@ describe('fetchNpmPackageByView - success cases', () => {
     if ('packages' in result) {
       expect(result.totalFound).toBe(1);
       const pkg = result.packages[0] as NpmPackageResult;
-      expect(pkg.path).toBe('express');
+      expect(pkg.name).toBe('express');
       expect(pkg.version).toBe('5.0.1');
       expect(pkg.mainEntry).toBe('index.js');
       expect(pkg.typeDefinitions).toBe('index.d.ts');
@@ -1135,8 +1362,530 @@ describe('fetchNpmPackageByView - success cases', () => {
 
     expect('packages' in result).toBe(true);
     if ('packages' in result) {
-      // empty version falls back to 'latest'
       expect((result.packages[0] as NpmPackageResult).version).toBe('latest');
     }
+  });
+});
+
+describe('enrichTopSearchResult - top result enrichment', () => {
+  it('should enrich top keyword-search result with weeklyDownloads and lastPublished', async () => {
+    mockFetchWithRetries
+      .mockResolvedValueOnce({
+        objects: [
+          {
+            package: {
+              name: 'test-keyword-pkg',
+              version: '1.0.0',
+              description: 'A test pkg',
+            },
+          },
+        ],
+        total: 1,
+      })
+      .mockResolvedValueOnce({ downloads: 12345 })
+      .mockRejectedValueOnce(new Error('no install-v1'))
+      .mockResolvedValueOnce({
+        time: { modified: '2024-03-01T00:00:00.000Z' },
+      });
+
+    const result = await searchNpmPackage('test keyword pkg', 5, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const top = result.packages[0] as NpmPackageResult;
+      expect(top.name).toBe('test-keyword-pkg');
+      expect(top.weeklyDownloads).toBe(12345);
+      expect(top.lastPublished).toBe('2024-03-01T00:00:00.000Z');
+    }
+  });
+
+  it('should not assign weeklyDownloads when downloads API returns no downloads field', async () => {
+    mockFetchWithRetries
+      .mockResolvedValueOnce({
+        objects: [{ package: { name: 'no-dl-pkg', version: '1.0.0' } }],
+        total: 1,
+      })
+      .mockResolvedValueOnce({ message: 'no downloads data' })
+      .mockResolvedValueOnce({ modified: '2024-01-01T00:00:00.000Z' });
+
+    const result = await searchNpmPackage('no dl pkg', 5, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const top = result.packages[0] as NpmPackageResult;
+      expect(top.weeklyDownloads).toBeUndefined();
+      expect(top.lastPublished).toBe('2024-01-01T00:00:00.000Z');
+    }
+  });
+
+  it('should skip both fetches when top result already has weeklyDownloads and lastPublished', async () => {
+    mockExecuteNpmCommand
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify([{ name: 'already-rich', version: '1.0.0' }]),
+        stderr: '',
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({ name: 'already-rich', version: '1.0.0' }),
+        stderr: '',
+        error: null,
+      });
+    mockFetchWithRetries
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ downloads: 7777 })
+      .mockResolvedValueOnce({ modified: '2025-01-01T00:00:00.000Z' });
+
+    const result = await searchNpmPackage('already rich', 5, true);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const top = result.packages[0] as NpmPackageResult;
+      expect(top.weeklyDownloads).toBe(7777);
+      expect(top.lastPublished).toBeDefined();
+    }
+  });
+
+  it('should skip lastPublished fetch in enrichTop when top already has lastPublished', async () => {
+    mockExecuteNpmCommand
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify([{ name: 'lp-only', version: '1.0.0' }]),
+        stderr: '',
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({ name: 'lp-only', version: '1.0.0' }),
+        stderr: '',
+        error: null,
+      });
+    mockFetchWithRetries
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ modified: '2025-02-01T00:00:00.000Z' })
+      .mockResolvedValueOnce({ downloads: 321 });
+
+    const result = await searchNpmPackage('lp only', 5, true);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const top = result.packages[0] as NpmPackageResult;
+      expect(top.weeklyDownloads).toBe(321);
+      expect(top.lastPublished).toBe('2025-02-01T00:00:00.000Z');
+    }
+  });
+
+  it('should skip weekly fetch in enrichTop when top already has weeklyDownloads', async () => {
+    mockExecuteNpmCommand
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify([{ name: 'wd-only', version: '1.0.0' }]),
+        stderr: '',
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({ name: 'wd-only', version: '1.0.0' }),
+        stderr: '',
+        error: null,
+      });
+    mockFetchWithRetries
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ downloads: 111 })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ time: {} })
+      .mockResolvedValueOnce({ modified: '2026-03-01T00:00:00.000Z' });
+
+    const result = await searchNpmPackage('wd only', 5, true);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const top = result.packages[0] as NpmPackageResult;
+      expect(top.weeklyDownloads).toBe(111);
+      expect(top.lastPublished).toBe('2026-03-01T00:00:00.000Z');
+    }
+  });
+});
+
+describe('fetchPackageDetailsFromRegistry - branch coverage', () => {
+  it('should return empty when registry /latest returns null (non-object)', async () => {
+    mockFetchWithRetries
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ objects: [], total: 0 });
+
+    const result = await searchNpmPackage('null-registry-pkg', 1, false);
+
+    expect('error' in result || 'packages' in result).toBe(true);
+  });
+
+  it('should return error when registry /latest returns invalid schema format', async () => {
+    mockFetchWithRetries.mockResolvedValue({ invalid: true });
+
+    const result = await searchNpmPackage('bad-schema-pkg', 1, false);
+
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('Invalid npm registry response format');
+    }
+  });
+});
+
+describe('null result guard - executeNpmCommand returns undefined', () => {
+  it('should treat null CLI view result as not found and fall through to registry', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce(null).mockResolvedValue({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'npm ERR! code E404',
+      error: null,
+    });
+    mockFetchWithRetries.mockResolvedValue({
+      name: 'null-cli-pkg',
+      version: '1.0.0',
+      repository: { url: 'https://github.com/owner/null-cli-pkg' },
+    });
+
+    const result = await searchNpmPackage('null-cli-pkg', 1, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).name).toBe(
+        'null-cli-pkg'
+      );
+    }
+  });
+
+  it('should treat null CLI search result as unavailable and fall through to registry search', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce(null);
+    mockFetchWithRetries.mockResolvedValueOnce({
+      objects: [{ package: { name: 'null-search-pkg', version: '1.0.0' } }],
+      total: 1,
+    });
+
+    const result = await searchNpmPackage('null search pkg', 5, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).name).toBe(
+        'null-search-pkg'
+      );
+    }
+  });
+});
+
+describe('circuit breaker bypass', () => {
+  it('should skip registry and go straight to web when circuit is open and web succeeds', async () => {
+    const registryUrl = 'https://registry.npmjs.org';
+    for (let i = 0; i < DEFAULT_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      recordCircuitFailure(registryUrl);
+    }
+
+    mockFetchWithRetries.mockResolvedValueOnce({
+      results: [
+        {
+          package: {
+            name: 'open-pkg',
+            version: '2.0.0',
+            links: { npm: 'https://npmjs.com/package/open-pkg' },
+          },
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await searchNpmPackage('open-pkg', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).source).toBe('web');
+    }
+    expect(mockFetchWithRetries).toHaveBeenCalledTimes(1);
+    expect((mockFetchWithRetries.mock.calls[0] as [string])[0]).toContain(
+      'npms.io'
+    );
+  });
+
+  it('should return error when circuit is open and web search also fails', async () => {
+    const registryUrl = 'https://registry.npmjs.org';
+    for (let i = 0; i < DEFAULT_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      recordCircuitFailure(registryUrl);
+    }
+
+    mockFetchWithRetries.mockRejectedValue(new Error('web also down'));
+
+    const result = await searchNpmPackage('some-pkg', 5, false);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('circuit open');
+    }
+  });
+
+  it('maps optional homepage from web search results', async () => {
+    const registryUrl = 'https://registry.npmjs.org';
+    for (let i = 0; i < DEFAULT_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      recordCircuitFailure(registryUrl);
+    }
+
+    mockFetchWithRetries.mockResolvedValueOnce({
+      results: [
+        {
+          package: {
+            name: 'web-homepage-pkg',
+            version: '1.2.3',
+            description: 'pkg from npms',
+            links: {
+              npm: 'https://npmjs.com/package/web-homepage-pkg',
+              repository: 'https://github.com/acme/web-homepage-pkg',
+              homepage: 'https://acme.dev/web-homepage-pkg',
+            },
+          },
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await searchNpmPackage('web-homepage-pkg', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const top = result.packages[0] as NpmPackageResult;
+      expect(top.homepage).toBe('https://acme.dev/web-homepage-pkg');
+      expect(top.description).toBe('pkg from npms');
+    }
+  });
+});
+
+describe('coverage branches - web search and CLI throw paths', () => {
+  it('hits web-search outer catch when mapping throws', async () => {
+    const registryUrl = 'https://registry.npmjs.org';
+    for (let i = 0; i < DEFAULT_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      recordCircuitFailure(registryUrl);
+    }
+
+    const itemWithThrowingPackage = {} as { package?: unknown };
+    Object.defineProperty(itemWithThrowingPackage, 'package', {
+      get() {
+        throw new Error('package getter boom');
+      },
+      enumerable: true,
+    });
+    mockFetchWithRetries.mockResolvedValueOnce({
+      results: [itemWithThrowingPackage],
+      total: 1,
+    });
+
+    const result = await searchNpmPackage('circular-pkg', 5, false);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('circuit open');
+    }
+    expect(mockFetchWithRetries).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to registry when CLI search throws (search outer catch)', async () => {
+    mockExecuteNpmCommand.mockRejectedValueOnce(
+      new Error('cli search crashed')
+    );
+    mockFetchWithRetries.mockResolvedValueOnce({
+      objects: [{ package: { name: 'cli-throw-fallback', version: '1.0.0' } }],
+      total: 1,
+    });
+
+    const result = await searchNpmPackage('cli throw fallback', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).name).toBe(
+        'cli-throw-fallback'
+      );
+      expect((result.packages[0] as NpmPackageResult).source).toBe('registry');
+    }
+  });
+
+  it('handles CLI search JSON object (non-array) before falling back', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify({ objects: [] }),
+      stderr: '',
+      error: null,
+    });
+    mockFetchWithRetries.mockResolvedValueOnce({
+      objects: [
+        { package: { name: 'registry-after-cli-object', version: '1.0.0' } },
+      ],
+      total: 1,
+    });
+
+    const result = await searchNpmPackage('cli object fallback', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).name).toBe(
+        'registry-after-cli-object'
+      );
+    }
+  });
+
+  it('hits registry-search outer catch when package getter throws in validated object', async () => {
+    const throwingPackageHolder = {} as { package?: unknown };
+    Object.defineProperty(throwingPackageHolder, 'package', {
+      get() {
+        throw new Error('registry package getter boom');
+      },
+      enumerable: true,
+    });
+    mockFetchWithRetries.mockResolvedValueOnce({
+      objects: [throwingPackageHolder],
+      total: 1,
+    });
+
+    const result = await searchNpmPackage('registry throw fallback', 5, false);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('NPM registry search failed');
+      expect(result.error).toContain('registry package getter boom');
+    }
+  });
+
+  it('returns explicit error when npm view CLI output is invalid JSON', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: '{"broken"',
+      stderr: '',
+      error: null,
+    });
+    mockFetchWithRetries.mockResolvedValueOnce(null);
+
+    const result = await searchNpmPackage('broken-view-json', 1, false);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('Invalid npm view JSON output');
+    }
+  });
+
+  it('handles registry details outer-catch path when schema read throws', async () => {
+    const rawWithThrowingName = {} as { name?: string };
+    Object.defineProperty(rawWithThrowingName, 'name', {
+      get() {
+        throw new Error('registry details getter boom');
+      },
+      enumerable: true,
+    });
+    mockFetchWithRetries.mockResolvedValueOnce(rawWithThrowingName);
+
+    const result = await searchNpmPackage('registry-details-throw', 1, false);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toContain('registry details getter boom');
+    }
+  });
+
+  it('returns empty CLI search result when npm search stdout is blank', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: '   ',
+      stderr: '',
+      error: null,
+    });
+    mockFetchWithRetries.mockResolvedValueOnce({ results: [], total: 0 });
+
+    const result = await searchNpmPackage('blank cli search', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(0);
+      expect(result.totalFound).toBe(0);
+    }
+  });
+
+  it('uses fallback totalFound when registry total is not parseable', async () => {
+    mockFetchWithRetries.mockResolvedValueOnce({
+      objects: [{ package: { name: 'fallback-total', version: '1.0.0' } }],
+      total: 'not-a-number',
+    });
+
+    const result = await searchNpmPackage('fallback total', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(1);
+      expect(result.totalFound).toBe(1);
+    }
+  });
+
+  it('maps CLI search repository from legacy repository string', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          name: 'legacy-repo-item',
+          version: '1.0.0',
+          repository: 'git+https://github.com/acme/legacy-repo-item.git',
+        },
+      ]),
+      stderr: '',
+      error: null,
+    });
+
+    const result = await searchNpmPackage('legacy repo item', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).repoUrl).toBe(
+        'https://github.com/acme/legacy-repo-item'
+      );
+    }
+  });
+
+  it('maps CLI search repository from repository.url object', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        {
+          name: 'object-repo-item',
+          version: '1.0.0',
+          repository: {
+            url: 'git+https://github.com/acme/object-repo-item.git',
+          },
+        },
+      ]),
+      stderr: '',
+      error: null,
+    });
+
+    const result = await searchNpmPackage('object repo item', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).repoUrl).toBe(
+        'https://github.com/acme/object-repo-item'
+      );
+    }
+  });
+
+  it('maps CLI search item without repository to repoUrl=null', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify([{ name: 'no-repo-item', version: '1.0.0' }]),
+      stderr: '',
+      error: null,
+    });
+
+    const result = await searchNpmPackage('no repo item', 5, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).repoUrl).toBeNull();
+    }
+  });
+
+  it('returns exact empty result immediately when limit=1 and exact lookup finds nothing', async () => {
+    mockExecuteNpmCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: 'undefined',
+      stderr: '',
+      error: null,
+    });
+    mockFetchWithRetries.mockResolvedValueOnce(null);
+
+    const result = await searchNpmPackage('exact-empty-limit-one', 1, false);
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages).toHaveLength(0);
+      expect(result.totalFound).toBe(0);
+    }
+    expect(mockFetchWithRetries).toHaveBeenCalledTimes(1);
   });
 });

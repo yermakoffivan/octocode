@@ -1,12 +1,5 @@
-/**
- * GitHub Repository Structure Operations
- * Orchestrates viewing and navigating repository directory structures.
- * Split into focused modules:
- *   - repoStructurePagination.ts: post-cache pagination application
- *   - repoStructureRecursive.ts: recursive directory content fetching
- */
 import { RequestError } from 'octokit';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { GitHubViewRepoStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type GitHubViewRepoStructureQuery = z.infer<
@@ -53,10 +46,6 @@ interface ContentResolution {
   repoDefaultBranch?: string;
 }
 
-/**
- * Resolve repository content by trying the requested branch, the default
- * branch, and common fallback branches (main, master, develop).
- */
 async function resolveContentWithBranchFallback(
   octokit: Octokit,
   owner: string,
@@ -65,14 +54,25 @@ async function resolveContentWithBranchFallback(
   branch: string | undefined,
   authInfo?: AuthInfo
 ): Promise<ContentResolution | GitHubRepositoryStructureError> {
-  const workingBranch = branch ?? 'main';
+  let workingBranch: string;
+  try {
+    workingBranch =
+      branch ?? (await resolveDefaultBranch(owner, repo, authInfo));
+  } catch (repoError) {
+    const apiError = handleGitHubAPIError(repoError);
+    await logSessionError(TOOL_NAME, REPOSITORY_ERRORS.NOT_FOUND.code);
+    return {
+      error: REPOSITORY_ERRORS.NOT_FOUND.message(owner, repo, apiError.error),
+      status: apiError.status,
+    };
+  }
 
   try {
     const result = await octokit.rest.repos.getContent({
       owner,
       repo,
       path: cleanPath || '',
-      ref: branch,
+      ref: workingBranch,
     });
     return { data: result.data, workingBranch };
   } catch (error: unknown) {
@@ -92,75 +92,16 @@ async function resolveContentWithBranchFallback(
       };
     }
 
-    let defaultBranch: string;
-    let repoDefaultBranch: string | undefined;
-    try {
-      defaultBranch = await resolveDefaultBranch(owner, repo, authInfo);
-      repoDefaultBranch = defaultBranch;
-    } catch (repoError) {
-      const apiError = handleGitHubAPIError(repoError);
-      await logSessionError(TOOL_NAME, REPOSITORY_ERRORS.NOT_FOUND.code);
-      return {
-        error: REPOSITORY_ERRORS.NOT_FOUND.message(owner, repo, apiError.error),
-        status: apiError.status,
-      };
-    }
-
-    if (defaultBranch === branch) {
-      const apiError = handleGitHubAPIError(error);
-      await logSessionError(TOOL_NAME, REPOSITORY_ERRORS.PATH_NOT_FOUND.code);
-      return {
-        error: REPOSITORY_ERRORS.PATH_NOT_FOUND.message(
-          cleanPath,
-          owner,
-          repo,
-          branch
-        ),
-        status: apiError.status,
-      };
-    }
-
-    const branchCandidates = [
-      defaultBranch,
-      ...['main', 'master', 'develop'].filter(
-        b => b !== branch && b !== defaultBranch
-      ),
-    ];
-
-    for (const candidate of branchCandidates) {
-      try {
-        const result = await octokit.rest.repos.getContent({
-          owner,
-          repo,
-          path: cleanPath || '',
-          ref: candidate,
-        });
-        return {
-          data: result.data,
-          workingBranch: candidate,
-          repoDefaultBranch,
-        };
-      } catch {
-        // Path/ref missing on this branch; try the next candidate
-      }
-    }
-
     const apiError = handleGitHubAPIError(error);
-    await logSessionError(
-      TOOL_NAME,
-      REPOSITORY_ERRORS.PATH_NOT_FOUND_ANY_BRANCH.code
-    );
+    await logSessionError(TOOL_NAME, REPOSITORY_ERRORS.PATH_NOT_FOUND.code);
     return {
-      error: REPOSITORY_ERRORS.PATH_NOT_FOUND_ANY_BRANCH.message(
+      error: REPOSITORY_ERRORS.PATH_NOT_FOUND.message(
         cleanPath,
         owner,
-        repo
+        repo,
+        workingBranch
       ),
       status: apiError.status,
-      triedBranches: [branch, ...branchCandidates].filter(
-        (b): b is string => b !== undefined
-      ),
-      defaultBranch,
     };
   }
 }
@@ -186,8 +127,6 @@ function buildStructureTree(
   items: GitHubApiFileItem[],
   basePath: string
 ): Record<string, { files: string[]; folders: string[] }> {
-  // Object.create(null): keys come from GitHub paths — defense against any
-  // pathological path that would otherwise pollute Object.prototype.
   const structure: Record<string, { files: string[]; folders: string[] }> =
     Object.create(null);
 
@@ -269,11 +208,6 @@ export async function viewGitHubRepositoryStructureAPI(
   >(
     cacheKey,
     async () => {
-      // The cached fetch returns the full subtree; per-page slicing
-      // happens at the call site (applyStructurePagination). The inner
-      // API type requires entriesPerPage/entryPageNumber, but they have
-      // no effect on the network call — pass placeholder values and let
-      // the post-processing apply the real pagination.
       return await viewGitHubRepositoryStructureAPIInternal(
         {
           ...params,
@@ -409,10 +343,6 @@ async function viewGitHubRepositoryStructureAPIInternal(
       pagination: paginationInfo,
       hints,
       rawResponseChars,
-      // Always carry the full filtered list so the post-cache
-      // `applyStructurePagination` can slice ANY requested page from one cached
-      // tree. The cache key intentionally omits entryPageNumber/entriesPerPage;
-      // without this, a cached page would be served for every page request.
       _cachedItems: filteredItems.map(item => ({
         path: item.path,
         type: item.type as 'file' | 'dir',

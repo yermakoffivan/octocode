@@ -1,23 +1,3 @@
-/**
- * Verbosity:"concise" — acceptance tests for every tool.
- *
- * Each `apply*Verbosity` helper is a pure function on the tool's result type.
- * These tests pin the four shared invariants of the concise contract:
- *
- *   1. Default invariance — undefined / "basic" / "compact" preserve the
- *      data payload (per octocode-core baseSchema.verbosity, default = "basic").
- *   2. Lossiness — "concise" drops the heavy field (matches, content, locations,
- *      entries, calls) for hasResults.
- *   3. Drill-back hint — every concise response carries a `Drill-back:` line
- *      so the agent never lands in a dead end.
- *   4. Bounded payload — the synthetic summary fits a small per-tool char
- *      budget.
- *
- * Special-case: `applyFindReferencesVerbosity` is adaptive — flat refs[] of
- * `file:line` strings below 500 refs, `topFiles`-style rollup above. Both
- * paths are exercised.
- */
-
 import { describe, it, expect } from 'vitest';
 import { applyRipgrepVerbosity } from '../../src/tools/local_ripgrep/ripgrepResultBuilder.js';
 import { applyFindFilesVerbosity } from '../../src/tools/local_find_files/findFiles.js';
@@ -25,34 +5,6 @@ import { applyFetchContentVerbosity } from '../../src/tools/local_fetch_content/
 import { applyGotoDefinitionVerbosity } from '../../src/tools/lsp_goto_definition/execution.js';
 import { applyFindReferencesVerbosity } from '../../src/tools/lsp_find_references/lsp_find_references.js';
 import { applyCallHierarchyVerbosity } from '../../src/tools/lsp_call_hierarchy/callHierarchy.js';
-import { assertConcisePayload } from '../../src/scheme/verbosity.js';
-import type { Verbosity } from '../../src/scheme/localSchemaOverlay.js';
-
-// Per-test concise payload budgets. The default 2048-byte guard fits the
-// stripped-data + summary hint shapes; lspFindReferences rollup carries a
-// top-20 file list so it gets a wider budget. These guards catch
-// contract drift — a finalizer that accidentally keeps `matches`, `content`,
-// `calls`, etc. blows the budget instantly.
-const CONCISE_BUDGET_DEFAULT = 2048;
-const CONCISE_BUDGET_REFS_ROLLUP = 4096;
-
-// Canonical default is `basic` per octocode-core/src/resources/global.ts
-// baseSchema.verbosity. `compact` trims hints but keeps content; only `concise`
-// drops content. Both `basic` (default) and `compact` must preserve the
-// data payload below — these tests assert that.
-const VERBOSITIES_PRESERVING_DEFAULT: Array<Verbosity | undefined> = [
-  undefined,
-  'basic',
-  'compact',
-];
-
-function hintsBlob(result: { hints?: string[] }): string {
-  return (result.hints ?? []).join('\n');
-}
-
-// ---------------------------------------------------------------------------
-// localSearchCode (ripgrep)
-// ---------------------------------------------------------------------------
 
 describe('applyRipgrepVerbosity', () => {
   const baseResult = {
@@ -82,46 +34,29 @@ describe('applyRipgrepVerbosity', () => {
   const baseQuery = { pattern: 'foo', path: '/repo' } as never;
   const totals = { totalMatches: 4, totalFiles: 2 };
 
-  it.each(VERBOSITIES_PRESERVING_DEFAULT)(
-    'verbosity=%s is identity (preserves files[])',
-    verbosity => {
-      const out = applyRipgrepVerbosity(
-        baseResult,
-        { ...baseQuery, verbosity },
-        totals
-      );
-      expect(out.files).toEqual(baseResult.files);
-    }
-  );
-
-  it('verbosity:"concise" drops files[] and emits summary + drill-back', () => {
+  it('verbose:false preserves full files[] (research data only)', () => {
     const out = applyRipgrepVerbosity(
       baseResult,
-      { ...baseQuery, verbosity: 'concise' },
+      { ...baseQuery, verbose: false },
       totals
     );
-    expect(out.files).toEqual([]);
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/4 matches in 2 files/);
-    expect(blob).toMatch(/top: \/repo\/src\/foo\.ts:12/);
-    expect(blob.toLowerCase()).not.toMatch(/drill-back|re-call|detail dropped/);
-    assertConcisePayload(out, CONCISE_BUDGET_DEFAULT);
+    expect(out.files).toEqual(baseResult.files);
   });
 
-  it('concise summary fits the ≤ 200 char budget', () => {
+  it('verbose:true also preserves full files[] (metadata is additive)', () => {
     const out = applyRipgrepVerbosity(
       baseResult,
-      { ...baseQuery, verbosity: 'concise' },
+      { ...baseQuery, verbose: true },
       totals
     );
-    const summaryLine = (out.hints ?? [])[0] ?? '';
-    expect(summaryLine.length).toBeLessThanOrEqual(200);
+    expect(out.files).toEqual(baseResult.files);
+  });
+
+  it('omitted verbose preserves full files[]', () => {
+    const out = applyRipgrepVerbosity(baseResult, baseQuery, totals);
+    expect(out.files).toEqual(baseResult.files);
   });
 });
-
-// ---------------------------------------------------------------------------
-// localFindFiles
-// ---------------------------------------------------------------------------
 
 describe('applyFindFilesVerbosity', () => {
   const baseResult = {
@@ -142,46 +77,83 @@ describe('applyFindFilesVerbosity', () => {
   const baseQuery = { path: '/repo' } as never;
   const totals = { totalFiles: 3 };
 
-  it.each(VERBOSITIES_PRESERVING_DEFAULT)(
-    'verbosity=%s is identity',
-    verbosity => {
-      const out = applyFindFilesVerbosity(
-        baseResult,
-        { ...baseQuery, verbosity },
-        totals
-      );
-      expect(out.files).toEqual(baseResult.files);
-    }
-  );
-
-  it('verbosity:"concise" drops files[] and emits "X files in Y dirs"', () => {
+  it('verbose:false preserves full files[]', () => {
     const out = applyFindFilesVerbosity(
       baseResult,
-      { ...baseQuery, verbosity: 'concise' },
+      { ...baseQuery, verbose: false },
       totals
     );
-    expect(out.files).toEqual([]);
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/3 files in 2 dirs/);
-    expect(blob).toMatch(/newest: \/repo\/src\/foo\.ts/);
-    expect(blob.toLowerCase()).not.toMatch(/drill-back|re-call|detail dropped/);
-    assertConcisePayload(out, CONCISE_BUDGET_DEFAULT);
+    expect(out.files).toEqual(baseResult.files);
   });
 
-  it('concise summary fits the ≤ 200 char budget', () => {
+  it('verbose:true preserves full files[]', () => {
     const out = applyFindFilesVerbosity(
       baseResult,
-      { ...baseQuery, verbosity: 'concise' },
+      { ...baseQuery, verbose: true },
       totals
     );
-    const summaryLine = (out.hints ?? [])[0] ?? '';
-    expect(summaryLine.length).toBeLessThanOrEqual(200);
+    expect(out.files).toEqual(baseResult.files);
+  });
+
+  it('verbose:false + sortBy=modified preserves modified timestamps', () => {
+    const resultWithTimestamps = {
+      ...baseResult,
+      files: [
+        {
+          path: '/repo/src/foo.ts',
+          name: 'foo.ts',
+          modified: '2026-05-01T10:00:00Z',
+          size: 1000,
+          permissions: '644',
+        },
+        {
+          path: '/repo/src/bar.ts',
+          name: 'bar.ts',
+          modified: '2026-04-01T10:00:00Z',
+          size: 500,
+          permissions: '644',
+        },
+      ],
+    };
+
+    const out = applyFindFilesVerbosity(
+      resultWithTimestamps as never,
+      { ...baseQuery, sortBy: 'modified', verbose: false } as never,
+      totals
+    );
+
+    for (const file of out.files ?? []) {
+      expect((file as Record<string, unknown>).modified).toBeDefined();
+    }
+    for (const file of out.files ?? []) {
+      expect((file as Record<string, unknown>).size).toBeUndefined();
+      expect((file as Record<string, unknown>).permissions).toBeUndefined();
+    }
+  });
+
+  it('verbose:false without sortBy=modified strips modified timestamps', () => {
+    const resultWithTimestamps = {
+      ...baseResult,
+      files: [
+        {
+          path: '/repo/src/foo.ts',
+          name: 'foo.ts',
+          modified: '2026-05-01T10:00:00Z',
+        },
+      ],
+    };
+
+    const out = applyFindFilesVerbosity(
+      resultWithTimestamps as never,
+      { ...baseQuery, verbose: false } as never,
+      totals
+    );
+
+    for (const file of out.files ?? []) {
+      expect((file as Record<string, unknown>).modified).toBeUndefined();
+    }
   });
 });
-
-// ---------------------------------------------------------------------------
-// localGetFileContent (fetchContent)
-// ---------------------------------------------------------------------------
 
 describe('applyFetchContentVerbosity', () => {
   const baseResult = {
@@ -191,41 +163,24 @@ describe('applyFetchContentVerbosity', () => {
   };
   const baseQuery = { path: '/repo/src/foo.ts' } as never;
 
-  it.each(VERBOSITIES_PRESERVING_DEFAULT)(
-    'verbosity=%s is identity (preserves content)',
-    verbosity => {
-      const out = applyFetchContentVerbosity(
-        baseResult,
-        { ...baseQuery, verbosity },
-        420
-      );
-      expect(out.content).toBe(baseResult.content);
-    }
-  );
-
-  it('verbosity:"concise" MINIFIES content (not blanked) + emits raw→min token summary', () => {
+  it('verbose:false preserves full content', () => {
     const out = applyFetchContentVerbosity(
       baseResult,
-      { ...baseQuery, verbosity: 'concise' },
+      { ...baseQuery, verbose: false },
       420
     );
-    // Content is kept but minified — substance survives, comments/whitespace go.
-    expect(out.content).not.toBe('');
-    expect((out.content ?? '').length).toBeLessThan(baseResult.content.length);
-    expect(out.content).toContain('foo'); // code body preserved
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/\/repo\/src\/foo\.ts/);
-    expect(blob).toMatch(/420 lines/);
-    expect(blob).toMatch(/~\d+→\d+ tokens \(minified\)/);
-    expect(blob.toLowerCase()).not.toMatch(/drill-back|re-call|detail dropped/);
-    // Heavy metadata dropped under concise.
-    expect((out as { lastModified?: string }).lastModified).toBeUndefined();
+    expect(out.content).toBe(baseResult.content);
+  });
+
+  it('verbose:true preserves full content', () => {
+    const out = applyFetchContentVerbosity(
+      baseResult,
+      { ...baseQuery, verbose: true },
+      420
+    );
+    expect(out.content).toBe(baseResult.content);
   });
 });
-
-// ---------------------------------------------------------------------------
-// lspGotoDefinition
-// ---------------------------------------------------------------------------
 
 describe('applyGotoDefinitionVerbosity', () => {
   const baseResult = {
@@ -257,38 +212,24 @@ describe('applyGotoDefinitionVerbosity', () => {
     lineHint: 12,
   } as never;
 
-  it.each(VERBOSITIES_PRESERVING_DEFAULT)(
-    'verbosity=%s preserves locations[].content',
-    verbosity => {
-      const out = applyGotoDefinitionVerbosity(baseResult, {
-        ...baseQuery,
-        verbosity,
-      });
-      expect(out.locations?.[0]?.content).toBe(
-        baseResult.locations[0]!.content
-      );
-    }
-  );
-
-  it('verbosity:"concise" strips locations[].content and emits file:line:col summary', () => {
+  it('verbose:false preserves locations[].content', () => {
     const out = applyGotoDefinitionVerbosity(baseResult, {
       ...baseQuery,
-      verbosity: 'concise',
+      verbose: false,
     });
-    expect(out.locations?.[0]?.content).toBe('');
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/2 definition\(s\)/);
-    expect(blob).toMatch(/\/repo\/src\/foo\.ts:12:10/);
-    expect(blob.toLowerCase()).not.toMatch(/drill-back|re-call|detail dropped/);
-    assertConcisePayload(out, CONCISE_BUDGET_DEFAULT);
+    expect(out.locations?.[0]?.content).toBe(baseResult.locations[0]!.content);
+  });
+
+  it('verbose:true preserves locations[].content', () => {
+    const out = applyGotoDefinitionVerbosity(baseResult, {
+      ...baseQuery,
+      verbose: true,
+    });
+    expect(out.locations?.[0]?.content).toBe(baseResult.locations[0]!.content);
   });
 });
 
-// ---------------------------------------------------------------------------
-// lspFindReferences (adaptive concise)
-// ---------------------------------------------------------------------------
-
-describe('applyFindReferencesVerbosity (adaptive)', () => {
+describe('applyFindReferencesVerbosity', () => {
   function makeRefs(n: number, filesCount = 4) {
     return Array.from({ length: n }).map((_, i) => ({
       uri: `/repo/src/file${i % filesCount}.ts`,
@@ -306,89 +247,49 @@ describe('applyFindReferencesVerbosity (adaptive)', () => {
     lineHint: 1,
   } as never;
 
-  it.each(VERBOSITIES_PRESERVING_DEFAULT)(
-    'verbosity=%s preserves locations[]',
-    verbosity => {
-      const result = {
-        locations: makeRefs(10),
-      };
-      const out = applyFindReferencesVerbosity(result, {
-        ...baseQuery,
-        verbosity,
-      });
-      expect(out.locations).toEqual(result.locations);
-    }
-  );
-
-  it('flat path (< 500 refs) — verbosity:"concise" returns refs[] in hints', () => {
-    const result = {
-      locations: makeRefs(50),
-    };
+  it('verbose:false preserves full locations[]', () => {
+    const result = { locations: makeRefs(10) };
     const out = applyFindReferencesVerbosity(result, {
       ...baseQuery,
-      verbosity: 'concise',
+      verbose: false,
     });
-    expect(out.locations).toEqual([]);
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/50 refs in 4 files/);
-    expect(blob).toMatch(/refs: \/repo\/src\/file0\.ts:1/);
-    expect(blob.toLowerCase()).not.toMatch(/drill-back|re-call|detail dropped/);
-    // Flat path joins all 50 file:line strings into one hint — pick the
-    // wider budget so the assertion catches "kept locations[]" drift rather
-    // than tripping on legitimate joined refs.
-    assertConcisePayload(out, CONCISE_BUDGET_REFS_ROLLUP);
+    expect(out.locations).toEqual(result.locations);
   });
 
-  it('adaptive rollup path (≥ 500 refs) — emits topFiles, no individual refs', () => {
-    const result = {
-      locations: makeRefs(1000, 8),
-    };
+  it('verbose:true preserves full locations[]', () => {
+    const result = { locations: makeRefs(10) };
     const out = applyFindReferencesVerbosity(result, {
       ...baseQuery,
-      verbosity: 'concise',
+      verbose: true,
     });
-    expect(out.locations).toEqual([]);
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/1000 refs in 8 files/);
-    expect(blob).toMatch(/top-20:/);
-    expect(blob).not.toMatch(/refs: \/repo\/src\/file0\.ts:1,/);
-    // No verbosity-feature commentary (drill-back / groupByFile suggestion).
-    expect(blob.toLowerCase()).not.toMatch(
-      /drill-back|re-call|detail dropped/i
-    );
-    assertConcisePayload(out, CONCISE_BUDGET_DEFAULT);
+    expect(out.locations).toEqual(result.locations);
   });
 
-  it('groupByFile:true (explicit) — rollup regardless of fanout', () => {
-    const result = {
-      locations: makeRefs(20, 3),
-    };
+  it('groupByFile:true — rollup produces byFile with required schema fields', () => {
+    const result = { locations: makeRefs(20, 3) };
     const out = applyFindReferencesVerbosity(result, {
       ...baseQuery,
       groupByFile: true,
     });
     expect(out.locations).toEqual([]);
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/20 refs in 3 files/);
-    expect(blob.toLowerCase()).not.toMatch(/drill-back|re-call|detail dropped/);
-    assertConcisePayload(out, CONCISE_BUDGET_DEFAULT);
+    expect(out.byFile).toBeDefined();
+    expect(out.totalReferences).toBe(20);
+    const firstEntry = out.byFile?.[0];
+    expect(typeof firstEntry?.count).toBe('number');
+    expect(typeof firstEntry?.firstLine).toBe('number');
+    expect(typeof firstEntry?.firstCharacter).toBe('number');
+    expect(out.byFile?.length).toBe(3);
   });
 
-  it('empty results — no transformation applied', () => {
-    const result = {
-      locations: [],
-    };
+  it('empty results — pass-through unchanged', () => {
+    const result = { locations: [] };
     const out = applyFindReferencesVerbosity(result, {
       ...baseQuery,
-      verbosity: 'concise',
+      verbose: false,
     });
     expect(out).toEqual(result);
   });
 });
-
-// ---------------------------------------------------------------------------
-// lspCallHierarchy
-// ---------------------------------------------------------------------------
 
 describe('applyCallHierarchyVerbosity', () => {
   const baseResult = {
@@ -409,6 +310,7 @@ describe('applyCallHierarchyVerbosity', () => {
         from: {
           name: 'serve',
           uri: '/repo/src/server.ts',
+          content: 'function serve() {\n  doWork();\n}',
           range: {
             start: { line: 12, character: 0 },
             end: { line: 12, character: 5 },
@@ -429,6 +331,7 @@ describe('applyCallHierarchyVerbosity', () => {
         from: {
           name: 'main',
           uri: '/repo/src/main.ts',
+          content: 'function main() {\n  doWork();\n}',
           range: {
             start: { line: 1, character: 0 },
             end: { line: 1, character: 4 },
@@ -448,28 +351,21 @@ describe('applyCallHierarchyVerbosity', () => {
     direction: 'incoming',
   } as never;
 
-  it.each(VERBOSITIES_PRESERVING_DEFAULT)(
-    'verbosity=%s preserves calls[]',
-    verbosity => {
-      const out = applyCallHierarchyVerbosity(baseResult, {
-        ...baseQuery,
-        verbosity,
-      });
-      expect(out.calls).toEqual(baseResult.calls);
-    }
-  );
-
-  it('verbosity:"concise" emits edges-only summary, drops calls[]', () => {
+  it('verbose:false preserves full calls[] with content', () => {
     const out = applyCallHierarchyVerbosity(baseResult, {
       ...baseQuery,
-      verbosity: 'concise',
+      verbose: false,
     });
-    expect(out.calls).toEqual([]);
-    const blob = hintsBlob(out);
-    expect(blob).toMatch(/2 incoming edge\(s\)/);
-    expect(blob).toMatch(/serve → doWork \(×2\)/);
-    expect(blob).toMatch(/main → doWork/);
-    expect(blob.toLowerCase()).not.toMatch(/drill-back|re-call|detail dropped/);
-    assertConcisePayload(out, CONCISE_BUDGET_DEFAULT);
+    expect(out.calls).toEqual(baseResult.calls);
+    expect(out.calls?.[0]?.from.content).toBeDefined();
+  });
+
+  it('verbose:true preserves full calls[] with content', () => {
+    const out = applyCallHierarchyVerbosity(baseResult, {
+      ...baseQuery,
+      verbose: true,
+    });
+    expect(out.calls).toEqual(baseResult.calls);
+    expect(out.calls?.[0]?.from.content).toBeDefined();
   });
 });

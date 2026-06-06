@@ -1,9 +1,5 @@
-/**
- * Tests for lspCallHierarchy output size limits.
- * Verifies that large call hierarchy results are auto-paginated
- * and that charOffset/charLength work for manual pagination.
- */
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
+import { applyCallHierarchyVerbosity } from '../../src/tools/lsp_call_hierarchy/callHierarchy.js';
 import { SymbolResolver } from '../../src/lsp/resolver.js';
 import * as managerModule from '../../src/lsp/manager.js';
 import * as toolHelpers from '../../src/utils/file/toolHelpers.js';
@@ -12,7 +8,6 @@ import { checkCommandAvailability } from '../../src/utils/exec/commandAvailabili
 import * as fsPromises from 'fs/promises';
 import { registerLSPCallHierarchyTool } from '../../src/tools/lsp_call_hierarchy/register.js';
 
-// Mocks
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(),
 }));
@@ -84,6 +79,98 @@ function createLargeIncomingCalls(count: number) {
   }));
 }
 
+const mockCallResult = {
+  incomingCalls: [
+    {
+      from: {
+        name: 'callerA',
+        kind: 'function',
+        uri: '/src/a.ts',
+        range: {
+          start: { line: 1, character: 0 },
+          end: { line: 5, character: 0 },
+        },
+        content: 'function callerA() { target(); }',
+      },
+      fromRanges: [
+        { start: { line: 3, character: 2 }, end: { line: 3, character: 8 } },
+      ],
+    },
+    {
+      from: {
+        name: 'callerB',
+        kind: 'function',
+        uri: '/src/b.ts',
+        range: {
+          start: { line: 10, character: 0 },
+          end: { line: 15, character: 0 },
+        },
+        content: 'function callerB() { target(); }',
+      },
+      fromRanges: [
+        { start: { line: 12, character: 4 }, end: { line: 12, character: 10 } },
+      ],
+    },
+  ],
+  lspMode: 'full',
+} as never;
+
+describe('applyCallHierarchyVerbosity', () => {
+  it('verbose=false omits content from all incomingCalls[].from nodes', () => {
+    const result = applyCallHierarchyVerbosity(mockCallResult, {
+      verbose: false,
+    } as never);
+    for (const call of result.incomingCalls ?? []) {
+      expect(call.from.content).toBeUndefined();
+    }
+  });
+
+  it('verbose=false strips lspMode', () => {
+    const result = applyCallHierarchyVerbosity(mockCallResult, {
+      verbose: false,
+    } as never);
+    expect((result as Record<string, unknown>).lspMode).toBeUndefined();
+  });
+
+  it('verbose=false adds summary with callerCount', () => {
+    const result = applyCallHierarchyVerbosity(mockCallResult, {
+      verbose: false,
+    } as never);
+    expect((result as Record<string, unknown>).summary).toBeDefined();
+    expect(
+      ((result as Record<string, unknown>).summary as Record<string, unknown>)
+        .callerCount
+    ).toBe(2);
+  });
+
+  it('verbose=false summary includes fileCount', () => {
+    const result = applyCallHierarchyVerbosity(mockCallResult, {
+      verbose: false,
+    } as never);
+    const summary = (result as Record<string, unknown>).summary as Record<
+      string,
+      unknown
+    >;
+    expect(summary.fileCount).toBeDefined();
+    expect(typeof summary.fileCount).toBe('number');
+  });
+
+  it('verbose=true preserves content in caller nodes', () => {
+    const result = applyCallHierarchyVerbosity(mockCallResult, {
+      verbose: true,
+    } as never);
+    const hasContent = result.incomingCalls?.some(c => c.from.content);
+    expect(hasContent).toBe(true);
+  });
+
+  it('verbose=true preserves lspMode', () => {
+    const result = applyCallHierarchyVerbosity(mockCallResult, {
+      verbose: true,
+    } as never);
+    expect((result as Record<string, unknown>).lspMode).toBe('full');
+  });
+});
+
 describe('lspCallHierarchy output size limits', () => {
   let toolHandler: (args: { queries: unknown[] }) => Promise<{
     content: { type: string; text: string }[];
@@ -143,7 +230,6 @@ describe('lspCallHierarchy output size limits', () => {
       mockLSPClient
     );
 
-    // Default path and file mocks
     (toolHelpers.validateToolPath as Mock).mockReturnValue({
       isValid: true,
       sanitizedPath: '/workspace/file.ts',
@@ -168,11 +254,6 @@ describe('lspCallHierarchy output size limits', () => {
   });
 
   describe('auto-pagination on large output', () => {
-    // Auto-pagination for large call hierarchy output is now owned by the
-    // unified bulk engine (applyBulkResponsePagination via responsePagination),
-    // not a per-tool applyCallHierarchyOutputLimit layer. The integration-level
-    // cursor behavior is covered by structuredPagination.coverage.test.ts.
-    // This test verifies the tool handles large inputs without error.
     it('should handle large LSP result without error', async () => {
       const largeCalls = createLargeIncomingCalls(100);
       mockLSPClient.getIncomingCalls.mockResolvedValue(largeCalls);
@@ -198,7 +279,6 @@ describe('lspCallHierarchy output size limits', () => {
     });
 
     it('should NOT add outputPagination when output is small', async () => {
-      // Small output: just 1 caller with minimal content
       mockLSPClient.getIncomingCalls.mockResolvedValue([
         {
           from: {
@@ -269,9 +349,6 @@ describe('lspCallHierarchy output size limits', () => {
         ],
       });
 
-      // Char-pagination via charLength is accepted and the tool responds without error.
-      // The cursor behavior (outputPagination) is tested in the unit-level
-      // structuredPagination tests which run against the engine directly.
       expect(result.isError).toBeFalsy();
       expect(result.content[0]!.text.length).toBeGreaterThan(50);
     });
@@ -345,43 +422,10 @@ describe('lspCallHierarchy output size limits', () => {
       ).toBe(true);
     });
 
-    it('should return empty with pagination metadata when pattern page exceeds range', async () => {
+    it('returns a clear empty result when no language server is available', async () => {
       (managerModule.isLanguageServerAvailable as Mock).mockResolvedValue(
         false
       );
-      (checkCommandAvailability as Mock).mockResolvedValue({
-        available: true,
-        command: expect.stringMatching(/rg$/),
-      });
-      (safeExec as Mock).mockResolvedValue({
-        success: true,
-        code: 0,
-        stderr: '',
-        stdout: [
-          JSON.stringify({
-            type: 'match',
-            data: {
-              path: { text: '/workspace/src/callerA.ts' },
-              line_number: 11,
-              lines: { text: 'targetFunction()\n' },
-              submatches: [
-                { start: 0, end: 14, match: { text: 'targetFunction' } },
-              ],
-            },
-          }),
-          JSON.stringify({
-            type: 'match',
-            data: {
-              path: { text: '/workspace/src/callerB.ts' },
-              line_number: 22,
-              lines: { text: 'targetFunction()\n' },
-              submatches: [
-                { start: 0, end: 14, match: { text: 'targetFunction' } },
-              ],
-            },
-          }),
-        ].join('\n'),
-      });
 
       const result = await toolHandler({
         queries: [
@@ -404,20 +448,9 @@ describe('lspCallHierarchy output size limits', () => {
       const firstResult = results[0];
 
       expect(firstResult.status).toBe('empty');
-      expect(firstResult.pagination).toEqual(
-        expect.objectContaining({
-          currentPage: 9,
-          totalPages: 2,
-          totalResults: 2,
-          hasMore: false,
-          resultsPerPage: 1,
-        })
-      );
-      expect(
-        firstResult.hints.some((h: string) =>
-          h.includes('outside available range')
-        )
-      ).toBe(true);
+      expect(firstResult.errorCode).toBe('LSP_NOT_INSTALLED');
+      expect(firstResult.incomingCalls).toBeUndefined();
+      expect(firstResult.lspMode).toBeUndefined();
     });
   });
 
@@ -449,10 +482,8 @@ describe('lspCallHierarchy output size limits', () => {
     });
 
     it('should NOT apply output limit when LSP returns null and pattern matching has empty results', async () => {
-      // Make LSP return null (prepareCallHierarchy returns null)
       (managerModule.acquirePooledClient as Mock).mockResolvedValue(null);
 
-      // Pattern matching fallback: mock rg as unavailable, grep returns no matches
       (checkCommandAvailability as Mock).mockResolvedValue({
         available: false,
       });
@@ -486,17 +517,8 @@ describe('lspCallHierarchy output size limits', () => {
       expect(firstResult.outputPagination).toBeUndefined();
     });
 
-    it('should strip item content for concise empty fallback results', async () => {
+    it('returns a concise empty result when LSP yields nothing', async () => {
       (managerModule.acquirePooledClient as Mock).mockResolvedValue(null);
-      (checkCommandAvailability as Mock).mockResolvedValue({
-        available: false,
-      });
-      (safeExec as Mock).mockResolvedValue({
-        success: true,
-        code: 0,
-        stdout: '',
-        stderr: '',
-      });
 
       const result = await toolHandler({
         queries: [
@@ -507,7 +529,7 @@ describe('lspCallHierarchy output size limits', () => {
             direction: 'outgoing',
             depth: 1,
             contextLines: 0,
-            verbosity: 'concise',
+            verbose: false,
             researchGoal: 'test',
             reasoning: 'test',
             mainResearchGoal: 'test',
@@ -519,7 +541,9 @@ describe('lspCallHierarchy output size limits', () => {
       const firstResult = results[0];
 
       expect(firstResult.status).toBe('empty');
-      expect(firstResult.item?.content).toBe('');
+      expect(firstResult.errorCode).toBe('LSP_EMPTY');
+      expect(firstResult.outgoingCalls).toBeUndefined();
+      expect(firstResult.outputPagination).toBeUndefined();
     });
   });
 
@@ -593,9 +617,6 @@ describe('lspCallHierarchy output size limits', () => {
         ],
       });
 
-      // Large outgoing call hierarchy: tool responds without error.
-      // Auto-capping is owned by the unified bulk engine; cursor behavior
-      // is tested in tests/utils/structuredPagination.coverage.test.ts.
       expect(result.isError).toBeFalsy();
       expect(result.content[0]!.text.length).toBeGreaterThan(50);
     });

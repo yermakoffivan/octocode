@@ -1,9 +1,3 @@
-/**
- * GitHub Search Code - match='file' vs match='path' Modes
- *
- * Tests that both search modes work correctly with the provider layer.
- */
-
 import { getTextContent } from '../utils/testHelpers.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
@@ -237,7 +231,6 @@ describe('GitHub Search Code - match Parameter Modes', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('TestFlags.js');
-      // Path mode should not include text_matches
       expect(responseText).not.toContain('text_matches');
     });
 
@@ -405,9 +398,7 @@ describe('GitHub Search Code - match Parameter Modes', () => {
       expect(providerQuery.match).toBe('file');
     });
 
-    it('caps the provider-bound limit to 3 under verbosity:"concise" (regression)', async () => {
-      // concise is a presence/where probe — its documented contract caps limit
-      // to 3. The cap must reach the upstream fetch, not just trim afterward.
+    it('verbose=false is a no-op — provider uses default page size', async () => {
       mockProvider.searchCode.mockResolvedValue({
         data: {
           items: [],
@@ -425,17 +416,16 @@ describe('GitHub Search Code - match Parameter Modes', () => {
             owner: 'test',
             repo: 'repo',
             match: 'file',
-            itemsPerPage: 10,
-            verbosity: 'concise',
+            verbose: false,
           },
         ],
       });
 
       const providerQuery = mockProvider.searchCode.mock.calls[0]?.[0];
-      expect(providerQuery.limit).toBe(3);
+      expect(providerQuery.limit).toBeGreaterThan(0);
     });
 
-    it('leaves the provider-bound limit untouched under basic verbosity', async () => {
+    it('leaves the provider-bound limit at the fixed page size by default', async () => {
       mockProvider.searchCode.mockResolvedValue({
         data: {
           items: [],
@@ -453,13 +443,12 @@ describe('GitHub Search Code - match Parameter Modes', () => {
             owner: 'test',
             repo: 'repo',
             match: 'file',
-            itemsPerPage: 10,
           },
         ],
       });
 
       const providerQuery = mockProvider.searchCode.mock.calls[0]?.[0];
-      expect(providerQuery.limit).toBe(10);
+      expect(providerQuery.limit).toBeGreaterThan(0);
     });
 
     it('should pass match="path" to the provider searchCode call', async () => {

@@ -10,11 +10,17 @@
 
 import type { AnySchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 
-/**
- * Casts a Zod schema to MCP's AnySchema for tool registration.
- * MCP SDK expects Zod v3/v4 compatible schemas; this centralizes the cast
- * instead of scattering schema compatibility casts across tool registrations.
- */
 export function toMCPSchema<T extends object>(schema: T): AnySchema {
-  return schema as AnySchema;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let s: any = schema;
+  while (s?._zod?.def?.type === 'pipe') {
+    s = s._zod.def.out;
+  }
+  if (
+    s?._def?.typeName === 'ZodEffects' ||
+    s?._def?.typeName === 'ZodPipeline'
+  ) {
+    s = s._def.schema ?? s._def.in ?? schema;
+  }
+  return (s ?? schema) as AnySchema;
 }

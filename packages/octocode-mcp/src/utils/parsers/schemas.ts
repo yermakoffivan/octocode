@@ -1,11 +1,4 @@
-/**
- * Zod schemas for ripgrep JSON output validation.
- *
- * Validates parsed ripgrep --json output before type-asserting.
- * Used by the ripgrep parser, LSP find references, and call hierarchy tools.
- */
-
-import { z } from 'zod/v4';
+import { z } from 'zod';
 
 const RipgrepPathSchema = z.object({ text: z.string() });
 
@@ -71,10 +64,6 @@ const RipgrepJsonSummarySchema = z.object({
   }),
 });
 
-/**
- * Validates any ripgrep JSON message line.
- * Use safeParse() to validate individual lines from --json output.
- */
 export const RipgrepJsonMessageSchema = z.discriminatedUnion('type', [
   RipgrepJsonMatchSchema,
   RipgrepJsonContextSchema,
@@ -83,19 +72,12 @@ export const RipgrepJsonMessageSchema = z.discriminatedUnion('type', [
   RipgrepJsonSummarySchema,
 ]);
 
-/**
- * Lightweight schema for ripgrep match-only parsing.
- * Used by LSP tools that only care about match entries.
- * Permissive on submatches — only requires `start` (some contexts omit `end`/`match`).
- */
 export const RipgrepMatchOnlySchema = z.object({
   type: z.literal('match'),
   data: z.object({
     path: z.object({ text: z.string() }),
     lines: z.object({ text: z.string() }),
     line_number: z.number(),
-    submatches: z
-      .array(z.object({ start: z.number() }).passthrough())
-      .optional(),
+    submatches: z.array(z.looseObject({ start: z.number() })).optional(),
   }),
 });

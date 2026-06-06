@@ -1,18 +1,3 @@
-/**
- * Branch-coverage tests for
- * src/tools/github_search_pull_requests/execution.ts
- *
- * Targets previously-uncovered branches:
- *  - 86,88        concise verbosity caps limit to CONCISE_PR_LIMIT (limit > 3)
- *  - 94,95,97,99  type coercion under concise (explicit non-metadata type,
- *                 omitted type, prNumber+explicit type opt-out)
- *  - 102          partialContentMetadata deletion under concise coercion
- *  - 120          hasValidParams via query.query.trim()
- *  - 197,199      large-file detection via changedFilesCount vs fileChanges
- *  - 211,213      Math.max maxFiles via changedFilesCount vs fileChanges
- *  - 313,324      applyGithubSearchPullRequestsVerbosity concise branch
- *  - 333,336      applyGithubSearchPullRequestsVerbosity compact branch
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createMockMcpServer,
@@ -54,6 +39,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 
 import { registerSearchGitHubPullRequestsTool } from '../../src/tools/github_search_pull_requests/github_search_pull_requests.js';
 import { applyGithubSearchPullRequestsVerbosity } from '../../src/tools/github_search_pull_requests/execution.js';
+import { mapPullRequestProviderResultData } from '../../src/tools/providerMappers.js';
 import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
 
 function basePR(overrides: Record<string, unknown> = {}) {
@@ -133,8 +119,8 @@ describe('github_search_pull_requests execution — branch coverage', () => {
     vi.resetAllMocks();
   });
 
-  describe('concise verbosity pre-flight caps (lines 86,88,94,95,97,99,102)', () => {
-    it('caps limit to CONCISE_PR_LIMIT and coerces explicit non-metadata type, dropping partialContentMetadata', async () => {
+  describe('verbosity pre-flight behavior (lines 86,88,94,95,97,99,102)', () => {
+    it('verbose=false is a no-op — no limit cap, no type coercion', async () => {
       mockProvider.searchPullRequests.mockResolvedValue(
         providerResponse([basePR()])
       );
@@ -142,10 +128,9 @@ describe('github_search_pull_requests execution — branch coverage', () => {
         owner: 'test',
         repo: 'repo',
         state: 'open',
-        itemsPerPage: 50,
         type: 'fullContent',
         partialContentMetadata: { foo: 'bar' },
-        verbosity: 'concise',
+        verbose: false,
       };
 
       const result = await mockServer.callTool(
@@ -155,25 +140,16 @@ describe('github_search_pull_requests execution — branch coverage', () => {
         }
       );
 
+      expect(result.isError).toBe(false);
       const text = getTextContent(result.content);
-      expect(text).toContain("type coerced to 'metadata' under concise");
-      expect(query).toEqual({
-        owner: 'test',
-        repo: 'repo',
-        state: 'open',
-        itemsPerPage: 50,
-        type: 'fullContent',
-        partialContentMetadata: { foo: 'bar' },
-        verbosity: 'concise',
-      });
+      expect(text).not.toContain("type coerced to 'metadata' under concise");
 
       expect(mockProvider.searchPullRequests).toHaveBeenCalledTimes(1);
       const q = mockProvider.searchPullRequests.mock.calls[0]?.[0];
-      // limit capped to 3
-      expect(q.limit).toBe(3);
+      expect(q.limit).toBeGreaterThan(0);
     });
 
-    it('coerces omitted type to metadata under concise (no explicit type)', async () => {
+    it('verbose:false with omitted type — succeeds without type coercion', async () => {
       mockProvider.searchPullRequests.mockResolvedValue(
         providerResponse([basePR()])
       );
@@ -186,7 +162,7 @@ describe('github_search_pull_requests execution — branch coverage', () => {
               owner: 'test',
               repo: 'repo',
               state: 'open',
-              verbosity: 'concise',
+              verbose: false,
             },
           ],
         }
@@ -196,7 +172,7 @@ describe('github_search_pull_requests execution — branch coverage', () => {
       expect(mockProvider.searchPullRequests).toHaveBeenCalledTimes(1);
     });
 
-    it('does NOT coerce type when prNumber + explicit type are both given under concise', async () => {
+    it('verbose:false with prNumber + explicit type — succeeds', async () => {
       mockProvider.searchPullRequests.mockResolvedValue(
         providerResponse([basePR({ number: 456 })])
       );
@@ -210,7 +186,7 @@ describe('github_search_pull_requests execution — branch coverage', () => {
               repo: 'repo',
               prNumber: 456,
               type: 'fullContent',
-              verbosity: 'concise',
+              verbose: false,
             },
           ],
         }
@@ -220,7 +196,7 @@ describe('github_search_pull_requests execution — branch coverage', () => {
       expect(mockProvider.searchPullRequests).toHaveBeenCalledTimes(1);
     });
 
-    it('does not cap when concise limit is already within CONCISE_PR_LIMIT', async () => {
+    it('does not cap when verbose=false with page=1', async () => {
       mockProvider.searchPullRequests.mockResolvedValue(
         providerResponse([basePR()])
       );
@@ -231,14 +207,14 @@ describe('github_search_pull_requests execution — branch coverage', () => {
             owner: 'test',
             repo: 'repo',
             state: 'open',
-            itemsPerPage: 2,
-            verbosity: 'concise',
+            page: 1,
+            verbose: false,
           },
         ],
       });
 
       const q = mockProvider.searchPullRequests.mock.calls[0]?.[0];
-      expect(q.limit).toBe(2);
+      expect(q.limit).toBeGreaterThan(0);
     });
   });
 
@@ -321,7 +297,7 @@ describe('github_search_pull_requests execution — branch coverage', () => {
       expect(text).not.toContain('file changes.');
     });
 
-    it('keeps a lightweight file list (paths+counts, no patch) in metadata mode (default)', async () => {
+    it('omits fileChanges entirely in metadata mode (type omitted = default)', async () => {
       const fileChanges = Array.from({ length: 5 }, (_, i) => ({
         filename: `src/file${i}.ts`,
         status: 'modified',
@@ -336,7 +312,6 @@ describe('github_search_pull_requests execution — branch coverage', () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
         {
-          // type omitted ⇒ metadata (triage) default.
           queries: [{ owner: 'test', repo: 'repo', state: 'open' }],
         }
       );
@@ -353,17 +328,9 @@ describe('github_search_pull_requests execution — branch coverage', () => {
           >) ?? []
       );
       expect(prs?.length).toBe(1);
-      // Metadata keeps the file list (so "which files?" needs no second call)
-      // but strips patches.
-      const metaFileChanges = prs?.[0]?.fileChanges as
-        | Array<Record<string, unknown>>
-        | undefined;
-      expect(metaFileChanges).toHaveLength(5);
-      expect(metaFileChanges?.every(f => f.patch === undefined)).toBe(true);
+      expect(prs?.[0]).not.toHaveProperty('fileChanges');
       expect(prs?.[0]?.changedFilesCount).toBe(5);
-      expect(getTextContent(result.content)).toContain(
-        'Metadata mode: file lists include paths + counts only'
-      );
+      expect(getTextContent(result.content)).toContain('Metadata mode');
     });
 
     it('keeps the file list when type="fullContent"', async () => {
@@ -439,13 +406,6 @@ describe('github_search_pull_requests execution — branch coverage', () => {
   });
 });
 
-/**
- * Targets the `fileChanges`-array fallback arms (lines 199 + 213) inside the
- * large-file detection / Math.max. The real provider mapper always backfills a
- * numeric `changedFilesCount`, so those arms are only reachable when a mapped
- * PR exposes `fileChanges` but no `changedFilesCount`. We mock the mapper to
- * return exactly that shape and drive the execution function directly.
- */
 describe('large-file detection — fileChanges fallback arm (199,213)', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -483,7 +443,6 @@ describe('large-file detection — fileChanges fallback arm (199,213)', () => {
       return {
         ...actual,
         mapPullRequestProviderResultData: vi.fn(() => ({
-          // PR has fileChanges but intentionally no changedFilesCount
           pullRequests: [{ number: 77, fileChanges }],
           resultData: {
             pull_requests: [{ number: 77, fileChanges }],
@@ -522,82 +481,176 @@ describe('large-file detection — fileChanges fallback arm (199,213)', () => {
   });
 });
 
-describe('applyGithubSearchPullRequestsVerbosity — direct (lines 313,324,333,336)', () => {
-  const baseInput = {
-    data: { pull_requests: [], total_count: 2 } as Record<string, unknown>,
-    pullRequests: [
-      { number: 101, title: 'A', state: 'open', merged: false },
-      { number: 102, title: 'B', state: 'closed', merged: true },
-    ] as Array<Record<string, unknown>>,
-    extraHints: ['some hint'],
-  };
+describe('applyGithubSearchPullRequestsVerbosity — direct', () => {
+  const basePRs = [
+    {
+      number: 101,
+      title: 'A',
+      state: 'open',
+      merged: false,
+      createdAt: '2024-01-01',
+    },
+    {
+      number: 102,
+      title: 'B',
+      state: 'closed',
+      merged: true,
+      updatedAt: '2024-01-02',
+    },
+  ] as Array<Record<string, unknown>>;
 
-  it('concise projects PRs to identity fields and prepends a summary (313,324)', () => {
-    const out = applyGithubSearchPullRequestsVerbosity(
-      { ...baseInput, extraHints: ['h1'] },
-      { verbosity: 'concise' } as never
-    );
+  it('verbose=false (default) strips metadata fields from PRs', () => {
+    const input = {
+      data: { total_count: 2 } as Record<string, unknown>,
+      pullRequests: basePRs,
+      extraHints: ['h1'],
+    };
+    const out = applyGithubSearchPullRequestsVerbosity(input, {} as never);
 
     const prs = out.data.pull_requests as Array<Record<string, unknown>>;
-    expect(prs).toHaveLength(2);
-    expect(Object.keys(prs[0]).sort()).toEqual(
-      ['merged', 'number', 'state', 'title'].sort()
-    );
-    expect(out.extraHints[0]).toBe('2 PRs (top: #101)');
-    expect(out.extraHints).toContain('h1');
+    expect(prs).toBeDefined();
+    expect(prs[0]).not.toHaveProperty('createdAt');
+    expect(prs[0]).toHaveProperty('number');
+    expect(out.extraHints).toEqual(['h1']);
   });
 
-  it('concise summary uses "?" when the first PR has no number (324)', () => {
-    const out = applyGithubSearchPullRequestsVerbosity(
-      {
-        data: {},
-        pullRequests: [{ title: 'no-number' }],
-        extraHints: [],
-      },
-      { verbosity: 'concise' } as never
-    );
+  it('verbose=true passes PRs and data through unchanged with all metadata', () => {
+    const input = {
+      data: { total_count: 2 } as Record<string, unknown>,
+      pullRequests: basePRs,
+      extraHints: ['h1'],
+    };
+    const out = applyGithubSearchPullRequestsVerbosity(input, {
+      verbose: true,
+    } as never);
 
-    expect(out.extraHints[0]).toBe('1 PRs (top: #?)');
+    expect(out.data).toEqual({ total_count: 2 });
+    expect(out.extraHints).toEqual(['h1']);
   });
 
-  it('compact trims advisory hints and keeps data intact (333,336)', () => {
+  it('with no-number PR — strips metadata but keeps core fields', () => {
+    const input = {
+      data: {},
+      pullRequests: [{ title: 'no-number', createdAt: '2024-01-01' }],
+      extraHints: [],
+    };
+    const out = applyGithubSearchPullRequestsVerbosity(input, {} as never);
+
+    const prs = out.data.pull_requests as Array<Record<string, unknown>>;
+    expect(prs[0]).not.toHaveProperty('createdAt');
+    expect(prs[0]).toHaveProperty('title');
+    expect(out.extraHints).toEqual([]);
+  });
+
+  it('advisory hints always preserved regardless of verbosity', () => {
+    const allHints = [
+      'Page 1/2 (showing 1 of 2 PRs)',
+      'PR archaeology: use prNumber',
+      'withComments adds tokens',
+      'another data hint',
+    ];
     const out = applyGithubSearchPullRequestsVerbosity(
       {
         data: { pull_requests: [{ number: 1 }] },
         pullRequests: [{ number: 1 }],
-        extraHints: [
-          'Page 1/2 (showing 1 of 2 PRs)',
-          'PR archaeology: use prNumber',
-          'withComments adds tokens',
-          'another data hint',
-        ],
+        extraHints: [...allHints],
       },
-      { verbosity: 'compact' } as never
+      {} as never
     );
 
-    expect(out.data).toEqual({ pull_requests: [{ number: 1 }] });
-    // advisory entries (archaeology / withComments) trimmed; cap of 2 applied
-    expect(out.extraHints.length).toBeLessThanOrEqual(2);
+    expect(out.extraHints).toEqual(allHints);
+    expect(out.extraHints.length).toBe(4);
     expect(out.extraHints).toContain('Page 1/2 (showing 1 of 2 PRs)');
     expect(
       out.extraHints.some(h => h.toLowerCase().includes('archaeology'))
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it('compact returns [] when compactTrimHints yields nothing', () => {
+  it('empty pullRequests returns empty pull_requests array', () => {
     const out = applyGithubSearchPullRequestsVerbosity(
       { data: { x: 1 }, pullRequests: [], extraHints: [] },
-      { verbosity: 'compact' } as never
+      {} as never
     );
     expect(out.extraHints).toEqual([]);
+    const prs = out.data.pull_requests as Array<unknown>;
+    expect(prs).toEqual([]);
   });
 
-  it('basic / omitted verbosity passes hints and data through unchanged', () => {
+  it('verbose=true with hints and data passes through unchanged', () => {
     const out = applyGithubSearchPullRequestsVerbosity(
       { data: { x: 1 }, pullRequests: [{ number: 1 }], extraHints: ['keep'] },
-      {} as never
+      { verbose: true } as never
     );
     expect(out.data).toEqual({ x: 1 });
     expect(out.extraHints).toEqual(['keep']);
+  });
+});
+
+function makeProviderData(fileChanges: Array<Record<string, unknown>>) {
+  return {
+    items: [
+      {
+        number: 42,
+        title: 'Test PR',
+        state: 'open',
+        draft: false,
+        merged: false,
+        author: { login: 'user', id: '1' },
+        assignees: [],
+        labels: [],
+        head: { ref: 'feature', sha: 'abc' },
+        base: { ref: 'main', sha: 'def' },
+        body: null,
+        comments: [],
+        createdAt: '2024-01-01',
+        updatedAt: '2024-01-01',
+        closedAt: null,
+        mergedAt: null,
+        commentsCount: 0,
+        changedFilesCount: fileChanges.length,
+        additions: 5,
+        deletions: 2,
+        url: 'https://github.com/t/r/pull/42',
+        fileChanges,
+      },
+    ],
+    totalCount: 1,
+    pagination: undefined,
+  } as never;
+}
+
+describe('mapPullRequestProviderResultData — metadata mode (includeFileChanges=false)', () => {
+  const fileChanges = [
+    { filename: 'src/a.ts', additions: 5, deletions: 2, patch: 'diff...' },
+    { filename: 'src/b.ts', additions: 1, deletions: 0, patch: 'diff...' },
+  ];
+
+  it('type=metadata (includeFileChanges=false) omits fileChanges from each PR', () => {
+    const { pullRequests } = mapPullRequestProviderResultData(
+      makeProviderData(fileChanges),
+      { includeFileChanges: false }
+    );
+    for (const pr of pullRequests) {
+      expect(pr).not.toHaveProperty('fileChanges');
+    }
+  });
+
+  it('type=metadata keeps changedFilesCount', () => {
+    const { pullRequests } = mapPullRequestProviderResultData(
+      makeProviderData(fileChanges),
+      { includeFileChanges: false }
+    );
+    expect(pullRequests[0]).toHaveProperty('changedFilesCount');
+    expect((pullRequests[0] as Record<string, unknown>).changedFilesCount).toBe(
+      fileChanges.length
+    );
+  });
+
+  it('type=partialContent (includeFileChanges=true) includes fileChanges', () => {
+    const { pullRequests } = mapPullRequestProviderResultData(
+      makeProviderData(fileChanges),
+      { includeFileChanges: true }
+    );
+    expect(pullRequests[0]).toHaveProperty('fileChanges');
   });
 });

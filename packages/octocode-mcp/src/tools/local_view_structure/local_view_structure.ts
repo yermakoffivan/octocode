@@ -11,26 +11,15 @@ import {
   validateToolPath,
   createErrorResult,
 } from '../../utils/file/toolHelpers.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { ViewStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
 import type { LocalViewStructureToolResult } from '@octocodeai/octocode-core/extra-types';
 
 type UpstreamViewStructureQuery = z.infer<typeof ViewStructureQuerySchema>;
 import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
-import {
-  isConcise,
-  isCompact,
-  compactTrimHints,
-  makeAdvisoryPredicate,
-} from '../../scheme/verbosity.js';
+import { isVerbose } from '../../scheme/verbosity.js';
 import type { WithOptionalMeta } from '../../types/execution.js';
 
-/**
- * Handler-side query type: upstream input shape plus the overlay's `verbosity`
- * field. Augmenting locally (vs. importing the overlay's output type alias)
- * preserves the existing input-shape contract — callers that pass partial
- * queries continue to type-check while the handler still sees `verbosity`.
- */
 type ViewStructureQuery = WithVerbosity<
   WithOptionalMeta<UpstreamViewStructureQuery>
 >;
@@ -80,7 +69,6 @@ export async function viewStructure(
       return pathValidation.errorResult as LocalViewStructureToolResult;
     }
 
-    // For recursive mode, we use Node.js fs directly (no external command needed)
     const effectiveShowModified = query.showFileLastModified ?? true;
 
     if (query.depth || query.recursive) {
@@ -91,7 +79,6 @@ export async function viewStructure(
       );
     }
 
-    // For non-recursive mode, check if ls is available
     const lsAvailability = await checkCommandAvailability('ls');
     if (!lsAvailability.available) {
       const toolError = ToolErrors.commandNotAvailable(
@@ -230,9 +217,6 @@ async function viewStructureRecursive(
     showDetails: query.details ?? false,
   });
 
-  // Surface a clear error when the root path itself failed to open. This
-  // replaces the misleading "N entries skipped due to permission errors"
-  // warning that previously appeared for ENOENT or ENOTDIR failures.
   if (walkStats.rootError) {
     const { code } = walkStats.rootError;
     const isNotFound = code === 'ENOENT' || code === 'ENOTDIR';
@@ -259,8 +243,6 @@ async function viewStructureRecursive(
       let comparison = 0;
       switch (query.sortBy) {
         case 'size': {
-          // Use raw byte count to avoid parseFileSize round-trip loss on
-          // the formatted size string (e.g. "12.4KB" → parse → float).
           const aSize = a.sizeBytes ?? (a.size ? parseFileSize(a.size) : 0);
           const bSize = b.sizeBytes ?? (b.size ? parseFileSize(b.size) : 0);
           comparison = aSize - bSize;
@@ -270,7 +252,6 @@ async function viewStructureRecursive(
           if (showModified && a.modified && b.modified) {
             comparison = a.modified.localeCompare(b.modified);
           } else {
-            // Fallback to name when modified is not available
             comparison = a.name.localeCompare(b.name);
           }
           break;
@@ -303,7 +284,9 @@ async function viewStructureRecursive(
   const isEmpty = totalEntries === 0;
   const baseHints = isEmpty
     ? getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'empty')
-    : [];
+    : [
+        'Use localSearchCode to search within discovered directories, or localGetFileContent to read specific files.',
+      ];
   const entryPaginationHints = buildEntryPaginationHints(
     filteredEntries,
     paginatedEntries.length,
@@ -315,8 +298,6 @@ async function viewStructureRecursive(
   return attachRawResponseChars(
     applyViewStructureVerbosity(
       {
-        // status omitted on success (absent ≡ "hasResults"); 'empty' set
-        // explicitly when totalEntries === 0.
         ...(isEmpty ? { status: 'empty' as const } : {}),
         entries: outputEntries,
         summary,
@@ -334,59 +315,27 @@ async function viewStructureRecursive(
   );
 }
 
-/** How many entry names concise samples into the `top:` hint for drill-down. */
-const CONCISE_TOP_ENTRIES = 5;
-
-/**
- * Predicate identifying advisory hints this tool emits — recovery prose,
- * monorepo suggestions, large-tree warnings. Stripped under `compact`.
- * Substring-OR, case-insensitive.
- */
-const isAdvisoryViewStructureHint = makeAdvisoryPredicate([
-  'monorepo',
-  'workspace root',
-  'auto-excludes',
-  'large tree',
-  'large payload',
-  'large directory',
-]);
-
-/**
- * Shape the result for the requested verbosity.
- *
- * - concise: drop `entries[]`; keep `summary` + `pagination` so the agent still
- *   sees `totalEntries`. No verbosity-feature hints are emitted.
- * - compact: trim advisory hints via `compactTrimHints()`; `entries[]`
- *   unchanged.
- * - omitted / basic: passthrough.
- */
 export function applyViewStructureVerbosity(
   result: LocalViewStructureToolResult,
   query: ViewStructureQuery
 ): LocalViewStructureToolResult {
-  if (isConcise(query.verbosity)) {
-    // hasResults ≡ absent status; only 'empty'/'error' carry a marker.
-    if (result.status !== undefined) return result;
-    // Drop entries[] but keep concise research-grade: emit the count summary
-    // PLUS a sample of top entry names so the agent has a concrete path to
-    // drill into. A bare count is a dead-end; names give the next move.
-    const names = (result.entries ?? [])
-      .slice(0, CONCISE_TOP_ENTRIES)
-      .map(e => e.name)
-      .filter(Boolean);
-    const total =
-      result.pagination?.totalEntries ?? result.entries?.length ?? 0;
-    const more = total > names.length ? ` (+${total - names.length} more)` : '';
-    const hints: string[] = [];
-    if (result.summary) hints.push(`summary: ${result.summary}`);
-    if (names.length > 0) hints.push(`top: ${names.join(', ')}${more}`);
-    return { ...result, entries: [], hints };
-  }
-  if (isCompact(query.verbosity)) {
-    return {
-      ...result,
-      hints: compactTrimHints(result.hints, isAdvisoryViewStructureHint, 2),
-    };
-  }
-  return result;
+  if (isVerbose(query)) return result;
+  if (!result.entries?.length) return result;
+
+  return {
+    ...result,
+    entries: result.entries.map(e => {
+      const {
+        size: _s,
+        modified: _m,
+        ...rest
+      } = e as typeof e & {
+        size?: unknown;
+        modified?: unknown;
+      };
+      void _s;
+      void _m;
+      return rest as typeof e;
+    }),
+  };
 }

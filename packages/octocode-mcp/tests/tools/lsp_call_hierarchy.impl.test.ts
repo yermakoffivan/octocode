@@ -1,17 +1,9 @@
-/**
- * Implementation tests for LSP Call Hierarchy tool
- * Exercises the actual code paths with proper dependency injection
- * @module tools/lsp_call_hierarchy.impl.test
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock fs/promises
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(),
 }));
 
-// Mock exec utilities
 vi.mock('../../src/utils/exec/safe.js', () => ({
   safeExec: vi
     .fn()
@@ -56,14 +48,12 @@ vi.mock('../../src/lsp/manager.js', () => ({
   isLanguageServerAvailable: vi.fn().mockResolvedValue(false),
 }));
 
-// Import mocked modules to access them
 import * as fs from 'fs/promises';
 import * as resolverModule from '../../src/lsp/resolver.js';
 import * as managerModule from '../../src/lsp/manager.js';
 import { safeExec } from '../../src/utils/exec/safe.js';
 import { checkCommandAvailability } from '../../src/utils/exec/commandAvailability.js';
 
-// Import the module under test after mocks are set up
 import { registerLSPCallHierarchyTool } from '../../src/tools/lsp_call_hierarchy/register.js';
 
 describe('LSP Call Hierarchy Implementation Tests', () => {
@@ -88,13 +78,10 @@ export function caller() {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Default mocks for successful path validation
     process.env.WORKSPACE_ROOT = '/workspace';
 
-    // Default: file is readable
     vi.mocked(fs.readFile).mockResolvedValue(sampleTypeScriptContent);
 
-    // Default: LSP not available
     vi.mocked(managerModule.isLanguageServerAvailable).mockResolvedValue(false);
     vi.mocked(managerModule.acquirePooledClient).mockResolvedValue(null);
     vi.mocked(resolverModule.SymbolResolver).mockImplementation(function () {
@@ -106,7 +93,6 @@ export function caller() {
       };
     });
 
-    // Default: ripgrep is available
     vi.mocked(checkCommandAvailability).mockResolvedValue({
       available: true,
       command: expect.stringMatching(/rg$/),
@@ -410,7 +396,7 @@ export function caller() {
       expect(result).toBeDefined();
     });
 
-    it('should explain fallback when available LSP call hierarchy produces no semantic result', async () => {
+    it('should return empty (LSP_EMPTY) when available LSP call hierarchy throws', async () => {
       process.env.WORKSPACE_ROOT = process.cwd();
       const testPath = `${process.cwd()}/src/test.ts`;
       vi.mocked(managerModule.isLanguageServerAvailable).mockResolvedValue(
@@ -434,16 +420,14 @@ export function caller() {
             lineHint: 4,
             direction: 'incoming',
             researchGoal: 'Find callers',
-            reasoning: 'Testing observable LSP fallback',
+            reasoning: 'Testing observable LSP empty result',
           },
         ],
       });
 
       const text = result.content?.[0]?.text ?? '';
-      expect(text).toContain('lspMode: "fallback"');
-      expect(text).toContain(
-        'LSP semantic call hierarchy returned no result; using text fallback'
-      );
+      expect(text).not.toContain('lspMode');
+      expect(text).toContain('LSP_EMPTY');
     });
   });
 
@@ -480,8 +464,8 @@ export function caller() {
         false
       );
       vi.mocked(checkCommandAvailability)
-        .mockResolvedValueOnce({ available: false, command: 'rg' }) // rg unavailable
-        .mockResolvedValueOnce({ available: true, command: 'grep' }); // grep available
+        .mockResolvedValueOnce({ available: false, command: 'rg' })
+        .mockResolvedValueOnce({ available: true, command: 'grep' });
 
       const handler = createHandler();
       const result = await handler({
@@ -526,7 +510,7 @@ export function caller() {
       vi.mocked(safeExec).mockResolvedValue({
         stdout: '',
         stderr: '',
-        code: 1, // No matches
+        code: 1,
         success: false,
       });
 

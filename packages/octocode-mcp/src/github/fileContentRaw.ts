@@ -1,6 +1,6 @@
 import { RequestError } from 'octokit';
 import type { GetContentParameters, GitHubAPIResponse } from './githubAPI.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { FileContentQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
@@ -165,7 +165,6 @@ async function decodeFileContent(data: {
   }
 }
 
-/** Raw GitHub file fetch for caching; line/match slicing happens after cache. */
 export async function fetchRawGitHubFileContent(
   params: FileContentQuery,
   authInfo?: AuthInfo
@@ -332,8 +331,21 @@ async function findPathSuggestions(
       if (f.name.startsWith(nameNoExt + '.')) return true;
       return false;
     });
-
     extMatches.forEach(f => suggestions.push(f.path));
+
+    // Prefix match: covers typos like "npm_typo.ts" → "npm.ts"
+    // Only kick in when no exact/extension matches found and base name is long enough
+    if (suggestions.length === 0 && nameNoExt.length >= 3) {
+      const prefixMatches = files.filter(f => {
+        const fBase = f.name.replace(/\.[^/.]+$/, '');
+        return (
+          fBase !== nameNoExt &&
+          fBase.length >= 3 &&
+          (nameNoExt.startsWith(fBase) || fBase.startsWith(nameNoExt))
+        );
+      });
+      prefixMatches.forEach(f => suggestions.push(f.path));
+    }
 
     return Array.from(new Set(suggestions)).slice(0, 3);
   } catch {

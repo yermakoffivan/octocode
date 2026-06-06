@@ -36,7 +36,7 @@ npx octocode-cli install
 Verify, then sign in:
 
 ```bash
-octocode --version        # → octocode v1.5.0
+octocode --version        # → octocode v1.5.3
 octocode login            # GitHub OAuth (device flow)
 ```
 
@@ -74,22 +74,27 @@ Call any tool directly from the terminal. Great for scripts, pipelines, and one-
 | **LSP** | `lspGotoDefinition` | Navigate to a symbol's definition |
 | | `lspFindReferences` | Find all usages of a symbol |
 | | `lspCallHierarchy` | Trace function call relationships |
-| **Package** | `packageSearch` | Resolve npm / PyPI packages to their source repo |
+| **Package** | `packageSearch` | Resolve an npm package to its source repo + metadata |
 
 ```bash
 # Discover
+octocode --agent                                  # agent bootstrap: protocol + tools + input fields
+octocode --agent --full                           # …plus every tool's full JSON schema inline
 octocode tools                                    # list all tools
 octocode tools localSearchCode                    # show one tool's schema
 octocode tools localSearchCode githubSearchCode   # batch schemas
-octocode instructions                             # full MCP instructions + all schemas
+octocode instructions                             # alias of --agent (add --full for all schemas)
 
 # Run
 octocode tools localSearchCode --queries '{"path":".","pattern":"TODO"}'
 octocode tools githubSearchCode --queries '{"keywordsToSearch":["useReducer"],"owner":"facebook","repo":"react"}'
-octocode tools localSearchCode --queries '{"path":".","pattern":"TODO"}' --json   # machine-readable
+octocode tools localSearchCode --queries '{"path":".","pattern":"TODO"}' --json     # full MCP envelope
+octocode tools localSearchCode --queries '{"path":".","pattern":"TODO"}' --compact  # leanest (structuredContent only)
 ```
 
 The shared metadata fields (`id`, `researchGoal`, `reasoning`, `mainResearchGoal`) are auto-filled. Provide only tool-specific fields.
+
+> **For agents:** run `octocode --agent` once for the full bootstrap (protocol + every tool + input fields + the mandatory "read the schema before calling" rule + the exit-code table). Then `octocode tools <name>` to confirm a tool's exact schema before calling it. This checklist is also printed at the top of `octocode --help`.
 
 ---
 
@@ -103,6 +108,8 @@ For env-based setup, any of these are accepted (checked in this priority): `OCTO
 export GITHUB_TOKEN=ghp_xxx        # or OCTOCODE_TOKEN / GH_TOKEN
 octocode token --source           # show which token & source is being used
 octocode token --validate         # ping the GitHub API to verify it
+octocode token                    # masked on screen; raw when piped, e.g. export GH_TOKEN=$(octocode token)
+octocode token --reveal           # print the full token on screen
 ```
 
 ---
@@ -113,7 +120,7 @@ octocode token --validate         # ping the GitHub API to verify it
 |---------|---------|--------------|
 | `install --ide <ide>` | `i`, `setup` | Configure octocode-mcp for an IDE |
 | `install --ide <ide> --check` | | Pre-flight: verify config path is writable, show what would change |
-| `install --ide <ide> -m <npx\|direct>` | | Choose install method (default `npx`; `direct` points at a local binary) |
+| `install --ide <ide> --method npx` | | Installation method (`npx` is the only/default method) |
 | `install --ide <ide> --force` | | Overwrite an existing configuration |
 | `install --ide <ide> --rollback` | | Restore the most recent backup configuration |
 | `install --ide <ide> --rollback --backup-path <file>` | | Restore a specific backup file |
@@ -127,6 +134,7 @@ octocode token --validate         # ping the GitHub API to verify it
 | `token --type <auto\|octocode\|gh>` | | Force a specific token source instead of auto-resolution |
 | `token --source` | | Show which source resolved the token |
 | `token --validate` | | Ping the GitHub API to verify the token and show rate-limit |
+| `token --reveal` | | Print the full token on screen (default: masked on a terminal, raw when piped) |
 | `status` | `s` | Full health check: auth + MCP clients + cache |
 | `status --sync` | | Also include per-MCP sync analysis |
 | `sync` | `sy` | Sync MCP configs across all IDEs |
@@ -134,9 +142,10 @@ octocode token --validate         # ping the GitHub API to verify it
 | `sync --status` | | Show sync analysis without syncing |
 | `sync --force` | | Auto-resolve conflicts (use first variant found) |
 | `skills` | `sk` | Install / remove / list / search / read / sync skills |
-| `skills search --direct` | | Search skills.sh directly (human-readable) |
+| `skills search <query>` | | In a terminal: immediate results from skills.sh. In scripts/agents (non-TTY): emits the research protocol |
+| `skills search --direct` | | Force direct results from skills.sh (auto-enabled in a terminal; use this in scripts/pipes) |
 | `skills search --direct --install` | | Fetch and install top result automatically |
-| `skills read <path\|github:owner/repo/name>` | | Preview a SKILL.md from disk or GitHub (`--full` for untruncated) |
+| `skills read <path \| owner/repo/path \| github-url>` | | Preview a SKILL.md from disk or GitHub (`--full` for untruncated) |
 | `skills install --targets <t1,t2>` | | Install all bundled skills to targets |
 | `skills install --skill <name> --targets <t>` | | Install one specific skill |
 | `skills install --local <path> --targets <t>` | | Install a local skill folder |
@@ -174,7 +183,10 @@ Most subcommands accept `--hostname <host>` for GitHub Enterprise.
 
 | Flag | Description |
 |------|-------------|
-| `--json`, `-j` | Raw JSON output (machine-readable) |
+| `--json`, `-j` | Raw JSON output (full MCP envelope) for tool runs |
+| `--compact` | Leanest tool output: minified `structuredContent` only (~60% smaller than `--json`) |
+| `--agent` | Print the agent bootstrap: protocol + every tool + input fields (add `--full` for all JSON schemas) |
+| `--no-color` | Disable ANSI colors (also honored via `NO_COLOR=1`) |
 | `--version`, `-v` | Print the CLI version |
 | `--help`, `-h` | Show help for the CLI or a command |
 
@@ -192,7 +204,14 @@ Most subcommands accept `--hostname <host>` for GitHub Enterprise.
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Error |
+| `1` | General error |
+| `2` | Invalid input / unsupported flags |
+| `3` | Unknown tool or command |
+| `4` | Authentication failure |
+| `5` | Tool / API execution error |
+| `7` | Rate limited |
+
+Typed codes `2`–`7` apply to the tool surface (`tools`, `--tool`) and command dispatch, so agents can branch on the failure mode without parsing output. Management commands (`install`, `auth`, `sync`, …) use `0`/`1`.
 
 ---
 

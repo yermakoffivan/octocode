@@ -1,10 +1,3 @@
-/**
- * GitHub File Content Operations
- * Orchestrates fetching and processing file content from GitHub repositories.
- * Split into focused modules:
- *   - fileContentRaw.ts: raw API fetching, branch fallback, base64 decode
- *   - fileContentProcess.ts: line extraction, match search, sanitization, minification
- */
 import type { GitHubAPIResponse } from './githubAPI.js';
 import type {
   FileContentExecutionQuery,
@@ -19,7 +12,6 @@ import {
   type RawContentResult,
 } from './fileContentRaw.js';
 import {
-  applyContentPagination,
   fetchFileTimestamp,
   processFileContentAPI,
 } from './fileContentProcess.js';
@@ -94,21 +86,8 @@ export async function fetchGitHubFileContentAPI(
         processedResult.lastModifiedBy = timestampInfo.lastModifiedBy;
       }
     } catch {
-      // Ignore timestamp fetch errors
+      void 0;
     }
-  }
-
-  if (processedResult.content) {
-    const paginatedResult = applyContentPagination(
-      processedResult,
-      params.charOffset ?? 0,
-      params.charLength
-    );
-    return {
-      data: paginatedResult,
-      status: 200,
-      rawResponseChars: rawResult.rawResponseChars,
-    };
   }
 
   return {

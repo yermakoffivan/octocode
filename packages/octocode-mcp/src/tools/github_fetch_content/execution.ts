@@ -1,6 +1,6 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { FileContentQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
@@ -32,23 +32,18 @@ import {
 } from '../providerExecution.js';
 import { buildGithubFetchContentFinalizer } from './finalizer.js';
 
-// Re-exported so every tool exposes `apply<Tool>Verbosity` from execution.ts.
 export { applyGithubFetchContentVerbosity } from './finalizer.js';
 
 export async function fetchMultipleGitHubFileContents(
   args: ToolExecutionArgs<PartialFileContentQuery>
 ): Promise<CallToolResult> {
-  const { queries, authInfo, responseCharOffset, responseCharLength } = args;
+  const { queries, authInfo } = args;
   const getProviderContext = createLazyProviderContext(authInfo);
 
   return executeBulkOperation(
     queries,
     async (query: PartialFileContentQuery, _index: number) => {
       try {
-        // Per-query extraction-mode mutex. The bulk envelope is relaxed (so one
-        // malformed query never rejects the whole batch at MCP validation);
-        // enforce the fullContent/matchString/lineRange mutex here instead so a
-        // bad query errors on its own while valid siblings still run.
         const validated = FileContentQueryLocalSchema.safeParse(query);
         if (!validated.success) {
           const messages = validated.error.issues
@@ -70,8 +65,6 @@ export async function fetchMultipleGitHubFileContents(
     },
     {
       toolName: TOOL_NAMES.GITHUB_FETCH_CONTENT,
-      responseCharOffset,
-      responseCharLength,
       peerHints: true,
       peerEvidence: true,
       finalize: buildGithubFetchContentFinalizer<PartialFileContentQuery>(),
@@ -182,9 +175,6 @@ async function handleFileFetch(
     TOOL_NAMES.GITHUB_FETCH_CONTENT,
     {
       rawResponse: providerResult.response.rawResponseChars,
-      // Path drives the non-canonical (examples/__tests__/docs/fixtures)
-      // warning in hints.hasResults. isPartial/endLine keep continuation
-      // hints working alongside.
       hintContext: {
         path: query.path,
         branch: query.branch,

@@ -19,8 +19,15 @@ const colors: Record<ColorName, string> = {
   bgMagenta: '\x1b[45m',
 };
 
+function colorsEnabled(): boolean {
+  if (process.env.NO_COLOR) {
+    return false;
+  }
+  return Boolean(process.stdout.isTTY);
+}
+
 export const c = (color: ColorName, text: string): string =>
-  `${colors[color]}${text}${colors.reset}`;
+  colorsEnabled() ? `${colors[color]}${text}${colors.reset}` : text;
 
 export const bold = (text: string): string => c('bright', text);
 

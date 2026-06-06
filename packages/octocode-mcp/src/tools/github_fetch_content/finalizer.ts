@@ -1,4 +1,4 @@
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { FileContentQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
@@ -8,34 +8,16 @@ import type {
   PaginationInfo,
 } from '../../types/toolResults.js';
 import {
-  applyBulkCharWindow,
   collectFlatErrors,
   dedupeHints,
   formatFinalizedResponse,
-  type CharPagination,
   type QueryWithPagination,
 } from '../../utils/response/groupedFinalizer.js';
-import type {
-  GitHubFetchContentOutputLocal,
-  GroupedToolWarning,
-} from '../../scheme/remoteSchemaOverlay.js';
-import {
-  isConcise,
-  isCompact,
-  compactTrimHints,
-  makeAdvisoryPredicate,
-} from '../../scheme/verbosity.js';
-import { applyMinification } from '../../utils/minifier/applyMinification.js';
+import type { GitHubFetchContentOutputLocal } from '../../scheme/remoteSchemaOverlay.js';
+import { isVerbose } from '../../scheme/verbosity.js';
 import { buildEvidenceMetadata } from '../evidence.js';
 import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
 import type { WithOptionalMeta } from '../../types/execution.js';
-
-/** Advisory hints githubGetFileContent emits; stripped under compact.
- * Substring-OR, case-insensitive. */
-const isAdvisoryFetchContentHint = makeAdvisoryPredicate([
-  'file_too_large',
-  'too large',
-]);
 
 type PartialFileContentQuery = WithOptionalMeta<FileContentQuery> &
   QueryWithPagination;
@@ -72,10 +54,6 @@ type RepoGroup = {
   directories?: DirectoryEntry[];
 };
 
-// Structurally identical to `GitHubFetchContentOutputLocal` now that the
-// schema's pagination fields are tightened (file pagination →
-// PaginationInfoSchema; responsePagination → CharPaginationSchema).  Kept as
-// a local alias for readability; no cast needed at formatFinalizedResponse.
 type FileContentResponse = GitHubFetchContentOutputLocal;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -113,7 +91,6 @@ function collectPeerHints(results: readonly FlatQueryResult[]): string[] {
 
 function buildFetchEvidence(
   groups: readonly RepoGroup[],
-  responsePagination: CharPagination | undefined,
   errors: ReadonlyArray<NonNullable<FileContentResponse['errors']>[number]>
 ): NonNullable<GitHubFetchContentOutputLocal['evidence']> {
   const fileCount = groups.reduce(
@@ -154,20 +131,7 @@ function buildFetchEvidence(
           `Use charOffset=${nextOffset} for ${group.id}:${file.path}.`
         );
       }
-      if (
-        file.isPartial &&
-        typeof file.endLine === 'number' &&
-        typeof file.totalLines === 'number' &&
-        file.endLine < file.totalLines
-      ) {
-        reasons.push(
-          `Use startLine=${file.endLine + 1} with an endLine up to ${file.totalLines} for ${group.id}:${file.path}.`
-        );
-      }
     }
-  }
-  if (responsePagination?.hasMore) {
-    reasons.push('Bulk response pagination has more data.');
   }
   if (errors.length > 0) {
     reasons.push(`${errors.length} query result(s) failed.`);
@@ -197,15 +161,6 @@ const OPTIONAL_PAGINATION_NUMERIC_FIELDS = [
   'totalMatches',
 ] as const satisfies ReadonlyArray<keyof PaginationInfo>;
 
-/**
- * Narrow an opaque per-query data slot into a `PaginationInfo`.
- *
- * The bulk runner types `FlatQueryResult.data` as `Record<string, unknown>`
- * so each tool is free to define its own per-query payload.  We validate
- * the three required fields, then copy the optional numeric counters
- * field-by-field so the returned value is structurally typed without an
- * `as unknown as` boundary cast.
- */
 function readPagination(value: unknown): PaginationInfo | undefined {
   if (!isRecord(value)) return undefined;
   const { currentPage, totalPages, hasMore } = value;
@@ -316,44 +271,7 @@ function buildGroups(
   return Array.from(groups.values());
 }
 
-function getGroupItems(
-  group: RepoGroup
-): readonly (FileEntry | DirectoryEntry)[] {
-  return [...(group.files ?? []), ...(group.directories ?? [])];
-}
-
-function setGroupItems(
-  group: RepoGroup,
-  items: Array<FileEntry | DirectoryEntry>
-): RepoGroup {
-  const files = items.filter((item): item is FileEntry => 'content' in item);
-  const directories = items.filter(
-    (item): item is DirectoryEntry => 'localPath' in item
-  );
-  return {
-    ...group,
-    ...(files.length > 0 ? { files } : { files: undefined }),
-    ...(directories.length > 0 ? { directories } : { directories: undefined }),
-  };
-}
-
-/**
- * The single paginatable text field on a fetch-content item. Directory entries
- * have no `content`, so they are atomic (getter returns undefined).
- */
-const getFileContent = (
-  item: FileEntry | DirectoryEntry
-): string | undefined => ('content' in item ? item.content : undefined);
-const setFileContent = (
-  item: FileEntry | DirectoryEntry,
-  content: string
-): FileEntry | DirectoryEntry =>
-  'content' in item ? { ...item, content } : item;
-
-function buildRuntimeHints(
-  groups: readonly RepoGroup[],
-  responsePagination?: CharPagination
-): string[] {
+function buildRuntimeHints(groups: readonly RepoGroup[]): string[] {
   const hints: string[] = [];
 
   for (const group of groups) {
@@ -367,9 +285,16 @@ function buildRuntimeHints(
           `Use charOffset=${file.pagination.charOffset + currentLength} for ${group.id}:${file.path} to continue this file.`
         );
       }
-      // Partial line-range continuation is intentionally NOT hinted at the
-      // top level — the agent already has isPartial/endLine/totalLines on
-      // each file entry, so duplicating the math here is pure redundancy.
+      if (
+        file.isPartial &&
+        typeof file.endLine === 'number' &&
+        typeof file.totalLines === 'number' &&
+        file.endLine < file.totalLines
+      ) {
+        hints.push(
+          `File content is partial (lines ${file.startLine ?? 1}–${file.endLine} of ${file.totalLines}). Use startLine=${file.endLine + 1} to read the next section of ${group.id}:${file.path}.`
+        );
+      }
     }
 
     for (const directory of group.directories ?? []) {
@@ -378,12 +303,6 @@ function buildRuntimeHints(
           `Directory ${group.id}:${directory.path} served from cache.`
         );
     }
-  }
-
-  if (responsePagination?.hasMore) {
-    hints.push(
-      `Use responseCharOffset=${responsePagination.charOffset + responsePagination.charLength} to continue this paginated bulk response.`
-    );
   }
 
   return dedupeHints(hints);
@@ -429,41 +348,21 @@ export function buildGithubFetchContentFinalizer<
   TQuery extends PartialFileContentQuery,
 >(): BulkFinalizer<TQuery, GitHubFetchContentOutputLocal> {
   return ({ queries, results, config }) => {
-    let groups = buildGroups(results, queries);
-
-    // Bulk char-pagination via the shared "explicit-or-overflow" policy. Pure
-    // pagination — an oversized file's `content` is windowed by char offset
-    // (not truncated): the next page is reached by advancing responseCharOffset
-    // (or charOffset on the path).
-    const bulk = applyBulkCharWindow(groups, config, {
-      getItems: getGroupItems,
-      setItems: setGroupItems,
-      getItemText: getFileContent,
-      setItemText: setFileContent,
-    });
-    groups = bulk.groups;
-    const responsePagination = bulk.responsePagination;
+    const groups = buildGroups(results, queries);
 
     const errors = collectFileErrors(results, queries);
     const hints = dedupeHints([
       ...(config.peerHints ? collectPeerHints(results) : []),
-      ...buildRuntimeHints(groups, responsePagination),
+      ...buildRuntimeHints(groups),
     ]);
     const responseData: FileContentResponse = { results: groups };
 
-    if (responsePagination)
-      responseData.responsePagination = responsePagination;
     if (hints.length > 0) responseData.hints = hints;
     if (errors && errors.length > 0) responseData.errors = errors;
     if (config.peerEvidence) {
-      responseData.evidence = buildFetchEvidence(
-        groups,
-        responsePagination,
-        errors ?? []
-      );
+      responseData.evidence = buildFetchEvidence(groups, errors ?? []);
     }
 
-    // ── Verbosity shaping ───────────────────────────────────────────────
     applyGithubFetchContentVerbosity(responseData, queries);
 
     return formatFinalizedResponse<GitHubFetchContentOutputLocal>(
@@ -482,7 +381,6 @@ export function buildGithubFetchContentFinalizer<
         'endLine',
         'isPartial',
         'pagination',
-        'responsePagination',
         'hints',
         'errors',
       ],
@@ -491,78 +389,21 @@ export function buildGithubFetchContentFinalizer<
   };
 }
 
-/**
- * Per-tool verbosity shaping for githubGetFileContent. Under concise (when every
- * query asks for it), strips `content` from every file and emits a token
- * estimate + drill-back hint. Under compact (any query opts in), trims
- * advisory hints. Basic / omitted: passthrough.
- *
- * Mutates `responseData` in place; returns `true` when concise was applied.
- */
 export function applyGithubFetchContentVerbosity(
   responseData: GitHubFetchContentOutputLocal,
   queries: readonly PartialFileContentQuery[]
-): boolean {
-  const queriesWithVerbosity = queries as Array<
-    WithVerbosity<PartialFileContentQuery> & { fullContent?: boolean }
-  >;
-  const allConcise =
-    queriesWithVerbosity.length > 0 &&
-    queriesWithVerbosity.every(q => isConcise(q.verbosity));
-  const anyCompact = queriesWithVerbosity.some(q => isCompact(q.verbosity));
+): void {
+  const queriesTyped = queries as Array<WithVerbosity<PartialFileContentQuery>>;
+  const anyVerbose = queriesTyped.some(q => isVerbose(q));
+  if (anyVerbose) return;
 
-  if (allConcise) {
-    let totalLines = 0;
-    let rawLen = 0;
-    let minLen = 0;
-    // Concise MINIFIES each file body (strip comments/whitespace per file type)
-    // rather than blanking it — a minified body is a cheap, still-useful read,
-    // not a dead-end. Heavy metadata is dropped; a raw→minified token summary
-    // is emitted. Never larger than verbatim (applyMinification guards that).
-    const shapedGroups = (responseData.results ?? []).map(g => ({
-      ...g,
-      files: (g.files ?? []).map(f => {
-        totalLines += f.totalLines ?? 0;
-        const raw = f.content ?? '';
-        const min = f.path ? applyMinification(raw, f.path) : raw;
-        rawLen += raw.length;
-        minLen += min.length;
-        const shaped: FileEntry = { ...f, content: min };
-        delete (shaped as { lastModified?: string }).lastModified;
-        delete (shaped as { lastModifiedBy?: string }).lastModifiedBy;
-        return shaped;
-      }),
-    }));
-    const rawTokens = Math.ceil(rawLen / 4);
-    const minTokens = Math.ceil(minLen / 4);
-    const fileCount = shapedGroups.reduce(
-      (n, g) => n + (g.files?.length ?? 0),
-      0
-    );
-    responseData.results = shapedGroups as typeof responseData.results;
-    responseData.hints = [
-      `${fileCount} files, ${totalLines} lines, ~${rawTokens}→${minTokens} tokens (minified)`,
-    ];
-    const userPassedFullContent = queriesWithVerbosity.some(
-      q => q.fullContent === true
-    );
-    if (userPassedFullContent) {
-      const downgrade: GroupedToolWarning = {
-        kind: 'verbosity-downgrade',
-        field: 'fullContent',
-        detail: 'fullContent=true minified under concise',
-      };
-      responseData.warnings = [...(responseData.warnings ?? []), downgrade];
-    }
-    return true;
-  }
-
-  if (anyCompact) {
-    responseData.hints = compactTrimHints(
-      responseData.hints,
-      isAdvisoryFetchContentHint,
-      2
-    );
-  }
-  return false;
+  responseData.results = (responseData.results ?? []).map(g => ({
+    ...g,
+    files: (g.files ?? []).map(f => {
+      const shaped = { ...f };
+      delete (shaped as Record<string, unknown>).lastModified;
+      delete (shaped as Record<string, unknown>).lastModifiedBy;
+      return shaped;
+    }),
+  })) as typeof responseData.results;
 }

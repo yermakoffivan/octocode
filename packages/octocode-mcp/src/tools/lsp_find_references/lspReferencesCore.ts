@@ -1,12 +1,3 @@
-/**
- * Core LSP Find References Implementation
- *
- * Contains the Language Server Protocol implementation for finding references.
- * Uses lazy enhancement: filter → paginate → enhance only visible page.
- *
- * @module tools/lsp_find_references/lspReferencesCore
- */
-
 import * as path from 'path';
 import { safeReadFile } from '../../lsp/validation.js';
 import picomatch from 'picomatch';
@@ -17,12 +8,11 @@ import type {
   LSPRange,
   ExactPosition,
 } from '../../lsp/types.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { LSPFindReferencesQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type LSPFindReferencesQuery = z.infer<typeof LSPFindReferencesQuerySchema>;
 import type { WithOptionalMeta } from '../../types/execution.js';
-import type { SymbolKind } from '../../lsp/types.js';
 import { acquirePooledClient } from '../../lsp/manager.js';
 import { getHints } from '../../hints/index.js';
 import { TOOL_NAME } from './constants.js';
@@ -32,39 +22,6 @@ import {
   buildFindReferencesPageResult,
 } from './referenceResultHelpers.js';
 
-/**
- * Infer symbol kind from the definition line content.
- * Used to provide accurate symbolKind instead of hardcoding 'function'.
- * @internal Exported for testing
- */
-export function inferSymbolKindFromContent(lineContent: string): SymbolKind {
-  const trimmed = lineContent.trim();
-  if (/\bclass\b/.test(trimmed)) return 'class';
-  if (/\binterface\b/.test(trimmed)) return 'interface';
-  if (/\b(type)\s+\w/.test(trimmed)) return 'type';
-  if (/\benum\b/.test(trimmed)) return 'enum';
-  if (/\bnamespace\b/.test(trimmed)) return 'namespace';
-  if (/\bmodule\b/.test(trimmed)) return 'module';
-  if (/\bconst\b/.test(trimmed) && !/=>|function/.test(trimmed))
-    return 'constant';
-  if (/\b(?:let|var)\b/.test(trimmed) && !/=>|function/.test(trimmed))
-    return 'variable';
-  if (
-    /\bproperty\b/.test(trimmed) ||
-    /^\s*(public|private|protected|readonly)\s+\w+\s*[:;]/.test(trimmed)
-  )
-    return 'property';
-  return 'function';
-}
-
-/**
- * Check if a relative file path matches include/exclude glob patterns.
- * - If excludePattern is set and path matches any, return false.
- * - If includePattern is set, path must match at least one.
- * - If neither is set, return true (no filtering).
- *
- * @internal Exported for testing
- */
 export function matchesFilePatterns(
   relativePath: string,
   includePattern?: string[],
@@ -81,11 +38,6 @@ export function matchesFilePatterns(
   return true;
 }
 
-/**
- * Use LSP client to find references.
- * Applies file pattern filtering and lazy enhancement (paginate-then-enhance).
- */
-/** Error result when the server lacks referencesProvider. */
 function buildReferencesCapabilityError(): FindReferencesResult {
   return {
     status: 'error',
@@ -100,7 +52,6 @@ function buildReferencesCapabilityError(): FindReferencesResult {
   };
 }
 
-/** Empty result when references exist but none matched include/exclude globs. */
 function buildNoPatternMatchResult(
   query: WithOptionalMeta<LSPFindReferencesQuery>,
   totalUnfiltered: number
@@ -127,8 +78,6 @@ export async function findReferencesWithLSP(
   position: ExactPosition,
   query: WithOptionalMeta<LSPFindReferencesQuery>
 ): Promise<FindReferencesResult | null> {
-  // Pooled client: the pool owns its lifecycle, so we MUST NOT stop() it
-  // here. Idle eviction tears it down later (see lsp/lspClientPool.ts).
   const client = await acquirePooledClient(workspaceRoot, filePath);
   if (!client) return null;
 
@@ -136,15 +85,10 @@ export async function findReferencesWithLSP(
     return buildReferencesCapabilityError();
   }
 
-  // Warm-up: prepareCallHierarchy forces tsserver to load the project graph.
-  // Without this, a freshly-spawned language server may only return references
-  // from the single opened file because it hasn't finished indexing.
-  // Pooled clients stay warm across calls, so this only really pays its
-  // cost on the cold spawn.
   try {
     await client.prepareCallHierarchy(filePath, position);
   } catch {
-    // prepareCallHierarchy warm-up is optional; findReferences still runs without project preload.
+    void 0;
   }
 
   const includeDeclaration = query.includeDeclaration ?? true;
@@ -182,8 +126,6 @@ export async function findReferencesWithLSP(
     };
   });
 
-  // Post-filter: Remove definitions when includeDeclaration is false
-  // Some LSP servers (e.g., TypeScript) don't always honor the flag
   if (!includeDeclaration) {
     rawLocations = rawLocations.filter(loc => !loc.isDefinition);
   }
@@ -239,13 +181,6 @@ export async function findReferencesWithLSP(
   });
 }
 
-/**
- * Raw reference location before content enhancement.
- *
- * `uri` stays workspace-relative for include/exclude glob matching; the
- * agent-facing output uses `absoluteUri` so drill-back calls can pass the
- * returned value directly as an LSP/local file path.
- */
 interface RawReferenceLocation {
   uri: string;
   absoluteUri: string;
@@ -254,10 +189,6 @@ interface RawReferenceLocation {
   isDefinition: boolean;
 }
 
-/**
- * Enhance a raw reference location with context snippets.
- * Only called for paginated (visible) items to minimize file I/O.
- */
 async function enhanceReferenceLocation(
   raw: RawReferenceLocation,
   contextLines: number
@@ -285,22 +216,14 @@ async function enhanceReferenceLocation(
         })
         .join('\n');
     } catch {
-      // File read or snippet build failed; keep prior content (often single-line).
+      void 0;
     }
   }
 
-  // Emit isDefinition only when true — the common case (regular reference)
-  // adds no information. Same for symbolKind: only the definition row needs
-  // to carry it; non-definition rows would just repeat the value.
   return {
     uri: raw.absoluteUri,
     range: raw.range,
     content,
-    ...(raw.isDefinition
-      ? {
-          isDefinition: true as const,
-          symbolKind: inferSymbolKindFromContent(content),
-        }
-      : {}),
+    ...(raw.isDefinition ? { isDefinition: true as const } : {}),
   };
 }

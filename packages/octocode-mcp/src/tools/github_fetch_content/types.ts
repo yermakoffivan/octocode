@@ -1,13 +1,9 @@
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { FileContentQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
 import type { PaginationInfo } from '../../utils/core/types.js';
 
-/**
- * Extension of FileContentQuery with internal execution fields
- * not part of the Zod schema.
- */
 export type FileContentExecutionQuery = FileContentQuery & {
   noTimestamp?: boolean;
 };

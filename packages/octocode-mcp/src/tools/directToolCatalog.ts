@@ -1,5 +1,5 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { z } from 'zod/v4';
+import { z } from 'zod';
 import { initialize } from '../serverConfig.js';
 import { initializeProviders } from '../providers/factory.js';
 import {
@@ -15,15 +15,13 @@ import { ALL_TOOLS, type ToolConfig } from './toolConfig.js';
 
 export type DirectToolInput = Record<string, unknown> & {
   queries: unknown[];
-  responseCharLength?: number;
-  responseCharOffset?: number;
 };
 
 export interface DirectToolDefinition {
   name: string;
-  /** Per-query schema for help text and examples. */
+
   schema: z.ZodType;
-  /** Canonical MCP bulk input schema used before direct execution. */
+
   inputSchema: z.ZodType;
 }
 
@@ -151,8 +149,6 @@ function wrapExecution(
   fn: ToolConfig['direct']['executionFn']
 ): (input: DirectToolInput) => Promise<CallToolResult> {
   return async input => {
-    // SAFETY: every catalog entry pairs this executor with the same MCP-owned
-    // bulk schema used by server registration for that tool.
     return fn(input as never);
   };
 }
@@ -337,6 +333,13 @@ export function buildDirectToolExampleQuery(
     example[field.name] = buildExampleValue(field.name, field.type);
   }
 
+  if (
+    toolName.startsWith('lsp') &&
+    fields.some(field => field.name === 'uri')
+  ) {
+    example.uri ??= 'uri';
+  }
+
   return example;
 }
 
@@ -378,8 +381,6 @@ export function prepareDirectToolInput(
     );
   }
 
-  // SAFETY: Direct tool input schemas are all MCP bulk schemas containing the
-  // ToolExecutionArgs envelope fields consumed by the execution functions.
   return result.data as DirectToolInput;
 }
 
@@ -396,19 +397,11 @@ function buildDirectToolPayload(
   options: PrepareDirectToolInputOptions
 ): DirectToolInput {
   let queriesInput: unknown[] = [];
-  let responseCharLength: number | undefined;
-  let responseCharOffset: number | undefined;
 
   if (Array.isArray(rawPayload)) {
     queriesInput = rawPayload;
   } else if (isRecord(rawPayload) && Array.isArray(rawPayload.queries)) {
     queriesInput = rawPayload.queries;
-    if (typeof rawPayload.responseCharLength === 'number') {
-      responseCharLength = rawPayload.responseCharLength;
-    }
-    if (typeof rawPayload.responseCharOffset === 'number') {
-      responseCharOffset = rawPayload.responseCharOffset;
-    }
   } else if (isRecord(rawPayload)) {
     queriesInput = [rawPayload];
   } else {
@@ -432,8 +425,6 @@ function buildDirectToolPayload(
         }
       )
     ),
-    responseCharLength,
-    responseCharOffset,
   };
 }
 
@@ -619,8 +610,6 @@ function parseDirectToolInput(
     throw result.error;
   }
 
-  // SAFETY: Direct tool input schemas are all MCP bulk schemas containing the
-  // ToolExecutionArgs envelope fields consumed by the execution functions.
   return result.data as DirectToolInput;
 }
 

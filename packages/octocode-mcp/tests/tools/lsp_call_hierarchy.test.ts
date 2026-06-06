@@ -1,15 +1,4 @@
-/**
- * Tests for LSP Call Hierarchy tool - focuses on helper functions and registration
- * @module tools/lsp_call_hierarchy.test
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  parseRipgrepJsonOutput,
-  extractFunctionBody,
-  inferSymbolKind,
-  createRange,
-} from '../../src/tools/lsp_call_hierarchy/callHierarchy.js';
 
 describe('LSP Call Hierarchy Tool', () => {
   beforeEach(() => {
@@ -134,7 +123,6 @@ describe('LSP Call Hierarchy Tool', () => {
   });
 
   describe('inferSymbolKind helper logic', () => {
-    // Test the symbol kind inference logic
     const testCases = [
       { line: 'class MyClass {', expected: 'class' },
       { line: 'interface MyInterface {', expected: 'interface' },
@@ -151,7 +139,6 @@ describe('LSP Call Hierarchy Tool', () => {
 
     for (const { line, expected } of testCases) {
       it(`should infer "${expected}" from "${line}"`, () => {
-        // Replicate inferSymbolKind logic
         let kind: string;
         if (/\bclass\b/.test(line)) kind = 'class';
         else if (/\binterface\b/.test(line)) kind = 'interface';
@@ -177,7 +164,6 @@ describe('LSP Call Hierarchy Tool', () => {
   });
 
   describe('extractFunctionBody helper logic', () => {
-    // Test function body extraction logic
     it('should extract function body between braces', () => {
       const lines = ['function test() {', '  const x = 1;', '  return x;', '}'];
 
@@ -214,7 +200,7 @@ describe('LSP Call Hierarchy Tool', () => {
 
       expect(foundStart).toBe(true);
       expect(bodyStartLine).toBe(0);
-      expect(bodyLines.length).toBe(3); // Empty after {, then 2 content lines
+      expect(bodyLines.length).toBe(3);
     });
 
     it('should handle nested braces', () => {
@@ -320,7 +306,6 @@ describe('LSP Call Hierarchy Tool', () => {
   });
 
   describe('Call pattern detection', () => {
-    // Test function call pattern matching
     it('should match function calls', () => {
       const line = '  const x = helperOne() + helperTwo();';
       const callPattern = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;
@@ -385,121 +370,11 @@ describe('LSP Call Hierarchy Tool', () => {
 
   describe('Description export', () => {
     it('should export tool description', async () => {
-      // Don't reset modules - use the initialized metadata from setup.ts
       const { LSP_CALL_HIERARCHY_DESCRIPTION } =
         await import('@octocodeai/octocode-core');
 
       expect(LSP_CALL_HIERARCHY_DESCRIPTION).toBeDefined();
       expect(typeof LSP_CALL_HIERARCHY_DESCRIPTION).toBe('string');
-      // Description may be empty if tool not in remote metadata (local-only tool)
-    });
-  });
-
-  describe('parseRipgrepJsonOutput', () => {
-    it('should parse valid ripgrep JSON output', () => {
-      const output = `{"type":"match","data":{"path":{"text":"/test.ts"},"line_number":5,"submatches":[{"start":2}],"lines":{"text":"  myFunc()\\n"}}}`;
-
-      const results = parseRipgrepJsonOutput(output);
-
-      expect(results.length).toBe(1);
-      expect(results[0]!.filePath).toBe('/test.ts');
-      expect(results[0]!.lineNumber).toBe(5);
-      expect(results[0]!.column).toBe(2);
-    });
-
-    it('should skip invalid JSON lines', () => {
-      const output = `invalid json
-{"type":"match","data":{"path":{"text":"/test.ts"},"line_number":5,"submatches":[{"start":0}],"lines":{"text":"line"}}}`;
-
-      const results = parseRipgrepJsonOutput(output);
-      expect(results.length).toBe(1);
-    });
-
-    it('should skip non-match entries', () => {
-      const output = `{"type":"begin"}
-{"type":"match","data":{"path":{"text":"/test.ts"},"line_number":5,"submatches":[{"start":0}],"lines":{"text":"line"}}}
-{"type":"end"}`;
-
-      const results = parseRipgrepJsonOutput(output);
-      expect(results.length).toBe(1);
-    });
-
-    it('should handle empty output', () => {
-      const results = parseRipgrepJsonOutput('');
-      expect(results.length).toBe(0);
-    });
-
-    it('should handle multiple matches', () => {
-      const output = `{"type":"match","data":{"path":{"text":"/a.ts"},"line_number":1,"submatches":[{"start":0}],"lines":{"text":"a"}}}
-{"type":"match","data":{"path":{"text":"/b.ts"},"line_number":2,"submatches":[{"start":0}],"lines":{"text":"b"}}}
-{"type":"match","data":{"path":{"text":"/c.ts"},"line_number":3,"submatches":[{"start":0}],"lines":{"text":"c"}}}`;
-
-      const results = parseRipgrepJsonOutput(output);
-      expect(results.length).toBe(3);
-    });
-  });
-
-  describe('extractFunctionBody comprehensive tests', () => {
-    it('should return null for empty lines', () => {
-      const result = extractFunctionBody([], 0);
-      expect(result).toBeNull();
-    });
-
-    it('should handle function with parameters on multiple lines', () => {
-      const lines = [
-        'function test(',
-        '  param1: string,',
-        '  param2: number',
-        ') {',
-        '  return param1;',
-        '}',
-      ];
-
-      const result = extractFunctionBody(lines, 0);
-      expect(result).not.toBeNull();
-    });
-
-    it('should handle class methods', () => {
-      const lines = [
-        'class MyClass {',
-        '  myMethod() {',
-        '    return 1;',
-        '  }',
-        '}',
-      ];
-
-      const result = extractFunctionBody(lines, 0);
-      expect(result).not.toBeNull();
-    });
-  });
-
-  describe('createRange edge cases', () => {
-    it('should handle large line numbers', () => {
-      const range = createRange(999999, 50, 10);
-      expect(range.start.line).toBe(999999);
-      expect(range.end.line).toBe(999999);
-    });
-
-    it('should handle zero length', () => {
-      const range = createRange(5, 10, 0);
-      expect(range.end.character).toBe(10);
-    });
-  });
-
-  describe('inferSymbolKind comprehensive', () => {
-    it('should handle export statements', () => {
-      expect(inferSymbolKind('export function test() {')).toBe('function');
-      expect(inferSymbolKind('export class MyClass {')).toBe('class');
-      expect(inferSymbolKind('export const x = 1;')).toBe('constant');
-    });
-
-    it('should handle async arrow functions', () => {
-      expect(inferSymbolKind('const fn = async () => {')).toBe('function');
-    });
-
-    it('should handle public/private methods', () => {
-      expect(inferSymbolKind('public myMethod() {')).toBe('function');
-      expect(inferSymbolKind('private helper() {')).toBe('function');
     });
   });
 });

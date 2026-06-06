@@ -1,24 +1,3 @@
-/**
- * Limitation / cap hint contract.
- *
- * Every tool with a hard size/result cap emits an evidence-conditional
- * one-liner naming the offending value. Workflow followup text is OUT —
- * tool descriptions own that.
- *
- * Coverage:
- *   - localSearchCode      → size_limit + matchCount
- *   - localGetFileContent  → fileTooLarge with fileSize in KB
- *   - localViewStructure   → size_limit + entryCount
- *   - localFindFiles       → "Results capped at N of M" (executor-side)
- *   - githubGetFileContent → 300KB cap with fileSize
- *   - githubSearchCode     → match-value truncation warning (structured)
- *   - githubCloneRepo      → cache marker only
- *   - lspCallHierarchy     → depth/timeout warning
- *
- * Banned phrases — every limitation line is checked against this list to
- * ensure no workflow novella sneaks back in.
- */
-
 import { describe, it, expect } from 'vitest';
 
 import { hints as ripgrepHints } from '../../../src/tools/local_ripgrep/hints.js';
@@ -58,9 +37,7 @@ function assertLean(hint: string) {
       `"${hint}" contains banned workflow phrase "${phrase}"`
     ).not.toContain(phrase);
   }
-  // One-line guarantee
   expect(hint.split('\n').length).toBeLessThanOrEqual(2);
-  // Length budget — limitation hints should be < 120 chars (single evidence line).
   expect(hint.length).toBeLessThanOrEqual(140);
 }
 
@@ -131,13 +108,13 @@ describe('limitation hints — silence when threshold not hit', () => {
     expect(ripgrepHints.error({ errorType: 'other' as never })).toEqual([]);
   });
 
-  it('localGetFileContent without isLarge stays silent', () => {
-    expect(
-      fetchContentHints.error({
-        errorType: 'size_limit',
-        fileSize: 100,
-      } as never)
-    ).toEqual([]);
+  it('localGetFileContent size_limit always fires (isLarge no longer required)', () => {
+    const h = fetchContentHints.error({
+      errorType: 'size_limit',
+      fileSize: 100,
+    } as never);
+    expect(h.length).toBeGreaterThan(0);
+    expect(h[0]).toMatch(/read budget/);
   });
 
   it('localViewStructure without entryCount stays silent', () => {

@@ -5,7 +5,6 @@ import {
   BulkFindFilesSchema,
   BulkFetchContentQuerySchema,
   BulkViewStructureSchema,
-  LOCAL_OVERLAY_MAX_CHAR_LENGTH,
 } from '../../src/scheme/localSchemaOverlay.js';
 import {
   FileContentBulkQueryLocalSchema,
@@ -22,12 +21,6 @@ import {
   BulkLSPCallHierarchyQuerySchema,
 } from '../../src/scheme/lspSchemaOverlay.js';
 
-/**
- * Every bulk-envelope schema produced by `createRelaxedBulkQuerySchema`
- * must BOUND its numeric inputs. Post-C1 the bound is enforced by CLAMPING
- * (clampedInt), consistent with the per-query charOffset/charLength fields —
- * an out-of-range value is coerced into range, never the validation offender.
- */
 const ALL_BULK_SCHEMAS = [
   ['BulkRipgrepQuerySchema', BulkRipgrepQuerySchema],
   ['BulkFindFilesSchema', BulkFindFilesSchema],
@@ -61,44 +54,21 @@ describe('bulk envelope numeric bounds', () => {
   describe.each(ALL_BULK_SCHEMAS)('%s', (_name, schema) => {
     const baseQueries = [{ id: 'q1' }];
 
-    it('clamps responseCharLength above LOCAL_OVERLAY_MAX_CHAR_LENGTH (never the offender)', () => {
-      const result = schema.safeParse({
-        queries: baseQueries,
-        responseCharLength: LOCAL_OVERLAY_MAX_CHAR_LENGTH + 1,
-      });
-      if (result.success) {
-        expect(
-          (result.data as { responseCharLength?: number }).responseCharLength
-        ).toBe(LOCAL_OVERLAY_MAX_CHAR_LENGTH);
-      } else {
-        const paths = result.error.issues.map(i => i.path.join('.'));
-        expect(paths).not.toContain('responseCharLength');
-      }
-    });
-
-    it('clamps negative responseCharOffset to 0 (never the offender)', () => {
-      const result = schema.safeParse({
-        queries: baseQueries,
-        responseCharOffset: -1,
-      });
-      if (result.success) {
-        expect(
-          (result.data as { responseCharOffset?: number }).responseCharOffset
-        ).toBe(0);
-      } else {
-        const paths = result.error.issues.map(i => i.path.join('.'));
-        expect(paths).not.toContain('responseCharOffset');
-      }
-    });
-
-    it('clamps responseCharOffset above the bound (never the offender)', () => {
-      const result = schema.safeParse({
-        queries: baseQueries,
-        responseCharOffset: Number.MAX_SAFE_INTEGER,
-      });
+    it('parses with minimal queries (envelope accepted, per-query errors ok)', () => {
+      const result = schema.safeParse({ queries: baseQueries });
       if (!result.success) {
-        const paths = result.error.issues.map(i => i.path.join('.'));
-        expect(paths).not.toContain('responseCharOffset');
+        const envelopeErrors = result.error.issues.filter(
+          i => i.path.length === 1 && i.path[0] === 'queries'
+        );
+        expect(envelopeErrors).toHaveLength(0);
+      }
+    });
+
+    it('does not expose responseCharOffset or responseCharLength', () => {
+      const result = schema.safeParse({ queries: baseQueries });
+      if (result.success) {
+        expect(result.data).not.toHaveProperty('responseCharOffset');
+        expect(result.data).not.toHaveProperty('responseCharLength');
       }
     });
 
@@ -113,19 +83,6 @@ describe('bulk envelope numeric bounds', () => {
         expect(
           result.error.issues.some(issue => issue.path.join('.') === 'queries')
         ).toBe(true);
-      }
-    });
-
-    it('accepts responseCharLength at the max bound', () => {
-      const result = schema.safeParse({
-        queries: baseQueries,
-        responseCharLength: LOCAL_OVERLAY_MAX_CHAR_LENGTH,
-      });
-      // Some schemas may reject because baseQueries lacks required fields,
-      // but the failure must NOT be on responseCharLength.
-      if (!result.success) {
-        const offendingPaths = result.error.issues.map(i => i.path.join('.'));
-        expect(offendingPaths).not.toContain('responseCharLength');
       }
     });
   });

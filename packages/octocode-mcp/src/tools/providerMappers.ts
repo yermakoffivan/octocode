@@ -5,7 +5,7 @@ import type {
   RepoSearchResult as ProviderRepoSearchResult,
   RepoStructureResult as ProviderRepoStructureResult,
 } from '../providers/types.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type {
   FileContentQuerySchema,
   GitHubCodeSearchQuerySchema,
@@ -15,7 +15,7 @@ import type {
 } from '@octocodeai/octocode-core/schemas';
 import type { GitHubRepositoryOutput } from '@octocodeai/octocode-core/extra-types';
 import type { WithOptionalMeta } from '../types/execution.js';
-import { resolveGithubPerPage } from '../scheme/localSchemaOverlay.js';
+import { DEFAULT_PAGE_SIZE } from '../scheme/localSchemaOverlay.js';
 import { GITHUB_STRUCTURE_DEFAULTS } from './github_view_repo_structure/constants.js';
 
 type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
@@ -71,9 +71,6 @@ export function buildPaginationHints(
   const startItem = (pagination.currentPage - 1) * perPage + 1;
   const endItem = Math.min(pagination.currentPage * perPage, totalMatches);
 
-  // Strict policy: emit only when there's more to fetch. Page/Previous/Jump
-  // are data echoes of pagination.{currentPage,totalPages} the agent already
-  // has — `Final page` is the same tautology in negative form.
   if (pagination.hasMore) {
     hints.push(
       `Page ${pagination.currentPage}/${pagination.totalPages} (showing ${startItem}-${endItem} of ${totalMatches} ${label}). Next: page=${pagination.currentPage + 1}`
@@ -94,9 +91,7 @@ export function mapCodeSearchToolQuery(
     filename: query.filename,
     extension: query.extension,
     match: query.match,
-    limit: resolveGithubPerPage(
-      query as { githubAPILimit?: number; itemsPerPage?: number }
-    ),
+    limit: DEFAULT_PAGE_SIZE,
     page: query.page,
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
@@ -107,8 +102,7 @@ export function mapCodeSearchToolQuery(
 export interface CodeSearchGroupedMatch {
   path: string;
   value?: string;
-  /** Char start/end positions of the keyword within `value`. Populated from
-   *  the provider's `positions` field when available. */
+
   matchIndices?: Array<{ start: number; end: number }>;
 }
 
@@ -130,7 +124,7 @@ export interface CodeSearchPagination {
 export interface CodeSearchFlatResult {
   results: CodeSearchGroupedResult[];
   pagination?: CodeSearchPagination;
-  /** True when the searched owner/repo/user does not exist (GitHub 422). */
+
   nonExistentScope?: boolean;
 }
 
@@ -227,9 +221,7 @@ export function mapRepoSearchToolQuery(
       | 'created'
       | 'best-match'
       | undefined,
-    limit: resolveGithubPerPage(
-      query as { githubAPILimit?: number; itemsPerPage?: number }
-    ),
+    limit: DEFAULT_PAGE_SIZE,
     page: query.page,
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
@@ -325,9 +317,7 @@ export function mapPullRequestToolQuery(query: PartialPRQuery) {
     partialContentMetadata: query.partialContentMetadata,
     sort: query.sort as 'created' | 'updated' | 'best-match' | undefined,
     order: query.order as 'asc' | 'desc' | undefined,
-    limit: resolveGithubPerPage(
-      query as { githubAPILimit?: number; itemsPerPage?: number }
-    ),
+    limit: DEFAULT_PAGE_SIZE,
     page: query.page,
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
@@ -344,26 +334,11 @@ function capFileChanges(
 } {
   if (!fileChanges)
     return { capped: undefined, totalCount: 0, wasTruncated: false };
-  // No count cap: return EVERY file change. Output size is bounded losslessly
-  // by the response char-paginator (agents page for more via responseCharOffset),
-  // never by silently dropping files. Nothing is omitted.
   return {
     capped: fileChanges,
     totalCount: fileChanges.length,
     wasTruncated: false,
   };
-}
-
-/**
- * Strip patches from a file-changes list, keeping path + status + counts.
- * Lets metadata (triage) mode answer "which files changed?" without the diff
- * payload — and without forcing a second partialContent/fullContent call.
- */
-function toLightweightFileChanges(
-  fileChanges: ProviderPullRequestSearchResult['items'][number]['fileChanges']
-): ProviderPullRequestSearchResult['items'][number]['fileChanges'] {
-  if (!fileChanges) return fileChanges;
-  return fileChanges.map(({ patch: _patch, ...rest }) => rest);
 }
 
 type ProviderPrComment = NonNullable<
@@ -433,8 +408,6 @@ export function mapPullRequestProviderResultData(
     return {
       number: pr.number,
       title: pr.title,
-      // Full body, never truncated — response size is bounded losslessly by
-      // the char-paginator (agents page for more), not by a 500-char preview.
       body: pr.body ?? undefined,
       url: pr.url,
       state: pr.state,
@@ -456,16 +429,8 @@ export function mapPullRequestProviderResultData(
       deletions: pr.deletions,
       ...(pr.comments && { comments: pr.comments }),
       ...(reviewSummary && { reviewSummary }),
-      // In metadata (triage) mode we keep a LIGHTWEIGHT file list — paths +
-      // additions/deletions, no patch — so "which files changed?" is answered
-      // without a second partialContent/fullContent round-trip. Full patches
-      // still require type="partialContent"/"fullContent".
-      ...(cappedFileChanges
-        ? {
-            fileChanges: includeFileChanges
-              ? cappedFileChanges
-              : toLightweightFileChanges(cappedFileChanges),
-          }
+      ...(cappedFileChanges && includeFileChanges
+        ? { fileChanges: cappedFileChanges }
         : {}),
     };
   });
@@ -505,8 +470,6 @@ export function mapFileContentToolQuery(
     matchString:
       fullContent || !query.matchString ? undefined : String(query.matchString),
     matchStringContextLines: query.matchStringContextLines ?? 5,
-    charOffset: query.charOffset ?? 0,
-    charLength: query.charLength,
     fullContent,
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,
@@ -558,16 +521,7 @@ export function mapRepoStructureToolQuery(
     ref: resolvedBranch,
     path: query.path ? String(query.path) : undefined,
     depth: typeof query.depth === 'number' ? query.depth : undefined,
-    // Tool surface uses the cross-tool `itemsPerPage` (page size) + `page`
-    // (page number); the provider/structure layer still calls its params
-    // `entriesPerPage` / `entryPageNumber` internally.
-    // Default to 100 so typical monorepo roots return in a single call.
-    entriesPerPage: (() => {
-      const ipp = (query as { itemsPerPage?: number }).itemsPerPage;
-      return typeof ipp === 'number'
-        ? ipp
-        : GITHUB_STRUCTURE_DEFAULTS.ENTRIES_PER_PAGE;
-    })(),
+    entriesPerPage: GITHUB_STRUCTURE_DEFAULTS.ENTRIES_PER_PAGE,
     entryPageNumber: (() => {
       const p = (query as { page?: number }).page;
       return typeof p === 'number' ? p : undefined;

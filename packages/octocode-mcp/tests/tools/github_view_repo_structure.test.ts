@@ -57,7 +57,6 @@ describe('GitHub View Repository Structure Tool', () => {
     mockProvider.resolveDefaultBranch.mockResolvedValue('main');
     registerViewGitHubRepoStructureTool(mockServer.server);
 
-    // Default mock response - uses structure format
     mockProvider.getRepoStructure.mockResolvedValue({
       data: {
         projectPath: 'test/repo',
@@ -236,7 +235,7 @@ describe('GitHub View Repository Structure Tool', () => {
     expect(result.isError).toBe(false);
   });
 
-  it('paginates structure at the directory-NODE level — a node files[] is never sliced — and continues', async () => {
+  it('returns directory nodes with complete files[] — never truncates mid-node', async () => {
     const mkFiles = (p: string) => [`${p}-1.ts`, `${p}-2.ts`, `${p}-3.ts`];
 
     mockProvider.getRepoStructure.mockResolvedValue({
@@ -268,7 +267,6 @@ describe('GitHub View Repository Structure Tool', () => {
             owner: 'test',
             repo: 'repo',
             branch: 'main',
-            charLength: 120,
           },
         ],
       }
@@ -278,55 +276,14 @@ describe('GitHub View Repository Structure Tool', () => {
       results: Array<{
         data: {
           structure?: Record<string, { files?: string[] }>;
-          outputPagination?: {
-            hasMore: boolean;
-            charOffset: number;
-            charLength: number;
-          };
         };
       }>;
     };
     const firstData = firstStructured.results[0]!.data;
-    const nextOffset =
-      (firstData.outputPagination?.charOffset ?? 0) +
-      (firstData.outputPagination?.charLength ?? 0);
 
-    // Node-atomic: every directory node on the page carries its FULL files[]
-    // (never a truncated slice); pagination happens between whole nodes.
     const firstNodes = Object.keys(firstData.structure ?? {});
     expect(firstNodes.length).toBeGreaterThan(0);
-    expect(firstNodes.length).toBeLessThan(4); // not all 4 fit → paginated
     for (const node of Object.values(firstData.structure ?? {})) {
-      expect(node.files?.length).toBe(3);
-    }
-    expect(firstData.outputPagination?.hasMore).toBe(true);
-
-    const secondResult = await mockServer.callTool(
-      TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE,
-      {
-        queries: [
-          {
-            owner: 'test',
-            repo: 'repo',
-            branch: 'main',
-            charOffset: nextOffset,
-            charLength: 120,
-          },
-        ],
-      }
-    );
-
-    const secondStructured = secondResult.structuredContent as {
-      results: Array<{
-        data: {
-          structure?: Record<string, { files?: string[] }>;
-        };
-      }>;
-    };
-    const secondData = secondStructured.results[0]!.data;
-    // Cursor advanced to different nodes, each still whole.
-    expect(Object.keys(secondData.structure ?? {})).not.toEqual(firstNodes);
-    for (const node of Object.values(secondData.structure ?? {})) {
       expect(node.files?.length).toBe(3);
     }
   });
@@ -587,6 +544,7 @@ describe('GitHub View Repository Structure Tool', () => {
               owner: 'facebook',
               repo: 'react',
               branch: 'nonexistent-branch',
+              verbose: true,
             },
           ],
         }
@@ -606,13 +564,10 @@ describe('GitHub View Repository Structure Tool', () => {
 
   describe('Invalid branch handling (TC-9, TC-17)', () => {
     it('should return error when branch does not exist instead of silent fallback', async () => {
-      // Provider returns branch "main" even though we asked for "nonexistent-branch"
-      // This simulates the silent fallback behavior - the provider should instead
-      // return an error or include a warning
       mockProvider.getRepoStructure.mockResolvedValue({
         data: {
           projectPath: 'facebook/react',
-          branch: 'main', // silently fell back from 'nonexistent-branch'
+          branch: 'main',
           path: '',
           structure: {
             '.': {
@@ -644,8 +599,6 @@ describe('GitHub View Repository Structure Tool', () => {
       );
 
       const responseText = getTextContent(result.content);
-      // When branch doesn't match what was requested, user should be informed
-      // Either via error OR via a warning in the response
       const branchMismatchDetected =
         responseText.includes('nonexistent-branch') ||
         (responseText.includes('branch') &&

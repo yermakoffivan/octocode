@@ -64,23 +64,13 @@ describe('LSP workspace root routing', () => {
     );
   });
 
-  it('passes the inferred root through reference lookup and fallback search', async () => {
+  it('passes the inferred root through reference lookup (LSP-only path)', async () => {
     const managerModule = await import('../../src/lsp/manager.js');
-    const referencePatternsModule =
-      await import('../../src/tools/lsp_find_references/lspReferencesPatterns.js');
 
     vi.spyOn(managerModule, 'isLanguageServerAvailable').mockResolvedValue(
       true
     );
     vi.spyOn(managerModule, 'acquirePooledClient').mockResolvedValue(null);
-    vi.spyOn(
-      referencePatternsModule,
-      'findReferencesWithPatternMatching'
-    ).mockResolvedValue({
-      status: 'empty',
-      locations: [],
-      hints: [],
-    });
 
     const { findReferences } =
       await import('../../src/tools/lsp_find_references/lsp_find_references.js');
@@ -101,34 +91,15 @@ describe('LSP workspace root routing', () => {
       inferredWorkspaceRoot,
       externalFile
     );
-    expect(
-      referencePatternsModule.findReferencesWithPatternMatching
-    ).toHaveBeenCalledWith(
-      externalFile,
-      inferredWorkspaceRoot,
-      expect.objectContaining({ symbolName: 'run' })
-    );
   });
 
-  it('passes the inferred root to call hierarchy LSP and fallback paths', async () => {
+  it('passes the inferred root to call hierarchy LSP path', async () => {
     const managerModule = await import('../../src/lsp/manager.js');
-    const callHierarchyPatternsModule =
-      await import('../../src/tools/lsp_call_hierarchy/callHierarchyPatterns.js');
 
     vi.spyOn(managerModule, 'isLanguageServerAvailable').mockResolvedValue(
       true
     );
     vi.spyOn(managerModule, 'acquirePooledClient').mockResolvedValue(null);
-    vi.spyOn(
-      callHierarchyPatternsModule,
-      'callHierarchyWithPatternMatching'
-    ).mockResolvedValue({
-      status: 'empty',
-      direction: 'incoming',
-      depth: 1,
-      incomingCalls: [],
-      hints: [],
-    });
 
     const { processCallHierarchy } =
       await import('../../src/tools/lsp_call_hierarchy/callHierarchy.js');
@@ -149,16 +120,6 @@ describe('LSP workspace root routing', () => {
     expect(managerModule.acquirePooledClient).toHaveBeenCalledWith(
       inferredWorkspaceRoot,
       externalFile
-    );
-    expect(
-      callHierarchyPatternsModule.callHierarchyWithPatternMatching
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({ symbolName: 'run', direction: 'incoming' }),
-      externalFile,
-      inferredWorkspaceRoot,
-      expect.any(String),
-      1,
-      expect.any(Object)
     );
   });
 });

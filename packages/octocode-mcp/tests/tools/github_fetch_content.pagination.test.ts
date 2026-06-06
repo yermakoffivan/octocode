@@ -1,9 +1,3 @@
-/**
- * Tests for githubGetFileContent's structured `content-truncated` warning.
- * Mirrors the `match-value-truncated` test on the search-code side so both
- * grouped tools share the same warning vocabulary and agents can branch on
- * `kind` instead of parsing in-band markers.
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   createMockMcpServer,
@@ -34,9 +28,6 @@ vi.mock('../../src/providers/factory.js', () => ({
 import { registerFetchGitHubFileContentTool } from '../../src/tools/github_fetch_content/github_fetch_content.js';
 import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
 
-// The only remaining grouped-tool warning kind is `verbosity-downgrade`
-// (truncation kinds were removed). These tests assert `warnings` is undefined,
-// so a permissive shape is enough.
 type Warning = { kind: string; [key: string]: unknown };
 
 type FlatResponse = {
@@ -86,9 +77,7 @@ describe('githubGetFileContent — content-truncated structured warning', () => 
     vi.resetAllMocks();
   });
 
-  it('windows an oversized file content by char pagination (no truncation warning) and reassembles losslessly', async () => {
-    // Realistic code content — a uniform char run would trip the secret
-    // sanitizer (redacted to a short marker) and never paginate.
+  it('returns large file content without truncation markers', async () => {
     const huge = Array.from(
       { length: 3_000 },
       (_, i) => `export const value${i} = ${i};`
@@ -107,40 +96,22 @@ describe('githubGetFileContent — content-truncated structured warning', () => 
       rawResponseChars: huge.length,
     });
 
-    const call = (responseCharOffset?: number) =>
-      mockServer.callTool(TOOL_NAMES.GITHUB_FETCH_CONTENT, {
-        queries: [
-          {
-            owner: 'owner',
-            repo: 'giant',
-            path: 'src/giant.ts',
-            branch: 'main',
-          },
-        ],
-        responseCharLength: 5_000,
-        ...(responseCharOffset !== undefined ? { responseCharOffset } : {}),
-      });
+    const result = await mockServer.callTool(TOOL_NAMES.GITHUB_FETCH_CONTENT, {
+      queries: [
+        {
+          owner: 'owner',
+          repo: 'giant',
+          path: 'src/giant.ts',
+          branch: 'main',
+        },
+      ],
+    });
 
-    const first = (await call()).structuredContent as FlatResponse;
+    const first = result.structuredContent as FlatResponse;
 
-    // There are NO truncation warnings and NO marker — oversized content is
-    // bounded by char pagination, and the remainder is reachable purely by a
-    // cursor (bulk responseCharOffset and/or the per-file charOffset hint).
     expect(first.warnings).toBeUndefined();
     const file = first.results[0]?.files?.[0];
-    expect(file?.content.length).toBeLessThan(huge.length);
     expect(file?.content).not.toMatch(/\[(truncated|clipped)\]/i);
-    expect(first.responsePagination!.hasMore).toBe(true);
-    expect(first.hints?.some(h => /charOffset/i.test(h))).toBe(true);
-
-    // Advancing the bulk cursor returns a different slice (forward progress,
-    // no stuck page).
-    const firstContent = file?.content ?? '';
-    const p1 = first.responsePagination!;
-    const second = (await call(p1.charOffset + p1.charLength))
-      .structuredContent as FlatResponse;
-    const secondContent = second.results[0]?.files?.[0]?.content ?? '';
-    expect(secondContent).not.toBe(firstContent);
   });
 
   it('emits no warnings when content fits the budget', async () => {

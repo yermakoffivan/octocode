@@ -1,14 +1,8 @@
-/**
- * Main entry point for ripgrep search.
- *
- * Bundled `@vscode/ripgrep` is the only engine. The historical grep
- * fallback was removed in May-2026 cleanup — see `cleanup_contract.test.ts`.
- */
 import {
   checkCommandAvailability,
   getMissingCommandError,
 } from '../../utils/exec/commandAvailability.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import { applyWorkflowMode } from '@octocodeai/octocode-core/schemas/runtime';
 import type { RipgrepQuerySchema } from '@octocodeai/octocode-core/schemas';
 

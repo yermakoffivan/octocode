@@ -230,6 +230,7 @@ function getSkillsSourceCandidates(): string[] {
 
   return [
     resolve(currentDir, '..', 'skills'),
+    resolve(currentDir, '..', '..', 'skills'),
     resolve(currentDir, '..', '..', '..', '..', 'skills'),
     resolve(currentDir, '..', '..', '..', 'skills'),
   ];

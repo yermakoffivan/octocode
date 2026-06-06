@@ -1,13 +1,11 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { NpmPackageQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type PackageSearchQuery = Omit<
   z.infer<typeof NpmPackageQuerySchema>,
   'ecosystem'
-> & {
-  ecosystem?: 'npm';
-};
+>;
 import {
   searchPackage,
   checkNpmDeprecation,
@@ -19,29 +17,10 @@ import type {
   DeprecationInfo,
 } from '../../utils/package/common.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
-import {
-  isConcise,
-  isCompact,
-  compactTrimHints,
-  makeAdvisoryPredicate,
-} from '../../scheme/verbosity.js';
+import { isVerbose } from '../../scheme/verbosity.js';
 import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
-
-const CONCISE_PACKAGE_SEARCH_LIMIT = 3;
-
-/** Advisory hints packageSearch emits; stripped under compact. Substring-OR,
- * case-insensitive — tolerates wording shifts and surrounding wrappers. */
-const isAdvisoryPackageSearchHint = makeAdvisoryPredicate([
-  'searchlimit',
-  'scoped package',
-  'spelling',
-  'alternative',
-]);
-import {
-  handleCatchError,
-  createSuccessResult,
-  createErrorResult,
-} from '../utils.js';
+import { createSuccessResult, createErrorResult } from '../utils.js';
+import { getHints } from '../../hints/index.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import type { ToolExecutionArgs } from '../../types/execution.js';
 
@@ -52,7 +31,7 @@ function isPackageSearchError(
 }
 
 function getPackageName(pkg: PackageResult): string {
-  if ('path' in pkg) {
+  if ('path' in pkg && typeof pkg.path === 'string') {
     return pkg.path;
   }
   return pkg.name;
@@ -80,45 +59,23 @@ function parseRepoInfo(repoUrl: string | null | undefined): {
   return {};
 }
 
-// Pagination note: the returned `packages` array is NOT a data-loss surface —
-// it is char-paginated losslessly by the bulk engine (PACKAGE_SEARCH case in
-// structuredPagination.ts → paginatePackageEntry), so every returned package is
-// reachable by advancing the charOffset / responseCharOffset cursor. `itemsPerPage`
-// is the explicit fetch cap (how many the registry query returns), the cross-tool
-// page-size knob that replaced the old upstream `searchLimit`.
-// TODO (feature, not data loss): fetching results BEYOND itemsPerPage needs a
-// registry result-page cursor, and per-result lastPublished/weeklyDownloads
-// enrichment is currently only applied to exact-match lookups (itemsPerPage=1)
-// via fetchPackageDetailsWithError.
 export async function searchPackages(
   args: ToolExecutionArgs<PackageSearchQuery>
 ): Promise<CallToolResult> {
-  const { queries, responseCharOffset, responseCharLength } = args;
+  const { queries } = args;
 
   return executeBulkOperation(
     queries,
     async (query: PackageSearchQuery, _index: number) => {
       try {
-        // Pre-flight verbosity caps under concise: cap searchLimit to 1 and
-        // force npmFetchMetadata=false (concise's documented lean contract).
-        const pkgVerbosityIsConcise = isConcise(
-          (query as WithVerbosity<typeof query>).verbosity
-        );
-        if (pkgVerbosityIsConcise) {
-          const userItemsPerPage = (query as { itemsPerPage?: number })
-            .itemsPerPage;
-          if (
-            typeof userItemsPerPage === 'number' &&
-            userItemsPerPage > CONCISE_PACKAGE_SEARCH_LIMIT
-          ) {
-            (query as { itemsPerPage?: number }).itemsPerPage =
-              CONCISE_PACKAGE_SEARCH_LIMIT;
-          }
-          if (
-            (query as { npmFetchMetadata?: boolean }).npmFetchMetadata === true
-          ) {
-            (query as { npmFetchMetadata?: boolean }).npmFetchMetadata = false;
-          }
+        const queryWithVerbosity = query as WithVerbosity<typeof query>;
+        if (
+          queryWithVerbosity.verbose !== undefined &&
+          (query as { npmFetchMetadata?: boolean }).npmFetchMetadata ===
+            undefined
+        ) {
+          (query as { npmFetchMetadata?: boolean }).npmFetchMetadata =
+            queryWithVerbosity.verbose;
         }
 
         if (!query.name) {
@@ -127,34 +84,21 @@ export async function searchPackages(
             query
           );
         }
-        if (query.ecosystem !== undefined && query.ecosystem !== 'npm') {
-          return createErrorResult(
-            'Only ecosystem="npm" is supported for package search',
-            query
-          );
-        }
-        // page > 1 has no registry cursor implementation. Reject early so agents
-        // don't silently receive duplicate first-page data. Use `itemsPerPage` to
-        // control how many results the first (and only) page returns.
-        const requestedPage = (query as { page?: number }).page ?? 1;
-        if (requestedPage > 1) {
-          return createErrorResult(
-            `packageSearch does not support page=${requestedPage}. Only page=1 is implemented. Use itemsPerPage to control result count.`,
-            query
-          );
-        }
         const validatedQuery = {
           ...query,
-          ecosystem: query.ecosystem ?? ('npm' as const),
         } as PackageSearchQuery & {
-          ecosystem: 'npm';
           name: string;
         };
         const apiResult = await searchPackage(validatedQuery);
 
         if (isPackageSearchError(apiResult)) {
+          const errorHints = getHints(TOOL_NAMES.PACKAGE_SEARCH, 'error', {
+            originalError: apiResult.error,
+          });
+          const mergedHints = [...(apiResult.hints ?? []), ...errorHints];
           return createErrorResult(apiResult.error, query, {
             rawResponse: apiResult,
+            customHints: mergedHints,
           });
         }
 
@@ -162,7 +106,14 @@ export async function searchPackages(
           const repoUrl = getPackageRepo(pkg);
           const { owner, repo } = parseRepoInfo(repoUrl);
           const name = getPackageName(pkg);
-          return { ...pkg, name, ...(owner && repo ? { owner, repo } : {}) };
+          const { path: _path, ...pkgRest } = pkg as PackageResult & {
+            path?: string;
+          };
+          return {
+            ...pkgRest,
+            name,
+            ...(owner && repo ? { owner, repo } : {}),
+          };
         });
 
         const result = {
@@ -187,9 +138,6 @@ export async function searchPackages(
           { data: result, extraHints },
           query
         );
-        // `itemsPerPage` is what we asked the registry for. When totalFound is
-        // not returned by the API, assume there may be more if the result count
-        // exactly hits the requested cap (conservative partial signal).
         const itemsPerPage =
           (query as { itemsPerPage?: number }).itemsPerPage ?? 20;
         const isPartial =
@@ -228,14 +176,16 @@ export async function searchPackages(
           }
         );
       } catch (error) {
-        return handleCatchError(error, query);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorHints = getHints(TOOL_NAMES.PACKAGE_SEARCH, 'error', {
+          originalError: errorMsg,
+        });
+        return createErrorResult(error, query, { customHints: errorHints });
       }
     },
     {
       toolName: TOOL_NAMES.PACKAGE_SEARCH,
       keysPriority: ['packages', 'totalFound', 'error'],
-      responseCharOffset,
-      responseCharLength,
       peerHints: true,
       peerEvidence: true,
     }
@@ -259,11 +209,8 @@ function generateSuccessHints(
     hints.push(`DEPRECATED: ${name} - ${msg}`);
   }
 
-  // Exact install command using the resolved package name — an actionable
-  // next step that uses data only available after the registry search resolves.
   hints.push(`Install: npm install ${name}`);
 
-  // Escalation path: guide agents to the GitHub source for deeper research.
   const repoUrl = getPackageRepo(pkg);
   const { owner, repo } = parseRepoInfo(repoUrl);
   if (owner && repo) {
@@ -273,6 +220,10 @@ function generateSuccessHints(
   } else if (repoUrl) {
     hints.push(
       `Repository: ${repoUrl} — use githubSearchRepositories to find it on GitHub.`
+    );
+  } else {
+    hints.push(
+      `No repository URL in npm manifest for "${name}" — use githubSearchRepositories with the package name to find the source repo.`
     );
   }
 
@@ -293,12 +244,6 @@ function generateEmptyHints(query: PackageSearchQuery): string[] {
   return hints;
 }
 
-/**
- * Per-tool verbosity shaping for packageSearch. Under concise, projects each
- * package to {name, version, repository, deprecated} (cap 3) and emits a
- * summary + drill-back hint. Under compact, advisory hints are trimmed to 2.
- * Basic / omitted: passthrough.
- */
 export function applyPackageSearchVerbosity(
   input: {
     data: { packages: PackageResult[]; totalFound: number };
@@ -309,33 +254,29 @@ export function applyPackageSearchVerbosity(
   data: { packages: unknown[]; totalFound: number };
   extraHints: string[];
 } {
-  const verbosity = (query as WithVerbosity<typeof query>).verbosity;
+  const queryWithVerbosity = query as WithVerbosity<typeof query>;
 
-  if (isConcise(verbosity)) {
-    const projected = (input.data.packages ?? [])
-      .slice(0, CONCISE_PACKAGE_SEARCH_LIMIT)
-      .map(p => ({
-        name: getPackageName(p),
-        version: (p as { version?: string }).version,
-        repository: getPackageRepo(p),
-        deprecated: (p as { deprecated?: unknown }).deprecated,
-      }));
-    const summary = `${input.data.packages?.length ?? 0} packages found`;
-    return {
-      data: { packages: projected, totalFound: input.data.totalFound },
-      extraHints: [summary, ...input.extraHints],
-    };
+  if (isVerbose(queryWithVerbosity)) {
+    return { data: input.data, extraHints: input.extraHints };
   }
 
-  const allHints = [...input.extraHints];
-  if (isCompact(verbosity)) {
-    return {
-      data: input.data,
-      extraHints:
-        compactTrimHints(allHints, isAdvisoryPackageSearchHint, 2) ?? [],
-    };
-  }
-  return { data: input.data, extraHints: allHints };
+  const METADATA_KEYS = new Set([
+    'license',
+    'weeklyDownloads',
+    'recentVersions',
+    'publishedAt',
+    'maintainers',
+  ]);
+  const packages = (input.data.packages ?? []).map(p => {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(
+      p as unknown as Record<string, unknown>
+    )) {
+      if (!METADATA_KEYS.has(key)) result[key] = val;
+    }
+    return result;
+  });
+  return { data: { ...input.data, packages }, extraHints: input.extraHints };
 }
 
 function generateNameVariations(name: string): string[] {

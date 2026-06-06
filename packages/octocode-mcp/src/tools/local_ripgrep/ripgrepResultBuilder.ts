@@ -1,4 +1,4 @@
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { RipgrepQuerySchema } from '@octocodeai/octocode-core/schemas';
 import type { LocalSearchCodeFile } from '@octocodeai/octocode-core/types';
 import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-types';
@@ -9,27 +9,10 @@ import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
 import { compareIsoDateDescending } from '../../utils/core/compare.js';
 import { promises as fs } from 'fs';
 import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
-import {
-  isConcise,
-  isCompact,
-  compactTrimHints,
-  makeAdvisoryPredicate,
-} from '../../scheme/verbosity.js';
-
-/** Advisory hints localSearchCode emits; stripped under compact.
- * Substring-OR, case-insensitive. */
-const isAdvisoryRipgrepHint = makeAdvisoryPredicate([
-  'large result',
-  'payload is large',
-  'narrow:',
-  'timed out',
-]);
+import { isVerbose } from '../../scheme/verbosity.js';
 
 type RipgrepQuery = WithVerbosity<UpstreamRipgrepQuery>;
 
-/**
- * Build the final search result with pagination and metadata
- */
 export async function buildSearchResult(
   parsedFiles: LocalSearchCodeFile[],
   configuredQuery: RipgrepQuery,
@@ -68,9 +51,6 @@ export async function buildSearchResult(
     configuredQuery.filesOnly ||
     configuredQuery.count ||
     configuredQuery.countMatches;
-  // When in file-list mode (filesOnly, count, countMatches), use stats.matchCount if available.
-  // For count/countMatches modes, stats.matchCount is computed from parsed per-file counts.
-  // For filesOnly mode (-l), stats are unavailable so fall back to summing individual matchCounts.
   const summedMatches = limitedFiles.reduce(
     (sum: number, f: LocalSearchCodeFile & { modified?: string }) =>
       sum + f.matchCount,
@@ -80,9 +60,6 @@ export async function buildSearchResult(
     ? (stats?.matchCount ?? summedMatches)
     : summedMatches;
 
-  // Cross-tool aligned knobs: `itemsPerPage` = files (top-level page size),
-  // `matchesPerFile` = matches shown per file (inner axis), `page` = file page
-  // number. Internal var names keep the file/match wording for clarity.
   const aligned = configuredQuery as {
     itemsPerPage?: number;
     matchesPerFile?: number;
@@ -134,9 +111,7 @@ export async function buildSearchResult(
       ? [
           `File page ${filePageNumber}/${totalFilePages} (showing ${finalFiles.length} of ${totalFiles}, ${totalMatches} matches). Next: page=${filePageNumber + 1}`,
         ]
-      : // Overshoot: requested a page past the last one. Say so explicitly
-        // instead of returning an empty page with no explanation.
-        totalFilePages > 0 && filePageNumber > totalFilePages
+      : totalFilePages > 0 && filePageNumber > totalFilePages
         ? [
             `Requested page ${filePageNumber} is outside available range (1-${totalFilePages}). Use page=${totalFilePages} for the last page.`,
           ]
@@ -151,7 +126,7 @@ export async function buildSearchResult(
   const filesWithMoreMatches = finalFiles.filter(f => f.pagination?.hasMore);
   if (filesWithMoreMatches.length > 0) {
     paginationHints.push(
-      `Note: ${filesWithMoreMatches.length} file(s) have more matches - use matchesPerFile to see more`
+      `Note: ${filesWithMoreMatches.length} file(s) have more matches — add maxMatchesPerFile to retrieve more per file`
     );
   }
 
@@ -161,8 +136,6 @@ export async function buildSearchResult(
     totalMatches
   );
 
-  // Active-filter echo-back: agents need to know which constraints were applied
-  // so they can diagnose empty results or unexpected narrowing.
   const q = configuredQuery as Record<string, unknown>;
   const activeFilters: string[] = [];
   const includeGlobs = q.include as string[] | undefined;
@@ -186,9 +159,6 @@ export async function buildSearchResult(
   }
 
   const fullResult: LocalSearchCodeToolResult = {
-    // status omitted on success (absent ≡ "hasResults"); empty/error
-    // branches set it explicitly. searchEngine also omitted — only one
-    // engine, marker carries no information.
     files: finalFiles,
     pagination: {
       currentPage: filePageNumber,
@@ -198,7 +168,15 @@ export async function buildSearchResult(
       hasMore: filePageNumber < totalFilePages,
     },
     ...(warnings.length > 0 ? { warnings } : {}),
-    hints: [...paginationHints, ...refinementHints],
+    hints: [
+      ...(totalFiles > 0
+        ? [
+            'Results include lineHint values — pass them to lspGotoDefinition / lspFindReferences / lspCallHierarchy to get semantic definitions and references.',
+          ]
+        : []),
+      ...paginationHints,
+      ...refinementHints,
+    ],
   };
 
   return applyRipgrepVerbosity(fullResult, configuredQuery, {
@@ -207,41 +185,26 @@ export async function buildSearchResult(
   });
 }
 
-/**
- * When `verbosity:"concise"` is requested, drop `files[]` and emit a one-line
- * summary plus a path:line drill-back hint pointing at the first matching
- * file. Omitted / `"basic"` preserves `files[]`; compact trims advisory hints.
- */
 export function applyRipgrepVerbosity(
   result: LocalSearchCodeToolResult,
   query: RipgrepQuery,
-  totals: { totalMatches: number; totalFiles: number }
+  _totals: { totalMatches: number; totalFiles: number }
 ): LocalSearchCodeToolResult {
-  if (isConcise(query.verbosity)) {
-    // hasResults ≡ absent status; only 'empty'/'error' carry a marker.
-    if (result.status !== undefined) return result;
-    const topFile = result.files?.[0];
-    const topMatch = topFile?.matches?.[0];
-    const topHint =
-      topFile && topMatch
-        ? `${topFile.path}:${topMatch.line}`
-        : (topFile?.path ?? '');
-    const summary =
-      `${totals.totalMatches} matches in ${totals.totalFiles} files` +
-      (topHint ? ` (top: ${topHint})` : '');
-    return {
-      ...result,
-      files: [],
-      hints: [summary],
-    };
-  }
-  if (isCompact(query.verbosity)) {
-    return {
-      ...result,
-      hints: compactTrimHints(result.hints, isAdvisoryRipgrepHint, 2),
-    };
-  }
-  return result;
+  if (isVerbose(query) || result.status !== undefined) return result;
+
+  if (!result.files?.length) return result;
+  const hasModified = result.files.some(f => 'modified' in (f as object));
+  if (!hasModified) return result;
+  return {
+    ...result,
+    files: result.files.map(f => {
+      const { modified: _m, ...rest } = f as typeof f & {
+        modified?: unknown;
+      };
+      void _m;
+      return rest as typeof f;
+    }),
+  };
 }
 
 function _getStructuredResultSizeHints(
@@ -251,8 +214,6 @@ function _getStructuredResultSizeHints(
 ): string[] {
   const hints: string[] = [];
 
-  // Strict policy: only emit a recovery hint when the result set is
-  // genuinely too large; one concise line, no headings or empty separators.
   if (totalMatches > 100 || files.length > 20) {
     const recoveries: string[] = [];
     if (!query.type && !query.include) recoveries.push('add type or include');

@@ -54,7 +54,6 @@ function parseSkillReadTarget(input: string): SkillReadTarget | null {
     ? input.replace('~/', `${HOME}/`)
     : input;
 
-  // Local: absolute path or relative ./
   if (
     expanded.startsWith('/') ||
     expanded.startsWith('./') ||
@@ -67,7 +66,6 @@ function parseSkillReadTarget(input: string): SkillReadTarget | null {
     return { type: 'local', skillDir };
   }
 
-  // GitHub URL: https://github.com/owner/repo/tree/branch/path
   if (expanded.startsWith('https://github.com/')) {
     const m = expanded.match(
       /github\.com\/([^/]+)\/([^/]+)\/(tree|blob)\/([^/]+)\/(.+)/
@@ -82,7 +80,6 @@ function parseSkillReadTarget(input: string): SkillReadTarget | null {
         skillPath,
       };
     }
-    // https://github.com/owner/repo — no path
     const base = expanded.match(/github\.com\/([^/]+)\/([^/]+)\/?$/);
     if (base) {
       return {
@@ -96,7 +93,6 @@ function parseSkillReadTarget(input: string): SkillReadTarget | null {
     return null;
   }
 
-  // GitHub shorthand: owner/repo/path/to/skill or owner/repo/path/SKILL.md
   const parts = expanded.split('/');
   if (parts.length >= 2) {
     const owner = parts[0];
@@ -340,7 +336,9 @@ export const skillsCommand: CLICommand = {
       destDir
     );
 
-    if (!dirExists(srcDir)) {
+    const needsBundledSource =
+      subcommand === 'install' && !localPath && !specificSkill;
+    if (needsBundledSource && !dirExists(srcDir)) {
       console.log();
       console.log(`  ${c('red', '✗')} Skills directory not found`);
       console.log(`  ${dim('Expected:')} ${srcDir}`);
@@ -352,7 +350,6 @@ export const skillsCommand: CLICommand = {
     const availableSkills = getAvailableSkillNames(srcDir);
 
     if (subcommand === 'read') {
-      // Accept path as positional arg OR --local flag
       const rawInput = args.args[1] ?? localPath;
 
       if (!rawInput) {
@@ -433,6 +430,24 @@ export const skillsCommand: CLICommand = {
         }
         console.log();
         console.log(`  ${c('red', '✗')} ${readError ?? 'Empty content'}`);
+        if (
+          readError?.includes('not found') ||
+          readError?.includes('tried main')
+        ) {
+          console.log(
+            `  ${dim('This skill may have been moved or removed from the registry.')}`
+          );
+          const skillName =
+            (rawInput as string)
+              .replace(/\/SKILL\.md$/i, '')
+              .split('/')
+              .at(-1) ?? '';
+          if (skillName) {
+            console.log(
+              `  ${dim('Search for it:')} octocode skills search "${skillName}" --direct`
+            );
+          }
+        }
         console.log();
         process.exitCode = 1;
         return;
@@ -492,7 +507,8 @@ export const skillsCommand: CLICommand = {
         args.args[1] ||
         (args.options['query'] as string) ||
         (args.options['q'] as string);
-      const directMode = Boolean(args.options['direct']);
+      const isHumanTTY = process.stdout.isTTY === true;
+      const directMode = Boolean(args.options['direct']) || isHumanTTY;
       const rawLimit = args.options['limit'] ?? args.options['l'];
       const limit =
         typeof rawLimit === 'string' && /^\d+$/.test(rawLimit)
@@ -520,7 +536,6 @@ export const skillsCommand: CLICommand = {
       const SEARCH_SKILL_REFS =
         'https://github.com/bgauryy/octocode/tree/main/skills/octocode-search-skill/references';
 
-      // --direct: call skills.sh and show results immediately (human mode)
       if (directMode) {
         const spinner = jsonOutput
           ? null
@@ -572,7 +587,6 @@ export const skillsCommand: CLICommand = {
           return;
         }
 
-        // Group by repo, sorted by total installs
         const byRepo = new Map<string, SkillsShResult[]>();
         for (const r of webData.results) {
           const bucket = byRepo.get(r.source) ?? [];
@@ -607,7 +621,6 @@ export const skillsCommand: CLICommand = {
           }
         }
 
-        // --install: install the top-ranked result automatically
         if (installTopResult && webData.results.length > 0) {
           const topAll = webData.results.sort(
             (a, b) => b.installs - a.installs
@@ -646,7 +659,6 @@ export const skillsCommand: CLICommand = {
               `  ${dim('Try manually:')} octocode skills install --local <path>`
             );
           } else {
-            // Write SKILL.md directly to each target dir — no tmp dir needed
             const { mkdirSync: mkd, writeFileSync: wf } =
               await import('node:fs');
             let installed = 0;
@@ -655,7 +667,7 @@ export const skillsCommand: CLICommand = {
               const skillDir = path.join(dest.destDir, top.skillId);
               try {
                 if (!force && dirExists(skillDir)) {
-                  continue; // skip existing unless --force
+                  continue;
                 }
                 mkd(skillDir, { recursive: true, mode: 0o755 });
                 wf(path.join(skillDir, 'SKILL.md'), skillContent, 'utf8');
@@ -688,7 +700,6 @@ export const skillsCommand: CLICommand = {
         return;
       }
 
-      // Default (agent) mode: output the search protocol
       if (jsonOutput) {
         console.log(
           JSON.stringify({
@@ -707,6 +718,9 @@ export const skillsCommand: CLICommand = {
 
       console.log();
       console.log(`  ${bold(`Skill Search: "${query}"`)}`);
+      console.log(
+        `  ${dim('This is the agent search protocol. For human-readable results now, add --direct.')}`
+      );
       console.log();
       console.log(
         `  Read and follow the search protocol, then search for: ${c('cyan', bold(query))}`
@@ -724,7 +738,6 @@ export const skillsCommand: CLICommand = {
     }
 
     if (subcommand === 'list') {
-      // Validate --target filter
       if (targetFilter) {
         const valid = SKILL_INSTALL_TARGETS.includes(
           targetFilter as (typeof SKILL_INSTALL_TARGETS)[number]
@@ -749,7 +762,6 @@ export const skillsCommand: CLICommand = {
         }
       }
 
-      // Scan ALL skill target dirs on OS — show what is actually installed
       const targetsToScan = targetFilter
         ? SKILL_INSTALL_TARGETS.filter(t => t === targetFilter)
         : SKILL_INSTALL_TARGETS;
@@ -831,7 +843,6 @@ export const skillsCommand: CLICommand = {
     }
 
     if (subcommand === 'install') {
-      // --local <path>: install from a local skill folder (not bundled)
       if (localPath) {
         const absLocal = resolvePath(
           localPath.startsWith('~/')
@@ -991,7 +1002,6 @@ export const skillsCommand: CLICommand = {
         return;
       }
 
-      // --dry-run: show what would be installed without writing
       if (dryRun) {
         const dryResult = availableSkills.flatMap(skill =>
           targetDestinations.map(d => ({
@@ -1094,7 +1104,6 @@ export const skillsCommand: CLICommand = {
     }
 
     if (subcommand === 'remove') {
-      // --local <path>: derive skill name from the folder name
       const effectiveSkill =
         specificSkill ??
         (localPath
@@ -1190,7 +1199,6 @@ export const skillsCommand: CLICommand = {
     }
 
     if (subcommand === 'sync') {
-      // Copy skills from one target to another
       const fromTarget = args.args[1];
       const toTarget = args.args[2];
 

@@ -109,8 +109,8 @@ describe('GitHub Search Repositories Coverage', () => {
     });
   }
 
-  describe('concise verbosity', () => {
-    it('caps the user limit, projects repos, and emits a top summary hint', async () => {
+  describe('verbose flag — pass-through contract', () => {
+    it('verbose:false — limit is not capped, returns all repos', async () => {
       const repos = [
         repo({ id: '1', fullPath: 'a/top-repo', stars: 900, language: 'Go' }),
         repo({ id: '2', fullPath: 'b/second', stars: 500 }),
@@ -120,56 +120,44 @@ describe('GitHub Search Repositories Coverage', () => {
       mockProvider.searchRepos.mockResolvedValue(okResponse(repos));
 
       const result = await call({
-        id: 'concise_cap',
-        verbosity: 'concise',
+        id: 'verbose_false',
+        verbose: false,
         keywordsToSearch: ['anything'],
         limit: 50,
       });
 
-      // Limit must have been capped to CONCISE_REPOS_LIMIT (3).
       const passedQuery = mockProvider.searchRepos.mock.calls[0]?.[0] as {
         limit?: number;
       };
-      expect(passedQuery.limit).toBe(3);
-
-      const text = getTextContent(result.content);
-      // summary hint with top repo full_name
-      expect(text).toContain('repos (top: a/top-repo)');
-      // concise projection keeps full_name/stars/language and caps to 3
-      const structured = result.structuredContent as {
-        results?: Array<{ data?: { repositories?: unknown[] } }>;
-      };
-      expect(structured.results?.[0]?.data?.repositories?.length).toBe(3);
+      expect(passedQuery.limit).not.toBe(3);
+      expect(result.isError).toBe(false);
     });
 
-    it('defaults the limit to the concise cap when none was passed', async () => {
+    it('verbose:false — default limit applies when limit not passed', async () => {
       mockProvider.searchRepos.mockResolvedValue(
         okResponse([repo({ fullPath: 'a/only' })])
       );
 
-      await call({
-        id: 'concise_default_limit',
-        verbosity: 'concise',
+      const result = await call({
+        id: 'verbose_false_no_limit',
+        verbose: false,
         keywordsToSearch: ['x'],
       });
 
-      const passedQuery = mockProvider.searchRepos.mock.calls[0]?.[0] as {
-        limit?: number;
-      };
-      expect(passedQuery.limit).toBe(3);
+      expect(result.isError).toBe(false);
     });
 
-    it('omits the top summary fragment when no repositories are returned', async () => {
+    it('verbose:false — no (top:) summary hint when no repos found', async () => {
       mockProvider.searchRepos.mockResolvedValue(okResponse([]));
 
       const result = await call({
-        id: 'concise_empty',
-        verbosity: 'concise',
+        id: 'verbose_false_empty',
+        verbose: false,
         keywordsToSearch: ['nomatch'],
       });
 
+      expect(result.isError).toBe(false);
       const text = getTextContent(result.content);
-      expect(text).toContain('0 repos');
       expect(text).not.toContain('(top:');
     });
   });
@@ -244,7 +232,6 @@ describe('GitHub Search Repositories Coverage', () => {
           data?: { repositories?: Array<{ owner: string; repo: string }> };
         }>;
       };
-      // dated repo ranks before the one with no created date
       expect(structured.results?.[0]?.data?.repositories?.[0]).toMatchObject({
         owner: 'b',
         repo: 'dated',
@@ -281,7 +268,6 @@ describe('GitHub Search Repositories Coverage', () => {
     it('boosts repos matching the requested language and term in topics/description', async () => {
       mockProvider.searchRepos.mockResolvedValue(
         okResponse([
-          // matches stars only, low relevance
           repo({
             id: '1',
             fullPath: 'org/unrelated',
@@ -290,7 +276,6 @@ describe('GitHub Search Repositories Coverage', () => {
             topics: ['misc'],
             description: 'nothing here',
           }),
-          // exact repo-name + language match + topic + description hit
           repo({
             id: '2',
             fullPath: 'org/whale',
@@ -409,19 +394,53 @@ describe('GitHub Search Repositories Coverage', () => {
     });
   });
 
-  describe('compact verbosity', () => {
-    it('trims advisory recovery hints under compact when results are empty', async () => {
+  describe('verbose:true — full hints returned (metadata mode)', () => {
+    it('returns full hints even when results are empty', async () => {
       mockProvider.searchRepos.mockResolvedValue(okResponse([]));
 
       const result = await call({
-        id: 'compact_empty',
-        verbosity: 'compact',
+        id: 'verbose_true_empty',
+        verbose: true,
         topicsToSearch: ['t1'],
       });
 
+      expect(result.isError).toBe(false);
+    });
+  });
+
+  describe('noisy results hint — no owner/language/stars filter', () => {
+    it('emits narrowing hint when results are returned but no owner/language/stars given', async () => {
+      mockProvider.searchRepos.mockResolvedValue(
+        okResponse([
+          repo({ fullPath: 'a/repo1' }),
+          repo({ fullPath: 'b/repo2' }),
+        ])
+      );
+
+      const result = await call({
+        id: 'noisy_keywords',
+        keywordsToSearch: ['typescript'],
+      });
+
       const text = getTextContent(result.content);
-      // advisory "synonyms" recovery prose should be trimmed under compact
-      expect(text).not.toContain('try synonyms');
+      expect(result.isError).toBe(false);
+      expect(text).toContain('owner');
+    });
+
+    it('does not emit narrowing hint when owner is provided', async () => {
+      mockProvider.searchRepos.mockResolvedValue(
+        okResponse([repo({ fullPath: 'myorg/repo1' })])
+      );
+
+      const result = await call({
+        id: 'owner_scoped',
+        keywordsToSearch: ['typescript'],
+        owner: 'myorg',
+      });
+
+      const text = getTextContent(result.content);
+      expect(result.isError).toBe(false);
+      expect(text).not.toContain('Large result set with no owner');
     });
   });
 });

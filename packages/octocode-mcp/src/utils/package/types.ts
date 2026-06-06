@@ -1,9 +1,10 @@
 export interface PackageSearchInput {
-  ecosystem: 'npm';
   name: string;
   itemsPerPage?: number;
-  /** 1-based result page; maps to the registry `from` offset (page-1)*itemsPerPage. */
+
   page?: number;
+
+  verbose?: boolean;
   npmFetchMetadata?: boolean;
   mainResearchGoal?: string;
   researchGoal?: string;
@@ -18,11 +19,18 @@ export interface MinimalPackageResult {
 }
 
 export interface NpmPackageResult {
+  name: string;
+
+  npmUrl: string;
   repoUrl: string | null;
-  path: string;
+  path?: string;
   version: string;
-  mainEntry: string | null;
-  typeDefinitions: string | null;
+
+  source?: 'cli' | 'registry' | 'web';
+
+  mainEntry?: string | null;
+
+  typeDefinitions?: string | null;
   lastPublished?: string;
   owner?: string;
   repo?: string;
@@ -41,7 +49,6 @@ export type PackageResult = MinimalPackageResult | NpmPackageResult;
 
 export interface PackageSearchAPIResult {
   packages: PackageResult[];
-  ecosystem: 'npm';
   totalFound: number;
   rawResponseChars?: number;
 }

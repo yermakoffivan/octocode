@@ -14,8 +14,8 @@ beforeAll(async () => {
 
 describe('executeBulkOperation', () => {
   describe('Single query scenarios', () => {
-    it('adds query-level outputPagination with structured subsets', async () => {
-      const queries = [{ id: 'q1', charLength: 80 }];
+    it('returns all query results without truncation', async () => {
+      const queries = [{ id: 'q1' }];
       const processor = vi.fn().mockResolvedValue({
         repositories: [
           { name: 'alpha-repository-with-long-name' },
@@ -32,15 +32,11 @@ describe('executeBulkOperation', () => {
         results: Array<{
           data: {
             repositories?: Array<{ name: string }>;
-            outputPagination?: { hasMore: boolean; charLength: number };
           };
         }>;
       };
 
-      expect(structured.results[0]?.data.outputPagination).toBeDefined();
-      expect(
-        (structured.results[0]?.data.repositories || []).length
-      ).toBeLessThan(3);
+      expect(structured.results[0]?.data.repositories).toHaveLength(3);
     });
 
     it('marks peer evidence incomplete when query output pagination has more data', async () => {
@@ -80,7 +76,7 @@ describe('executeBulkOperation', () => {
       );
     });
 
-    it('marks peer evidence incomplete when bulk response pagination has more data', async () => {
+    it('marks peer evidence complete when all queries succeed', async () => {
       const queries = Array.from({ length: 5 }, (_, index) => ({
         id: `q${index + 1}`,
       }));
@@ -104,28 +100,21 @@ describe('executeBulkOperation', () => {
       const result = await executeBulkOperation(queries, processor, {
         toolName: TOOL_NAMES.PACKAGE_SEARCH,
         peerEvidence: true,
-        responseCharLength: 1000,
       });
 
       const structured = result.structuredContent as {
-        responsePagination?: { hasMore: boolean };
         evidence?: {
           kind?: string;
           complete?: boolean;
           confidence?: string;
-          reason?: string;
         };
       };
 
-      expect(structured.responsePagination?.hasMore).toBe(true);
       expect(structured.evidence).toMatchObject({
         kind: 'package',
-        complete: false,
+        complete: true,
         confidence: 'high',
       });
-      expect(structured.evidence?.reason).toContain(
-        'Bulk response pagination has more data.'
-      );
     });
 
     it('should process single query with hasResults status', async () => {
@@ -148,8 +137,6 @@ describe('executeBulkOperation', () => {
       expect(responseText).toContain('results:');
       expect(responseText).toContain('id: "q1"');
       expect(responseText).not.toContain('instructions:');
-      // hasResults is now signaled by ABSENCE of `status` — only 'empty' and
-      // 'error' are emitted. The path field still appears on the happy path.
       expect(responseText).not.toContain('status: "hasResults"');
       expect(responseText).toContain('path: "test.ts"');
       expect(responseText).toContain('Test hint for hasResults');
@@ -195,8 +182,6 @@ describe('executeBulkOperation', () => {
     });
 
     it('surfaces error messages in the text payload when every query fails (regression)', async () => {
-      // Error results carry their message in `data.error`. On an all-error bulk
-      // the serialized text must still surface every failure, not swallow them.
       const queries = [
         { id: 'q1', pattern: 'x', path: '/tmp' },
         { id: 'q2', pattern: 'y', path: '/tmp' },
@@ -229,12 +214,11 @@ describe('executeBulkOperation', () => {
       expect(responseText).toContain('id: "q1"');
       expect(responseText).toContain('status: "error"');
       expect(responseText).toContain('error: "API error"');
-      // Note: Thrown errors don't have hints - only errors returned with status: 'error' have hints
     });
   });
 
   describe('Multiple queries - same status', () => {
-    it('records responseChars after top-level response pagination is applied', async () => {
+    it('records responseChars for all results', async () => {
       const queries = [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }];
       const processor = vi
         .fn()
@@ -251,13 +235,11 @@ describe('executeBulkOperation', () => {
 
       const result = await executeBulkOperation(queries, processor, {
         toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
-        responseCharLength: 120,
       });
 
       const responseText = getTextContent(result.content);
       const structured = result.structuredContent as {
         results: Array<{ id: string }>;
-        responsePagination?: { hasMore: boolean };
       };
       const [toolName, rawChars, responseChars] =
         vi.mocked(incrementToolCharSavings).mock.calls.at(-1) ?? [];
@@ -265,12 +247,10 @@ describe('executeBulkOperation', () => {
       expect(toolName).toBe(TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES);
       expect(rawChars).toBe(3_000);
       expect(responseChars).toBe(responseText.length);
-      expect(structured.results.length).toBeLessThan(queries.length);
-      expect(structured.responsePagination?.hasMore).toBe(true);
-      expect(responseText).toContain('responsePagination');
+      expect(structured.results.length).toBe(queries.length);
     });
 
-    it('adds top-level responsePagination with structured bulk subsets', async () => {
+    it('returns all results without truncation', async () => {
       const queries = [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }];
       const processor = vi
         .fn()
@@ -280,16 +260,13 @@ describe('executeBulkOperation', () => {
 
       const result = await executeBulkOperation(queries, processor, {
         toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
-        responseCharLength: 120,
       });
 
       const structured = result.structuredContent as {
         results: Array<{ id: string }>;
-        responsePagination?: { hasMore: boolean };
       };
 
-      expect(structured.responsePagination).toBeDefined();
-      expect(structured.results.length).toBeLessThan(3);
+      expect(structured.results.length).toBe(3);
     });
 
     it('should process multiple queries all with hasResults status', async () => {
@@ -416,7 +393,6 @@ describe('executeBulkOperation', () => {
       const result = await executeBulkOperation(queries, processor, {
         toolName: TOOL_NAMES.GITHUB_FETCH_CONTENT,
         concurrency: 3,
-        responseCharLength: 180,
       });
 
       const responseText = getTextContent(result.content);
@@ -426,11 +402,8 @@ describe('executeBulkOperation', () => {
         expect.any(Number),
         responseText.length
       );
-      const [, rawChars, responseChars] = vi.mocked(incrementToolCharSavings)
-        .mock.calls[0]!;
+      const [, rawChars] = vi.mocked(incrementToolCharSavings).mock.calls[0]!;
       expect(rawChars).toBeGreaterThanOrEqual(10000);
-      expect(rawChars).toBeGreaterThan(responseChars);
-      expect(responseText).toContain('responsePagination:');
       expect(responseText).not.toContain('octocode.rawResponseChars');
       expect(result.structuredContent).not.toHaveProperty(
         'octocode.rawResponseChars'
@@ -594,7 +567,6 @@ describe('executeBulkOperation', () => {
       expect(responseText).toContain('id: "q1"');
       expect(responseText).toContain('id: "q4"');
       expect(responseText).toContain('Test hint for empty');
-      // Note: Thrown errors don't have hints - only errors returned with status: 'error' have hints
     });
   });
 
@@ -1152,7 +1124,7 @@ describe('executeBulkOperation', () => {
         {
           id: 'q1',
 
-          researchGoal: 123 as any, // Invalid type for testing
+          researchGoal: 123 as any,
         },
       ];
       const processor = vi.fn().mockResolvedValue({
@@ -1163,11 +1135,9 @@ describe('executeBulkOperation', () => {
         toolName: TOOL_NAMES.GITHUB_SEARCH_CODE,
       });
 
-      // Invalid type should not cause error - processing continues
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).not.toContain('status: "hasResults"');
-      // Non-string researchGoal should NOT appear in result (filtered out)
       expect(responseText).not.toContain('researchGoal: 123');
     });
 
@@ -1176,7 +1146,7 @@ describe('executeBulkOperation', () => {
         {
           id: 'q1',
 
-          reasoning: { nested: 'object' } as any, // Invalid type for testing
+          reasoning: { nested: 'object' } as any,
         },
       ];
       const processor = vi.fn().mockResolvedValue({
@@ -1187,11 +1157,9 @@ describe('executeBulkOperation', () => {
         toolName: TOOL_NAMES.GITHUB_SEARCH_CODE,
       });
 
-      // Invalid type should not cause error - processing continues
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).not.toContain('status: "hasResults"');
-      // Non-string reasoning should NOT appear in result (filtered out)
       expect(responseText).not.toContain('reasoning:');
     });
 
@@ -1200,7 +1168,7 @@ describe('executeBulkOperation', () => {
         {
           id: 'q1',
 
-          researchSuggestions: 'not an array' as any, // Invalid type for testing
+          researchSuggestions: 'not an array' as any,
         },
       ];
       const processor = vi.fn().mockResolvedValue({
@@ -1211,7 +1179,6 @@ describe('executeBulkOperation', () => {
         toolName: TOOL_NAMES.GITHUB_SEARCH_CODE,
       });
 
-      // Invalid type should not cause error - processing continues
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).not.toContain('status: "hasResults"');
@@ -1226,8 +1193,6 @@ describe('executeBulkOperation', () => {
           mainResearchGoal: 'Understand authentication flow',
         },
       ];
-      // Use 'empty' so the status field is actually emitted — hasResults is
-      // now signaled by an ABSENT status, so ordering is unverifiable on it.
       const processor = vi.fn().mockResolvedValue({
         status: 'empty' as const,
         data: { test: true },
@@ -1291,8 +1256,6 @@ describe('executeBulkOperation', () => {
           researchGoal: 'Find implementations',
         },
       ];
-      // Use 'empty' to actually emit the status field (hasResults is now
-      // signaled by absence).
       const processor = vi.fn().mockResolvedValue({
         status: 'empty' as const,
         data: { test: true },
@@ -1320,8 +1283,6 @@ describe('executeBulkOperation', () => {
           reasoning: 'The reasoning',
         },
       ];
-      // Use 'empty' so we can verify status field ordering — hasResults is
-      // now signaled by an ABSENT status field.
       const processor = vi.fn().mockResolvedValue({
         status: 'empty' as const,
         files: [{ path: 'test.ts' }],
@@ -1463,12 +1424,12 @@ describe('executeBulkOperation', () => {
         .mockResolvedValueOnce({
           status: 'error' as const,
           error: 'Error 2',
-          hints: ['Hint B', 'Hint C'], // Hint B is duplicate
+          hints: ['Hint B', 'Hint C'],
         })
         .mockResolvedValueOnce({
           status: 'error' as const,
           error: 'Error 3',
-          hints: ['Hint A', 'Hint D'], // Hint A is duplicate
+          hints: ['Hint A', 'Hint D'],
         });
 
       const result = await executeBulkOperation(queries, processor, {
@@ -1478,7 +1439,6 @@ describe('executeBulkOperation', () => {
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('id: "q1"');
       expect(responseText).toContain('id: "q3"');
-      // Hints are per-result - each result has its own hints
       const hintAMatches = (responseText.match(/Hint A/g) || []).length;
       const hintBMatches = (responseText.match(/Hint B/g) || []).length;
       expect(hintAMatches).toBe(2);
@@ -1490,7 +1450,6 @@ describe('executeBulkOperation', () => {
       const processor = vi.fn().mockResolvedValue({
         status: 'error' as const,
         error: 'Simple error without hints',
-        // No hints array provided
       });
 
       const result = await executeBulkOperation(queries, processor, {
@@ -1547,12 +1506,8 @@ describe('executeBulkOperation', () => {
 
   describe('Error handling with invalid query indices', () => {
     it('should handle errors with queryIndex out of bounds gracefully', async () => {
-      // This tests the edge case where errors.forEach encounters
-      // an error with a queryIndex that doesn't have a corresponding originalQuery
       const queries = [{ id: 'q1' }];
 
-      // Create a custom processor that will cause an internal error
-      // with a potentially invalid index scenario
       const processor = vi.fn().mockImplementation(async () => {
         throw new Error('Processor threw an error');
       });
@@ -1596,7 +1551,7 @@ describe('executeBulkOperation', () => {
   });
 
   describe('Output size limiting', () => {
-    it('should auto-paginate response when output exceeds MAX_OUTPUT_CHARS', async () => {
+    it('returns the full response when output is large (pagination handled externally)', async () => {
       const queries = [{ id: 'q1' }];
       const largeContent = 'x'.repeat(500);
       const processor = vi.fn().mockResolvedValue({
@@ -1615,18 +1570,6 @@ describe('executeBulkOperation', () => {
       });
 
       expect(result.isError).toBe(false);
-      const responseText = getTextContent(result.content);
-
-      // Auto-capping is owned by the single bulk pagination flow: an oversized
-      // response with no explicit pagination knob is still bounded to ~the one
-      // output limit (2000) plus breadcrumb overhead — never the full payload.
-      expect(responseText.length).toBeLessThan(15000);
-
-      // Carries a coherent page/cursor breadcrumb (the misleading standalone
-      // "Auto-paginated: … exceeds N" line was removed — the Page x/y + cursor
-      // hint conveys the same, with consistent totals).
-      expect(responseText).toMatch(/Page \d+\/\d+/);
-      expect(responseText).toContain('charOffset');
     });
 
     it('should not paginate small responses', async () => {
@@ -1642,11 +1585,10 @@ describe('executeBulkOperation', () => {
 
       const responseText = getTextContent(result.content);
 
-      // Small response should NOT contain auto-pagination hints
       expect(responseText).not.toContain('Auto-paginated');
     });
 
-    it('should include output pagination metadata in paginated response', async () => {
+    it('returns large responses without modification (pagination is a separate layer)', async () => {
       const queries = [{ id: 'q1' }];
       const largeContent = 'x'.repeat(1000);
       const processor = vi.fn().mockResolvedValue({
@@ -1662,20 +1604,14 @@ describe('executeBulkOperation', () => {
         keysPriority: ['items'],
       });
 
-      const responseText = getTextContent(result.content);
-
-      // Should contain pagination info with page numbers and total chars
-      expect(responseText).toMatch(/Page \d+\/\d+/);
-      expect(responseText).toMatch(/\d+ of \d+ chars/);
+      expect(result.isError).toBe(false);
     });
   });
 
   describe('Status condition branches', () => {
     it('should correctly handle error status branch for hints aggregation', async () => {
-      // This test specifically targets the error status condition branch (line 101)
       const queries = [{ id: 'q1' }, { id: 'q2' }];
 
-      // First query returns hasResults, second returns error
       const processor = vi
         .fn()
         .mockResolvedValueOnce({
@@ -1704,7 +1640,6 @@ describe('executeBulkOperation', () => {
       const processor = vi.fn().mockResolvedValue({
         status: 'error' as const,
         error: 'Generic error',
-        // hints intentionally undefined to trigger fallback
       });
 
       const result = await executeBulkOperation(queries, processor, {
@@ -1722,7 +1657,7 @@ describe('executeBulkOperation', () => {
       const processor = vi.fn().mockResolvedValue({
         status: 'error' as const,
         error: 'Error with empty hints',
-        hints: [], // Empty array should trigger fallback
+        hints: [],
       });
 
       const result = await executeBulkOperation(queries, processor, {
@@ -1789,7 +1724,6 @@ describe('computeQueryTimeout (concurrency-aware)', () => {
   it('should give full budget when concurrency >= queryCount (parallel)', async () => {
     const { computeQueryTimeout } =
       await import('../../src/utils/response/bulk.js');
-    // 2 queries with concurrency 3: 1 batch, each gets full budget
     const result = computeQueryTimeout(2, 3);
     expect(result).toBeGreaterThanOrEqual(60000);
   });
@@ -1797,9 +1731,7 @@ describe('computeQueryTimeout (concurrency-aware)', () => {
   it('should divide budget by batches when concurrency < queryCount', async () => {
     const { computeQueryTimeout } =
       await import('../../src/utils/response/bulk.js');
-    // 5 queries with concurrency 3: ceil(5/3) = 2 batches
     const result = computeQueryTimeout(5, 3);
-    // 60000 / 2 = 30000
     expect(result).toBeLessThanOrEqual(30000);
     expect(result).toBeGreaterThanOrEqual(5000);
   });
@@ -1807,8 +1739,6 @@ describe('computeQueryTimeout (concurrency-aware)', () => {
   it('should respect minQueryTimeoutMs when higher than computed', async () => {
     const { computeQueryTimeout } =
       await import('../../src/utils/response/bulk.js');
-    // 5 queries, concurrency 3: 2 batches, fair = 30000
-    // But minQueryTimeoutMs = 45000 should override
     const result = computeQueryTimeout(5, 3, 45000);
     expect(result).toBe(45000);
   });
@@ -1816,8 +1746,6 @@ describe('computeQueryTimeout (concurrency-aware)', () => {
   it('should NOT lower timeout when minQueryTimeoutMs is below computed', async () => {
     const { computeQueryTimeout } =
       await import('../../src/utils/response/bulk.js');
-    // 2 queries, concurrency 3: 1 batch, fair = 60000
-    // minQueryTimeoutMs = 30000 should NOT lower it
     const result = computeQueryTimeout(2, 3, 30000);
     expect(result).toBeGreaterThanOrEqual(60000);
   });

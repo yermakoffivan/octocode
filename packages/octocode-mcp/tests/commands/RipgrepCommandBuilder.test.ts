@@ -1,17 +1,7 @@
-/**
- * Tests for RipgrepCommandBuilder.
- *
- * `fromQuery` was previously untested critical code: it maps a validated
- * query into the exact `rg` argument vector that gets handed to spawn(). The
- * snapshot tests below pin the full argument sequence for representative
- * queries so any reordering / dropped flag during refactors is caught.
- */
-
 import { describe, it, expect } from 'vitest';
 import { RipgrepCommandBuilder } from '../../src/commands/RipgrepCommandBuilder.js';
 import { RESOURCE_LIMITS } from '../../src/utils/core/constants.js';
 
-// Minimal query factory — pattern + path are the only required fields.
 function buildArgs(query: Record<string, unknown>): string[] {
   return new RipgrepCommandBuilder()
     .fromQuery({ pattern: 'foo', path: '/repo', ...query } as never)
@@ -22,8 +12,8 @@ describe('RipgrepCommandBuilder', () => {
   describe('build()', () => {
     it('resolves a ripgrep binary as the command', () => {
       const { command } = new RipgrepCommandBuilder().build();
-      // Bundled @vscode/ripgrep path or 'rg' fallback — never empty.
       expect(command).toBeTruthy();
+      expect(command).not.toBe('rg');
     });
   });
 

@@ -149,8 +149,87 @@ describe('tool-command coverage', () => {
     await printToolsContext();
 
     const output = consoleSpy.mock.calls.flat().join('\n');
+    expect(output).toContain('Octocode CLI — Agent Protocol');
+    expect(output).toContain('octocode tools <name>');
+    expect(output).toContain('octocode --help');
     expect(output).toContain('CLI Usage:');
     expect(output).toContain('Server instructions.');
+    expect(output).toContain('Exit codes:');
+    expect(output).toContain('evidence.answerReady');
+  });
+
+  it('A2: default context uses compact field lists, not full JSON schemas', async () => {
+    const { getToolsContextString } =
+      await import('../../src/cli/tool-command.js');
+
+    const compact = await getToolsContextString();
+    const full = await getToolsContextString({ full: true });
+
+    expect(compact).toContain('Input fields:');
+    expect(compact).not.toContain('"$schema"');
+    expect(full).toContain('Input schema:');
+    expect(full).toContain('"$schema"');
+    expect(compact.length).toBeLessThan(full.length);
+  });
+
+  it('A1: --compact emits minified structuredContent only', async () => {
+    const { toolCommand } = await import('../../src/cli/tool-command.js');
+    mocks.localSearchCode.mockResolvedValueOnce({
+      content: [{ type: 'text', text: 'results:\n  - id: x' }],
+      structuredContent: {
+        results: [{ id: 'x' }],
+        evidence: { answerReady: true },
+      },
+      isError: false,
+    });
+
+    await toolCommand.handler!({
+      command: 'tool',
+      args: ['localSearchCode'],
+      options: {
+        tool: 'localSearchCode',
+        queries: '{"path":".","pattern":"x"}',
+        compact: true,
+      },
+    });
+
+    const output = consoleSpy.mock.calls.flat().join('\n');
+    const parsed = JSON.parse(output.trim());
+    expect(parsed).toEqual({
+      results: [{ id: 'x' }],
+      evidence: { answerReady: true },
+    });
+    expect(output).not.toContain('"content"');
+    expect(output).not.toContain('"isError"');
+  });
+
+  it('A4: --format=tool emits a register-ready tool definition', async () => {
+    const { toolCommand } = await import('../../src/cli/tool-command.js');
+
+    await toolCommand.handler!({
+      command: 'tool',
+      args: ['localSearchCode'],
+      options: { tool: 'localSearchCode', format: 'tool' },
+    });
+
+    const output = consoleSpy.mock.calls.flat().join('\n');
+    const def = JSON.parse(output.trim());
+    expect(def.name).toBe('localSearchCode');
+    expect(typeof def.description).toBe('string');
+    expect(def.inputSchema.type).toBe('object');
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('A3: unknown tool sets exit code NOT_FOUND (3)', async () => {
+    const { toolCommand } = await import('../../src/cli/tool-command.js');
+
+    await toolCommand.handler!({
+      command: 'tool',
+      args: ['doesNotExist'],
+      options: { tool: 'doesNotExist' },
+    });
+
+    expect(process.exitCode).toBe(3);
   });
 
   it('getToolsContextString: includes metadata-only tool via formatMetadataSchemaText', async () => {
@@ -164,7 +243,7 @@ describe('tool-command coverage', () => {
     expect(context).toContain('"bar": "Bar description"');
   });
 
-  it('rejects an unknown tool name and sets exitCode 1', async () => {
+  it('rejects an unknown tool name and sets exitCode NOT_FOUND (3)', async () => {
     const { toolCommand } = await import('../../src/cli/tool-command.js');
 
     await toolCommand.handler!({
@@ -176,7 +255,7 @@ describe('tool-command coverage', () => {
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Unknown tool: doesNotExist');
     expect(output).toContain('Available tools:');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(3);
   });
 
   it('showToolHelp: returns false for unknown tool', async () => {
@@ -288,7 +367,7 @@ describe('tool-command coverage', () => {
     );
   });
 
-  it('passes responseCharOffset from { queries, responseCharOffset }', async () => {
+  it('drops the legacy top-level responseCharOffset (char pagination removed)', async () => {
     const { toolCommand } = await import('../../src/cli/tool-command.js');
 
     await toolCommand.handler!({
@@ -300,12 +379,13 @@ describe('tool-command coverage', () => {
       options: { tool: 'localSearchCode' },
     });
 
-    expect(mocks.localSearchCode).toHaveBeenCalledWith(
+    const callArg = mocks.localSearchCode.mock.calls[0]?.[0];
+    expect(callArg).toEqual(
       expect.objectContaining({
-        responseCharOffset: 500,
         queries: [expect.objectContaining({ path: '.', pattern: 'foo' })],
       })
     );
+    expect(callArg).not.toHaveProperty('responseCharOffset');
   });
 
   it('errors when more than two positional args are supplied', async () => {
@@ -323,7 +403,7 @@ describe('tool-command coverage', () => {
 
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Pass tool input as one quoted JSON string');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('errors on non-string / non-object / non-array raw payload (e.g. number)', async () => {
@@ -337,7 +417,7 @@ describe('tool-command coverage', () => {
 
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Tool input must be a JSON object');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('errors when queries array is empty', async () => {
@@ -351,7 +431,7 @@ describe('tool-command coverage', () => {
 
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('At least one query is required');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('normaliseKey: converts kebab-case query keys to camelCase', async () => {
@@ -494,7 +574,7 @@ describe('tool-command coverage', () => {
     expect(parsed.structuredContent).toEqual({ answer: 42 });
   });
 
-  it('sets exitCode 1 when tool returns isError: true', async () => {
+  it('sets exitCode TOOL (5) when tool returns isError: true', async () => {
     mocks.localSearchCode.mockResolvedValueOnce({
       content: [{ type: 'text', text: 'failed' }],
       isError: true,
@@ -511,7 +591,7 @@ describe('tool-command coverage', () => {
       options: { tool: 'localSearchCode' },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(5);
   });
 
   it('handles non-Error thrown value in tool execution', async () => {
@@ -530,7 +610,7 @@ describe('tool-command coverage', () => {
 
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Tool execution failed.');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(5);
   });
 
   it('handles non-Error thrown by the execution function', async () => {
@@ -550,7 +630,7 @@ describe('tool-command coverage', () => {
     const output = consoleSpy.mock.calls.flat().join('\n');
 
     expect(output).toContain('Tool execution failed.');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(5);
   });
 
   it('getDisplayFields: returns MCP display fields for canonical tools', async () => {
@@ -578,7 +658,7 @@ describe('tool-command coverage', () => {
 
     expect(githubByName['keywordsToSearch']?.type).toBe('array<string>');
     expect(packageByName['name']?.type).toBe('string');
-    expect(packageByName['itemsPerPage']?.type).toBe('integer');
+    expect(packageByName['page']?.type).toBe('integer');
     expect(githubByName['id']).toBeUndefined();
     expect(githubByName['researchGoal']).toBeUndefined();
     expect(githubByName['reasoning']).toBeUndefined();
@@ -596,10 +676,7 @@ describe('tool-command coverage', () => {
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('"name"');
     expect(output).toContain('react');
-    // `itemsPerPage` is the single canonical result-count knob. The legacy
-    // `limit` alias is no longer advertised (it was a duplicate field), though
-    // it is still tolerated at runtime via the schema preprocess.
-    expect(output).toContain('itemsPerPage');
+    expect(output).toContain('"page"');
     expect(output).not.toContain('"limit"');
   });
 
@@ -615,7 +692,7 @@ describe('tool-command coverage', () => {
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('keywordsToSearch');
     expect(output).toContain('"page"');
-    expect(output).toContain('itemsPerPage');
+    expect(output).toContain('sort');
   });
 
   it('buildExampleValue: githubCloneRepo example includes owner=bgauryy', async () => {
@@ -647,7 +724,7 @@ describe('tool-command coverage', () => {
 
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Tool input does not match the expected schema.');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('sortToolNames: tools in the same category maintain stable relative order', async () => {

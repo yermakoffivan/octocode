@@ -90,8 +90,7 @@ const registeredTools = [
     name: 'lspGotoDefinition',
     executionFiles: ['src/tools/lsp_goto_definition/execution.ts'],
     rawEvidence: [
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(semanticResult\)/,
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(tagged\)/,
+      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(result\)/,
     ],
   },
   {
@@ -101,8 +100,7 @@ const registeredTools = [
       'src/tools/lsp_find_references/lsp_find_references.ts',
     ],
     rawEvidence: [
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(semanticResult\)/,
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(mergedResult\)/,
+      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(lspResult\)/,
     ],
   },
   {
@@ -112,8 +110,7 @@ const registeredTools = [
       'src/tools/lsp_call_hierarchy/callHierarchy.ts',
     ],
     rawEvidence: [
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(semanticResult\)/,
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(withMode\)/,
+      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(result\)/,
     ],
   },
 ] as const;

@@ -7,16 +7,11 @@ import {
 import { getHints } from '../../hints/index.js';
 import { generatePaginationHints } from '../../utils/pagination/hints.js';
 import {
-  serializeForPagination,
-  createPaginationInfo,
-} from '../../utils/pagination/core.js';
-import type { PaginationMetadata } from '../../utils/pagination/types.js';
-import {
   validateToolPath,
   createErrorResult,
 } from '../../utils/file/toolHelpers.js';
 import { formatFileSize } from '../../utils/file/size.js';
-import type { z } from 'zod/v4';
+import type { z } from 'zod';
 import type { FindFilesQuerySchema } from '@octocodeai/octocode-core/schemas';
 import type { LocalFindFilesEntry } from '@octocodeai/octocode-core/types';
 import type { LocalFindFilesToolResult } from '@octocodeai/octocode-core/extra-types';
@@ -28,27 +23,12 @@ import { ToolErrors } from '../../errors/errorFactories.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import type { WithVerbosity } from '../../scheme/localSchemaOverlay.js';
 import { LOCAL_OVERLAY_MAX_LIMIT } from '../../scheme/localSchemaOverlay.js';
-import {
-  isConcise,
-  isCompact,
-  compactTrimHints,
-  makeAdvisoryPredicate,
-} from '../../scheme/verbosity.js';
+import { isVerbose } from '../../scheme/verbosity.js';
 
-/** Advisory hints localFindFiles emits; stripped under compact.
- * Substring-OR, case-insensitive. */
-const isAdvisoryFindFilesHint = makeAdvisoryPredicate([
-  'excludedir',
-  'raw name globs',
-  'metadata only',
-  'noisy dir',
-]);
 import { attachRawResponseChars } from '../../utils/response/charSavings.js';
 
 type FindFilesQuery = WithVerbosity<WithOptionalMeta<UpstreamFindFilesQuery>>;
 
-// Directories pruned by default so a find never walks build output / VCS
-// metadata. Overridable per-query via `excludeDir`.
 const DEFAULT_FIND_EXCLUDE_DIRS = [
   'node_modules',
   'dist',
@@ -71,13 +51,6 @@ const DEFAULT_FIND_EXCLUDE_DIRS = [
   '.context',
 ];
 
-/**
- * Resolve the exclude-dir prune list for a search.
- *
- * Drops any excludeDir entry that appears as a component of the search path
- * itself — otherwise a search inside e.g. `.context/` would have every result
- * pruned by the `.context` glob prune because each result path contains it.
- */
 function computeEffectiveExcludeDirs(
   searchPath: string,
   excludeDir: string[] | undefined
@@ -87,11 +60,6 @@ function computeEffectiveExcludeDirs(
   return rawExcludeDirs.filter(dir => !searchPathParts.has(dir));
 }
 
-/**
- * Backfill size / permissions / mtime for entries the fast path left partial,
- * via a per-file lstat. Failures leave that file's metadata partial (best
- * effort — one unreadable file must not fail the whole listing).
- */
 async function enrichFileDetails(
   files: LocalFindFilesEntry[],
   showLastModified: boolean
@@ -113,14 +81,13 @@ async function enrichFileDetails(
             file.modified = stats.mtime.toISOString();
           }
         } catch {
-          // lstat failed for one file; leave metadata partial.
+          void 0;
         }
       }
     })
   );
 }
 
-/** Assemble the response hints (pagination, cap notice, empty guidance). */
 function buildFindFilesHints(ctx: {
   query: FindFilesQuery;
   filePageNumber: number;
@@ -151,8 +118,6 @@ function buildFindFilesHints(ctx: {
     paginationMetadata,
   } = ctx;
 
-  // Build active-filter summary so agents know exactly which constraints
-  // were applied — silent filters are the #1 source of "why no results" confusion.
   const q = query as Record<string, unknown>;
   const activeFilters: string[] = [];
   const namePattern =
@@ -186,8 +151,6 @@ function buildFindFilesHints(ctx: {
           `Page ${filePageNumber}/${totalPages} (showing ${shownCount} of ${totalFiles}). Next: page=${filePageNumber + 1}`,
         ]
       : []),
-    // Overshoot: a page past the last one returns empty — signal it explicitly
-    // rather than letting an empty result look like "no matches".
     ...(totalPages > 0 && filePageNumber > totalPages
       ? [
           `Requested page ${filePageNumber} is outside available range (1-${totalPages}). Use page=${totalPages} for the last page.`,
@@ -208,7 +171,9 @@ function buildFindFilesHints(ctx: {
           sizeGreater: query.sizeGreater,
           sizeLess: query.sizeLess,
         } as Record<string, unknown>)
-      : []),
+      : [
+          `Found ${totalFiles} entr${totalFiles === 1 ? 'y' : 'ies'} (files and directories) — pass type="f" for files only, type="d" for directories only. Use localSearchCode to search within files, or localGetFileContent to read them.`,
+        ]),
     ...(paginationMetadata
       ? generatePaginationHints(paginationMetadata, {
           toolName: TOOL_NAMES.LOCAL_FIND_FILES,
@@ -282,13 +247,6 @@ export async function findFiles(
       .filter(line => line.trim())
       .map(line => line.trim());
 
-    // `limit` is an EXPLICIT user cap. When omitted, the discovery cap matches
-    // the documented `limit` maximum (10000, the schema bound) so EVERY
-    // discovered file is reachable by paging (page/itemsPerPage) —
-    // not silently truncated at an implicit 1000 that pagination can't escape.
-    // The cap remains a perf guard (it bounds the stat fan-out); when it bites,
-    // the hint below tells the agent to narrow filters. Defaulting to the
-    // schema's `limit` max keeps the cap and the documented bound in lock-step.
     const maxFiles = query.limit ?? LOCAL_OVERLAY_MAX_LIMIT;
     const discoveredFileCount = filePaths.length;
     const wasFileCapped = discoveredFileCount > maxFiles;
@@ -323,11 +281,8 @@ export async function findFiles(
     const endIdx = Math.min(startIdx + filesPerPage, totalFiles);
     const paginatedFiles = filesForOutput.slice(startIdx, endIdx);
 
-    const { finalFiles, paginationMetadata } = applyCharPagination(
-      paginatedFiles,
-      query.charOffset,
-      query.charLength
-    );
+    const finalFiles = paginatedFiles;
+    const paginationMetadata = null;
 
     const configFilePatterns =
       /\.(config|rc|env|json|ya?ml|toml|ini)$|^(\..*rc|config\.|\.env)/i;
@@ -335,9 +290,6 @@ export async function findFiles(
       configFilePatterns.test(f.path.split('/').pop() || '')
     );
 
-    // Surface find stderr (e.g. permission-denied sub-directory warnings).
-    // find exits 0 even when individual paths are inaccessible, so these
-    // warnings would otherwise be silently swallowed.
     const findStderrWarnings: string[] = [];
     if (result.stderr?.trim()) {
       const stderrLines = result.stderr
@@ -358,8 +310,6 @@ export async function findFiles(
     const allWarnings = [...timeFormatWarnings, ...findStderrWarnings];
 
     const fullResult: LocalFindFilesToolResult = {
-      // status omitted on success (absent ≡ "hasResults"); 'empty' is set
-      // explicitly below when totalFiles === 0.
       ...(totalFiles === 0 ? { status: 'empty' as const } : {}),
       files: finalFiles,
       pagination: {
@@ -369,9 +319,6 @@ export async function findFiles(
         totalFiles,
         hasMore: filePageNumber < totalPages,
       },
-      ...(paginationMetadata && {
-        charPagination: createPaginationInfo(paginationMetadata),
-      }),
       ...(allWarnings.length > 0 && { warnings: allWarnings }),
       hints: buildFindFilesHints({
         query,
@@ -399,42 +346,38 @@ export async function findFiles(
   }
 }
 
-/**
- * Concise payload is a one-line summary with a `newest:` drill-back hint
- * pointing at the first file. Omitted / `"basic"` / `"compact"` all preserve
- * `files[]` here; compact's hint-trim is a follow-up (Task #8).
- *
- * Exported for direct unit testing in `tests/scheme/verbosity_concise.test.ts`.
- */
 export function applyFindFilesVerbosity(
   result: LocalFindFilesToolResult,
   query: FindFilesQuery,
-  totals: { totalFiles: number }
+  _totals: { totalFiles: number }
 ): LocalFindFilesToolResult {
-  if (isConcise(query.verbosity)) {
-    // hasResults ≡ absent status; only 'empty'/'error' carry a marker.
-    if (result.status !== undefined) return result;
-    const topFile = result.files?.[0];
-    const newest = topFile?.path ?? '';
-    const dirs = new Set(
-      (result.files ?? []).map(f => f.path.split('/').slice(0, -1).join('/'))
-    );
-    const summary =
-      `${totals.totalFiles} files in ${dirs.size} dirs` +
-      (newest ? ` (newest: ${newest})` : '');
-    return {
-      ...result,
-      files: [],
-      hints: [summary],
-    };
-  }
-  if (isCompact(query.verbosity)) {
-    return {
-      ...result,
-      hints: compactTrimHints(result.hints, isAdvisoryFindFilesHint, 2),
-    };
-  }
-  return result;
+  if (isVerbose(query)) return result;
+  if (!result.files?.length) return result;
+
+  const sortByModified =
+    (query as Record<string, unknown>).sortBy === 'modified';
+
+  return {
+    ...result,
+    files: result.files.map(f => {
+      const {
+        size: _s,
+        modified: _m,
+        permissions: _p,
+        ...rest
+      } = f as typeof f & {
+        size?: unknown;
+        modified?: unknown;
+        permissions?: unknown;
+      };
+      void _s;
+      void _p;
+      return {
+        ...rest,
+        ...(sortByModified && _m !== undefined ? { modified: _m } : {}),
+      } as typeof f;
+    }),
+  };
 }
 
 function sortLocalFindFilesEntrys(
@@ -472,10 +415,6 @@ function formatForOutput(
   return files.map(f => {
     const result: LocalFindFilesEntry = { path: f.path, type: f.type };
     if (details) {
-      // Emit both raw bytes (for tooling) and human-readable form (for the
-      // agent). The dual emission costs ~20 bytes per file but lets
-      // downstream consumers parse the raw number without re-parsing
-      // "12.4KB" strings.
       if (f.size !== undefined) {
         result.size = f.size;
         result.sizeFormatted = formatFileSize(f.size);
@@ -487,80 +426,6 @@ function formatForOutput(
     }
     return result;
   });
-}
-
-function applyCharPagination(
-  paginatedFiles: LocalFindFilesEntry[],
-  charOffset?: number,
-  charLength?: number
-): {
-  finalFiles: LocalFindFilesEntry[];
-  paginationMetadata: PaginationMetadata | null;
-} {
-  if (!charLength) {
-    return { finalFiles: paginatedFiles, paginationMetadata: null };
-  }
-
-  const fullJson = serializeForPagination(paginatedFiles, false);
-  const totalChars = fullJson.length;
-  const startOffset = charOffset ?? 0;
-  const targetLength = charLength;
-  const endLimit = startOffset + targetLength;
-
-  if (startOffset >= totalChars) {
-    return {
-      finalFiles: [],
-      paginationMetadata: {
-        paginatedContent: '[]',
-        byteOffset: startOffset,
-        byteLength: 0,
-        totalBytes: totalChars,
-        charOffset: startOffset,
-        charLength: 0,
-        totalChars,
-        hasMore: false,
-        estimatedTokens: 0,
-        currentPage: Math.floor(startOffset / targetLength) + 1,
-        totalPages: Math.ceil(totalChars / targetLength),
-      },
-    };
-  }
-
-  const selectedFiles: LocalFindFilesEntry[] = [];
-  let currentPos = 1;
-
-  for (let i = 0; i < paginatedFiles.length; i++) {
-    const itemLen = JSON.stringify(paginatedFiles[i]).length;
-    const itemStart = currentPos;
-    const itemEnd = itemStart + itemLen;
-
-    if (itemStart < endLimit && itemEnd > startOffset) {
-      selectedFiles.push(paginatedFiles[i]!);
-    }
-    currentPos += itemLen + 1;
-    if (currentPos >= endLimit) break;
-  }
-
-  const finalJson = serializeForPagination(selectedFiles, false);
-  const hasMore = currentPos < totalChars;
-
-  return {
-    finalFiles: selectedFiles,
-    paginationMetadata: {
-      paginatedContent: finalJson,
-      byteOffset: startOffset,
-      byteLength: finalJson.length,
-      totalBytes: totalChars,
-      charOffset: startOffset,
-      charLength: finalJson.length,
-      totalChars,
-      hasMore,
-      nextCharOffset: hasMore ? currentPos : undefined,
-      estimatedTokens: Math.ceil(finalJson.length / 4),
-      currentPage: Math.floor(startOffset / targetLength) + 1,
-      totalPages: Math.ceil(totalChars / targetLength),
-    },
-  };
 }
 
 async function getFileDetails(
@@ -621,13 +486,6 @@ async function getFileDetails(
 
 const VALID_TIME_STRING_RE = /^\d+[hdwm]$/;
 
-/**
- * Validate time-filter fields that are passed to `find -mtime / -mmin`.
- * Only relative durations like "7d", "2h", "1w", "3m" are supported.
- * ISO timestamps (e.g. "2026-06-01T00:00:00Z") are NOT supported and
- * would silently produce -mtime -0 / +0 (match nothing / match everything).
- * This function surfaces an explicit warning for each invalid field.
- */
 function validateTimeFilterFormats(query: FindFilesQuery): string[] {
   const warnings: string[] = [];
   const fields: Array<{ key: string; value: string | undefined }> = [
