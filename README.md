@@ -25,7 +25,7 @@
 | | 🔌 **As an MCP Server** | 💻 **As a CLI** |
 |---|---|---|
 | **For** | Your AI assistant (Claude Code, Cursor, Claude Desktop, +13 more) | Your terminal & scripts |
-| **Install** | `npx octocode-cli install` | `brew install bgauryy/octocode/octocode` |
+| **Install** | `npx octocode-cli install` | `brew tap bgauryy/octocode` → `brew install octocode` |
 | **You get** | 14 research tools wired into your agent | The same 14 tools, runnable from the shell |
 | **Best for** | Deep agent research, planning, PR review | Quick scripted lookups, CI, piping to other tools |
 
@@ -43,7 +43,7 @@ Wire Octocode's tools into your AI assistant. The interactive installer handles 
 npx octocode-cli install
 ```
 
-Pass `--ide <client>` for a non-interactive install (e.g. `octocode install --ide cursor`), and `-m direct` only to point a client at a locally installed MCP binary.
+Pass `--ide <client>` for a non-interactive install (e.g. `octocode install --ide cursor`).
 
 <details>
 <summary><strong>One-Click Install (Cursor)</strong></summary>
@@ -163,6 +163,7 @@ octocode tools githubSearchCode --queries '{"keywordsToSearch":["useState"],"own
 ```
 
 Supported install targets: Cursor, Claude Code, Claude Desktop, Windsurf, Zed, Trae, Antigravity, Kiro, Codex, Opencode, Gemini CLI, Goose, VS Code Cline / Roo / Continue. Full reference: [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/CLI_REFERENCE.md).
+
 ---
 
 ## Packages

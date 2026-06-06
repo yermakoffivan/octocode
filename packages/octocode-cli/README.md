@@ -23,8 +23,9 @@
 # Homebrew (macOS / Linux): installs the `octocode` command globally
 brew install bgauryy/octocode/octocode
 
-# equivalent short form
-brew tap bgauryy/octocode && brew install octocode
+# or tap once, then use the short name
+brew tap bgauryy/octocode
+brew install octocode
 
 # or npm (global)
 npm install -g octocode-cli
@@ -45,13 +46,14 @@ The installed command is **`octocode`** (not `octocode-cli`). Homebrew pulls in 
 ## Quick Start
 
 ```bash
-octocode login                          # GitHub authentication
-octocode install --ide cursor           # wire MCP into an editor
-octocode install --ide cursor --check   # pre-flight: check writability & current state
-octocode skills install --targets claude-code   # add Agent Skills
-octocode tools                          # list every tool
+octocode login                                        # GitHub OAuth (device flow)
+octocode install --ide cursor                         # wire MCP into an editor
+octocode skills install --targets claude-code         # add Agent Skills
+octocode tools                                        # list every tool
 octocode tools localSearchCode --queries '{"path":".","pattern":"TODO"}'
 ```
+
+> **Agents:** run `octocode --agent` first — it prints the full protocol, every tool, and input field specs in one shot.
 
 ---
 
