@@ -10,7 +10,7 @@ const mockGetServerConfig = vi.hoisted(() => vi.fn());
 const mockGetGitHubToken = vi.hoisted(() => vi.fn());
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   initialize: mockInitialize,
   getServerConfig: mockGetServerConfig,
   isLoggingEnabled: vi.fn(() => false),
@@ -22,14 +22,14 @@ vi.mock('../../src/serverConfig.js', () => ({
   })),
 }));
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
 const mockPerformSampling = vi.hoisted(() => vi.fn());
 const mockCreateQASamplingRequest = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/sampling.js', () => ({
+vi.mock('../../../octocode-tools-core/src/sampling.js', () => ({
   SamplingUtils: {
     createQASamplingRequest: mockCreateQASamplingRequest,
   },
@@ -37,7 +37,7 @@ vi.mock('../../src/sampling.js', () => ({
 }));
 
 import { registerFetchGitHubFileContentTool } from '../../src/tools/github_fetch_content/github_fetch_content.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('GitHub Fetch Content Tool', () => {
   let mockServer: MockMcpServer;
@@ -119,9 +119,9 @@ describe('GitHub Fetch Content Tool', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('results:');
-      expect(responseText).toContain('owner: "test"');
-      expect(responseText).toContain('repo: "repo"');
-      expect(responseText).toContain('path: "README.md"');
+      expect(responseText).toContain('owner: test');
+      expect(responseText).toContain('repo: repo');
+      expect(responseText).toContain('path: README.md');
       expect(responseText).toContain('content:');
       expect(responseText).not.toContain('status:');
     });
@@ -155,6 +155,75 @@ describe('GitHub Fetch Content Tool', () => {
         "Use 'owner', 'repo', 'branch', 'path'"
       );
       expect(responseText).not.toContain("Follow 'mainResearchGoal'");
+    });
+
+    it('surfaces the skeleton hint when minify:"symbols" extraction succeeds (supported file type with body)', async () => {
+      mockProvider.getFileContent.mockResolvedValue({
+        data: {
+          path: 'src/app.ts',
+          content:
+            'export function f(): void { const x = 1; }\nexport function g(a: string): string { return a; }',
+          encoding: 'utf-8',
+          totalLines: 2,
+          isPartial: false,
+          ref: 'main',
+        },
+        hints: [
+          'Signatures only — bodies omitted. Left gutter shows original line numbers; use startLine/endLine to read a body.',
+        ],
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            {
+              owner: 'test',
+              repo: 'repo',
+              path: 'src/app.ts',
+              minify: 'symbols',
+            },
+          ],
+        }
+      );
+
+      const responseText = getTextContent(result.content);
+      expect(responseText).toContain('Signatures only');
+    });
+
+    it('does not show the skeleton hint for unsupported file types (e.g. .c)', async () => {
+      mockProvider.getFileContent.mockResolvedValue({
+        data: {
+          path: 'kernel/sched.c',
+          content:
+            'void schedule(void) { do_schedule(); }\nvoid idle(void) { cpu_idle(); }',
+          encoding: 'utf-8',
+          totalLines: 2,
+          isPartial: false,
+          ref: 'master',
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            {
+              owner: 'torvalds',
+              repo: 'linux',
+              path: 'kernel/sched.c',
+              minify: 'symbols',
+            },
+          ],
+        }
+      );
+
+      const responseText = getTextContent(result.content);
+      expect(responseText).not.toContain('Signatures only');
     });
 
     it('should pass authInfo to provider', async () => {
@@ -228,8 +297,8 @@ describe('GitHub Fetch Content Tool', () => {
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('content1');
       expect(responseText).toContain('content2');
-      expect(responseText).toContain('path: "file1.js"');
-      expect(responseText).toContain('path: "file2.js"');
+      expect(responseText).toContain('path: file1.js');
+      expect(responseText).toContain('path: file2.js');
     });
   });
 
@@ -395,7 +464,7 @@ describe('GitHub Fetch Content Tool', () => {
               path: 'file.js',
               branch: 'main',
               matchString: 'function',
-              matchStringContextLines: 5,
+              contextLines: 5,
             },
           ],
         }
@@ -441,7 +510,7 @@ describe('GitHub Fetch Content Tool', () => {
       expect(responseText).toMatch(/no matches|not found/i);
     });
 
-    it('should use default matchStringContextLines when not specified', async () => {
+    it('should use default contextLines when not specified', async () => {
       mockProvider.getFileContent.mockResolvedValue({
         data: {
           path: 'file.js',
@@ -670,8 +739,8 @@ describe('GitHub Fetch Content Tool', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('content: "good"');
-      expect(responseText).toContain('path: "good.js"');
+      expect(responseText).toContain('content: good');
+      expect(responseText).toContain('path: good.js');
       expect(responseText).toContain('errors:');
     });
   });
@@ -760,6 +829,122 @@ describe('GitHub Fetch Content Tool', () => {
       );
 
       expect(result).toBeDefined();
+    });
+
+    it('returns error when fullContent and matchString are both provided (mutually exclusive)', async () => {
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            {
+              owner: 'facebook',
+              repo: 'react',
+              path: 'src/index.js',
+              fullContent: true,
+              matchString: 'createRoot',
+            },
+          ],
+        }
+      );
+
+      expect(result.isError).toBe(true);
+      const text = JSON.stringify(result);
+      expect(text).toContain('mutually exclusive');
+    });
+
+    it('returns error when fullContent and startLine are both provided (mutually exclusive)', async () => {
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            {
+              owner: 'facebook',
+              repo: 'react',
+              path: 'src/index.js',
+              fullContent: true,
+              startLine: 1,
+            },
+          ],
+        }
+      );
+
+      expect(result.isError).toBe(true);
+      const text = JSON.stringify(result);
+      expect(text).toContain('mutually exclusive');
+    });
+  });
+
+  describe('contentView and isSkeleton parity with local tool', () => {
+    it('should include contentView:"symbols" and isSkeleton:true in response when provider returns them', async () => {
+      mockProvider.getFileContent.mockResolvedValue({
+        data: {
+          path: 'src/createAction.ts',
+          content: '   1| export function createAction<P = void>',
+          encoding: 'utf-8',
+          size: 42,
+          totalLines: 325,
+          contentView: 'symbols',
+          isSkeleton: true,
+          isPartial: false,
+          ref: 'main',
+        },
+        hints: ['Signatures only — bodies and comments omitted.'],
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            {
+              owner: 'reduxjs',
+              repo: 'redux-toolkit',
+              path: 'src/createAction.ts',
+              minify: 'symbols',
+            },
+          ],
+        }
+      );
+
+      const responseText = getTextContent(result.content);
+      expect(responseText).toContain('contentView: symbols');
+      expect(responseText).toContain('isSkeleton: true');
+    });
+
+    it('should include contentView:"none" in response when provider returns it', async () => {
+      mockProvider.getFileContent.mockResolvedValue({
+        data: {
+          path: 'src/utils.ts',
+          content:
+            'export function add(a: number, b: number) { return a + b; }',
+          encoding: 'utf-8',
+          size: 58,
+          totalLines: 1,
+          contentView: 'none',
+          ref: 'main',
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        {
+          queries: [
+            {
+              owner: 'test',
+              repo: 'repo',
+              path: 'src/utils.ts',
+              minify: 'none',
+            },
+          ],
+        }
+      );
+
+      const responseText = getTextContent(result.content);
+      expect(responseText).toContain('contentView: none');
+      expect(responseText).not.toContain('isSkeleton');
     });
   });
 });

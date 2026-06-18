@@ -7,11 +7,11 @@ import { getTextContent } from '../utils/testHelpers.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
@@ -28,7 +28,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 import { registerSearchGitHubReposTool } from '../../src/tools/github_search_repos/github_search_repos.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
   let mockServer: MockMcpServer;
@@ -126,7 +126,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
         {
           queries: [
             {
-              keywordsToSearch: ['react'],
+              keywords: ['react'],
               limit: 2,
             },
           ],
@@ -136,9 +136,29 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       const responseText = getTextContent(result.content);
 
       expect(result.isError).toBe(false);
-      expect(responseText).not.toContain('status: "hasResults"');
-      expect(responseText).toContain('facebook/react');
-      expect(responseText).toContain('vercel/next.js');
+      expect(responseText).not.toContain('status: hasResults');
+      expect(responseText).toContain('facebook');
+      expect(responseText).toContain('react');
+      expect(responseText).toContain('vercel');
+
+      type RepoDetail = {
+        owner?: string;
+        repo?: string;
+        stars?: number;
+        forks?: number;
+      };
+      const repos = result.structuredContent as {
+        results?: Array<{ data?: { repositories?: RepoDetail[] } }>;
+      };
+      const repoItems = repos.results?.[0]?.data?.repositories ?? [];
+      expect(`${repoItems[0]?.owner}/${repoItems[0]?.repo}`).toBe(
+        'facebook/react'
+      );
+      expect(repoItems[0]?.stars).toBe(200000);
+      expect(repoItems[0]?.forks).toBe(40000);
+      expect(`${repoItems[1]?.owner}/${repoItems[1]?.repo}`).toBe(
+        'vercel/next.js'
+      );
     });
 
     it('should handle single repository result', async () => {
@@ -172,7 +192,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
         {
-          queries: [{ keywordsToSearch: ['typescript'] }],
+          queries: [{ keywords: ['typescript'] }],
         }
       );
 
@@ -199,7 +219,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
         {
           queries: [
             {
-              keywordsToSearch: ['veryobscurekeyword123'],
+              keywords: ['veryobscurekeyword123'],
             },
           ],
         }
@@ -228,7 +248,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
         {
           queries: [
             {
-              keywordsToSearch: ['veryrandomnonexistent123'],
+              keywords: ['veryrandomnonexistent123'],
             },
           ],
         }
@@ -251,7 +271,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
         {
-          queries: [{ keywordsToSearch: ['test'] }],
+          queries: [{ keywords: ['test'] }],
         }
       );
 
@@ -295,7 +315,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
         {
           queries: [
             {
-              keywordsToSearch: ['popular'],
+              keywords: ['popular'],
               stars: '>10000',
             },
           ],
@@ -339,7 +359,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
           queries: [
             {
               owner: 'facebook',
-              keywordsToSearch: ['react'],
+              keywords: ['react'],
             },
           ],
         }
@@ -452,10 +472,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
         {
-          queries: [
-            { keywordsToSearch: ['react'] },
-            { keywordsToSearch: ['vue'] },
-          ],
+          queries: [{ keywords: ['react'] }, { keywords: ['vue'] }],
         }
       );
 
@@ -500,7 +517,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
         {
           queries: [
             {
-              keywordsToSearch: ['test'],
+              keywords: ['test'],
               page: 2,
               limit: 10,
             },
@@ -511,7 +528,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       expect(result.isError).toBe(false);
     });
 
-    it('returns repositories with complete topics[] — never truncates mid-item', async () => {
+    it('returns each repository as a complete one-liner — never truncates mid-item', async () => {
       const topics = Array.from({ length: 5 }, (_, index) => `topic-${index}`);
       mockProvider.searchRepos.mockResolvedValue({
         data: {
@@ -540,21 +557,18 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
 
       const firstResult = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
-        { queries: [{ keywordsToSearch: ['repo'], verbose: true }] }
+        { queries: [{ keywords: ['repo'], concise: true }] }
       );
 
       const firstStructured = firstResult.structuredContent as {
-        results: Array<{
-          data: {
-            repositories?: Array<{ repo: string; topics?: string[] }>;
-          };
-        }>;
+        results: Array<{ data: { repositories?: string[] } }>;
       };
       const firstData = firstStructured.results[0]!.data;
 
       expect(firstData.repositories?.length ?? 0).toBeGreaterThan(0);
-      for (const r of firstData.repositories ?? []) {
-        expect(r.topics).toEqual(topics);
+      for (const line of firstData.repositories ?? []) {
+        expect(typeof line).toBe('string');
+        expect(line).toMatch(/^test\/repo-\d+/);
       }
     });
   });
@@ -635,7 +649,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES, {
         queries: [
           {
-            keywordsToSearch: ['react'],
+            keywords: ['react'],
             stars: '100..500',
           },
         ],
@@ -666,7 +680,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES, {
         queries: [
           {
-            keywordsToSearch: ['react'],
+            keywords: ['react'],
             stars: '>=1000',
           },
         ],
@@ -690,7 +704,7 @@ describe('GitHub Search Repos Tool - Comprehensive Status Tests', () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
         {
-          queries: [{ keywordsToSearch: ['test'] }],
+          queries: [{ keywords: ['test'] }],
         }
       );
 

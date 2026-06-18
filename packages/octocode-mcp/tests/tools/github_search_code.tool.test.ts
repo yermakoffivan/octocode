@@ -7,11 +7,11 @@ import { getTextContent } from '../utils/testHelpers.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
@@ -28,7 +28,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 import { registerGitHubSearchCodeTool } from '../../src/tools/github_search_code/github_search_code.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('GitHub Search Code Tool - Tool Layer Integration', () => {
   let mockServer: MockMcpServer;
@@ -65,7 +65,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
   describe('Status: hasResults', () => {
     it('rejects an empty search before calling the provider', async () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-        queries: [{ keywordsToSearch: [] }],
+        queries: [{ keywords: [] }],
       });
 
       const responseText = getTextContent(result.content);
@@ -104,7 +104,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['test'],
+            keywords: ['test'],
             owner: 'test',
             repo: 'repo',
           },
@@ -113,7 +113,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "test/repo"');
+      expect(responseText).toContain('id: test/repo');
       expect(responseText).toContain('src/index.ts');
       expect(responseText).toContain('src/utils.ts');
     });
@@ -145,15 +145,15 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       });
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-        queries: [{ keywordsToSearch: ['test'] }],
+        queries: [{ keywords: ['test'] }],
       });
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('owner: "facebook"');
-      expect(responseText).toContain('repo: "react"');
-      expect(responseText).toContain('owner: "vercel"');
-      expect(responseText).toContain('repo: "next"');
+      expect(responseText).toContain('owner: facebook');
+      expect(responseText).toContain('repo: react');
+      expect(responseText).toContain('owner: vercel');
+      expect(responseText).toContain('repo: next');
     });
   });
 
@@ -172,7 +172,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['nonexistent'],
+            keywords: ['nonexistent'],
             owner: 'test',
             repo: 'repo',
           },
@@ -196,7 +196,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['test'],
+            keywords: ['test'],
             owner: 'nonexistent',
             repo: 'repo',
           },
@@ -216,7 +216,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       });
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-        queries: [{ keywordsToSearch: ['test'] }],
+        queries: [{ keywords: ['test'] }],
       });
 
       expect(result.isError).toBe(true);
@@ -263,8 +263,8 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
-          { keywordsToSearch: ['test1'], owner: 'test', repo: 'repo' },
-          { keywordsToSearch: ['test2'], owner: 'test', repo: 'repo' },
+          { keywords: ['test1'], owner: 'test', repo: 'repo' },
+          { keywords: ['test2'], owner: 'test', repo: 'repo' },
         ],
       });
 
@@ -300,8 +300,8 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
-          { keywordsToSearch: ['test1'], owner: 'test', repo: 'repo' },
-          { keywordsToSearch: ['test2'], owner: 'bad', repo: 'repo' },
+          { keywords: ['test1'], owner: 'test', repo: 'repo' },
+          { keywords: ['test2'], owner: 'bad', repo: 'repo' },
         ],
       });
 
@@ -334,7 +334,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['test'],
+            keywords: ['test'],
             owner: 'test',
             repo: 'repo',
             page: 1,
@@ -371,7 +371,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['test'],
+            keywords: ['test'],
             owner: 'test',
             repo: 'repo',
             extension: 'ts',
@@ -403,7 +403,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['test'],
+            keywords: ['test'],
             owner: 'test',
             repo: 'repo',
             filename: 'index.ts',
@@ -435,7 +435,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['test'],
+            keywords: ['test'],
             owner: 'test',
             repo: 'repo',
             path: 'src/utils',
@@ -469,7 +469,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['refund', 'widget'],
+            keywords: ['refund', 'widget'],
             owner: 'wix-private',
           },
         ],
@@ -501,7 +501,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
         queries: [
           {
-            keywordsToSearch: ['refund'],
+            keywords: ['refund'],
             owner: 'wix-private',
           },
         ],
@@ -509,7 +509,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('owner: "wix-private"');
+      expect(responseText).toContain('owner: wix-private');
       expect(responseText).toContain('src/refund.ts');
     });
   });
@@ -519,7 +519,7 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
       mockProvider.searchCode.mockRejectedValue(new Error('Network error'));
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-        queries: [{ keywordsToSearch: ['test'], owner: 'test', repo: 'repo' }],
+        queries: [{ keywords: ['test'], owner: 'test', repo: 'repo' }],
       });
 
       expect(result.isError).toBe(true);

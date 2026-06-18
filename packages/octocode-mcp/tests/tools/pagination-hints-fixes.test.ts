@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
-import { isGitHubAPISuccess } from '../../src/github/githubAPI.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
+import { isGitHubAPISuccess } from '../../../octocode-tools-core/src/github/githubAPI.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -15,7 +15,7 @@ describe('Pagination and Hints Fixes', () => {
     clearAllCache();
   });
 
-  describe('Fix 3: githubSearchCode - repositoryContext with branch', () => {
+  describe('Fix 3: ghSearchCode - repositoryContext with branch', () => {
     const createMockOctokit = (searchCodeMock: ReturnType<typeof vi.fn>) => ({
       rest: {
         search: {
@@ -56,13 +56,13 @@ describe('Pagination and Hints Fixes', () => {
         .mockResolvedValue(createMockResponseWithDefaultBranch(10, 5, 'main'));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['useState'],
+        keywords: ['useState'],
         owner: 'facebook',
         repo: 'react',
         limit: 5,
@@ -92,13 +92,13 @@ describe('Pagination and Hints Fixes', () => {
         );
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'test',
         repo: 'repo',
         limit: 5,
@@ -134,13 +134,13 @@ describe('Pagination and Hints Fixes', () => {
       });
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'facebook',
         repo: 'react',
         limit: 5,
@@ -193,13 +193,13 @@ describe('Pagination and Hints Fixes', () => {
       });
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['useState'],
+        keywords: ['useState'],
         limit: 5,
       });
 

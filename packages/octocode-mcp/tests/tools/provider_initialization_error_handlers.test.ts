@@ -9,16 +9,16 @@ import { registerFetchGitHubFileContentTool } from '../../src/tools/github_fetch
 import { registerSearchGitHubPullRequestsTool } from '../../src/tools/github_search_pull_requests/github_search_pull_requests.js';
 import { registerViewGitHubRepoStructureTool } from '../../src/tools/github_view_repo_structure/github_view_repo_structure.js';
 import { registerSearchGitHubReposTool } from '../../src/tools/github_search_repos/github_search_repos.js';
-import { registerGitHubCloneRepoTool } from '../../src/tools/github_clone_repo/register.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { registerGitHubCloneRepoTool } from '../../src/tools/github_clone_repo/github_clone_repo.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   isCloneEnabled: vi.fn(() => true),
   getActiveProvider: vi.fn(() => 'github'),
@@ -60,9 +60,9 @@ describe('provider initialization errors across provider-backed tools', () => {
     vi.clearAllMocks();
   });
 
-  it('returns an error result for githubSearchCode', async () => {
+  it('returns an error result for ghSearchCode', async () => {
     const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-      queries: [{ keywordsToSearch: ['test'] }],
+      queries: [{ keywords: ['test'] }],
     });
 
     expect(getTextContent(result.content)).toContain(
@@ -70,7 +70,7 @@ describe('provider initialization errors across provider-backed tools', () => {
     );
   });
 
-  it('returns an error result for githubGetFileContent', async () => {
+  it('returns an error result for ghGetFileContent', async () => {
     const result = await mockServer.callTool(TOOL_NAMES.GITHUB_FETCH_CONTENT, {
       queries: [{ owner: 'owner', repo: 'repo', path: 'README.md' }],
     });
@@ -80,7 +80,7 @@ describe('provider initialization errors across provider-backed tools', () => {
     );
   });
 
-  it('returns an error result for githubSearchPullRequests', async () => {
+  it('returns an error result for ghHistoryResearch', async () => {
     const result = await mockServer.callTool(
       TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
       {
@@ -93,7 +93,7 @@ describe('provider initialization errors across provider-backed tools', () => {
     );
   });
 
-  it('returns an error result for githubViewRepoStructure', async () => {
+  it('returns an error result for ghViewRepoStructure', async () => {
     const result = await mockServer.callTool(
       TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE,
       {
@@ -106,11 +106,11 @@ describe('provider initialization errors across provider-backed tools', () => {
     );
   });
 
-  it('returns an error result for githubSearchRepositories', async () => {
+  it('returns an error result for ghSearchRepos', async () => {
     const result = await mockServer.callTool(
       TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
       {
-        queries: [{ keywordsToSearch: ['test'] }],
+        queries: [{ keywords: ['test'] }],
       }
     );
 
@@ -119,7 +119,7 @@ describe('provider initialization errors across provider-backed tools', () => {
     );
   });
 
-  it('returns an error result for githubCloneRepo', async () => {
+  it('returns an error result for ghCloneRepo', async () => {
     const result = await mockServer.callTool(TOOL_NAMES.GITHUB_CLONE_REPO, {
       queries: [{ owner: 'owner', repo: 'repo' }],
     });

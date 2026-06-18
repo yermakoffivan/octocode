@@ -1,40 +1,49 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RipgrepQuery } from '@octocodeai/octocode-core';
-import { LOCAL_TOOL_ERROR_CODES } from '../../src/errors/localToolErrors.js';
+import type { RipgrepQuery } from '../../../octocode-tools-core/src/tools/local_ripgrep/scheme.js';
+import { LOCAL_TOOL_ERROR_CODES } from '../../../octocode-tools-core/src/errors/localToolErrors.js';
 
 const mocks = vi.hoisted(() => ({
   checkCommandAvailability: vi.fn(),
   executeRipgrepSearchInternal: vi.fn(),
+  executeGrepFallbackSearch: vi.fn(),
 }));
 
-vi.mock('../../src/utils/exec/commandAvailability.js', () => ({
-  checkCommandAvailability: mocks.checkCommandAvailability,
-  getMissingCommandError: () => 'ripgrep not installed',
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/utils/exec/commandAvailability.js',
+  () => ({
+    checkCommandAvailability: mocks.checkCommandAvailability,
+  })
+);
 
-vi.mock('../../src/tools/local_ripgrep/ripgrepExecutor.js', () => ({
-  executeRipgrepSearchInternal: mocks.executeRipgrepSearchInternal,
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_ripgrep/ripgrepExecutor.js',
+  () => ({
+    executeRipgrepSearchInternal: mocks.executeRipgrepSearchInternal,
+  })
+);
+
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_ripgrep/grepFallbackExecutor.js',
+  () => ({
+    executeGrepFallbackSearch: mocks.executeGrepFallbackSearch,
+  })
+);
 
 const { searchContentRipgrep } =
-  await import('../../src/tools/local_ripgrep/searchContentRipgrep.js');
+  await import('../../../octocode-tools-core/src/tools/local_ripgrep/searchContentRipgrep.js');
 
 function makeRipgrepQuery(overrides: Partial<RipgrepQuery> = {}): RipgrepQuery {
   return {
     id: 'q-test',
     researchGoal: 'unit-test',
     reasoning: 'cover branches',
-    pattern: 'foo',
+    keywords: 'foo',
     path: '/tmp',
-    smartCase: true,
     matchContentLength: 200,
-    filesPerPage: 10,
-    filePageNumber: 1,
-    matchesPerPage: 10,
-    binaryFiles: 'without-match',
-    includeStats: true,
+    itemsPerPage: 10,
+    page: 1,
+    maxMatchesPerFile: 10,
     sort: 'path',
-    showFileLastModified: false,
     ...overrides,
   };
 }
@@ -43,15 +52,29 @@ describe('searchContentRipgrep — error handling', () => {
   beforeEach(() => {
     mocks.checkCommandAvailability.mockReset();
     mocks.executeRipgrepSearchInternal.mockReset();
+    mocks.executeGrepFallbackSearch.mockReset();
   });
 
-  it('returns a command-not-available error when ripgrep binary is missing', async () => {
-    mocks.checkCommandAvailability.mockResolvedValueOnce({ available: false });
+  it('falls back to grep when the ripgrep binary is missing', async () => {
+    mocks.checkCommandAvailability.mockResolvedValueOnce({
+      available: false,
+      error: 'bundled rg missing',
+    });
+    mocks.executeGrepFallbackSearch.mockResolvedValueOnce({
+      searchEngine: 'grep',
+      warnings: ['Using grep fallback (ripgrep unavailable)'],
+      files: [],
+    });
 
-    const result = await searchContentRipgrep(makeRipgrepQuery());
+    const query = makeRipgrepQuery();
+    const result = await searchContentRipgrep(query);
 
-    expect(result.status).toBe('error');
+    expect(result.searchEngine).toBe('grep');
     expect(mocks.executeRipgrepSearchInternal).not.toHaveBeenCalled();
+    expect(mocks.executeGrepFallbackSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ keywords: query.keywords, path: query.path }),
+      'bundled rg missing'
+    );
   });
 
   it('maps "Output size limit exceeded" exceptions to an OUTPUT_TOO_LARGE result with workflow hints', async () => {
@@ -87,16 +110,27 @@ describe('searchContentRipgrep — error handling', () => {
     }
   });
 
-  it('returns the executor result unchanged when no exception is thrown', async () => {
+  it('uses ripgrep and never calls grep fallback when ripgrep is available', async () => {
     mocks.checkCommandAvailability.mockResolvedValueOnce({ available: true });
     mocks.executeRipgrepSearchInternal.mockResolvedValueOnce({
-      status: 'empty',
       searchEngine: 'rg',
-      hints: [],
+      files: [
+        {
+          path: '/tmp/a.ts',
+          matchCount: 1,
+          matches: [{ line: 2, column: 0, value: 'const foo = true;' }],
+        },
+      ],
     });
 
     const result = await searchContentRipgrep(makeRipgrepQuery());
 
-    expect(result.status).toBe('empty');
+    expect(result.searchEngine).toBe('rg');
+    expect(mocks.executeRipgrepSearchInternal).toHaveBeenCalledOnce();
+    expect(mocks.executeGrepFallbackSearch).not.toHaveBeenCalled();
+    expect(result.files?.[0]?.matches![0]).toMatchObject({
+      line: 2,
+      value: 'const foo = true;',
+    });
   });
 });

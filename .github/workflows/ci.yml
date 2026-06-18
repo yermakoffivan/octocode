@@ -43,7 +43,7 @@ jobs:
         run: yarn workspace octocode-shared run build:dev
 
       - name: Build security package types
-        run: yarn workspace octocode-security-utils run build:dev
+        run: yarn workspace octocode-security run build:dev
 
       - name: Build MCP package types
         run: yarn workspace octocode-mcp run build:dev
@@ -58,6 +58,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            packages/octocode-security
+            packages/octocode-context-utils
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -70,7 +79,18 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Build all packages
+      - name: Build native packages (current platform only)
+        run: |
+          yarn workspace octocode-security run build
+          yarn workspace @octocodeai/octocode-context-utils run build
+
+      - name: Check context-utils npm package size
+        run: yarn workspace @octocodeai/octocode-context-utils run pack:check
+
+      - name: Check security npm package size
+        run: yarn workspace octocode-security run pack:check
+
+      - name: Build all packages (native platform)
         run: yarn build
 
       - name: Verify build outputs
@@ -88,21 +108,44 @@ jobs:
             packages/*/coverage/
           retention-days: 7
 
+  rust-audit:
+    name: Rust Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install cargo-audit (prebuilt)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit octocode-security crates
+        working-directory: packages/octocode-security
+        run: cargo audit -D unmaintained -D unsound -D yanked
+
+      - name: Audit octocode-context-utils crates
+        working-directory: packages/octocode-context-utils
+        run: cargo audit -D unmaintained -D unsound -D yanked
+
   pr-validation-complete:
     name: PR Validation Complete
-    needs: [checks, build-and-test]
+    needs: [checks, build-and-test, rust-audit]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [ "${{ needs.checks.result }}" != "success" ] || \
-             [ "${{ needs.build-and-test.result }}" != "success" ]; then
+             [ "${{ needs.build-and-test.result }}" != "success" ] || \
+             [ "${{ needs.rust-audit.result }}" != "success" ]; then
             echo "❌ One or more CI jobs failed"
             echo "   Checks: ${{ needs.checks.result }}"
             echo "   Build & Test: ${{ needs.build-and-test.result }}"
+            echo "   Rust Audit: ${{ needs.rust-audit.result }}"
             exit 1
           fi
           echo "✅ All CI checks passed!"
           echo "   Checks: ${{ needs.checks.result }}"
           echo "   Build & Test: ${{ needs.build-and-test.result }}"
+          echo "   Rust Audit: ${{ needs.rust-audit.result }}"

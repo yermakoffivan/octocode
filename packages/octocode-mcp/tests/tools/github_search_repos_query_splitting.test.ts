@@ -1,17 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
 import { registerSearchGitHubReposTool } from '../../src/tools/github_search_repos/github_search_repos.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
-import type { GitHubReposSearchQuery } from '@octocodeai/octocode-core';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
+import type { z } from 'zod';
+import type { GitHubReposSearchSingleQuerySchema } from '@octocodeai/octocode-core/schemas';
 import { getTextContent } from '../utils/testHelpers.js';
+
+type GitHubReposSearchQuery = z.infer<
+  typeof GitHubReposSearchSingleQuerySchema
+>;
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
@@ -79,7 +84,7 @@ describe('GitHub Search Repositories Query Splitting', () => {
         id: 'split_topics_keywords',
         reasoning: 'Test query with both search types',
         topicsToSearch: ['computer-vision', 'deep-learning'],
-        keywordsToSearch: ['whale', 'detection'],
+        keywords: ['whale', 'detection'],
         limit: 10,
         sort: 'stars',
       };
@@ -116,7 +121,7 @@ describe('GitHub Search Repositories Query Splitting', () => {
       const originalQuery: GitHubReposSearchQuery = {
         id: 'keywords_only',
         reasoning: 'Test query with only keywords',
-        keywordsToSearch: ['whale', 'detection'],
+        keywords: ['whale', 'detection'],
         limit: 10,
       };
 
@@ -168,7 +173,7 @@ describe('GitHub Search Repositories Query Splitting', () => {
               id: 'dedup_merged_result',
               reasoning: 'Test dedup',
               topicsToSearch: ['computer-vision'],
-              keywordsToSearch: ['whale'],
+              keywords: ['whale'],
               limit: 10,
             },
           ],
@@ -177,9 +182,9 @@ describe('GitHub Search Repositories Query Splitting', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "dedup_merged_result"');
+      expect(responseText).toContain('id: dedup_merged_result');
       expect(
-        (responseText.match(/id: "dedup_merged_result"/g) || []).length
+        (responseText.match(/id: dedup_merged_result/g) || []).length
       ).toBe(1);
       expect(responseText).toContain('duplicate/repo');
     });
@@ -261,7 +266,7 @@ describe('GitHub Search Repositories Query Splitting', () => {
             {
               id: 'merged_success',
               topicsToSearch: ['topic'],
-              keywordsToSearch: ['keyword'],
+              keywords: ['keyword'],
             },
           ],
         }
@@ -270,8 +275,8 @@ describe('GitHub Search Repositories Query Splitting', () => {
       const responseText = getTextContent(result.content);
       expect(responseText).not.toContain('pagination is omitted');
       expect(responseText).toContain('pagination:');
-      expect(responseText).toContain('fetch page 2');
-      expect(responseText).toContain('upper bound');
+      expect(responseText).toContain('page=2');
+      expect(responseText).toContain('upper-bound');
 
       const structured = result.structuredContent as {
         results?: Array<{
@@ -348,23 +353,18 @@ describe('GitHub Search Repositories Query Splitting', () => {
             {
               id: 'ranked_merge',
               topicsToSearch: ['topic'],
-              keywordsToSearch: ['keyword'],
+              keywords: ['keyword'],
+              concise: true,
             },
           ],
         }
       );
 
-      const structured = result.structuredContent as {
-        results?: Array<{
-          data?: {
-            repositories?: Array<{ owner: string; repo: string }>;
-          };
-        }>;
+      const repos = result.structuredContent as {
+        results?: Array<{ data?: { repositories?: string[] } }>;
       };
-      expect(structured.results?.[0]?.data?.repositories?.[0]).toMatchObject({
-        owner: 'keyword',
-        repo: 'keyword',
-      });
+      const topLine = repos.results?.[0]?.data?.repositories?.[0];
+      expect(topLine).toContain('keyword/keyword');
     });
   });
 
@@ -414,7 +414,7 @@ describe('GitHub Search Repositories Query Splitting', () => {
               id: 'partial_failure_query',
               reasoning: 'Test partial failure',
               topicsToSearch: ['topic1'],
-              keywordsToSearch: ['keyword1'],
+              keywords: ['keyword1'],
               limit: 10,
             },
           ],
@@ -423,9 +423,9 @@ describe('GitHub Search Repositories Query Splitting', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "partial_failure_query"');
+      expect(responseText).toContain('id: partial_failure_query');
       expect(
-        (responseText.match(/id: "partial_failure_query"/g) || []).length
+        (responseText.match(/id: partial_failure_query/g) || []).length
       ).toBe(1);
       expect(responseText).toContain('success/repo');
       expect(responseText).toContain(
@@ -459,14 +459,14 @@ describe('GitHub Search Repositories Query Splitting', () => {
             {
               id: 'all_failures',
               topicsToSearch: ['topic1'],
-              keywordsToSearch: ['keyword1'],
+              keywords: ['keyword1'],
             },
           ],
         }
       );
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('status: "error"');
+      expect(responseText).toContain('status: error');
       expect(responseText).toContain('Rate limit exceeded');
       expect(responseText).not.toContain('Secondary failure');
     });
@@ -483,7 +483,7 @@ describe('GitHub Search Repositories Query Splitting', () => {
             id: 'filter_preservation_query',
             reasoning: 'Test filter preservation',
             topicsToSearch: ['topic1'],
-            keywordsToSearch: ['keyword1'],
+            keywords: ['keyword1'],
             stars: '>1000',
             sort: 'stars',
             limit: 5,

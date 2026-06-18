@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchGitHubPullRequestsAPI } from '../src/github/pullRequestSearch';
-import * as client from '../src/github/client';
+import { searchGitHubPullRequestsAPI } from '../../octocode-tools-core/src/github/pullRequestSearch';
+import * as client from '../../octocode-tools-core/src/github/client';
 
-vi.mock('../src/github/client', () => ({
+vi.mock('../../octocode-tools-core/src/github/client', () => ({
   getOctokit: vi.fn(),
   OctokitWithThrottling: class {},
 }));
@@ -22,7 +22,9 @@ describe('GitHub PR Search Tool Refactor (Mocked)', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(client.getOctokit).mockResolvedValue(mockOctokit);
+    vi.mocked(client.getOctokit).mockResolvedValue(
+      mockOctokit as unknown as Awaited<ReturnType<typeof client.getOctokit>>
+    );
   });
 
   const mockPRData = {
@@ -67,7 +69,7 @@ describe('GitHub PR Search Tool Refactor (Mocked)', () => {
       owner: 'facebook',
       repo: 'react',
       prNumber: 35234,
-      type: 'metadata',
+      content: { changedFiles: true },
     });
 
     expect(result.error).toBeUndefined();
@@ -76,7 +78,6 @@ describe('GitHub PR Search Tool Refactor (Mocked)', () => {
 
     expect(pr.file_changes).toBeDefined();
     expect(pr.file_changes).toHaveLength(2);
-    // Check that patch is undefined for all files
     pr.file_changes?.forEach(file => {
       expect(file.patch).toBeUndefined();
     });
@@ -90,7 +91,7 @@ describe('GitHub PR Search Tool Refactor (Mocked)', () => {
       owner: 'facebook',
       repo: 'react',
       prNumber: 35234,
-      type: 'fullContent',
+      content: { changedFiles: true, patches: { mode: 'all' } },
     });
 
     expect(result.error).toBeUndefined();
@@ -103,7 +104,7 @@ describe('GitHub PR Search Tool Refactor (Mocked)', () => {
     expect(pr.file_changes![1]!.patch).toBeDefined();
   });
 
-  it('should support type="partialContent" and return filtered patch', async () => {
+  it('should support selected patch content and return filtered patch', async () => {
     mockOctokit.rest.pulls.get.mockResolvedValue({ data: mockPRData });
     mockOctokit.rest.pulls.listFiles.mockResolvedValue({ data: mockFilesData });
 
@@ -114,13 +115,17 @@ describe('GitHub PR Search Tool Refactor (Mocked)', () => {
       owner: 'facebook',
       repo: 'react',
       prNumber: 35234,
-      type: 'partialContent',
-      partialContentMetadata: [
-        {
-          file: filename,
-          additions: [756],
+      content: {
+        patches: {
+          mode: 'selected',
+          ranges: [
+            {
+              file: filename,
+              additions: [756],
+            },
+          ],
         },
-      ],
+      },
     });
 
     expect(result.error).toBeUndefined();
@@ -128,15 +133,12 @@ describe('GitHub PR Search Tool Refactor (Mocked)', () => {
     const pr = result.pull_requests![0]!;
 
     expect(pr.file_changes).toBeDefined();
-    // Should only have the requested file
     expect(pr.file_changes).toHaveLength(1);
     expect(pr.file_changes![0]!.filename).toBe(filename);
 
-    // Check patch content
     const patch = pr.file_changes![0]!.patch;
     expect(patch).toBeDefined();
 
-    // Expect the patch to contain the added line
     expect(patch).toContain('+756:');
     expect(patch).toContain('@reactVersion >= 18.0');
   });

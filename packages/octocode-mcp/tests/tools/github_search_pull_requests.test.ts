@@ -8,22 +8,22 @@ import { getTextContent } from '../utils/testHelpers.js';
 const mockGetProvider = vi.hoisted(() => vi.fn());
 const mockGetGitHubToken = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(),
   withCache: vi.fn(),
 }));
 
-vi.mock('../../src/tools/utils/tokenManager.js', () => ({
+vi.mock('../../../octocode-tools-core/src/tools/utils/tokenManager.js', () => ({
   getGitHubToken: mockGetGitHubToken,
 }));
 
 const mockGetActiveProviderConfig = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getGitHubToken: mockGetGitHubToken,
   getActiveProviderConfig: mockGetActiveProviderConfig,
@@ -36,7 +36,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 import { registerSearchGitHubPullRequestsTool } from '../../src/tools/github_search_pull_requests/github_search_pull_requests.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 function createMockPRProviderResponse(overrides: Record<string, unknown> = {}) {
   return {
@@ -247,7 +247,7 @@ describe('GitHub Search Pull Requests Tool', () => {
             {
               owner: 'test',
               repo: 'repo',
-              merged: true,
+              state: 'merged',
             },
           ],
         }
@@ -498,7 +498,7 @@ describe('GitHub Search Pull Requests Tool', () => {
   describe('No valid params (execution branch)', () => {
     it('should return error when query has no valid search params', async () => {
       const { searchMultipleGitHubPullRequests } =
-        await import('../../src/tools/github_search_pull_requests/execution.js');
+        await import('../../../octocode-tools-core/src/tools/github_search_pull_requests/execution.js');
 
       const result = await searchMultipleGitHubPullRequests({
         queries: [
@@ -617,6 +617,148 @@ describe('GitHub Search Pull Requests Tool', () => {
       );
 
       expect(result.isError).toBe(false);
+    });
+  });
+
+  describe('Content selector output', () => {
+    it('keeps broad search lean without per-PR next menus (Metadata mode hint covers escalation)', async () => {
+      mockProvider.searchPullRequests.mockResolvedValue({
+        data: {
+          items: [
+            {
+              ...createMockPRProviderResponse().data.items[0],
+              body: 'A'.repeat(1200),
+              fileChanges: [
+                {
+                  path: 'src/a.ts',
+                  status: 'modified',
+                  additions: 1,
+                  deletions: 1,
+                  patch: 'HUGE PATCH SHOULD NOT SHOW',
+                },
+              ],
+              comments: [
+                {
+                  id: '1',
+                  author: 'reviewer',
+                  body: 'COMMENT SHOULD NOT SHOW',
+                  createdAt: '2024-01-01T00:00:00Z',
+                  updatedAt: '2024-01-01T00:00:00Z',
+                  commentType: 'discussion',
+                },
+              ],
+            },
+          ],
+          totalCount: 1,
+          pagination: { currentPage: 1, totalPages: 1, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
+        {
+          queries: [
+            {
+              owner: 'test',
+              repo: 'repo',
+              query: 'fix bug',
+              content: {
+                comments: { discussion: true },
+                patches: { mode: 'all' },
+              },
+            },
+          ],
+        }
+      );
+
+      const text = getTextContent(result.content);
+      expect(text).not.toContain('getBody');
+      expect(text).not.toContain('getChangedFiles');
+      expect(text).not.toContain('Patches not included');
+      expect(text).not.toContain('Comments not included');
+      expect(text).toContain('Broad PR search returns metadata only');
+      expect(text).toContain('Metadata mode:');
+      expect(text).not.toContain('HUGE PATCH SHOULD NOT SHOW');
+      expect(text).not.toContain('COMMENT SHOULD NOT SHOW');
+    });
+
+    it('returns selected direct PR content; exhausted pagination blocks are pruned at render', async () => {
+      mockProvider.searchPullRequests.mockResolvedValue({
+        data: {
+          items: [
+            {
+              ...createMockPRProviderResponse().data.items[0],
+              body: 'Body text',
+              fileChanges: [
+                {
+                  path: 'src/a.ts',
+                  status: 'modified',
+                  additions: 1,
+                  deletions: 1,
+                  patch: 'patch-a',
+                },
+                {
+                  path: 'src/b.ts',
+                  status: 'modified',
+                  additions: 2,
+                  deletions: 0,
+                  patch: 'patch-b',
+                },
+              ],
+              comments: [
+                {
+                  id: '1',
+                  author: 'reviewer',
+                  body: 'Inline comment',
+                  createdAt: '2024-01-01T00:00:00Z',
+                  updatedAt: '2024-01-01T00:00:00Z',
+                  commentType: 'review_inline',
+                  path: 'src/a.ts',
+                  line: 10,
+                },
+              ],
+            },
+          ],
+          totalCount: 1,
+          pagination: { currentPage: 1, totalPages: 1, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
+        {
+          queries: [
+            {
+              owner: 'test',
+              repo: 'repo',
+              prNumber: 456,
+              itemsPerPage: 1,
+              content: {
+                body: true,
+                changedFiles: true,
+                patches: { mode: 'selected', files: ['src/a.ts'] },
+                comments: {
+                  reviewInline: true,
+                  discussion: false,
+                  file: 'src/a.ts',
+                },
+              },
+            },
+          ],
+        }
+      );
+
+      const text = getTextContent(result.content);
+      expect(text).toContain('body: Body text');
+      expect(text).toContain('path: src/a.ts');
+      expect(text).toContain('patch: patch-a');
+      expect(text).not.toContain('patch-b');
+      expect(text).not.toContain('filePagination');
+      expect(text).not.toContain('commentPagination');
     });
   });
 });

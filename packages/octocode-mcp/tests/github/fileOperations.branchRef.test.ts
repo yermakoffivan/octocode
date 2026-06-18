@@ -1,15 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchGitHubFileContentAPI } from '../../src/github/fileContent.js';
-import { getOctokit, resolveDefaultBranch } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { fetchGitHubFileContentAPI } from '../../../octocode-tools-core/src/github/fileContent.js';
+import {
+  getOctokit,
+  resolveDefaultBranch,
+} from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 import { RequestError } from 'octokit';
-import * as minifierModule from '../../src/utils/minifier/minifier.js';
+import * as minifierModule from '@octocodeai/octocode-context-utils';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
-vi.mock('../../src/utils/minifier/minifier.js');
+vi.mock('@octocodeai/octocode-context-utils', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, minifyContent: vi.fn(), minifyContentSync: vi.fn() };
+});
 
 function createRequestError(message: string, status: number) {
   return new RequestError(message, status, {
@@ -61,7 +67,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -98,7 +104,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -144,7 +150,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -185,7 +191,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({
@@ -238,7 +244,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({
@@ -289,7 +295,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -327,7 +333,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({
@@ -375,7 +381,7 @@ describe('File Operations - Branch and ResolvedRef Behavior', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({

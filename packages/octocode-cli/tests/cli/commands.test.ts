@@ -119,7 +119,7 @@ describe('CLI Commands', () => {
         username: 'testuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
       expect(tokenCmd).toBeDefined();
 
@@ -141,7 +141,7 @@ describe('CLI Commands', () => {
         username: 'ghuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -161,7 +161,7 @@ describe('CLI Commands', () => {
         source: 'none',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
       expect(tokenCmd).toBeDefined();
 
@@ -189,7 +189,7 @@ describe('CLI Commands', () => {
         username: 'enterpriseuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -202,9 +202,9 @@ describe('CLI Commands', () => {
       expect(consoleSpy).toHaveBeenCalledWith('gho_enterprise_token');
     });
 
-    it('should be findable by alias "t"', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
-      const tokenCmd = findCommand('t');
+    it('should be findable by name "token"', async () => {
+      const { findCommand } = await import('../../src/cli/commands/index.js');
+      const tokenCmd = findCommand('token');
       expect(tokenCmd).toBeDefined();
       expect(tokenCmd!.name).toBe('token');
     });
@@ -217,7 +217,7 @@ describe('CLI Commands', () => {
         username: 'ghuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -230,15 +230,10 @@ describe('CLI Commands', () => {
       expect(consoleSpy).toHaveBeenCalledWith('gho_gh_cli_token');
     });
 
-    it('should accept octocode-cli as a compatibility alias for octocode token source', async () => {
+    it('should reject unsupported token source names', async () => {
       const { getToken } = await import('../../src/features/github-oauth.js');
-      vi.mocked(getToken).mockResolvedValue({
-        token: 'gho_octocode_cli_alias',
-        source: 'octocode',
-        username: 'octouser',
-      });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -247,8 +242,11 @@ describe('CLI Commands', () => {
         options: { type: 'octocode-cli' },
       });
 
-      expect(getToken).toHaveBeenCalledWith('github.com', 'octocode');
-      expect(consoleSpy).toHaveBeenCalledWith('gho_octocode_cli_alias');
+      expect(getToken).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Invalid token type: octocode-cli')
+      );
+      expect(process.exitCode).toBe(1);
     });
 
     it('should use auto type when --type=auto is provided', async () => {
@@ -259,7 +257,7 @@ describe('CLI Commands', () => {
         username: 'autouser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -273,7 +271,7 @@ describe('CLI Commands', () => {
     });
 
     it('should show error for invalid --type value', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -297,7 +295,7 @@ describe('CLI Commands', () => {
           envSource: 'env:GH_TOKEN',
         });
 
-        const { findCommand } = await import('../../src/cli/commands.js');
+        const { findCommand } = await import('../../src/cli/commands/index.js');
         const tokenCmd = findCommand('token');
 
         await tokenCmd!.handler!({
@@ -325,7 +323,7 @@ describe('CLI Commands', () => {
           username: 'ghuser',
         });
 
-        const { findCommand } = await import('../../src/cli/commands.js');
+        const { findCommand } = await import('../../src/cli/commands/index.js');
         const tokenCmd = findCommand('token');
 
         await tokenCmd!.handler!({
@@ -352,7 +350,7 @@ describe('CLI Commands', () => {
           username: 'octocodeuser',
         });
 
-        const { findCommand } = await import('../../src/cli/commands.js');
+        const { findCommand } = await import('../../src/cli/commands/index.js');
         const tokenCmd = findCommand('token');
 
         await tokenCmd!.handler!({
@@ -378,7 +376,7 @@ describe('CLI Commands', () => {
           source: 'none',
         });
 
-        const { findCommand } = await import('../../src/cli/commands.js');
+        const { findCommand } = await import('../../src/cli/commands/index.js');
         const tokenCmd = findCommand('token');
 
         await tokenCmd!.handler!({
@@ -398,14 +396,14 @@ describe('CLI Commands', () => {
         expect(process.exitCode).toBe(1);
       });
 
-      it('should work with -j shorthand', async () => {
+      it('does not treat removed -j alias as JSON mode', async () => {
         const { getToken } = await import('../../src/features/github-oauth.js');
         vi.mocked(getToken).mockResolvedValue({
           token: 'shorthand_token',
           source: 'gh-cli',
         });
 
-        const { findCommand } = await import('../../src/cli/commands.js');
+        const { findCommand } = await import('../../src/cli/commands/index.js');
         const tokenCmd = findCommand('token');
 
         await tokenCmd!.handler!({
@@ -414,18 +412,13 @@ describe('CLI Commands', () => {
           options: { j: true },
         });
 
-        const output = consoleSpy.mock.calls.find(
-          (call: unknown[]) =>
-            typeof call[0] === 'string' && call[0].includes('"token"')
-        );
-        expect(output).toBeDefined();
-        const parsed = JSON.parse(output![0]);
-        expect(parsed.token).toBe('shorthand_token');
-        expect(parsed.type).toBe('gh-cli');
+        const output = consoleSpy.mock.calls.flat().join('\n');
+        expect(output).not.toContain('"token"');
+        expect(output).toContain('shorthand_token');
       });
 
       it('should output JSON error for invalid type in json mode', async () => {
-        const { findCommand } = await import('../../src/cli/commands.js');
+        const { findCommand } = await import('../../src/cli/commands/index.js');
         const tokenCmd = findCommand('token');
 
         await tokenCmd!.handler!({
@@ -453,7 +446,7 @@ describe('CLI Commands', () => {
         source: 'none',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -478,7 +471,7 @@ describe('CLI Commands', () => {
         source: 'none',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -504,7 +497,7 @@ describe('CLI Commands', () => {
         username: 'sourceuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -541,7 +534,7 @@ describe('CLI Commands', () => {
         tokenExpired: false,
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const statusCmd = findCommand('status');
       expect(statusCmd).toBeDefined();
 
@@ -567,7 +560,7 @@ describe('CLI Commands', () => {
         authenticated: false,
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const statusCmd = findCommand('status');
 
       await statusCmd!.handler!({
@@ -591,7 +584,7 @@ describe('CLI Commands', () => {
         tokenExpired: true,
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const statusCmd = findCommand('status');
 
       await statusCmd!.handler!({
@@ -614,7 +607,7 @@ describe('CLI Commands', () => {
         username: 'enterpriseuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const statusCmd = findCommand('status');
 
       await statusCmd!.handler!({
@@ -626,81 +619,31 @@ describe('CLI Commands', () => {
       expect(getAuthStatus).toHaveBeenCalledWith('github.enterprise.com');
     });
 
-    it('should be findable by alias "s"', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
-      const statusCmd = findCommand('s');
+    it('should be findable by name "status"', async () => {
+      const { findCommand } = await import('../../src/cli/commands/index.js');
+      const statusCmd = findCommand('status');
       expect(statusCmd).toBeDefined();
       expect(statusCmd!.name).toBe('status');
     });
   });
 
-  describe('cacheCommand', () => {
-    it('should expose cache command with tool cache flags', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
-      const cacheCmd = findCommand('cache');
-
-      expect(cacheCmd).toBeDefined();
-      expect(cacheCmd!.usage).toContain('--tools');
-      expect(cacheCmd!.usage).toContain('--local');
-      expect(cacheCmd!.usage).toContain('--lsp');
-      expect(cacheCmd!.usage).toContain('--api');
-    });
-
-    it('should handle clean --tools without failing', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
-      const cacheCmd = findCommand('cache');
-      expect(cacheCmd).toBeDefined();
-
-      await cacheCmd!.handler!({
-        command: 'cache',
-        args: ['clean'],
-        options: { tools: true },
-      });
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('No disk caches to clean')
-      );
-      expect(process.exitCode).toBeUndefined();
-    });
-
-    it('should fail with guidance when clean is called with no flags', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
-      const cacheCmd = findCommand('cache');
-      expect(cacheCmd).toBeDefined();
-
-      await cacheCmd!.handler!({
-        command: 'cache',
-        args: ['clean'],
-        options: {},
-      });
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Missing clean target')
-      );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('octocode cache clean --all')
-      );
-      expect(process.exitCode).toBe(1);
-    });
-  });
-
   describe('findCommand', () => {
     it('should find token command by name', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const cmd = findCommand('token');
       expect(cmd).toBeDefined();
       expect(cmd!.name).toBe('token');
     });
 
     it('should find status command by name', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const cmd = findCommand('status');
       expect(cmd).toBeDefined();
       expect(cmd!.name).toBe('status');
     });
 
     it('should return undefined for unknown command', async () => {
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const cmd = findCommand('unknown-command');
       expect(cmd).toBeUndefined();
     });
@@ -735,7 +678,7 @@ describe('CLI Commands', () => {
         username: 'testuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -765,7 +708,7 @@ describe('CLI Commands', () => {
         username: 'testuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -791,7 +734,7 @@ describe('CLI Commands', () => {
         username: 'testuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -821,7 +764,7 @@ describe('CLI Commands', () => {
         username: 'testuser',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({
@@ -852,7 +795,7 @@ describe('CLI Commands', () => {
         source: 'octocode',
       } as any);
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const authCmd = findCommand('auth');
 
       await authCmd!.handler!({
@@ -881,7 +824,7 @@ describe('CLI Commands', () => {
         source: 'gh-cli',
       } as any);
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const authCmd = findCommand('auth');
 
       await authCmd!.handler!({
@@ -910,7 +853,7 @@ describe('CLI Commands', () => {
         source: 'octocode',
       });
 
-      const { findCommand } = await import('../../src/cli/commands.js');
+      const { findCommand } = await import('../../src/cli/commands/index.js');
       const tokenCmd = findCommand('token');
 
       await tokenCmd!.handler!({

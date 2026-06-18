@@ -3,17 +3,39 @@ import {
   buildPaginationHints,
   mapCodeSearchProviderResult,
   mapCodeSearchToolQuery,
+  mapFileContentToolQuery,
   mapPullRequestProviderResultData,
   mapPullRequestToolQuery,
   mapRepoSearchProviderRepositories,
   mapRepoStructureProviderResult,
-} from '../../src/tools/providerMappers.js';
+} from '../../../octocode-tools-core/src/tools/providerMappers.js';
 
 describe('providerMappers', () => {
+  it('forwards minify:"symbols" through the file-content tool→provider mapper', () => {
+    const mapped = mapFileContentToolQuery({
+      owner: 'facebook',
+      repo: 'react',
+      path: 'packages/react/index.js',
+      minify: 'symbols',
+    } as Parameters<typeof mapFileContentToolQuery>[0]);
+
+    expect(mapped.minify).toBe('symbols');
+  });
+
+  it('passes minify through untouched — the schema default (standard) owns omission', () => {
+    const mapped = mapFileContentToolQuery({
+      owner: 'facebook',
+      repo: 'react',
+      path: 'packages/react/index.js',
+    } as Parameters<typeof mapFileContentToolQuery>[0]);
+
+    expect(mapped.minify).toBeUndefined();
+  });
+
   it('should map code search tool queries to provider queries', () => {
     expect(
       mapCodeSearchToolQuery({
-        keywordsToSearch: ['needle'],
+        keywords: ['needle'],
         owner: 'owner',
         repo: 'repo',
         path: 'src',
@@ -51,7 +73,7 @@ describe('providerMappers', () => {
         },
       },
       {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       }
     );
 
@@ -63,6 +85,55 @@ describe('providerMappers', () => {
         matches: [{ path: 'src/index.ts', value: 'const test = 1;' }],
       }),
     ]);
+  });
+
+  it('drops empty-snippet matches (no value:"" with dangling matchIndices)', () => {
+    const result = mapCodeSearchProviderResult(
+      {
+        items: [
+          {
+            path: 'src/empty.ts',
+            matches: [
+              { context: '', positions: [[0, 4]] as Array<[number, number]> },
+            ],
+            url: '',
+            repository: { id: '1', name: 'owner/repo', url: '' },
+          },
+          {
+            path: 'src/mixed.ts',
+            matches: [
+              { context: '', positions: [[0, 4]] as Array<[number, number]> },
+              {
+                context: 'const real = 1;',
+                positions: [[6, 10]] as Array<[number, number]>,
+              },
+            ],
+            url: '',
+            repository: { id: '1', name: 'owner/repo', url: '' },
+          },
+        ],
+        totalCount: 2,
+        pagination: {
+          currentPage: 1,
+          totalPages: 1,
+          hasMore: false,
+          totalMatches: 2,
+        },
+      },
+      { keywords: ['real'] }
+    );
+
+    const matches = result.results[0]!.matches;
+    expect(matches).toContainEqual({ path: 'src/empty.ts', pathOnly: true });
+    const mixed = matches.filter(m => m.path === 'src/mixed.ts');
+    expect(mixed).toEqual([
+      {
+        path: 'src/mixed.ts',
+        value: 'const real = 1;',
+        matchIndices: [{ start: 6, end: 10, lineOffset: 0 }],
+      },
+    ]);
+    expect(matches.every(m => m.value !== '')).toBe(true);
   });
 
   it('should preserve subgroup owners when mapping code search results', () => {
@@ -89,7 +160,7 @@ describe('providerMappers', () => {
         },
       },
       {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       }
     );
 
@@ -130,7 +201,7 @@ describe('providerMappers', () => {
 
   it('should preserve owner in code search query when repo is absent', () => {
     const result = mapCodeSearchToolQuery({
-      keywordsToSearch: ['refund'],
+      keywords: ['refund'],
       owner: 'wix-private',
     });
 
@@ -150,7 +221,7 @@ describe('providerMappers', () => {
 
   it('should set both projectId and owner in code search when both are provided', () => {
     const result = mapCodeSearchToolQuery({
-      keywordsToSearch: ['test'],
+      keywords: ['test'],
       owner: 'facebook',
       repo: 'react',
     });
@@ -174,11 +245,24 @@ describe('providerMappers', () => {
     const result = mapPullRequestToolQuery({
       owner: 'facebook',
       repo: 'react',
-      query: 'hydration',
+      keywordsToSearch: ['hydration'],
       state: 'closed',
     });
 
     expect(result.query).toBe('hydration');
+  });
+
+  it('should forward PR search limit independently from content itemsPerPage', () => {
+    const result = mapPullRequestToolQuery({
+      owner: 'facebook',
+      repo: 'react',
+      keywordsToSearch: ['hydration'],
+      limit: 2,
+      itemsPerPage: 50,
+    });
+
+    expect(result.limit).toBe(2);
+    expect(result.itemsPerPage).toBe(50);
   });
 
   it('should preserve every provider PR response field in tool output', () => {
@@ -367,7 +451,7 @@ describe('providerMappers', () => {
     expect((pr!.fileChanges as unknown[]).length).toBe(1);
   });
 
-  it('emits a single combined cursor line when hasMore', () => {
+  it('emits cursor + enumeration hint when hasMore', () => {
     const hints = buildPaginationHints(
       {
         currentPage: 2,
@@ -378,9 +462,57 @@ describe('providerMappers', () => {
       },
       'matches'
     );
-    expect(hints).toHaveLength(1);
+    expect(hints.length).toBeGreaterThanOrEqual(1);
     expect(hints[0]).toContain('Page 2/3');
     expect(hints[0]).toContain('Next: page=3');
+    expect(hints.some(h => h.includes('page through'))).toBe(true);
+  });
+
+  it('emits cursor hint without invented total when totalMatches is unknown', () => {
+    const hints = buildPaginationHints(
+      {
+        currentPage: 1,
+        totalPages: 2,
+        hasMore: true,
+        perPage: 2,
+      },
+      'PRs'
+    );
+
+    expect(hints[0]).toContain('Page 1/2');
+    expect(hints[0]).toContain('showing 1-2 PRs; total unknown');
+    expect(hints[0]).toContain('Next: page=2');
+  });
+
+  it('labels lower-bound and reachable GitHub counts explicitly', () => {
+    const lowerBoundHints = buildPaginationHints(
+      {
+        currentPage: 1,
+        totalPages: 2,
+        hasMore: true,
+        totalMatches: 101,
+        totalMatchesKind: 'lowerBound',
+        perPage: 100,
+      },
+      'repos'
+    );
+    expect(lowerBoundHints[0]).toContain('of at least 101 repos');
+
+    const cappedHints = buildPaginationHints(
+      {
+        currentPage: 1,
+        totalPages: 10,
+        hasMore: true,
+        totalMatches: 1000,
+        reachableTotalMatches: 200,
+        reportedTotalMatches: 446,
+        perPage: 20,
+      },
+      'matches'
+    );
+    expect(cappedHints[0]).toContain(
+      'of 200 reachable; GitHub reports 446 matches'
+    );
   });
 
   it('emits no hint on the final page (no tautology)', () => {
@@ -422,5 +554,157 @@ describe('providerMappers', () => {
     );
 
     expect(result).toHaveProperty('branchFallback');
+  });
+
+  it('mapPullRequestProviderResultData includes commits when provided', () => {
+    const { resultData } = mapPullRequestProviderResultData({
+      items: [
+        {
+          number: 501,
+          title: 'PR with commits',
+          body: null,
+          url: 'https://github.com/owner/repo/pull/501',
+          state: 'open',
+          draft: false,
+          author: 'dev',
+          assignees: [],
+          labels: [],
+          sourceBranch: 'feat',
+          targetBranch: 'main',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-02T00:00:00Z',
+          commits: [
+            {
+              sha: 'abc123',
+              message: 'feat: add thing',
+              author: 'dev',
+              date: '2024-01-01',
+            },
+          ],
+        },
+      ],
+      totalCount: 1,
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        hasMore: false,
+        totalMatches: 1,
+      },
+    });
+
+    const [pr] = resultData.pull_requests as Array<Record<string, unknown>>;
+    expect(pr).toHaveProperty('commits');
+    expect((pr!.commits as unknown[]).length).toBe(1);
+  });
+
+  it('mapPullRequestProviderResultData counts inline vs discussion comments in reviewSummary', () => {
+    const { resultData } = mapPullRequestProviderResultData({
+      items: [
+        {
+          number: 502,
+          title: 'PR with mixed comments',
+          body: null,
+          url: 'https://github.com/owner/repo/pull/502',
+          state: 'open',
+          draft: false,
+          author: 'dev',
+          assignees: [],
+          labels: [],
+          sourceBranch: 'feat',
+          targetBranch: 'main',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-02T00:00:00Z',
+          comments: [
+            {
+              id: 'c1',
+              author: 'alice',
+              body: 'looks good',
+              createdAt: '2024-01-01',
+              updatedAt: '2024-01-01',
+              commentType: 'review_inline' as const,
+              path: 'src/foo.ts',
+              line: 42,
+            },
+            {
+              id: 'c2',
+              author: 'bob',
+              body: 'agreed',
+              createdAt: '2024-01-01',
+              updatedAt: '2024-01-01',
+            },
+          ],
+        },
+      ],
+      totalCount: 1,
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        hasMore: false,
+        totalMatches: 1,
+      },
+    });
+
+    const [pr] = resultData.pull_requests as Array<Record<string, unknown>>;
+    const summary = pr!.reviewSummary as Record<string, unknown>;
+    expect(summary.totalComments).toBe(2);
+    expect(summary.inlineComments).toBe(1);
+    expect(summary.discussionComments).toBe(1);
+  });
+
+  it('phrase-quotes a multi-word keywordsToSearch entry', () => {
+    const result = mapPullRequestToolQuery({
+      keywordsToSearch: ['Partial Prerendering'],
+    });
+    expect(result.query).toBe('"Partial Prerendering"');
+  });
+
+  it('leaves single-word keywords unquoted', () => {
+    const result = mapPullRequestToolQuery({
+      keywordsToSearch: ['PPR'],
+    });
+    expect(result.query).toBe('PPR');
+  });
+
+  it('phrase-quotes multi-word items and leaves single-word items bare', () => {
+    const result = mapPullRequestToolQuery({
+      keywordsToSearch: ['Server Actions', 'experimental'],
+    });
+    expect(result.query).toBe('"Server Actions" experimental');
+  });
+
+  it('does not double-quote already-quoted keywords', () => {
+    const result = mapPullRequestToolQuery({
+      keywordsToSearch: ['"Partial Prerendering"'],
+    });
+    expect(result.query).toBe('"Partial Prerendering"');
+  });
+
+  it('appends raw query field verbatim after keywords', () => {
+    const result = mapPullRequestToolQuery({
+      keywordsToSearch: ['PPR'],
+      query: '"partial prerendering" in:title',
+    } as Parameters<typeof mapPullRequestToolQuery>[0] & { query?: string });
+    expect(result.query).toBe('PPR "partial prerendering" in:title');
+  });
+
+  it('uses raw query alone when keywordsToSearch is absent', () => {
+    const result = mapPullRequestToolQuery({
+      query: '"Partial Prerendering" in:title',
+    } as Parameters<typeof mapPullRequestToolQuery>[0] & { query?: string });
+    expect(result.query).toBe('"Partial Prerendering" in:title');
+  });
+
+  it('forwards match field directly to provider query match', () => {
+    const result = mapPullRequestToolQuery({
+      match: ['title'],
+    } as Parameters<typeof mapPullRequestToolQuery>[0] & {
+      match?: ('title' | 'body' | 'comments')[];
+    });
+    expect(result.match).toEqual(['title']);
+  });
+
+  it('leaves match undefined when not provided', () => {
+    const result = mapPullRequestToolQuery({ keywordsToSearch: ['PPR'] });
+    expect(result.match).toBeUndefined();
   });
 });

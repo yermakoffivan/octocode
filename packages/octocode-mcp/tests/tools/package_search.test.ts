@@ -8,12 +8,12 @@ import {
   beforeEach,
   afterEach,
 } from 'vitest';
-import type { ToolInvocationCallback } from '../../src/types/toolResults.js';
+import type { ToolInvocationCallback } from '../../../octocode-tools-core/src/types/toolResults.js';
 import {
   createMockMcpServer,
   MockMcpServer,
 } from '../fixtures/mcp-fixtures.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
 function fetchUrlString(url: string | URL | Request): string {
   if (typeof url === 'string') return url;
@@ -176,18 +176,23 @@ function createNpmCommandMock(searchResult: {
 
 const mockExecuteNpmCommand = vi.fn();
 const mockCheckNpmAvailability = vi.fn();
-vi.mock('../../src/utils/exec/npm.js', async importOriginal => {
-  const actual =
-    await importOriginal<typeof import('../../src/utils/exec/npm.js')>();
-  return {
-    ...actual,
-    executeNpmCommand: (...args: unknown[]) => mockExecuteNpmCommand(...args),
-    checkNpmAvailability: (...args: unknown[]) =>
-      mockCheckNpmAvailability(...args),
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/utils/exec/npm.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/utils/exec/npm.js')
+      >();
+    return {
+      ...actual,
+      executeNpmCommand: (...args: unknown[]) => mockExecuteNpmCommand(...args),
+      checkNpmAvailability: (...args: unknown[]) =>
+        mockCheckNpmAvailability(...args),
+    };
+  }
+);
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(() => 'test-cache-key'),
   withDataCache: vi.fn(async (_key: string, fn: () => unknown) => {
     return await fn();
@@ -263,36 +268,39 @@ function setupDefaultFetchMock(): void {
   );
 }
 
-vi.mock('../../src/tools/toolMetadata/proxies.js', async () => {
-  const actual = await vi.importActual<
-    typeof import('../../src/tools/toolMetadata/proxies.js')
-  >('../../src/tools/toolMetadata/proxies.js');
-  return {
-    ...actual,
-    TOOL_NAMES: new Proxy(actual.TOOL_NAMES, {
-      get(target, prop: string | symbol) {
-        if (prop === 'PACKAGE_SEARCH') return 'packageSearch';
-        return Reflect.get(target, prop);
-      },
-    }),
-    DESCRIPTIONS: new Proxy(actual.DESCRIPTIONS, {
-      get(target, prop: string) {
-        if (prop === 'packageSearch') {
-          return 'Search for packages in the npm ecosystem';
-        }
-        return Reflect.get(target, prop);
-      },
-    }),
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js',
+  async () => {
+    const actual = await vi.importActual<
+      typeof import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js')
+    >('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
+    return {
+      ...actual,
+      TOOL_NAMES: new Proxy(actual.TOOL_NAMES, {
+        get(target, prop: string | symbol) {
+          if (prop === 'PACKAGE_SEARCH') return 'npmSearch';
+          return Reflect.get(target, prop);
+        },
+      }),
+      DESCRIPTIONS: new Proxy(actual.DESCRIPTIONS, {
+        get(target, prop: string) {
+          if (prop === 'npmSearch') {
+            return 'Search for packages in the npm ecosystem';
+          }
+          return Reflect.get(target, prop);
+        },
+      }),
+    };
+  }
+);
 
 import {
   searchPackage,
-  type PackageSearchInput,
+  type NpmSearchInput,
   type NpmPackageResult,
-} from '../../src/utils/package/common.js';
-import { registerPackageSearchTool } from '../../src/tools/package_search/package_search.js';
-import { _resetNpmRegistryUrlCache } from '../../src/utils/package/npm.js';
+} from '../../../octocode-tools-core/src/utils/package/common.js';
+import { registerNpmSearchTool } from '../../src/tools/package_search/package_search.js';
+import { _resetNpmRegistryUrlCache } from '../../../octocode-tools-core/src/utils/package/npm.js';
 
 describe('searchPackage - NPM (CLI)', () => {
   beforeEach(() => {
@@ -323,7 +331,7 @@ describe('searchPackage - NPM (CLI)', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'axios',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
@@ -354,7 +362,91 @@ describe('searchPackage - NPM (CLI)', () => {
     );
   });
 
-  it('should return full NPM package results when npmFetchMetadata is true', async () => {
+  it('keyword queries default to a ranked page of 10 results (with metadata fetch)', async () => {
+    const searchItems = JSON.stringify([
+      { name: 'pkg-a', version: '1.0.0', description: 'a' },
+      { name: 'pkg-b', version: '2.0.0', description: 'b' },
+    ]);
+    mockExecuteNpmCommand.mockImplementation(
+      createNpmCommandMock({ stdout: searchItems, stderr: '', exitCode: 0 })
+    );
+
+    const query: NpmSearchInput = {
+      name: 'react state management',
+      mainResearchGoal: 'Test',
+      researchGoal: 'Test',
+      reasoning: 'Test',
+    };
+
+    const result = await searchPackage(query);
+
+    expect(mockExecuteNpmCommand).toHaveBeenCalledWith(
+      'search',
+      ['react state management', '--json', '--searchlimit', '10'],
+      expect.any(Object)
+    );
+    expect(mockExecuteNpmCommand).toHaveBeenCalledWith(
+      'view',
+      expect.arrayContaining(['pkg-a', '--json']),
+      expect.any(Object)
+    );
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect(result.packages.map(p => p.name)).toEqual(['pkg-a', 'pkg-b']);
+    }
+  });
+
+  it('keyword search calls npm view per-item to populate repositoryDirectory (sourceRoot)', async () => {
+    const searchItems = JSON.stringify([
+      { name: 'pkg-a', version: '1.0.0', description: 'a' },
+      { name: 'pkg-b', version: '2.0.0', description: 'b' },
+    ]);
+    mockNpmViewFull('pkg-a', {
+      name: 'pkg-a',
+      version: '1.0.0',
+      description: 'a',
+      repository: 'https://github.com/octo/pkg-a',
+    });
+    mockNpmViewFull('pkg-b', {
+      name: 'pkg-b',
+      version: '2.0.0',
+      description: 'b',
+      repository: {
+        url: 'https://github.com/octo/monorepo',
+        directory: 'packages/pkg-b',
+      },
+    });
+    mockExecuteNpmCommand.mockImplementation(
+      createNpmCommandMock({ stdout: searchItems, stderr: '', exitCode: 0 })
+    );
+
+    const result = await searchPackage({
+      name: 'react state management',
+      mainResearchGoal: 'Test',
+      researchGoal: 'Test',
+      reasoning: 'Test',
+    });
+
+    expect(mockExecuteNpmCommand).toHaveBeenCalledWith(
+      'search',
+      expect.arrayContaining(['react state management', '--json']),
+      expect.any(Object)
+    );
+    expect(mockExecuteNpmCommand).toHaveBeenCalledWith(
+      'view',
+      expect.arrayContaining(['pkg-a']),
+      expect.any(Object)
+    );
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const pkgB = result.packages.find(p => p.name === 'pkg-b') as
+        | NpmPackageResult
+        | undefined;
+      expect(pkgB?.repositoryDirectory).toBe('packages/pkg-b');
+    }
+  });
+
+  it('should return full NPM package results for exact package name', async () => {
     mockNpmViewFull('axios', {
       name: 'axios',
       version: '1.6.0',
@@ -372,9 +464,8 @@ describe('searchPackage - NPM (CLI)', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'axios',
-      npmFetchMetadata: true,
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
       reasoning: 'Test',
@@ -401,25 +492,15 @@ describe('searchPackage - NPM (CLI)', () => {
     }
   });
 
-  it('should use verbose as the boolean metadata switch while preserving findings', async () => {
-    mockNpmViewFull('verbose-pkg', {
-      name: 'verbose-pkg',
+  it('should return full exact-package metadata by default (exact names always fetch metadata)', async () => {
+    mockNpmViewFull('full-meta-pkg', {
+      name: 'full-meta-pkg',
       version: '2.0.0',
-      description: 'Verbose package',
+      description: 'Full metadata package',
       keywords: ['detail', 'metadata'],
-      repository: 'git+https://github.com/octo/verbose-pkg.git',
-      homepage: 'https://example.com/verbose',
+      repository: 'git+https://github.com/octo/full-meta-pkg.git',
+      homepage: 'https://example.com/full',
       author: { name: 'Octo Dev' },
-      peerDependencies: { react: '^18.0.0' },
-    });
-    mockNpmViewFull('lean-pkg', {
-      name: 'lean-pkg',
-      version: '1.0.0',
-      description: 'Lean package',
-      keywords: ['hidden-unless-verbose'],
-      repository: 'git+https://github.com/octo/lean-pkg.git',
-      homepage: 'https://example.com/lean',
-      author: 'Hidden Author',
       peerDependencies: { react: '^18.0.0' },
     });
 
@@ -431,43 +512,23 @@ describe('searchPackage - NPM (CLI)', () => {
       })
     );
 
-    const verboseResult = await searchPackage({
-      name: 'verbose-pkg',
-      verbose: true,
-      mainResearchGoal: 'Test',
-      researchGoal: 'Test',
-      reasoning: 'Test',
-    });
-    const leanResult = await searchPackage({
-      name: 'lean-pkg',
-      verbose: false,
+    const result = await searchPackage({
+      name: 'full-meta-pkg',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
       reasoning: 'Test',
     });
 
-    expect('packages' in verboseResult).toBe(true);
-    expect('packages' in leanResult).toBe(true);
-    if ('packages' in verboseResult && 'packages' in leanResult) {
-      const verbosePkg = verboseResult.packages[0] as NpmPackageResult;
-      const leanPkg = leanResult.packages[0] as NpmPackageResult;
-
-      expect(verbosePkg.name).toBe('verbose-pkg');
-      expect(verbosePkg.repoUrl).toBe('https://github.com/octo/verbose-pkg');
-      expect(verbosePkg.version).toBe('2.0.0');
-      expect(verbosePkg.keywords).toEqual(['detail', 'metadata']);
-      expect(verbosePkg.homepage).toBe('https://example.com/verbose');
-      expect(verbosePkg.author).toBe('Octo Dev');
-      expect(verbosePkg.peerDependencies).toEqual({ react: '^18.0.0' });
-
-      expect(leanPkg.name).toBe('lean-pkg');
-      expect(leanPkg.repoUrl).toBe('https://github.com/octo/lean-pkg');
-      expect(leanPkg.version).toBe('1.0.0');
-      expect(leanPkg.description).toBe('Lean package');
-      expect(leanPkg.keywords).toBeUndefined();
-      expect(leanPkg.homepage).toBeUndefined();
-      expect(leanPkg.author).toBeUndefined();
-      expect(leanPkg.peerDependencies).toBeUndefined();
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const pkg = result.packages[0] as NpmPackageResult;
+      expect(pkg.name).toBe('full-meta-pkg');
+      expect(pkg.repoUrl).toBe('https://github.com/octo/full-meta-pkg');
+      expect(pkg.version).toBe('2.0.0');
+      expect(pkg.keywords).toEqual(['detail', 'metadata']);
+      expect(pkg.homepage).toBe('https://example.com/full');
+      expect(pkg.author).toBe('Octo Dev');
+      expect(pkg.peerDependencies).toEqual({ react: '^18.0.0' });
     }
   });
 
@@ -483,7 +544,7 @@ describe('searchPackage - NPM (CLI)', () => {
       exitCode: 1,
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'left-pad',
       itemsPerPage: 20,
       mainResearchGoal: 'Test',
@@ -538,7 +599,7 @@ describe('searchPackage - NPM (CLI)', () => {
     mockNpmRegistry('lodash', 'git+https://github.com/lodash/lodash.git');
     mockNpmRegistry('lodash-es', 'git+https://github.com/lodash/lodash.git');
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'lodash utilities',
       itemsPerPage: 5,
       mainResearchGoal: 'Test',
@@ -567,7 +628,7 @@ describe('searchPackage - NPM (CLI)', () => {
   });
 
   it('pages registry results: page=2 sends the from offset (#2)', async () => {
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'lodash utilities',
       itemsPerPage: 5,
       page: 2,
@@ -584,7 +645,7 @@ describe('searchPackage - NPM (CLI)', () => {
     );
   });
 
-  it('should return package details when npmFetchMetadata is true', async () => {
+  it('should return package details for exact name lookup', async () => {
     mockNpmViewFull('test-package', {
       name: 'test-package',
       version: '1.0.0',
@@ -599,9 +660,8 @@ describe('searchPackage - NPM (CLI)', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'test-package',
-      npmFetchMetadata: true,
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
       reasoning: 'Test',
@@ -622,7 +682,7 @@ describe('searchPackage - NPM (CLI)', () => {
   it('should handle NPM registry fetch error', async () => {
     mockFetch.mockRejectedValue(new Error('Command timeout'));
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'axios http client',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
@@ -646,7 +706,7 @@ describe('searchPackage - NPM (CLI)', () => {
       body: null,
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'axios http',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
@@ -671,7 +731,7 @@ describe('searchPackage - NPM (CLI)', () => {
       body: null,
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'nonexistent package xyz123',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
@@ -698,7 +758,7 @@ describe('searchPackage - NPM (CLI)', () => {
       createNpmCommandMock({ stdout: '', stderr: '', exitCode: 0 })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'typescript',
       itemsPerPage: 3,
       mainResearchGoal: 'Test',
@@ -764,7 +824,7 @@ describe('searchPackage - NPM (CLI)', () => {
       body: null,
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'typescript runtime',
       itemsPerPage: 3,
       mainResearchGoal: 'Test',
@@ -824,7 +884,7 @@ describe('searchPackage - NPM (CLI)', () => {
       body: null,
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'typescript types',
       itemsPerPage: 3,
       mainResearchGoal: 'Test',
@@ -862,7 +922,7 @@ describe('searchPackage - NPM (CLI)', () => {
       body: null,
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'lodash utility helpers',
       itemsPerPage: 2,
       mainResearchGoal: 'Test',
@@ -899,7 +959,7 @@ describe('searchPackage - NPM Edge Cases', () => {
       body: null,
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'test pkg keyword',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
@@ -937,7 +997,7 @@ describe('Package search response structure', () => {
       repository: 'https://github.com/expressjs/express',
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'express',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
@@ -961,7 +1021,7 @@ describe('Package search response structure', () => {
     }
   });
 
-  it('should return full structure when npmFetchMetadata is true', async () => {
+  it('should return full structure for exact name lookup', async () => {
     mockNpmViewFull('express', {
       name: 'express',
       version: '4.18.2',
@@ -970,9 +1030,8 @@ describe('Package search response structure', () => {
       repository: 'https://github.com/expressjs/express',
     });
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'express',
-      npmFetchMetadata: true,
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
       reasoning: 'Test',
@@ -993,7 +1052,7 @@ describe('Package search response structure', () => {
   it('should return proper structure for error response', async () => {
     mockFetch.mockRejectedValue(new Error('Command failed'));
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'test package search',
       mainResearchGoal: 'Test',
       researchGoal: 'Test',
@@ -1012,7 +1071,7 @@ describe('Package search response structure', () => {
   });
 });
 
-describe('registerPackageSearchTool', () => {
+describe('registerNpmSearchTool', () => {
   let mockServer: MockMcpServer;
   let mockCallback: ReturnType<typeof vi.fn<ToolInvocationCallback>>;
 
@@ -1037,26 +1096,26 @@ describe('registerPackageSearchTool', () => {
   describe('Tool Registration', () => {
     it('should register package_search tool with callback when npm is available', async () => {
       mockCheckNpmAvailability.mockResolvedValue(true);
-      await registerPackageSearchTool(mockServer.server, mockCallback);
+      await registerNpmSearchTool(mockServer.server, mockCallback);
       expect(mockServer.server.registerTool).toHaveBeenCalled();
     });
 
     it('should register package_search tool without callback when npm is available', async () => {
       mockCheckNpmAvailability.mockResolvedValue(true);
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
       expect(mockServer.server.registerTool).toHaveBeenCalled();
     });
 
     it('should register with undefined callback when npm is available', async () => {
       mockCheckNpmAvailability.mockResolvedValue(true);
-      await registerPackageSearchTool(mockServer.server, undefined);
+      await registerNpmSearchTool(mockServer.server, undefined);
       expect(mockServer.server.registerTool).toHaveBeenCalled();
     });
 
     it('registers even when npm + registry are unavailable (never vanishes)', async () => {
       mockCheckNpmAvailability.mockResolvedValue(false);
       mockFetch.mockRejectedValue(new Error('fetch failed'));
-      await registerPackageSearchTool(mockServer.server, mockCallback);
+      await registerNpmSearchTool(mockServer.server, mockCallback);
       expect(mockServer.server.registerTool).toHaveBeenCalled();
     });
   });
@@ -1073,24 +1132,24 @@ describe('registerPackageSearchTool', () => {
         createNpmCommandMock({ stdout: '', stderr: '', exitCode: 0 })
       );
 
-      await registerPackageSearchTool(mockServer.server, mockCallback);
+      await registerNpmSearchTool(mockServer.server, mockCallback);
 
       const queries = [
         {
-          name: 'axios',
+          packageName: 'axios',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
         },
       ];
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries,
       });
 
       expect(result.isError).toBeFalsy();
       expect(result.content).toBeDefined();
       expect(result.content[0]).toHaveProperty('text');
-      expect(mockCallback).toHaveBeenCalledWith('packageSearch', queries);
+      expect(mockCallback).toHaveBeenCalledWith('npmSearch', queries);
     });
     it('should include install hint for npm packages', async () => {
       mockNpmViewFull('lodash', {
@@ -1102,12 +1161,12 @@ describe('registerPackageSearchTool', () => {
         createNpmCommandMock({ stdout: '', stderr: '', exitCode: 0 })
       );
 
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'lodash',
+            packageName: 'lodash',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1117,6 +1176,183 @@ describe('registerPackageSearchTool', () => {
 
       const text = (result.content[0] as { text: string }).text;
       expect(text).toContain('Install: npm install lodash');
+    });
+
+    it('should include pagination in data when registry returns more results than fetched', async () => {
+      mockExecuteNpmCommand.mockRejectedValue(new Error('npm not found'));
+
+      mockFetch.mockImplementation((url: string | URL | Request) => {
+        const urlStr = fetchUrlString(url);
+        if (urlStr.includes('/-/v1/search')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                objects: [
+                  {
+                    package: {
+                      packageName: 'react-utils',
+                      version: '1.0.0',
+                      description: 'React utilities',
+                    },
+                  },
+                ],
+                total: 1000,
+              }),
+            body: null,
+          });
+        }
+        if (/^https?:\/\/[^/]+\/?$/.test(urlStr)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ db_name: 'registry' }),
+            body: null,
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          body: { cancel: vi.fn().mockResolvedValue(undefined) },
+          headers: new Headers(),
+        });
+      });
+
+      await registerNpmSearchTool(mockServer.server);
+
+      const result = await mockServer.callTool('npmSearch', {
+        queries: [
+          {
+            packageName: 'react utils library',
+            mainResearchGoal: 'Test pagination',
+            researchGoal: 'Test',
+            reasoning: 'Validate pagination output',
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const text = (result.content[0] as { text: string }).text;
+      expect(text).toContain('hasMore');
+      expect(text).toContain('1000');
+    });
+
+    it('should not report hasMore when returned count equals totalFound', async () => {
+      mockExecuteNpmCommand.mockRejectedValue(new Error('npm not found'));
+
+      mockFetch.mockImplementation((url: string | URL | Request) => {
+        const urlStr = fetchUrlString(url);
+        if (urlStr.includes('/-/v1/search')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                objects: Array.from({ length: 10 }, (_, index) => ({
+                  package: {
+                    name: `react-hook-${index}`,
+                    version: '1.0.0',
+                    description: 'React hook package',
+                  },
+                })),
+                total: 10,
+              }),
+            body: null,
+          });
+        }
+        if (/^https?:\/\/[^/]+\/?$/.test(urlStr)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ db_name: 'registry' }),
+            body: null,
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          body: { cancel: vi.fn().mockResolvedValue(undefined) },
+          headers: new Headers(),
+        });
+      });
+
+      await registerNpmSearchTool(mockServer.server);
+
+      const result = await mockServer.callTool('npmSearch', {
+        queries: [
+          {
+            packageName: 'react hooks',
+            page: 2,
+            mainResearchGoal: 'Test pagination',
+            researchGoal: 'Test',
+            reasoning: 'Validate final page output',
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const text = (result.content[0] as { text: string }).text;
+      expect(text).toContain('totalFound: 10');
+      expect(text).not.toContain('hasMore: true');
+    });
+
+    it('should return rich object output per package (name, version, description, repository)', async () => {
+      mockNpmViewFull('lodash', {
+        name: 'lodash',
+        version: '4.17.21',
+        description: 'Utility library',
+        repository: 'https://github.com/lodash/lodash',
+      });
+      mockExecuteNpmCommand.mockImplementation(
+        createNpmCommandMock({ stdout: '', stderr: '', exitCode: 0 })
+      );
+
+      await registerNpmSearchTool(mockServer.server);
+
+      const result = await mockServer.callTool('npmSearch', {
+        queries: [
+          {
+            packageName: 'lodash',
+            mainResearchGoal: 'Test rich object output',
+            researchGoal: 'Test',
+            reasoning:
+              'Packages now include version, description, license, weeklyDownloads',
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const text = (result.content[0] as { text: string }).text;
+      expect(text).toContain('lodash');
+      expect(text).toContain('https://github.com/lodash/lodash');
+      expect(text).not.toContain('entrypoints');
+      expect(text).not.toContain('researchTargets');
+      expect(text).not.toContain('packageType');
+      expect(text).not.toContain('npmUrl:');
+    });
+
+    it('emits ghSearchRepos hint when registry is unreachable', async () => {
+      mockFetch.mockRejectedValue(new Error('fetch failed'));
+      mockExecuteNpmCommand.mockRejectedValue(new Error('npm failed'));
+
+      await registerNpmSearchTool(mockServer.server);
+
+      const result = await mockServer.callTool('npmSearch', {
+        queries: [
+          {
+            packageName: 'my_package_name',
+            mainResearchGoal: 'Test error hint',
+            researchGoal: 'Test',
+            reasoning: 'Registry unreachable — should hint ghSearchRepos',
+          },
+        ],
+      });
+
+      const text = (result.content[0] as { text: string }).text;
+      expect(text).toContain('ghSearchRepos');
     });
   });
 
@@ -1128,20 +1364,20 @@ describe('registerPackageSearchTool', () => {
         exitCode: 0,
       });
 
-      await registerPackageSearchTool(mockServer.server, mockCallback);
+      await registerNpmSearchTool(mockServer.server, mockCallback);
 
       const queries = [
         {
-          name: 'test-pkg',
+          packageName: 'test-pkg',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
         },
       ];
 
-      await mockServer.callTool('packageSearch', { queries });
+      await mockServer.callTool('npmSearch', { queries });
 
-      expect(mockCallback).toHaveBeenCalledWith('packageSearch', queries);
+      expect(mockCallback).toHaveBeenCalledWith('npmSearch', queries);
     });
 
     it('should continue execution even if callback throws', async () => {
@@ -1153,12 +1389,12 @@ describe('registerPackageSearchTool', () => {
 
       mockCallback.mockRejectedValue(new Error('Callback error'));
 
-      await registerPackageSearchTool(mockServer.server, mockCallback);
+      await registerNpmSearchTool(mockServer.server, mockCallback);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'test-pkg',
+            packageName: 'test-pkg',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1177,12 +1413,12 @@ describe('registerPackageSearchTool', () => {
         exitCode: 0,
       });
 
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      await mockServer.callTool('packageSearch', {
+      await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'test-pkg',
+            packageName: 'test-pkg',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1207,18 +1443,18 @@ describe('registerPackageSearchTool', () => {
         })
       );
 
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'pkg1',
+            packageName: 'pkg1',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
           },
           {
-            name: 'pkg2',
+            packageName: 'pkg2',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1232,9 +1468,9 @@ describe('registerPackageSearchTool', () => {
     });
 
     it('should handle empty queries array', async () => {
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [],
       });
 
@@ -1246,12 +1482,12 @@ describe('registerPackageSearchTool', () => {
     it('should handle unexpected errors', async () => {
       mockExecuteNpmCommand.mockRejectedValue(new Error('Unexpected error'));
 
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'test-pkg',
+            packageName: 'test-pkg',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1274,12 +1510,12 @@ describe('registerPackageSearchTool', () => {
         createNpmCommandMock({ stdout: '', stderr: '', exitCode: 0 })
       );
 
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'no-repo-pkg',
+            packageName: 'no-repo-pkg',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1289,7 +1525,7 @@ describe('registerPackageSearchTool', () => {
 
       const text = (result.content[0] as { text: string }).text;
       expect(text).toContain('Install: npm install');
-      expect(text).not.toContain('githubViewRepoStructure');
+      expect(text).not.toContain('ghViewRepoStructure');
     });
   });
 
@@ -1304,12 +1540,12 @@ describe('registerPackageSearchTool', () => {
         createNpmCommandMock({ stdout: '', stderr: '', exitCode: 0 })
       );
 
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'no-repo-pkg',
+            packageName: 'no-repo-pkg',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1320,7 +1556,7 @@ describe('registerPackageSearchTool', () => {
       const text = (result.content[0] as { text: string }).text;
 
       expect(text).toContain('Install: npm install no-repo-pkg');
-      expect(text).not.toContain('githubViewRepoStructure');
+      expect(text).not.toContain('ghViewRepoStructure');
 
       expect(text).not.toContain('status: "hasResults"');
     });
@@ -1331,12 +1567,12 @@ describe('registerPackageSearchTool', () => {
         exitCode: 0,
       });
 
-      await registerPackageSearchTool(mockServer.server);
+      await registerNpmSearchTool(mockServer.server);
 
-      const result = await mockServer.callTool('packageSearch', {
+      const result = await mockServer.callTool('npmSearch', {
         queries: [
           {
-            name: 'nonexistent pkg xyz123 keyword',
+            packageName: 'nonexistent pkg xyz123 keyword',
             mainResearchGoal: 'Test',
             researchGoal: 'Test',
             reasoning: 'Test',
@@ -1346,14 +1582,12 @@ describe('registerPackageSearchTool', () => {
 
       const text = (result.content[0] as { text: string }).text;
 
-      expect(text).toContain(
-        "No npm packages found for 'nonexistent pkg xyz123 keyword'"
-      );
+      expect(text).toContain('Check spelling');
       expect(text).not.toContain(
         'Browse: https://npmjs.com/search?q=nonexistent%20pkg%20xyz123%20keyword'
       );
 
-      expect(text).toContain('status: "empty"');
+      expect(text).toContain('status: empty');
     });
   });
 });
@@ -1382,12 +1616,12 @@ describe('Task 2: Name Variation Suggestions', () => {
       exitCode: 0,
     });
 
-    await registerPackageSearchTool(mockServer.server);
+    await registerNpmSearchTool(mockServer.server);
 
-    const result = await mockServer.callTool('packageSearch', {
+    const result = await mockServer.callTool('npmSearch', {
       queries: [
         {
-          name: 'date-fns keyword',
+          packageName: 'date-fns keyword',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
@@ -1396,7 +1630,7 @@ describe('Task 2: Name Variation Suggestions', () => {
     });
 
     const text = (result.content[0] as { text: string }).text;
-    expect(text).toContain("No npm packages found for 'date-fns keyword'");
+    expect(text).toContain('Check spelling');
   });
 
   it('should suggest unscoped name for @scope/name packages', async () => {
@@ -1408,12 +1642,12 @@ describe('Task 2: Name Variation Suggestions', () => {
       })
     );
 
-    await registerPackageSearchTool(mockServer.server);
+    await registerNpmSearchTool(mockServer.server);
 
-    const result = await mockServer.callTool('packageSearch', {
+    const result = await mockServer.callTool('npmSearch', {
       queries: [
         {
-          name: '@nonexistent/package',
+          packageName: '@nonexistent/package',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
@@ -1432,12 +1666,12 @@ describe('Task 2: Name Variation Suggestions', () => {
       exitCode: 0,
     });
 
-    await registerPackageSearchTool(mockServer.server);
+    await registerNpmSearchTool(mockServer.server);
 
-    const result = await mockServer.callTool('packageSearch', {
+    const result = await mockServer.callTool('npmSearch', {
       queries: [
         {
-          name: 'chart library',
+          packageName: 'chart library',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
@@ -1446,7 +1680,7 @@ describe('Task 2: Name Variation Suggestions', () => {
     });
 
     const text = (result.content[0] as { text: string }).text;
-    expect(text).toContain("No npm packages found for 'chart library'");
+    expect(text).toContain('Check spelling');
   });
 
   it('should return all packages from a search result', async () => {
@@ -1470,12 +1704,12 @@ describe('Task 2: Name Variation Suggestions', () => {
       })
     );
 
-    await registerPackageSearchTool(mockServer.server);
+    await registerNpmSearchTool(mockServer.server);
 
-    const result = await mockServer.callTool('packageSearch', {
+    const result = await mockServer.callTool('npmSearch', {
       queries: [
         {
-          name: 'pkg utility library',
+          packageName: 'pkg utility library',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
@@ -1541,12 +1775,12 @@ describe('Task 3: Deprecation Detection', () => {
       return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 });
     });
 
-    await registerPackageSearchTool(mockServer.server);
+    await registerNpmSearchTool(mockServer.server);
 
-    const result = await mockServer.callTool('packageSearch', {
+    const result = await mockServer.callTool('npmSearch', {
       queries: [
         {
-          name: 'request',
+          packageName: 'request',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
@@ -1588,12 +1822,12 @@ describe('Task 3: Deprecation Detection', () => {
       return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 });
     });
 
-    await registerPackageSearchTool(mockServer.server);
+    await registerNpmSearchTool(mockServer.server);
 
-    const result = await mockServer.callTool('packageSearch', {
+    const result = await mockServer.callTool('npmSearch', {
       queries: [
         {
-          name: 'lodash',
+          packageName: 'lodash',
           mainResearchGoal: 'Test',
           researchGoal: 'Test',
           reasoning: 'Test',
@@ -1633,7 +1867,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'axios',
       mainResearchGoal: 'Test CLI repository URL fetching',
       researchGoal: 'Test string URL format',
@@ -1663,7 +1897,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       repository: {
         type: 'git',
         url: 'https://github.com/wix-private/yoshi.git',
-        directory: 'legacy-packages/yoshi-style-dependencies',
+        directory: 'old-packages/yoshi-style-dependencies',
       },
     });
 
@@ -1675,7 +1909,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: '@wix/yoshi-style-dependencies',
       mainResearchGoal: 'Test CLI repository URL fetching',
       researchGoal: 'Test object URL format',
@@ -1706,7 +1940,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'some-package',
       mainResearchGoal: 'Test package without repository',
       researchGoal: 'Test when package has no repository',
@@ -1732,7 +1966,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'no-repo-package',
       mainResearchGoal: 'Test package not found case',
       researchGoal: 'Test when package does not exist',
@@ -1762,7 +1996,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: '@types/node',
       mainResearchGoal: 'Test scoped package handling',
       researchGoal: 'Test @types/node repository fetching',
@@ -1796,7 +2030,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       })
     );
 
-    const query: PackageSearchInput = {
+    const query: NpmSearchInput = {
       name: 'lodash',
       mainResearchGoal: 'Test URL cleaning',
       researchGoal: 'Test git+ and .git are removed',

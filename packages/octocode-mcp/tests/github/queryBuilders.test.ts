@@ -5,11 +5,11 @@ import {
   buildRepoSearchQuery,
   buildPullRequestSearchQuery,
   shouldUseSearchForPRs,
-} from '../../src/github/queryBuilders.js';
-import type { GitHubCodeSearchQuery } from '@octocodeai/octocode-core';
+} from '../../../octocode-tools-core/src/github/queryBuilders.js';
+import type { GitHubCodeSearchQuery } from '../../src/public.js';
 
 const toCodeSearchQuery = (params: {
-  keywordsToSearch: string[];
+  keywords: string[];
   owner?: string | string[];
   repo?: string | string[];
   extension?: string;
@@ -34,7 +34,7 @@ describe('Query Builders', () => {
   describe('buildCodeSearchQuery', () => {
     it('should build basic query with terms', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['function', 'auth'],
+        keywords: ['function', 'auth'],
 
         minify: true,
       });
@@ -45,7 +45,7 @@ describe('Query Builders', () => {
 
     it('should build query with owner and repo', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'microsoft',
         repo: 'vscode',
 
@@ -58,7 +58,7 @@ describe('Query Builders', () => {
 
     it('should build query with owner only', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'google',
 
         minify: true,
@@ -70,7 +70,7 @@ describe('Query Builders', () => {
 
     it('should build query with multiple owners and repos', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: ['microsoft', 'google'],
         repo: ['vscode', 'typescript'],
 
@@ -85,7 +85,7 @@ describe('Query Builders', () => {
 
     it('should build query with file filters', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         filename: 'package.json',
         extension: 'ts',
         path: 'src/',
@@ -99,7 +99,7 @@ describe('Query Builders', () => {
 
     it('should quote path values containing slashes', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['export'],
+        keywords: ['export'],
         owner: 'bgauryy',
         repo: 'octocode-mcp',
         path: 'src/tools',
@@ -111,7 +111,7 @@ describe('Query Builders', () => {
 
     it('should not quote simple path values without special chars', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         path: 'src',
       });
 
@@ -122,7 +122,7 @@ describe('Query Builders', () => {
 
     it('should build query with match filters', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         match: ['file', 'path'],
 
         minify: true,
@@ -134,7 +134,7 @@ describe('Query Builders', () => {
 
     it('should build query with single match filter', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         match: 'file',
 
         minify: true,
@@ -146,7 +146,7 @@ describe('Query Builders', () => {
 
     it('should handle empty query terms', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: [],
+        keywords: [],
         owner: 'microsoft',
 
         minify: true,
@@ -158,7 +158,7 @@ describe('Query Builders', () => {
 
     it('should quote keywords containing @ character', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['@scope/package'],
+        keywords: ['@scope/package'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -167,7 +167,7 @@ describe('Query Builders', () => {
 
     it('should quote keywords containing / character', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['owner/repo'],
+        keywords: ['owner/repo'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -176,7 +176,7 @@ describe('Query Builders', () => {
 
     it('should not quote regular keywords', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['express', 'middleware'],
+        keywords: ['express', 'middleware'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -185,7 +185,7 @@ describe('Query Builders', () => {
 
     it('should not double-quote already quoted keywords', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['"@scope/package"'],
+        keywords: ['"@scope/package"'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -194,7 +194,7 @@ describe('Query Builders', () => {
 
     it('should handle mix of special and regular keywords', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['express', '@types/node', 'middleware'],
+        keywords: ['express', '@types/node', 'middleware'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -203,7 +203,7 @@ describe('Query Builders', () => {
 
     it('should quote multi-word keywords as a phrase (SC-1)', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['export function parse'],
+        keywords: ['export function parse'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -212,7 +212,7 @@ describe('Query Builders', () => {
 
     it('should quote a phrase and split a file path into filename: + dir (SC-1/SC-2)', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['const patch'],
+        keywords: ['const patch'],
         owner: 'vuejs',
         repo: 'core',
         path: 'packages/runtime-core/src/renderer.ts',
@@ -229,7 +229,7 @@ describe('Query Builders', () => {
       it('splits a path pointing at a file into filename: + directory path:', () => {
         const query = buildCodeSearchQuery(
           toCodeSearchQuery({
-            keywordsToSearch: ['createRenderer'],
+            keywords: ['createRenderer'],
             path: 'packages/runtime-core/src/renderer.ts',
           })
         );
@@ -240,7 +240,7 @@ describe('Query Builders', () => {
 
       it('drops path: entirely when the file path has no directory part', () => {
         const query = buildCodeSearchQuery(
-          toCodeSearchQuery({ keywordsToSearch: ['x'], path: 'renderer.ts' })
+          toCodeSearchQuery({ keywords: ['x'], path: 'renderer.ts' })
         );
         expect(query).toBe('x filename:renderer.ts');
       });
@@ -248,7 +248,7 @@ describe('Query Builders', () => {
       it('handles compound extensions (foo.test.ts)', () => {
         const query = buildCodeSearchQuery(
           toCodeSearchQuery({
-            keywordsToSearch: ['x'],
+            keywords: ['x'],
             path: 'src/foo.test.ts',
           })
         );
@@ -259,7 +259,7 @@ describe('Query Builders', () => {
       it('does NOT split a plain directory path', () => {
         const query = buildCodeSearchQuery(
           toCodeSearchQuery({
-            keywordsToSearch: ['x'],
+            keywords: ['x'],
             path: 'packages/runtime-core/src',
           })
         );
@@ -269,7 +269,7 @@ describe('Query Builders', () => {
 
       it('does NOT split a directory whose name looks like a version (src/v1.2)', () => {
         const query = buildCodeSearchQuery(
-          toCodeSearchQuery({ keywordsToSearch: ['x'], path: 'src/v1.2' })
+          toCodeSearchQuery({ keywords: ['x'], path: 'src/v1.2' })
         );
         expect(query).toContain('path:"src/v1.2"');
         expect(query).not.toContain('filename:');
@@ -278,7 +278,7 @@ describe('Query Builders', () => {
       it('does NOT clobber an explicitly provided filename', () => {
         const query = buildCodeSearchQuery(
           toCodeSearchQuery({
-            keywordsToSearch: ['x'],
+            keywords: ['x'],
             filename: 'index.ts',
             path: 'src/renderer.ts',
           })
@@ -290,25 +290,23 @@ describe('Query Builders', () => {
 
     it('should quote punctuation-heavy keywords so they match literally (SC-3)', () => {
       expect(
-        buildCodeSearchQuery(
-          toCodeSearchQuery({ keywordsToSearch: ['$state'] })
-        )
+        buildCodeSearchQuery(toCodeSearchQuery({ keywords: ['$state'] }))
       ).toBe('"$state"');
       expect(
         buildCodeSearchQuery(
-          toCodeSearchQuery({ keywordsToSearch: ['React.useState'] })
+          toCodeSearchQuery({ keywords: ['React.useState'] })
         )
       ).toBe('"React.useState"');
       expect(
         buildCodeSearchQuery(
-          toCodeSearchQuery({ keywordsToSearch: ['$ZodAsyncError'] })
+          toCodeSearchQuery({ keywords: ['$ZodAsyncError'] })
         )
       ).toBe('"$ZodAsyncError"');
     });
 
     it('should still leave bare identifiers (alnum/_/-) unquoted', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['baseCreateRenderer', 'attach_ping-listener'],
+        keywords: ['baseCreateRenderer', 'attach_ping-listener'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -317,7 +315,7 @@ describe('Query Builders', () => {
 
     it('should escape embedded double quotes when wrapping a keyword', () => {
       const params = toCodeSearchQuery({
-        keywordsToSearch: ['say "hi"'],
+        keywords: ['say "hi"'],
       });
 
       const query = buildCodeSearchQuery(params);
@@ -328,7 +326,7 @@ describe('Query Builders', () => {
   describe('buildRepoSearchQuery', () => {
     it('should build basic repo search query', () => {
       const params = {
-        keywordsToSearch: ['todo', 'app'],
+        keywords: ['todo', 'app'],
       };
 
       const query = buildRepoSearchQuery(params);
@@ -337,7 +335,7 @@ describe('Query Builders', () => {
 
     it('should build query with topicsToSearch', () => {
       const params = {
-        keywordsToSearch: ['app'],
+        keywords: ['app'],
         topicsToSearch: ['react', 'typescript'],
       };
 
@@ -347,7 +345,7 @@ describe('Query Builders', () => {
 
     it('should build query with single topic', () => {
       const params: Parameters<typeof buildRepoSearchQuery>[0] = {
-        keywordsToSearch: ['framework'],
+        keywords: ['framework'],
         topicsToSearch: ['javascript'],
       };
 
@@ -357,7 +355,7 @@ describe('Query Builders', () => {
 
     it('should build query with repository metrics', () => {
       const params = {
-        keywordsToSearch: ['library'],
+        keywords: ['library'],
         stars: '>1000',
         size: '<10000',
       };
@@ -368,7 +366,7 @@ describe('Query Builders', () => {
 
     it('should build query with match filters', () => {
       const params = {
-        keywordsToSearch: ['awesome'],
+        keywords: ['awesome'],
         match: ['name', 'description'],
       } as Parameters<typeof buildRepoSearchQuery>[0];
 
@@ -378,7 +376,7 @@ describe('Query Builders', () => {
 
     it('should map updated to pushed', () => {
       const params = {
-        keywordsToSearch: ['active'],
+        keywords: ['active'],
         updated: '>2023-01-01',
       };
 
@@ -388,7 +386,7 @@ describe('Query Builders', () => {
 
     it('should build query with readme match filter', () => {
       const params = {
-        keywordsToSearch: ['awesome'],
+        keywords: ['awesome'],
         match: ['readme'],
       } as Parameters<typeof buildRepoSearchQuery>[0];
 
@@ -398,7 +396,7 @@ describe('Query Builders', () => {
 
     it('should build query with single readme match', () => {
       const params = {
-        keywordsToSearch: ['awesome'],
+        keywords: ['awesome'],
         match: ['readme'],
       } as Parameters<typeof buildRepoSearchQuery>[0];
 
@@ -408,12 +406,50 @@ describe('Query Builders', () => {
 
     it('should build query with created date filter', () => {
       const params = {
-        keywordsToSearch: ['repo'],
+        keywords: ['repo'],
         created: '>2023-01-01',
       };
 
       const query = buildRepoSearchQuery(params);
       expect(query).toBe('repo created:>2023-01-01 is:not-archived');
+    });
+
+    it('should build query with language filter', () => {
+      const params = {
+        keywords: ['react'],
+        language: 'TypeScript',
+      };
+
+      const query = buildRepoSearchQuery(params);
+      expect(query).toBe('react language:TypeScript is:not-archived');
+    });
+
+    it('should build query with language and other filters', () => {
+      const params = {
+        keywords: ['state management'],
+        language: 'Rust',
+        stars: '>500',
+      };
+
+      const query = buildRepoSearchQuery(params);
+      expect(query).toBe(
+        '"state management" stars:>500 language:Rust is:not-archived'
+      );
+    });
+
+    it('should build query with repository discovery filters', () => {
+      const params = {
+        keywords: ['agent'],
+        forks: '>100',
+        license: 'mit',
+        goodFirstIssues: '>5',
+        visibility: 'public',
+      } as Parameters<typeof buildRepoSearchQuery>[0];
+
+      const query = buildRepoSearchQuery(params);
+      expect(query).toBe(
+        'agent forks:>100 license:mit good-first-issues:>5 is:not-archived is:public'
+      );
     });
 
     it('should build query with owner only (no keywords or topics)', () => {
@@ -428,7 +464,7 @@ describe('Query Builders', () => {
 
     it('should build query with stars range (100..500)', () => {
       const params = {
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         stars: '100..500',
       };
 
@@ -438,7 +474,7 @@ describe('Query Builders', () => {
 
     it('should build query with stars >=1000', () => {
       const params = {
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         stars: '>=1000',
       };
 
@@ -448,7 +484,7 @@ describe('Query Builders', () => {
 
     it('should quote scoped package keywords with @ and /', () => {
       const params = {
-        keywordsToSearch: ['@scope/package'],
+        keywords: ['@scope/package'],
       };
 
       const query = buildRepoSearchQuery(params);
@@ -457,7 +493,7 @@ describe('Query Builders', () => {
 
     it('should quote keywords with / in repo search', () => {
       const params = {
-        keywordsToSearch: ['facebook/react'],
+        keywords: ['facebook/react'],
       };
 
       const query = buildRepoSearchQuery(params);
@@ -466,7 +502,7 @@ describe('Query Builders', () => {
 
     it('should not quote normal repo search keywords', () => {
       const params = {
-        keywordsToSearch: ['react', 'typescript'],
+        keywords: ['react', 'typescript'],
       };
 
       const query = buildRepoSearchQuery(params);
@@ -475,7 +511,7 @@ describe('Query Builders', () => {
 
     it('should include language filter when language is provided', () => {
       const params = {
-        keywordsToSearch: ['testing'],
+        keywords: ['testing'],
         language: 'TypeScript',
       } as Parameters<typeof buildRepoSearchQuery>[0];
 
@@ -501,7 +537,7 @@ describe('Query Builders', () => {
 
     it('should omit language qualifier when language is not provided', () => {
       const params = {
-        keywordsToSearch: ['testing'],
+        keywords: ['testing'],
       };
 
       const query = buildRepoSearchQuery(params);
@@ -510,7 +546,7 @@ describe('Query Builders', () => {
 
     it('should exclude archived repos by default (archived omitted)', () => {
       const params = {
-        keywordsToSearch: ['recoil'],
+        keywords: ['recoil'],
       };
 
       const query = buildRepoSearchQuery(params);
@@ -520,7 +556,7 @@ describe('Query Builders', () => {
 
     it('should exclude archived repos when archived:false', () => {
       const params = {
-        keywordsToSearch: ['recoil'],
+        keywords: ['recoil'],
         archived: false,
       } as Parameters<typeof buildRepoSearchQuery>[0];
 
@@ -530,7 +566,7 @@ describe('Query Builders', () => {
 
     it('should opt into archived repos when archived:true', () => {
       const params = {
-        keywordsToSearch: ['recoil'],
+        keywords: ['recoil'],
         archived: true,
       } as Parameters<typeof buildRepoSearchQuery>[0];
 
@@ -619,7 +655,7 @@ describe('Query Builders', () => {
       );
     });
 
-    it('applies matchScope as an in: qualifier when a query term is present', () => {
+    it('applies match as an in: qualifier when a query term is present', () => {
       const params = {
         query: 'Suspense',
         match: ['title'] as ('title' | 'body' | 'comments')[],
@@ -629,7 +665,7 @@ describe('Query Builders', () => {
       expect(query).toContain('in:title');
     });
 
-    it('joins multiple matchScope values into one comma-separated in: qualifier', () => {
+    it('joins multiple match values into one comma-separated in: qualifier', () => {
       const params = {
         query: 'Suspense',
         match: ['title', 'body'] as ('title' | 'body' | 'comments')[],
@@ -639,7 +675,7 @@ describe('Query Builders', () => {
       expect(query).not.toContain('in:title in:body');
     });
 
-    it('omits in: when matchScope is set but there is no free-text query to scope', () => {
+    it('omits in: when match is set but there is no free-text query to scope', () => {
       const params = {
         match: ['title'] as ('title' | 'body' | 'comments')[],
         state: 'open' as const,
@@ -648,7 +684,7 @@ describe('Query Builders', () => {
       expect(query).not.toContain('in:');
     });
 
-    it('omits in: when no matchScope is provided', () => {
+    it('omits in: when no match is provided', () => {
       const params = { query: 'Suspense' };
       const query = buildPullRequestSearchQuery(params);
       expect(query).not.toContain('in:');
@@ -795,6 +831,46 @@ describe('Query Builders', () => {
       };
 
       expect(shouldUseSearchForPRs(params)).toBe(true);
+    });
+
+    it('returns true when sort is comments (REST only supports created/updated)', () => {
+      expect(shouldUseSearchForPRs({ sort: 'comments' })).toBe(true);
+    });
+
+    it('returns true when sort is reactions (REST only supports created/updated)', () => {
+      expect(shouldUseSearchForPRs({ sort: 'reactions' })).toBe(true);
+    });
+
+    it('returns false when sort is created (REST supports it)', () => {
+      expect(
+        shouldUseSearchForPRs({ owner: 'x', repo: 'y', sort: 'created' })
+      ).toBe(false);
+    });
+
+    it('returns false when sort is updated (REST supports it)', () => {
+      expect(
+        shouldUseSearchForPRs({ owner: 'x', repo: 'y', sort: 'updated' })
+      ).toBe(false);
+    });
+
+    it('returns true when match is provided (in: requires Search API)', () => {
+      expect(
+        shouldUseSearchForPRs({
+          match: ['title'] as ('title' | 'body' | 'comments')[],
+        })
+      ).toBe(true);
+    });
+
+    it('returns false when query is an empty string (REST list is fine)', () => {
+      expect(shouldUseSearchForPRs({ owner: 'x', repo: 'y', query: '' })).toBe(
+        false
+      );
+    });
+
+    it('returns true when query is a non-empty string', () => {
+      expect(shouldUseSearchForPRs({ query: 'Partial Prerendering' })).toBe(
+        true
+      );
     });
   });
 });

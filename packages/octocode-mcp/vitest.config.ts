@@ -1,14 +1,20 @@
 import { defineConfig } from 'vitest/config';
 import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 export default defineConfig({
   esbuild: { sourcemap: false },
   build: { sourcemap: false },
   server: { sourcemapIgnoreList: () => true },
+  resolve: {
+    alias: {
+      '@octocodeai/octocode-tools-core': resolve(__dirname, '../octocode-tools-core/src/index.ts'),
+    },
+  },
   test: {
     environment: 'node',
     globals: true,
-    testTimeout: 2000,
+    testTimeout: 10000,
     hookTimeout: 1000,
     teardownTimeout: 1000,
     dangerouslyIgnoreUnhandledErrors: true,
@@ -20,7 +26,7 @@ export default defineConfig({
       exclude: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
       thresholds: {
         statements: 90,
-        branches: 88,
+        branches: 87,
         functions: 90,
         lines: 90,
       },

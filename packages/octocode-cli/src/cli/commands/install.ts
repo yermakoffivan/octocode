@@ -8,7 +8,6 @@ import {
 import { checkNodeInPath, checkNpmInPath } from '../../features/node-check.js';
 import { INSTALL_METHOD_INFO } from '../../ui/constants.js';
 import { Spinner } from '../../utils/spinner.js';
-import { runInteractiveMode } from '../../interactive.js';
 import {
   formatSupportedMCPClients,
   getIDEDisplayName,
@@ -25,15 +24,13 @@ import { readMCPConfig } from '../../utils/mcp-io.js';
 import path from 'node:path';
 
 const SUPPORTED_INSTALL_CLIENTS = DETECTABLE_MCP_CLIENTS;
-const SUPPORTED_INSTALL_CLIENTS_TEXT = formatSupportedMCPClients({
-  includeInstallAlias: true,
-});
+const SUPPORTED_INSTALL_CLIENTS_TEXT = formatSupportedMCPClients();
 
 export const installCommand: CLICommand = {
   name: 'install',
-  aliases: ['i', 'setup'],
   description: 'Install octocode-mcp for an IDE',
-  usage: 'octocode install --ide <ide> [--method npx] [--force] [--json]',
+  usage:
+    'octocode install --ide <ide> [--method npx] [--force] [--check] [--rollback] [--backup-path <path>] [--json]',
   options: [
     {
       name: 'ide',
@@ -42,14 +39,12 @@ export const installCommand: CLICommand = {
     },
     {
       name: 'method',
-      short: 'm',
       description: 'Installation method (npx)',
       hasValue: true,
       default: 'npx',
     },
     {
       name: 'force',
-      short: 'f',
       description: 'Overwrite existing configuration',
     },
     {
@@ -69,22 +64,21 @@ export const installCommand: CLICommand = {
     },
     {
       name: 'json',
-      short: 'j',
       description:
         'Output result as JSON: { success, ide, configPath, method, error }',
     },
   ],
   handler: async (args: ParsedArgs) => {
     const rawIde = args.options['ide'];
-    const methodOpt = args.options['method'] ?? args.options['m'];
+    const methodOpt = args.options['method'];
     const method = (typeof methodOpt === 'string' ? methodOpt : 'npx') as
       | InstallMethod
       | string;
-    const force = Boolean(args.options['force'] || args.options['f']);
+    const force = Boolean(args.options['force']);
     const checkOnly = Boolean(args.options['check']);
     const rollback = Boolean(args.options['rollback']);
     const rawBackupPath = args.options['backup-path'];
-    const jsonOutput = Boolean(args.options['json'] || args.options['j']);
+    const jsonOutput = Boolean(args.options['json']);
 
     if (typeof rawIde !== 'string' || rawIde.trim().length === 0) {
       if (!process.stdout.isTTY || jsonOutput) {
@@ -108,6 +102,7 @@ export const installCommand: CLICommand = {
         process.exitCode = 1;
         return;
       }
+      const { runInteractiveMode } = await import('../../interactive.js');
       await runInteractiveMode();
       return;
     }

@@ -1,31 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
+import { readdirSync } from 'node:fs';
 import { ALL_TOOLS } from '../../src/tools/toolConfig.js';
-import { STATIC_TOOL_NAMES } from '../../src/tools/toolNames.js';
+import { STATIC_TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolNames.js';
+import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from '../../../octocode-tools-core/src/tools/lsp/shared/semanticTypes.js';
+const SHARED_FIELDS = [
+  'id',
+  'mainResearchGoal',
+  'researchGoal',
+  'reasoning',
+] as const;
 
 const MINIMAL_QUERY: Record<string, Record<string, unknown>> = {
-  [STATIC_TOOL_NAMES.LOCAL_RIPGREP]: { pattern: 'foo', path: '.' },
+  [STATIC_TOOL_NAMES.LOCAL_RIPGREP]: { keywords: 'foo', path: '.' },
   [STATIC_TOOL_NAMES.LOCAL_VIEW_STRUCTURE]: { path: '.' },
   [STATIC_TOOL_NAMES.LOCAL_FIND_FILES]: { path: '.' },
   [STATIC_TOOL_NAMES.LOCAL_FETCH_CONTENT]: { path: '/tmp/test.ts' },
-  [STATIC_TOOL_NAMES.LSP_GOTO_DEFINITION]: {
+  [LSP_GET_SEMANTIC_CONTENT_TOOL_NAME]: {
     uri: '/tmp/test.ts',
+    type: 'definition',
     symbolName: 'myFn',
     lineHint: 10,
-  },
-  [STATIC_TOOL_NAMES.LSP_FIND_REFERENCES]: {
-    uri: '/tmp/test.ts',
-    symbolName: 'myFn',
-    lineHint: 10,
-  },
-  [STATIC_TOOL_NAMES.LSP_CALL_HIERARCHY]: {
-    uri: '/tmp/test.ts',
-    symbolName: 'myFn',
-    lineHint: 10,
-    direction: 'incoming',
   },
   [STATIC_TOOL_NAMES.GITHUB_SEARCH_CODE]: {
-    keywordsToSearch: ['useState'],
+    keywords: ['useState'],
     owner: 'facebook',
   },
   [STATIC_TOOL_NAMES.GITHUB_FETCH_CONTENT]: {
@@ -38,16 +36,20 @@ const MINIMAL_QUERY: Record<string, Record<string, unknown>> = {
     repo: 'react',
   },
   [STATIC_TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES]: {
-    keywordsToSearch: ['react'],
+    keywords: ['react'],
   },
   [STATIC_TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS]: {
     owner: 'facebook',
     repo: 'react',
   },
-  [STATIC_TOOL_NAMES.PACKAGE_SEARCH]: { name: 'zod' },
+  [STATIC_TOOL_NAMES.PACKAGE_SEARCH]: { packageName: 'zod' },
   [STATIC_TOOL_NAMES.GITHUB_CLONE_REPO]: {
     owner: 'facebook',
     repo: 'react',
+  },
+  [STATIC_TOOL_NAMES.LOCAL_BINARY_INSPECT]: {
+    path: '/tmp/test.bin',
+    mode: 'identify',
   },
 };
 
@@ -120,19 +122,9 @@ describe('all-tools schema contract', () => {
         ).toBe(true);
       });
 
-      const SHARED_FIELDS = [
-        'id',
-        'mainResearchGoal',
-        'researchGoal',
-        'reasoning',
-        'verbose',
-      ] as const;
-
       it('per-query schema (tool.direct.schema) exposes all cross-tool shared fields', () => {
         const shape = (querySchema as any)?.shape;
-        if (!shape) {
-          return;
-        }
+        if (!shape) return;
         for (const field of SHARED_FIELDS) {
           expect(
             field in shape,
@@ -169,7 +161,7 @@ describe('all-tools schema contract', () => {
         ).toBe(true);
       });
 
-      it('parses with all research metadata + verbose=true', () => {
+      it('parses with all research metadata', () => {
         const minQuery = MINIMAL_QUERY[toolName];
         if (!minQuery) return;
         const result = bulkSchema.safeParse({
@@ -180,30 +172,14 @@ describe('all-tools schema contract', () => {
               mainResearchGoal: 'contract test',
               researchGoal: 'schema validation',
               reasoning: 'zod v4 audit',
-              verbose: true,
             },
           ],
         });
         expect(
           result.success,
-          `${toolName}: failed with research metadata + verbose.\n` +
+          `${toolName}: failed with research metadata.\n` +
             `Errors: ${!result.success ? JSON.stringify(result.error.issues) : ''}`
         ).toBe(true);
-      });
-
-      it('accepts verbose:true and verbose:false (boolean detail switch)', () => {
-        const minQuery = MINIMAL_QUERY[toolName];
-        if (!minQuery) return;
-        for (const verbose of [true, false] as const) {
-          const r = bulkSchema.safeParse({
-            queries: [{ ...minQuery, verbose }],
-          });
-          expect(
-            r.success,
-            `${toolName}: rejected verbose=${verbose}.\n` +
-              `Errors: ${!r.success ? JSON.stringify(r.error.issues) : ''}`
-          ).toBe(true);
-        }
       });
 
       it('parses 3 parallel queries (bulk batching)', () => {
@@ -263,9 +239,7 @@ describe('all-tools schema contract', () => {
       it('parses with extra unknown envelope fields ignored (does not reject)', () => {
         const minQuery = MINIMAL_QUERY[toolName];
         if (!minQuery) return;
-        const r = bulkSchema.safeParse({
-          queries: [minQuery],
-        });
+        const r = bulkSchema.safeParse({ queries: [minQuery] });
         expect(
           r.success,
           `${toolName}: minimal parse should succeed.\n` +
@@ -276,8 +250,8 @@ describe('all-tools schema contract', () => {
   );
 
   describe('global invariants', () => {
-    it('ALL_TOOLS contains exactly 14 tools', () => {
-      expect(ALL_TOOLS).toHaveLength(14);
+    it('ALL_TOOLS contains exactly 13 tools', () => {
+      expect(ALL_TOOLS).toHaveLength(13);
     });
 
     it('every tool has a MINIMAL_QUERY entry in this test', () => {
@@ -329,6 +303,24 @@ describe('all-tools schema contract', () => {
         missing,
         `Missing envelope fields: ${missing.join(', ')}`
       ).toHaveLength(0);
+    });
+
+    it('keeps each tool schema surface in its scheme.ts file', () => {
+      const toolsRoot = new URL(
+        '../../../octocode-tools-core/src/tools/',
+        import.meta.url
+      );
+      const files = readdirSync(toolsRoot, { recursive: true }).map(String);
+      const schemeFiles = files.filter(file => file.endsWith('scheme.ts'));
+      const splitSchemaFiles = files.filter(
+        file =>
+          /schema\.ts$/i.test(file) &&
+          !file.endsWith('scheme.ts') &&
+          !file.startsWith('toolMetadata/')
+      );
+
+      expect(schemeFiles).toHaveLength(13);
+      expect(splitSchemaFiles).toEqual([]);
     });
   });
 });

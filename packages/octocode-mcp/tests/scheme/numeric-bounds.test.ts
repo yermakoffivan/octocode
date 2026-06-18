@@ -1,24 +1,16 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import {
-  FileContentQueryBaseLocalSchema,
-  GitHubCodeSearchQueryLocalSchema,
-  GitHubReposSearchSingleQueryLocalSchema,
-  GitHubPullRequestSearchQueryLocalSchema,
-  GitHubViewRepoStructureQueryLocalSchema,
-  PackageSearchQueryLocalSchema,
-} from '../../src/scheme/remoteSchemaOverlay.js';
-import {
-  FetchContentQuerySchema,
-  FindFilesQuerySchema,
-  RipgrepQuerySchema,
-  ViewStructureQuerySchema,
-} from '../../src/scheme/localSchemaOverlay.js';
-import {
-  LSPGotoDefinitionQuerySchema,
-  LSPFindReferencesQuerySchema,
-  LSPCallHierarchyQuerySchema,
-} from '../../src/scheme/lspSchemaOverlay.js';
+import { FileContentQueryBaseLocalSchema } from '../../../octocode-tools-core/src/tools/github_fetch_content/scheme.js';
+import { GitHubCodeSearchQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_search_code/scheme.js';
+import { GitHubReposSearchSingleQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_search_repos/scheme.js';
+import { GitHubPullRequestSearchQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_search_pull_requests/scheme.js';
+import { GitHubViewRepoStructureQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_view_repo_structure/scheme.js';
+import { NpmSearchQueryLocalSchema } from '../../../octocode-tools-core/src/tools/package_search/scheme.js';
+import { LocalFetchContentQuerySchema } from '../../../octocode-tools-core/src/tools/local_fetch_content/scheme.js';
+import { LocalFindFilesQuerySchema } from '../../../octocode-tools-core/src/tools/local_find_files/scheme.js';
+import { LocalRipgrepQuerySchema } from '../../../octocode-tools-core/src/tools/local_ripgrep/scheme.js';
+import { LocalViewStructureQuerySchema } from '../../../octocode-tools-core/src/tools/local_view_structure/scheme.js';
+import { LspGetSemanticsQuerySchema } from '../../../octocode-tools-core/src/tools/lsp/semantic_content/scheme.js';
 
 const SENTINEL = 9007199254740991;
 
@@ -28,14 +20,12 @@ const schemas: Record<string, z.ZodTypeAny> = {
   'repos(remote)': GitHubReposSearchSingleQueryLocalSchema,
   'pullRequests(remote)': GitHubPullRequestSearchQueryLocalSchema,
   'viewRepoStructure(remote)': GitHubViewRepoStructureQueryLocalSchema,
-  'packageSearch(remote)': PackageSearchQueryLocalSchema,
-  'fetchContent(local)': FetchContentQuerySchema,
-  findFiles: FindFilesQuerySchema,
-  ripgrep: RipgrepQuerySchema,
-  viewStructure: ViewStructureQuerySchema,
-  lspGoto: LSPGotoDefinitionQuerySchema,
-  lspRefs: LSPFindReferencesQuerySchema,
-  lspCalls: LSPCallHierarchyQuerySchema,
+  'npmSearch(remote)': NpmSearchQueryLocalSchema,
+  'fetchContent(local)': LocalFetchContentQuerySchema,
+  findFiles: LocalFindFilesQuerySchema,
+  ripgrep: LocalRipgrepQuerySchema,
+  viewStructure: LocalViewStructureQuerySchema,
+  lspSemantic: LspGetSemanticsQuerySchema,
 };
 
 describe('numeric schema fields are bounded (#C1)', () => {
@@ -57,25 +47,33 @@ describe('numeric schema fields are bounded (#C1)', () => {
     });
   }
 
-  it('clamps matchStringContextLines:120 to 100 instead of rejecting (FC-2)', () => {
+  it('ghSearchCode clamps page 0 to page 1 (relaxed page field)', () => {
+    const r = GitHubCodeSearchQueryLocalSchema.safeParse({
+      keywords: ['x'],
+      page: 0,
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.page).toBe(1);
+  });
+
+  it('clamps contextLines:120 to 100 instead of rejecting (FC-2)', () => {
     const r = FileContentQueryBaseLocalSchema.safeParse({
       owner: 'o',
       repo: 'r',
       path: 'a.ts',
       matchString: 'foo',
-      matchStringContextLines: 120,
+      contextLines: 120,
     });
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(
-        (r.data as { matchStringContextLines?: number }).matchStringContextLines
-      ).toBe(100);
+      expect((r.data as { contextLines?: number }).contextLines).toBe(100);
     }
   });
 
   it('clamps a negative line number instead of rejecting it', () => {
-    const r = LSPGotoDefinitionQuerySchema.safeParse({
+    const r = LspGetSemanticsQuerySchema.safeParse({
       uri: 'a.ts',
+      type: 'definition',
       symbolName: 'x',
       lineHint: -5,
     });
@@ -87,27 +85,54 @@ describe('numeric schema fields are bounded (#C1)', () => {
     }
   });
 
-  it('pullRequests: nested partialContentMetadata line arrays are bounded (no sentinel)', () => {
-    const js = z.toJSONSchema(GitHubPullRequestSearchQueryLocalSchema) as {
-      properties?: Record<
-        string,
-        {
-          items?: {
-            properties?: Record<
-              string,
-              { items?: { minimum?: number; maximum?: number } }
-            >;
-          };
-        }
-      >;
-    };
-    const pcm = js.properties?.partialContentMetadata?.items?.properties ?? {};
-    for (const key of ['additions', 'deletions']) {
-      const itemBounds = pcm[key]?.items;
-      expect(itemBounds, `${key} should be present`).toBeDefined();
-      expect(Math.abs(itemBounds?.minimum ?? 0)).not.toBe(SENTINEL);
-      expect(Math.abs(itemBounds?.maximum ?? 0)).not.toBe(SENTINEL);
-      expect(itemBounds?.maximum).toBe(1_000_000_000);
+  it('pullRequests: content.patches.ranges line arrays are bounded (reject above the cap)', () => {
+    // The SENTINEL is above the 1e9 line-number cap -> rejected as too_big,
+    // and the cap is never the ±MAX_SAFE_INTEGER sentinel.
+    const r = GitHubPullRequestSearchQueryLocalSchema.safeParse({
+      owner: 'o',
+      repo: 'r',
+      prNumber: 1,
+      content: {
+        patches: {
+          mode: 'selected',
+          ranges: [
+            {
+              file: 'a.ts',
+              additions: [SENTINEL],
+              deletions: [SENTINEL],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const tooBig = r.error.issues.filter(i => i.code === 'too_big');
+      expect(tooBig.length).toBeGreaterThan(0);
+      const paths = tooBig.map(i => i.path.join('.'));
+      expect(paths).toContain('content.patches.ranges.0.additions.0');
+      expect(paths).toContain('content.patches.ranges.0.deletions.0');
     }
+
+    // A value exactly at the cap is accepted.
+    const ok = GitHubPullRequestSearchQueryLocalSchema.safeParse({
+      owner: 'o',
+      repo: 'r',
+      prNumber: 1,
+      content: {
+        patches: {
+          mode: 'selected',
+          ranges: [
+            {
+              file: 'a.ts',
+              additions: [1_000_000_000],
+              deletions: [1_000_000_000],
+            },
+          ],
+        },
+      },
+    });
+    expect(ok.success).toBe(true);
   });
 });

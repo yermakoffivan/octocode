@@ -9,18 +9,18 @@ const mockGetProvider = vi.hoisted(() => vi.fn());
 const mockGetServerConfig = vi.hoisted(() => vi.fn());
 const mockGetGitHubToken = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(() => 'test-cache-key'),
   withDataCache: vi.fn(async (_key: string, fn: () => unknown) => {
     return await fn();
   }),
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   initialize: vi.fn(),
   getServerConfig: mockGetServerConfig,
   isLoggingEnabled: vi.fn(() => false),
@@ -33,7 +33,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 const mockLogToolCall = vi.hoisted(() => vi.fn());
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logToolCall: mockLogToolCall,
   getSessionManager: vi.fn(() => null),
   SessionManager: vi.fn(),
@@ -48,7 +48,7 @@ import { registerFetchGitHubFileContentTool } from '../../src/tools/github_fetch
 import { registerSearchGitHubReposTool } from '../../src/tools/github_search_repos/github_search_repos.js';
 import { registerViewGitHubRepoStructureTool } from '../../src/tools/github_view_repo_structure/github_view_repo_structure.js';
 import { registerSearchGitHubPullRequestsTool } from '../../src/tools/github_search_pull_requests/github_search_pull_requests.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('Response Structure Tests - All Tools', () => {
   let mockServer: MockMcpServer;
@@ -114,12 +114,12 @@ describe('Response Structure Tests - All Tools', () => {
       });
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-        queries: [{ keywordsToSearch: ['test'], owner: 'test', repo: 'repo' }],
+        queries: [{ keywords: ['test'], owner: 'test', repo: 'repo' }],
       });
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "test/repo"');
+      expect(responseText).toContain('id: test/repo');
       expect(responseText).toContain('src/index.ts');
     });
 
@@ -135,9 +135,7 @@ describe('Response Structure Tests - All Tools', () => {
       });
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-        queries: [
-          { keywordsToSearch: ['nonexistent'], owner: 'test', repo: 'repo' },
-        ],
+        queries: [{ keywords: ['nonexistent'], owner: 'test', repo: 'repo' }],
       });
 
       expect(result.isError).toBe(false);
@@ -153,7 +151,7 @@ describe('Response Structure Tests - All Tools', () => {
       });
 
       const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
-        queries: [{ keywordsToSearch: ['test'], owner: 'bad', repo: 'repo' }],
+        queries: [{ keywords: ['test'], owner: 'bad', repo: 'repo' }],
       });
 
       expect(result.isError).toBe(true);
@@ -250,15 +248,15 @@ describe('Response Structure Tests - All Tools', () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
         {
-          queries: [{ keywordsToSearch: ['react'] }],
+          queries: [{ keywords: ['react'] }],
         }
       );
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).not.toContain('status: "hasResults"');
-      expect(responseText).not.toContain('status: "empty"');
-      expect(responseText).not.toContain('status: "error"');
+      expect(responseText).not.toContain('status: hasResults');
+      expect(responseText).not.toContain('status: empty');
+      expect(responseText).not.toContain('status: error');
     });
 
     it('should return empty for no matching repos', async () => {
@@ -275,7 +273,7 @@ describe('Response Structure Tests - All Tools', () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
         {
-          queries: [{ keywordsToSearch: ['nonexistent123456'] }],
+          queries: [{ keywords: ['nonexistent123456'] }],
         }
       );
 

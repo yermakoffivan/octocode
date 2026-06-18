@@ -1,0 +1,31 @@
+{
+  "name": "@octocodeai/octocode-context-utils-linux-x64-musl",
+  "version": "16.3.0",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "musl"
+  ],
+  "main": "octocode-context-utils.linux-x64-musl.node",
+  "files": [
+    "octocode-context-utils.linux-x64-musl.node"
+  ],
+  "description": "High-performance Rust minification for Octocode — linux-x64",
+  "author": "Guy Bary <bgauryy@octocodeai.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bgauryy/octocode-mcp.git",
+    "directory": "packages/octocode-context-utils"
+  },
+  "scripts": {
+    "prepublishOnly": "node ../verify-binary.cjs"
+  }
+}

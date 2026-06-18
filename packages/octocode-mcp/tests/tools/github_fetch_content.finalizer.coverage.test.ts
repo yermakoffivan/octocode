@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  buildGithubFetchContentFinalizer,
-  applyGithubFetchContentVerbosity,
-} from '../../src/tools/github_fetch_content/finalizer.js';
-import type { FlatQueryResult } from '../../src/types/toolResults.js';
+import { buildGithubFetchContentFinalizer } from '../../../octocode-tools-core/src/tools/github_fetch_content/finalizer.js';
+import type { FlatQueryResult } from '../../../octocode-tools-core/src/types/toolResults.js';
 
 type Query = Record<string, unknown>;
 
@@ -23,21 +20,20 @@ function run(
   return finalize({
     queries: queries as never,
     results,
-    config: { toolName: 'githubGetFileContent', ...config } as never,
+    config: { toolName: 'ghGetFileContent', ...config } as never,
   });
 }
 
 describe('buildGithubFetchContentFinalizer — group building & narrowing', () => {
   it('reads a full file entry with pagination, partial flags and warnings', () => {
-    const queries: Query[] = [
-      { owner: 'o', repo: 'r', path: 'src/a.ts', verbose: false },
-    ];
+    const queries: Query[] = [{ owner: 'o', repo: 'r', path: 'src/a.ts' }];
     const results: FlatQueryResult[] = [
       {
         id: 'q1',
         data: {
           path: 'src/a.ts',
           content: 'hello world',
+          contentView: 'standard',
           totalLines: 12,
           resolvedBranch: 'main',
           pagination: {
@@ -64,9 +60,11 @@ describe('buildGithubFetchContentFinalizer — group building & narrowing', () =
     const data = out.structuredContent as {
       results: Array<{ files?: Array<Record<string, unknown>> }>;
     };
-    const file = data.results[0].files![0];
+    const file = data.results[0]!.files![0]!;
     expect(file.path).toBe('src/a.ts');
     expect(file.content).toBe('hello world');
+    expect(file.contentView).toBe('standard');
+    expect(file.isSkeleton).toBeUndefined();
     expect(file.isPartial).toBe(true);
     expect(file.totalLines).toBe(12);
     expect(file.warnings).toEqual(['w1', 'w2']);
@@ -74,6 +72,32 @@ describe('buildGithubFetchContentFinalizer — group building & narrowing', () =
     expect(pg.charOffset).toBe(0);
     expect(pg.totalBytes).toBeUndefined();
     expect(pg.filesPerPage).toBeUndefined();
+  });
+
+  it('keeps whole symbols skeletons distinct from partial file slices', () => {
+    const queries: Query[] = [{ owner: 'o', repo: 'r', path: 'src/a.ts' }];
+    const results: FlatQueryResult[] = [
+      {
+        id: 'q1',
+        data: {
+          path: 'src/a.ts',
+          content: '001| export function a(): void',
+          contentView: 'symbols',
+          isSkeleton: true,
+          isPartial: false,
+          totalLines: 50,
+        },
+      },
+    ];
+
+    const out = run(queries, results);
+    const data = out.structuredContent as {
+      results: Array<{ files?: Array<Record<string, unknown>> }>;
+    };
+    const file = data.results[0]!.files![0]!;
+    expect(file.contentView).toBe('symbols');
+    expect(file.isSkeleton).toBe(true);
+    expect(file.isPartial).toBeUndefined();
   });
 
   it('falls back to query.path and empty content when data fields are missing/invalid', () => {
@@ -93,7 +117,7 @@ describe('buildGithubFetchContentFinalizer — group building & narrowing', () =
     const data = out.structuredContent as {
       results: Array<{ files?: Array<Record<string, unknown>> }>;
     };
-    const file = data.results[0].files![0];
+    const file = data.results[0]!.files![0]!;
     expect(file.path).toBe('fallback.ts');
     expect(file.content).toBe('');
     expect(file.pagination).toBeUndefined();
@@ -127,7 +151,7 @@ describe('buildGithubFetchContentFinalizer — group building & narrowing', () =
     const data = out.structuredContent as {
       results: Array<{ directories?: Array<Record<string, unknown>> }>;
     };
-    const dir = data.results[0].directories![0];
+    const dir = data.results[0]!.directories![0]!;
     expect(dir.path).toBe('src');
     expect(dir.localPath).toBe('/tmp/clone/src');
     expect(dir.cached).toBe(true);
@@ -167,7 +191,7 @@ describe('buildGithubFetchContentFinalizer — group building & narrowing', () =
       results: Array<{ directories?: Array<Record<string, unknown>> }>;
       hints?: string[];
     };
-    const dir = data.results[0].directories![0];
+    const dir = data.results[0]!.directories![0]!;
     expect(dir.path).toBe('');
     expect(dir.localPath).toBe('');
     expect(dir.totalSize).toBe(0);
@@ -186,7 +210,7 @@ describe('buildGithubFetchContentFinalizer — group building & narrowing', () =
     const data = out.structuredContent as {
       results: Array<{ files?: Array<{ path: string }> }>;
     };
-    expect(data.results[0].files![0].path).toBe('');
+    expect(data.results[0]!.files![0]!.path).toBe('');
   });
 
   it('drops a result whose query slot is missing (results longer than queries)', () => {
@@ -220,12 +244,12 @@ describe('buildGithubFetchContentFinalizer — group building & narrowing', () =
       results: Array<{ owner: string }>;
     };
     expect(data.results).toHaveLength(1);
-    expect(data.results[0].owner).toBe('o');
+    expect(data.results[0]!.owner).toBe('o');
   });
 });
 
 describe('buildGithubFetchContentFinalizer — partial file continuation hints', () => {
-  it('partial file emits startLine continuation in hints[], not evidence.reason', () => {
+  it('partial file emits startLine continuation in hints[]', () => {
     const queries: Query[] = [{ owner: 'o', repo: 'r', path: 'large.ts' }];
     const results: FlatQueryResult[] = [
       {
@@ -241,22 +265,18 @@ describe('buildGithubFetchContentFinalizer — partial file continuation hints',
       },
     ];
 
-    const out = run(queries, results, { peerEvidence: true } as never);
+    const out = run(queries, results);
     const data = out.structuredContent as {
       hints?: string[];
-      evidence?: { reason?: string; incompleteReasons?: string[] };
     };
 
     expect(data.hints?.some(h => /startLine=51/.test(h))).toBe(true);
-
-    const reasonStr = Array.isArray(data.evidence?.incompleteReasons)
-      ? data.evidence.incompleteReasons.join(' ')
-      : (data.evidence?.reason ?? '');
-    expect(reasonStr).not.toMatch(/startLine=51/);
   });
 
-  it('evidence.reason describes the partial state without navigation details', () => {
-    const queries: Query[] = [{ owner: 'o', repo: 'r', path: 'large.ts' }];
+  it('matchString slices (matchRanges) produce no continuation hint', () => {
+    const queries: Query[] = [
+      { owner: 'o', repo: 'r', path: 'large.ts', matchString: 'foo' },
+    ];
     const results: FlatQueryResult[] = [
       {
         id: 'q1',
@@ -265,19 +285,19 @@ describe('buildGithubFetchContentFinalizer — partial file continuation hints',
           content: 'hello',
           totalLines: 200,
           isPartial: true,
-          startLine: 1,
+          startLine: 10,
           endLine: 50,
+          matchRanges: [{ start: 12, end: 15 }],
         },
       },
     ];
 
-    const out = run(queries, results, { peerEvidence: true } as never);
+    const out = run(queries, results);
     const data = out.structuredContent as {
-      evidence?: { reason?: string };
+      hints?: string[];
     };
 
-    const reason = data.evidence?.reason ?? '';
-    expect(reason.length).toBeGreaterThan(0);
+    expect(data.hints?.some(h => /startLine=51/.test(h))).toBeFalsy();
   });
 });
 
@@ -320,10 +340,10 @@ describe('buildGithubFetchContentFinalizer — error hints', () => {
     const data = out.structuredContent as {
       errors?: Array<{ hints?: string[]; owner?: string; path?: string }>;
     };
-    expect(data.errors![0].owner).toBe('o');
-    expect(data.errors![0].path).toBe('gone.ts');
+    expect(data.errors![0]!.owner).toBe('o');
+    expect(data.errors![0]!.path).toBe('gone.ts');
     expect(
-      data.errors![0].hints?.some(h => /githubViewRepoStructure/.test(h))
+      data.errors![0]!.hints?.some(h => /ghViewRepoStructure/.test(h))
     ).toBe(true);
     expect(out.isError).toBe(true);
   });
@@ -337,8 +357,8 @@ describe('buildGithubFetchContentFinalizer — error hints', () => {
     const data = out.structuredContent as {
       errors?: Array<{ hints?: string[]; path?: string }>;
     };
-    expect(data.errors![0].path).toBeUndefined();
-    expect(data.errors![0].hints?.some(h => /token permissions/.test(h))).toBe(
+    expect(data.errors![0]!.path).toBeUndefined();
+    expect(data.errors![0]!.hints?.some(h => /token permissions/.test(h))).toBe(
       true
     );
   });
@@ -352,7 +372,7 @@ describe('buildGithubFetchContentFinalizer — error hints', () => {
     const data = out.structuredContent as {
       errors?: Array<{ hints?: string[] }>;
     };
-    expect(data.errors![0].hints?.some(h => /Retry after reset/.test(h))).toBe(
+    expect(data.errors![0]!.hints?.some(h => /Retry after reset/.test(h))).toBe(
       true
     );
   });
@@ -366,7 +386,7 @@ describe('buildGithubFetchContentFinalizer — error hints', () => {
     const data = out.structuredContent as {
       errors?: Array<{ hints?: string[] }>;
     };
-    expect(data.errors![0].hints).toBeUndefined();
+    expect(data.errors![0]!.hints).toBeUndefined();
   });
 });
 
@@ -402,7 +422,7 @@ describe('buildGithubFetchContentFinalizer — char pagination & truncation', ()
     expect(
       data.warnings?.some(w => w.kind === 'content-truncated') ?? false
     ).toBe(false);
-    expect(data.results[0].files![0].content).not.toMatch(
+    expect(data.results[0]!.files![0]!.content).not.toMatch(
       /\[(truncated|clipped)\]/i
     );
   });
@@ -447,136 +467,8 @@ describe('buildGithubFetchContentFinalizer — char pagination & truncation', ()
     expect(
       data.warnings?.some(w => w.kind === 'content-truncated') ?? false
     ).toBe(false);
-    expect(data.results[0].files).toHaveLength(2);
-    expect(data.results[0].directories).toHaveLength(1);
+    expect(data.results[0]!.files).toHaveLength(2);
+    expect(data.results[0]!.directories).toHaveLength(1);
     expect(data.hints?.some(h => /charOffset=7\b/.test(h))).toBe(true);
-  });
-});
-
-describe('applyGithubFetchContentVerbosity', () => {
-  it('strips lastModified/lastModifiedBy metadata when no queries are verbose (default)', () => {
-    const responseData = {
-      results: [
-        {
-          id: 'o/r',
-          owner: 'o',
-          repo: 'r',
-          files: [
-            {
-              path: 'a',
-              content: 'x',
-              lastModified: '2026',
-              lastModifiedBy: 'alice',
-            },
-          ],
-        },
-      ],
-      hints: ['keep me'],
-    } as never;
-    applyGithubFetchContentVerbosity(responseData, [] as never);
-    const file = (responseData as any).results[0].files[0];
-    expect(file).not.toHaveProperty('lastModified');
-  });
-
-  it('preserves all metadata when at least one query has verbose=true', () => {
-    const responseData = {
-      results: [
-        {
-          id: 'o/r',
-          owner: 'o',
-          repo: 'r',
-          files: [
-            {
-              path: 'a.ts',
-              content: '// comment\nconst   x   =   1;\n',
-              totalLines: 3,
-              lastModified: '2026-01-01',
-              lastModifiedBy: 'bob',
-            },
-          ],
-        },
-      ],
-      hints: ['old hint'],
-    } as Record<string, unknown>;
-    applyGithubFetchContentVerbosity(
-      responseData as never,
-      [{ owner: 'o', repo: 'r', verbose: true }] as never
-    );
-    const results = responseData.results as Array<{
-      files: Array<Record<string, unknown>>;
-    }>;
-    const file0 = results[0].files[0];
-    expect(file0.lastModified).toBe('2026-01-01');
-    expect(file0.lastModifiedBy).toBe('bob');
-  });
-
-  it('passes through results with no files array without error', () => {
-    const responseData = {
-      results: [{ id: 'o/r', owner: 'o', repo: 'r', directories: [] }],
-    } as Record<string, unknown>;
-    expect(() =>
-      applyGithubFetchContentVerbosity(
-        responseData as never,
-        [{ owner: 'o', repo: 'r' }] as never
-      )
-    ).not.toThrow();
-    expect(responseData.hints).toBeUndefined();
-  });
-
-  it('passes through missing results without error', () => {
-    const responseData = {} as Record<string, unknown>;
-    expect(() =>
-      applyGithubFetchContentVerbosity(
-        responseData as never,
-        [{ owner: 'o', repo: 'r' }] as never
-      )
-    ).not.toThrow();
-  });
-
-  it('no warnings injected by verbosity layer', () => {
-    const responseData = {
-      results: [
-        {
-          id: 'o/r',
-          owner: 'o',
-          repo: 'r',
-          files: [{ path: 'a.ts', content: 'x' }],
-        },
-      ],
-      warnings: [{ kind: 'pre-existing' }],
-    } as Record<string, unknown>;
-    applyGithubFetchContentVerbosity(
-      responseData as never,
-      [{ owner: 'o', repo: 'r' }] as never
-    );
-    const warnings = responseData.warnings as Array<{ kind: string }>;
-    expect(warnings.some(w => w.kind === 'pre-existing')).toBe(true);
-  });
-
-  it('hints are not modified by verbosity layer', () => {
-    const allHints = [
-      'file_too_large to display fully',
-      'too large to display',
-      'useful hint 1',
-      'useful hint 2',
-    ];
-    const responseData = {
-      results: [
-        {
-          id: 'o/r',
-          owner: 'o',
-          repo: 'r',
-          files: [{ path: 'a', content: 'x' }],
-        },
-      ],
-      hints: [...allHints],
-    } as Record<string, unknown>;
-    applyGithubFetchContentVerbosity(
-      responseData as never,
-      [{ owner: 'o', repo: 'r' }] as never
-    );
-    const hints = responseData.hints as string[];
-    expect(hints).toEqual(allHints);
-    expect(hints.some(h => /too large/.test(h))).toBe(true);
   });
 });

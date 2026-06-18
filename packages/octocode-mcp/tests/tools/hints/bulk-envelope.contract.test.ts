@@ -1,19 +1,20 @@
 import { describe, it, expect } from 'vitest';
 
-import { executeBulkOperation } from '../../../src/utils/response/bulk.js';
+import { executeBulkOperation } from '../../../../octocode-tools-core/src/utils/response/bulk.js';
 import type {
   ProcessedBulkResult,
   ToolSuccessResult,
-} from '../../../src/types/toolResults.js';
-import { sanitizeStructuredContent } from '../../../src/responses.js';
-import { STATIC_TOOL_NAMES } from '../../../src/tools/toolNames.js';
+} from '../../../../octocode-tools-core/src/types/toolResults.js';
+import { sanitizeStructuredContent } from '../../../../octocode-tools-core/src/responses.js';
+import { STATIC_TOOL_NAMES } from '../../../../octocode-tools-core/src/tools/toolNames.js';
+import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from '../../../../octocode-tools-core/src/tools/lsp/shared/semanticTypes.js';
 
 function payload(
   result: import('@modelcontextprotocol/sdk/types').CallToolResult
 ) {
   return sanitizeStructuredContent(
     result.structuredContent as Record<string, unknown>
-  );
+  ) as Record<string, unknown>;
 }
 
 function ok(
@@ -146,7 +147,7 @@ describe('executeBulkOperation — hint envelope', () => {
       async q =>
         ok(q.id, { v: 1 }, ['Showing page 1 of 5. Use page=2 for more.']),
       {
-        toolName: STATIC_TOOL_NAMES.LSP_FIND_REFERENCES,
+        toolName: LSP_GET_SEMANTIC_CONTENT_TOOL_NAME,
         peerHints: true,
       }
     );

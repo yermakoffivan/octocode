@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -26,7 +26,7 @@ describe('Code Search - Total Count', () => {
     };
 
     vi.mocked(getOctokit).mockResolvedValue(
-      mockOctokit as unknown as ReturnType<typeof getOctokit>
+      mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
     );
 
     searchCodeMock.mockResolvedValue({
@@ -52,7 +52,7 @@ describe('Code Search - Total Count', () => {
     });
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['test'],
+      keywords: ['test'],
     });
 
     expect(result.status).toBe(200);

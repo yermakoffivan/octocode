@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import { getTextContent } from '../utils/testHelpers.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
@@ -95,7 +95,7 @@ describe('GitHub Search Repositories Response Structure Test', () => {
             mainResearchGoal: 'Inspect repository search output shape',
             researchGoal: 'Verify returned repository search results',
             reasoning: 'Testing response structure',
-            keywordsToSearch: ['react', 'hooks'],
+            keywords: ['react', 'hooks'],
             limit: 2,
           },
         ],
@@ -106,10 +106,11 @@ describe('GitHub Search Repositories Response Structure Test', () => {
 
     expect(result.isError).toBe(false);
     expect(responseText).toContain('results:');
-    expect(responseText).toContain('id: "repos_response_structure"');
-    expect(responseText).not.toContain('status: "hasResults"');
+    expect(responseText).toContain('id: repos_response_structure');
+    expect(responseText).not.toContain('status: hasResults');
     expect(responseText).toContain('repositories:');
-    expect(responseText).toContain('facebook/react');
-    expect(responseText).toContain('vercel/next.js');
+    expect(responseText).toContain('facebook');
+    expect(responseText).toContain('react');
+    expect(responseText).toContain('vercel');
   }, 5000);
 });

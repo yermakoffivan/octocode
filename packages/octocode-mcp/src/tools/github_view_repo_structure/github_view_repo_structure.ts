@@ -1,9 +1,8 @@
-import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
+  TOOL_NAMES,
   GitHubViewRepoStructureBulkQueryLocalSchema,
-  GitHubViewRepoStructureOutputLocalSchema,
-} from '../../scheme/remoteSchemaOverlay.js';
-import { exploreMultipleRepositoryStructures } from './execution.js';
+  exploreMultipleRepositoryStructures,
+} from '@octocodeai/octocode-tools-core';
 import { createRemoteToolRegistration } from '../registerRemoteTool.js';
 
 export const registerViewGitHubRepoStructureTool = createRemoteToolRegistration(
@@ -11,7 +10,6 @@ export const registerViewGitHubRepoStructureTool = createRemoteToolRegistration(
     name: TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE,
     title: 'GitHub Repository Structure Explorer',
     inputSchema: GitHubViewRepoStructureBulkQueryLocalSchema,
-    outputSchema: GitHubViewRepoStructureOutputLocalSchema,
     executionFn: exploreMultipleRepositoryStructures,
   }
 );

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildSearchResult } from '../../src/tools/local_ripgrep/ripgrepResultBuilder.js';
+import { buildSearchResult } from '../../../octocode-tools-core/src/tools/local_ripgrep/ripgrepResultBuilder.js';
 import { promises as fs } from 'fs';
 
 vi.mock('fs', () => ({
@@ -41,7 +41,7 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     const files = makeFiles(25, 5);
     const query = {
       path: '/test',
-      pattern: 'ab',
+      keywords: 'ab',
       researchGoal: 'test',
       reasoning: 'test',
     } as any;
@@ -51,18 +51,18 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     expect(result.hints).toBeDefined();
     const hintsStr = result.hints!.join('\n');
     expect(hintsStr).toContain('Large result set');
-    expect(hintsStr).toContain('add type or include');
+    expect(hintsStr).toContain('add langType or include');
     expect(hintsStr).toContain('add excludeDir');
     expect(hintsStr).toContain('lengthen pattern');
   });
 
-  it('A1: itemsPerPage pages FILES (top-level), matchesPerFile caps matches/file', async () => {
+  it('A1: itemsPerPage pages FILES (top-level), maxMatchesPerFile caps matches/file', async () => {
     const files = makeFiles(5, 4);
     const query = {
       path: '/test',
-      pattern: 'match',
+      keywords: 'match',
       itemsPerPage: 2,
-      matchesPerFile: 1,
+      maxMatchesPerFile: 1,
       page: 1,
       researchGoal: 'test',
       reasoning: 'test',
@@ -74,7 +74,7 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     expect(result.pagination?.filesPerPage).toBe(2);
     expect(result.pagination?.totalFiles).toBe(5);
     expect(result.pagination?.hasMore).toBe(true);
-    expect(result.files[0]!.matches).toHaveLength(1);
+    expect(result.files![0]!.matches).toHaveLength(1);
     expect((result.hints ?? []).join('\n')).toContain('Next: page=2');
   });
 
@@ -82,7 +82,7 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     const files = makeFiles(3, 2);
     const query = {
       path: '/test',
-      pattern: 'match',
+      keywords: 'match',
       page: 999,
       researchGoal: 'test',
       reasoning: 'test',
@@ -93,18 +93,18 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     expect(hintsStr).toMatch(/outside available range|page 999 is/i);
   });
 
-  it('suggests type/include when neither is set', async () => {
+  it('suggests langType/include when neither is set', async () => {
     const files = makeFiles(25, 5);
     const query = {
       path: '/test',
-      pattern: 'x',
+      keywords: 'x',
       researchGoal: 'test',
       reasoning: 'test',
     } as any;
 
     const result = await buildSearchResult(files, query, 'rg', []);
 
-    expect(result.hints?.some(h => h.includes('add type or include'))).toBe(
+    expect(result.hints?.some(h => h.includes('add langType or include'))).toBe(
       true
     );
   });
@@ -113,7 +113,7 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     const files = makeFiles(25, 5);
     const query = {
       path: '/test',
-      pattern: 'ab',
+      keywords: 'ab',
       researchGoal: 'test',
       reasoning: 'test',
     } as any;
@@ -127,7 +127,7 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     const files = makeFiles(25, 5);
     const query = {
       path: '/test',
-      pattern: 'hi',
+      keywords: 'hi',
       researchGoal: 'test',
       reasoning: 'test',
     } as any;
@@ -137,19 +137,19 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     expect(result.hints?.some(h => h.includes('lengthen pattern'))).toBe(true);
   });
 
-  it('does NOT suggest type/include when query.type is already set', async () => {
+  it('does NOT suggest langType/include when query.langType is already set', async () => {
     const files = makeFiles(25, 5);
     const query = {
       path: '/test',
-      pattern: 'ab',
-      type: 'ts',
+      keywords: 'ab',
+      langType: 'ts',
       researchGoal: 'test',
       reasoning: 'test',
     } as any;
 
     const result = await buildSearchResult(files, query, 'rg', []);
 
-    expect(result.hints?.some(h => h.includes('add type or include'))).toBe(
+    expect(result.hints?.some(h => h.includes('add langType or include'))).toBe(
       false
     );
   });
@@ -158,7 +158,7 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     const files = makeFiles(25, 5);
     const query = {
       path: '/test',
-      pattern: 'ab',
+      keywords: 'ab',
       excludeDir: ['node_modules'],
       researchGoal: 'test',
       reasoning: 'test',
@@ -169,11 +169,11 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     expect(result.hints?.some(h => h.includes('add excludeDir'))).toBe(false);
   });
 
-  it('should NOT add pattern hint when query.pattern.length >= 5', async () => {
+  it('should NOT add pattern hint when query.keywords.length >= 5', async () => {
     const files = makeFiles(25, 5);
     const query = {
       path: '/test',
-      pattern: 'longer',
+      keywords: 'longer',
       researchGoal: 'test',
       reasoning: 'test',
     } as any;
@@ -181,6 +181,70 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     const result = await buildSearchResult(files, query, 'rg', []);
 
     expect(result.hints?.some(h => h.includes('lengthen pattern'))).toBe(false);
+  });
+
+  it('exposes totalFilesFound in pagination when results are capped by maxFiles', async () => {
+    const files = makeFiles(20, 2);
+    const query = {
+      path: '/test',
+      keywords: 'match',
+      maxFiles: 5,
+      researchGoal: 'test',
+      reasoning: 'test',
+    } as any;
+
+    const result = await buildSearchResult(files, query, 'rg', []);
+
+    expect(result.pagination?.totalFiles).toBe(5);
+    expect((result.pagination as any).totalFilesFound).toBe(20);
+  });
+
+  it('does NOT add totalFilesFound when results are not limited', async () => {
+    const files = makeFiles(3, 2);
+    const query = {
+      path: '/test',
+      keywords: 'match',
+      researchGoal: 'test',
+      reasoning: 'test',
+    } as any;
+
+    const result = await buildSearchResult(files, query, 'rg', []);
+
+    expect((result.pagination as any).totalFilesFound).toBeUndefined();
+  });
+
+  it('emits enumeration hint when results span multiple pages', async () => {
+    const files = makeFiles(5, 2);
+    const query = {
+      path: '/test',
+      keywords: 'match',
+      itemsPerPage: 2,
+      page: 1,
+      researchGoal: 'test',
+      reasoning: 'test',
+    } as any;
+
+    const result = await buildSearchResult(files, query, 'rg', []);
+
+    const hintsStr = (result.hints ?? []).join('\n');
+    expect(hintsStr).toContain('page=2');
+  });
+
+  it('does NOT emit enumeration hint on the last page', async () => {
+    const files = makeFiles(4, 2);
+    const query = {
+      path: '/test',
+      keywords: 'match',
+      itemsPerPage: 2,
+      page: 2, // last page
+      researchGoal: 'test',
+      reasoning: 'test',
+    } as any;
+
+    const result = await buildSearchResult(files, query, 'rg', []);
+
+    const hintsStr = (result.hints ?? []).join('\n');
+    expect(hintsStr).not.toContain('paginated — use page=2');
   });
 
   it('orders files by match count before path for relevance-first search results', async () => {
@@ -191,7 +255,7 @@ describe('ripgrepResultBuilder - _getStructuredResultSizeHints (lines 171-179)',
     ];
     const query = {
       path: '/test',
-      pattern: 'match',
+      keywords: 'match',
       researchGoal: 'test',
       reasoning: 'test',
     } as any;

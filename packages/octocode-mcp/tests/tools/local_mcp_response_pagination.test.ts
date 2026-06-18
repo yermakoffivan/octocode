@@ -4,57 +4,87 @@ import {
   type MockMcpServer,
 } from '../fixtures/mcp-fixtures.js';
 import { expectHasResultsData, getSingleResult } from '../flows/assertions.js';
+import { z } from 'zod';
 import {
-  LocalFindFilesDataSchema,
   LocalFindFilesOutputSchema as UpstreamLocalFindFilesOutputSchema,
-  LocalGetFileContentDataSchema,
   LocalGetFileContentOutputSchema as UpstreamLocalGetFileContentOutputSchema,
-  LocalSearchCodeDataSchema,
   LocalSearchCodeOutputSchema as UpstreamLocalSearchCodeOutputSchema,
-  LocalViewStructureDataSchema,
   LocalViewStructureOutputSchema as UpstreamLocalViewStructureOutputSchema,
-} from '@octocodeai/octocode-core';
-import { withResponseEnvelope } from '../../src/scheme/responseEnvelope.js';
+} from '@octocodeai/octocode-core/schemas/outputs';
+import { withResponseEnvelope } from '../../../octocode-tools-core/src/scheme/responseEnvelope.js';
 
-const LocalFindFilesOutputSchema = withResponseEnvelope(
+const toBulkOutputSchema = (dataSchema: z.ZodObject) =>
+  z.object({
+    results: z.array(
+      z.object({
+        id: z.string(),
+        status: z.enum(['hasResults', 'empty', 'error']).default('hasResults'),
+        data: withResponseEnvelope(dataSchema).extend({
+          entries: z.array(z.looseObject({ name: z.string() })).optional(),
+        }),
+      })
+    ),
+  });
+
+const LocalFindFilesDataSchema = UpstreamLocalFindFilesOutputSchema;
+const LocalGetFileContentDataSchema = UpstreamLocalGetFileContentOutputSchema;
+const LocalSearchCodeDataSchema = UpstreamLocalSearchCodeOutputSchema;
+const LocalViewStructureDataSchema =
+  UpstreamLocalViewStructureOutputSchema.extend({
+    entries: z.array(z.looseObject({ name: z.string() })).optional(),
+  });
+
+const LocalFindFilesOutputSchema = toBulkOutputSchema(
   UpstreamLocalFindFilesOutputSchema
 );
-const LocalGetFileContentOutputSchema = withResponseEnvelope(
+const LocalGetFileContentOutputSchema = toBulkOutputSchema(
   UpstreamLocalGetFileContentOutputSchema
 );
-const LocalSearchCodeOutputSchema = withResponseEnvelope(
+const LocalSearchCodeOutputSchema = toBulkOutputSchema(
   UpstreamLocalSearchCodeOutputSchema
 );
-const LocalViewStructureOutputSchema = withResponseEnvelope(
+const LocalViewStructureOutputSchema = toBulkOutputSchema(
   UpstreamLocalViewStructureOutputSchema
 );
 import { registerLocalRipgrepTool } from '../../src/tools/local_ripgrep/register.js';
 import { registerLocalViewStructureTool } from '../../src/tools/local_view_structure/register.js';
 import { registerLocalFindFilesTool } from '../../src/tools/local_find_files/register.js';
 import { registerLocalFetchContentTool } from '../../src/tools/local_fetch_content/register.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 const mockSearchContentRipgrep = vi.hoisted(() => vi.fn());
 const mockViewStructure = vi.hoisted(() => vi.fn());
 const mockFindFiles = vi.hoisted(() => vi.fn());
 const mockFetchContent = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/tools/local_ripgrep/searchContentRipgrep.js', () => ({
-  searchContentRipgrep: (...args: unknown[]) =>
-    mockSearchContentRipgrep(...args),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_ripgrep/searchContentRipgrep.js',
+  () => ({
+    searchContentRipgrep: (...args: unknown[]) =>
+      mockSearchContentRipgrep(...args),
+  })
+);
 
-vi.mock('../../src/tools/local_view_structure/local_view_structure.js', () => ({
-  viewStructure: (...args: unknown[]) => mockViewStructure(...args),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_view_structure/local_view_structure.js',
+  () => ({
+    viewStructure: (...args: unknown[]) => mockViewStructure(...args),
+  })
+);
 
-vi.mock('../../src/tools/local_find_files/findFiles.js', () => ({
-  findFiles: (...args: unknown[]) => mockFindFiles(...args),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_find_files/findFiles.js',
+  () => ({
+    findFiles: (...args: unknown[]) => mockFindFiles(...args),
+  })
+);
 
-vi.mock('../../src/tools/local_fetch_content/fetchContent.js', () => ({
-  fetchContent: (...args: unknown[]) => mockFetchContent(...args),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_fetch_content/fetchContent.js',
+  () => ({
+    fetchContent: (...args: unknown[]) => mockFetchContent(...args),
+  })
+);
 
 describe('local tool MCP pagination responses', () => {
   let mockServer: MockMcpServer;
@@ -92,7 +122,7 @@ describe('local tool MCP pagination responses', () => {
           id: 'local_search',
           researchGoal: 'Find local matches',
           reasoning: 'Verify actual MCP output for ripgrep',
-          pattern: 'match',
+          keywords: 'match',
           path: '/workspace',
         },
       ],

@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   createResponseFormat,
   createRoleBasedResult,
-} from '../../src/responses.js';
-import { executeBulkOperation } from '../../src/utils/response/bulk.js';
-import { ContentSanitizer } from 'octocode-security-utils/contentSanitizer';
-import { maskSensitiveData } from 'octocode-security-utils/mask';
-import type { ProcessedBulkResult } from '../../src/types/toolResults.js';
+} from '../../../octocode-tools-core/src/responses.js';
+import { executeBulkOperation } from '../../../octocode-tools-core/src/utils/response/bulk.js';
+import { ContentSanitizer } from 'octocode-security/contentSanitizer';
+import { maskSensitiveData } from 'octocode-security/mask';
+import type { ProcessedBulkResult } from '../../../octocode-tools-core/src/types/toolResults.js';
 
 const SECRETS = {
   AWS_KEY: 'AKIAIOSFODNN7EXAMPLE',
@@ -61,14 +61,12 @@ describe('GAP-01: structuredContent sanitization in bulk responses', () => {
       toolName: 'testTool',
     });
 
-    // text field should be sanitized (existing behavior)
     const textContent = result.content[0];
     expect(textContent?.type).toBe('text');
     if (textContent && 'text' in textContent) {
       assertNoSecrets(textContent.text, 'text');
     }
 
-    // structuredContent MUST also be sanitized
     if (result.structuredContent) {
       assertNoSecrets(result.structuredContent, 'structuredContent');
     }
@@ -466,7 +464,6 @@ describe('CROSS: Every secret type through bulk pipeline', () => {
         toolName: 'testTool',
       });
 
-      // Verify text field
       const textContent = result.content[0];
       if (textContent && 'text' in textContent) {
         expect(textContent.text, `${secretName} leaked in text`).not.toContain(
@@ -474,7 +471,6 @@ describe('CROSS: Every secret type through bulk pipeline', () => {
         );
       }
 
-      // Verify structuredContent
       if (result.structuredContent) {
         assertNoSecrets(
           result.structuredContent,

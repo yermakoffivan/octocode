@@ -3,11 +3,14 @@ import {
   applyEntryFilters,
   formatEntryString,
   type DirectoryEntry,
-} from '../../../src/tools/local_view_structure/structureFilters.js';
-import { checkRegexSafety } from '../../../src/utils/core/safeRegex.js';
-import type { ViewStructureQuery } from '../../../src/utils/core/types.js';
+} from '../../../../octocode-tools-core/src/tools/local_view_structure/structureFilters.js';
+import { checkRegexSafety } from '../../../../octocode-tools-core/src/utils/core/safeRegex.js';
+import type { z } from 'zod';
+import type { ViewStructureQuerySchema } from '@octocodeai/octocode-core/schemas';
 
-vi.mock('../../../src/utils/core/safeRegex.js', () => ({
+type ViewStructureQuery = z.infer<typeof ViewStructureQuerySchema>;
+
+vi.mock('../../../../octocode-tools-core/src/utils/core/safeRegex.js', () => ({
   checkRegexSafety: vi.fn(),
 }));
 
@@ -87,8 +90,8 @@ describe('structureFilters - applyEntryFilters', () => {
     });
   });
 
-  describe('line 126: query.extension filter', () => {
-    it('should filter by extension when query.extension is set', () => {
+  describe('line 126: query.extensions filter', () => {
+    it('should filter by extension when query.extensions is set', () => {
       const entries: DirectoryEntry[] = [
         { name: 'foo.ts', type: 'file', extension: 'ts' },
         { name: 'bar.js', type: 'file', extension: 'js' },
@@ -97,7 +100,7 @@ describe('structureFilters - applyEntryFilters', () => {
 
       const filtered = applyEntryFilters(entries, {
         ...baseQuery,
-        extension: 'ts',
+        extensions: ['ts'],
       });
 
       expect(filtered).toHaveLength(2);

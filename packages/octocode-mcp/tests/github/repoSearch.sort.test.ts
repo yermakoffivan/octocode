@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchGitHubReposAPI } from '../../src/github/repoSearch.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { searchGitHubReposAPI } from '../../../octocode-tools-core/src/github/repoSearch.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -26,7 +26,7 @@ describe('Repo Search - Sorting', () => {
     };
 
     vi.mocked(getOctokit).mockResolvedValue(
-      mockOctokit as unknown as ReturnType<typeof getOctokit>
+      mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
     );
 
     searchReposMock.mockResolvedValue({
@@ -51,7 +51,7 @@ describe('Repo Search - Sorting', () => {
     });
 
     const result = await searchGitHubReposAPI({
-      keywordsToSearch: ['test'],
+      keywords: ['test'],
       sort: 'stars',
     });
 
@@ -76,9 +76,9 @@ describe('Repo Search - Sorting', () => {
       });
       vi.mocked(getOctokit).mockResolvedValue({
         rest: { search: { repos: searchReposMock } },
-      } as unknown as ReturnType<typeof getOctokit>);
+      } as unknown as Awaited<ReturnType<typeof getOctokit>>);
 
-      await searchGitHubReposAPI({ keywordsToSearch: ['test'], sort });
+      await searchGitHubReposAPI({ keywords: ['test'], sort });
 
       expect(searchReposMock).toHaveBeenCalledWith(
         expect.objectContaining({ sort: expected })
@@ -95,10 +95,10 @@ describe('Repo Search - Sorting', () => {
       });
       vi.mocked(getOctokit).mockResolvedValue({
         rest: { search: { repos: searchReposMock } },
-      } as unknown as ReturnType<typeof getOctokit>);
+      } as unknown as Awaited<ReturnType<typeof getOctokit>>);
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         sort: sort as 'created',
       });
 

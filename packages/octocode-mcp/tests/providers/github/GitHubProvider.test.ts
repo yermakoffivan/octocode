@@ -1,43 +1,47 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GitHubProvider } from '../../../src/providers/github/GitHubProvider.js';
+import { GitHubProvider } from '../../../../octocode-tools-core/src/providers/github/GitHubProvider.js';
 import type {
   CodeSearchQuery,
   FileContentQuery,
   RepoSearchQuery,
   PullRequestQuery,
   RepoStructureQuery,
-} from '../../../src/providers/types.js';
+} from '../../../../octocode-tools-core/src/providers/types.js';
+import type { GitHubRepositoryOutput } from '@octocodeai/octocode-core/extra-types';
 
-vi.mock('../../../src/github/codeSearch.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/codeSearch.js', () => ({
   searchGitHubCodeAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/fileContent.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/fileContent.js', () => ({
   fetchGitHubFileContentAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/repoSearch.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/repoSearch.js', () => ({
   searchGitHubReposAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/pullRequestSearch.js', () => ({
-  searchGitHubPullRequestsAPI: vi.fn(),
-}));
+vi.mock(
+  '../../../../octocode-tools-core/src/github/pullRequestSearch.js',
+  () => ({
+    searchGitHubPullRequestsAPI: vi.fn(),
+  })
+);
 
-vi.mock('../../../src/github/repoStructure.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/repoStructure.js', () => ({
   viewGitHubRepositoryStructureAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/client.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/client.js', () => ({
   resolveDefaultBranch: vi.fn(),
 }));
 
-import { searchGitHubCodeAPI } from '../../../src/github/codeSearch.js';
-import { fetchGitHubFileContentAPI } from '../../../src/github/fileContent.js';
-import { searchGitHubReposAPI } from '../../../src/github/repoSearch.js';
-import { searchGitHubPullRequestsAPI } from '../../../src/github/pullRequestSearch.js';
-import { viewGitHubRepositoryStructureAPI } from '../../../src/github/repoStructure.js';
-import { resolveDefaultBranch as resolveGitHubDefaultBranch } from '../../../src/github/client.js';
+import { searchGitHubCodeAPI } from '../../../../octocode-tools-core/src/github/codeSearch.js';
+import { fetchGitHubFileContentAPI } from '../../../../octocode-tools-core/src/github/fileContent.js';
+import { searchGitHubReposAPI } from '../../../../octocode-tools-core/src/github/repoSearch.js';
+import { searchGitHubPullRequestsAPI } from '../../../../octocode-tools-core/src/github/pullRequestSearch.js';
+import { viewGitHubRepositoryStructureAPI } from '../../../../octocode-tools-core/src/github/repoStructure.js';
+import { resolveDefaultBranch as resolveGitHubDefaultBranch } from '../../../../octocode-tools-core/src/github/client.js';
 
 const mockSearchGitHubCodeAPI = vi.mocked(searchGitHubCodeAPI);
 const mockResolveDefaultBranch = vi.mocked(resolveGitHubDefaultBranch);
@@ -146,7 +150,7 @@ describe('GitHubProvider', () => {
         expect(result.data!.items[0]!.path).toBe('src/index.ts');
         expect(mockSearchGitHubCodeAPI).toHaveBeenCalledWith(
           expect.objectContaining({
-            keywordsToSearch: ['test'],
+            keywords: ['test'],
             owner: 'owner',
             repo: 'repo',
           }),
@@ -199,7 +203,7 @@ describe('GitHubProvider', () => {
         expect(result.data?.pagination.hasMore).toBe(true);
         expect(mockSearchGitHubCodeAPI).toHaveBeenCalledWith(
           expect.objectContaining({
-            keywordsToSearch: ['function', 'class'],
+            keywords: ['function', 'class'],
             owner: 'owner',
             repo: 'repo',
             extension: 'ts',
@@ -522,7 +526,7 @@ describe('GitHubProvider', () => {
           startLine: 10,
           endLine: 20,
           matchString: 'function',
-          matchStringContextLines: 3,
+          contextLines: 3,
           charOffset: 0,
           charLength: 1000,
           fullContent: false,
@@ -547,11 +551,35 @@ describe('GitHubProvider', () => {
             startLine: 10,
             endLine: 20,
             matchString: 'function',
-            matchStringContextLines: 3,
+            contextLines: 3,
             charOffset: 0,
             charLength: 1000,
             fullContent: false,
           }),
+          undefined
+        );
+      });
+
+      it('should forward minify:"symbols" to fetchGitHubFileContentAPI', async () => {
+        mockFetchGitHubFileContentAPI.mockResolvedValue({
+          data: {
+            path: 'src/index.ts',
+            content: 'export function f(): void',
+            branch: 'main',
+            owner: 'owner',
+            repo: 'repo',
+          },
+          status: 200,
+        });
+
+        await provider.getFileContent({
+          projectId: 'owner/repo',
+          path: 'src/index.ts',
+          minify: 'symbols',
+        });
+
+        expect(mockFetchGitHubFileContentAPI).toHaveBeenCalledWith(
+          expect.objectContaining({ minify: 'symbols' }),
           undefined
         );
       });
@@ -800,7 +828,7 @@ describe('GitHubProvider', () => {
 
         expect(mockSearchGitHubReposAPI).toHaveBeenCalledWith(
           expect.objectContaining({
-            keywordsToSearch: ['typescript'],
+            keywords: ['typescript'],
             topicsToSearch: ['testing'],
             owner: 'microsoft',
             stars: '>=1000',
@@ -853,7 +881,7 @@ describe('GitHubProvider', () => {
                 createdAt: '2024-01-01T00:00:00Z',
                 updatedAt: '2024-01-01T00:00:00Z',
                 pushedAt: '2024-01-01T00:00:00Z',
-              },
+              } as GitHubRepositoryOutput,
             ],
             pagination: {
               currentPage: 1,
@@ -892,6 +920,10 @@ describe('GitHubProvider', () => {
                 createdAt: '2024-01-01T00:00:00Z',
                 updatedAt: '2024-01-01T00:00:00Z',
                 pushedAt: '2024-01-01T00:00:00Z',
+                defaultBranch: 'main',
+                visibility: 'public' as const,
+                topics: [],
+                forksCount: 0,
               },
             ],
           },
@@ -1160,9 +1192,12 @@ describe('GitHubProvider', () => {
           headBranch: 'fix-branch',
           created: '>2024-01-01',
           updated: '<2024-12-31',
-          withComments: true,
-          withCommits: true,
-          type: 'fullContent',
+          content: {
+            comments: { discussion: true, reviewInline: true },
+            commits: { list: true, includeFiles: true },
+            changedFiles: true,
+            patches: { mode: 'all' },
+          },
           sort: 'updated',
           order: 'desc',
           limit: 25,
@@ -1184,9 +1219,12 @@ describe('GitHubProvider', () => {
             head: 'fix-branch',
             created: '>2024-01-01',
             updated: '<2024-12-31',
-            withComments: true,
-            withCommits: true,
-            type: 'fullContent',
+            content: {
+              comments: { discussion: true, reviewInline: true },
+              commits: { list: true, includeFiles: true },
+              changedFiles: true,
+              patches: { mode: 'all' },
+            },
             sort: 'updated',
             order: 'desc',
             limit: 25,
@@ -1274,7 +1312,7 @@ describe('GitHubProvider', () => {
 
         const result = await provider.searchPullRequests({
           projectId: 'owner/repo',
-          withComments: true,
+          content: { comments: { discussion: true, reviewInline: true } },
         });
 
         expect(result.data!.items[0]!.comments).toHaveLength(1);
@@ -1574,8 +1612,8 @@ describe('GitHubProvider', () => {
           ref: 'develop',
           path: 'src/components',
           depth: 3,
-          entriesPerPage: 50,
-          entryPageNumber: 2,
+          itemsPerPage: 50,
+          page: 2,
           mainResearchGoal: 'Understand component structure',
           researchGoal: 'Find React components',
           reasoning: 'Need to map UI architecture',
@@ -1589,9 +1627,9 @@ describe('GitHubProvider', () => {
             repo: 'project',
             branch: 'develop',
             path: 'src/components',
-            depth: 3,
-            entriesPerPage: 50,
-            entryPageNumber: 2,
+            maxDepth: 3,
+            itemsPerPage: 50,
+            page: 2,
             mainResearchGoal: 'Understand component structure',
             researchGoal: 'Find React components',
             reasoning: 'Need to map UI architecture',

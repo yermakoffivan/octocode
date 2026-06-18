@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -49,13 +49,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
       });
 
@@ -73,13 +73,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 3,
       });
@@ -100,13 +100,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 2,
       });
@@ -126,13 +126,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(95, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 1,
       });
@@ -143,6 +143,18 @@ describe('Code Search - Pagination', () => {
       expect(
         ('data' in result ? result.data : undefined)?.pagination?.totalMatches
       ).toBe(95);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reportedTotalMatches
+      ).toBe(95);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reachableTotalMatches
+      ).toBe(95);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.totalMatchesKind
+      ).toBe('reported');
     });
 
     it('should cap totalPages at 10 (GitHub 1000 result limit)', async () => {
@@ -151,13 +163,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(5000, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 100,
         page: 1,
       });
@@ -168,6 +180,18 @@ describe('Code Search - Pagination', () => {
       expect(
         ('data' in result ? result.data : undefined)?.pagination?.totalMatches
       ).toBe(1000);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reportedTotalMatches
+      ).toBe(5000);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reachableTotalMatches
+      ).toBe(1000);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.totalMatchesCapped
+      ).toBe(true);
     });
 
     it('should set hasMore=true when more pages exist', async () => {
@@ -176,13 +200,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 1,
       });
@@ -201,13 +225,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 5,
       });
@@ -229,13 +253,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 25));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 25,
         page: 1,
       });
@@ -253,19 +277,19 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 1,
       });
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 2,
       });
@@ -279,19 +303,19 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 1,
       });
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 1,
       });
@@ -307,13 +331,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(5, 5));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 1,
       });
@@ -332,13 +356,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(0, 0));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 10,
         page: 1,
       });
@@ -360,13 +384,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 30));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         page: 1,
       });
 
@@ -386,13 +410,13 @@ describe('Code Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 100));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchCodeMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 150,
         page: 1,
       });
@@ -402,6 +426,109 @@ describe('Code Search - Pagination', () => {
           per_page: 100,
         })
       );
+    });
+  });
+
+  describe('uniqueFileCount in pagination', () => {
+    it('should include uniqueFileCount equal to distinct file paths', async () => {
+      const searchCodeMock = vi
+        .fn()
+        .mockResolvedValue(createMockResponse(50, 5));
+
+      vi.mocked(getOctokit).mockResolvedValue(
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
+        >
+      );
+
+      const result = await searchGitHubCodeAPI({
+        keywords: ['test'],
+        limit: 10,
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.status).toBe(200);
+      if (result?.status === 200) {
+        expect(result.data.pagination?.uniqueFileCount).toBe(5);
+      }
+    });
+
+    it('should deduplicate paths in uniqueFileCount', async () => {
+      const duplicateMockResponse = {
+        data: {
+          total_count: 4,
+          items: [
+            {
+              name: 'a.ts',
+              path: 'src/a.ts',
+              repository: {
+                full_name: 'test/repo',
+                url: 'u',
+                owner: { login: 'test' },
+              },
+              url: 'u',
+              html_url: 'h',
+              sha: 's0',
+            },
+            {
+              name: 'a.ts',
+              path: 'src/a.ts',
+              repository: {
+                full_name: 'test/repo',
+                url: 'u',
+                owner: { login: 'test' },
+              },
+              url: 'u',
+              html_url: 'h',
+              sha: 's1',
+            },
+            {
+              name: 'b.ts',
+              path: 'src/b.ts',
+              repository: {
+                full_name: 'test/repo',
+                url: 'u',
+                owner: { login: 'test' },
+              },
+              url: 'u',
+              html_url: 'h',
+              sha: 's2',
+            },
+            {
+              name: 'b.ts',
+              path: 'src/b.ts',
+              repository: {
+                full_name: 'test/repo',
+                url: 'u',
+                owner: { login: 'test' },
+              },
+              url: 'u',
+              html_url: 'h',
+              sha: 's3',
+            },
+          ],
+          incomplete_results: false,
+        },
+        headers: {},
+      };
+
+      const searchCodeMock = vi.fn().mockResolvedValue(duplicateMockResponse);
+
+      vi.mocked(getOctokit).mockResolvedValue(
+        createMockOctokit(searchCodeMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
+        >
+      );
+
+      const result = await searchGitHubCodeAPI({
+        keywords: ['test'],
+        limit: 10,
+      });
+
+      expect(result?.status).toBe(200);
+      if (result?.status === 200) {
+        expect(result.data.pagination?.uniqueFileCount).toBe(2);
+      }
     });
   });
 });

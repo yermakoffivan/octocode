@@ -80,14 +80,12 @@ function pingGitHubApi(
 
 export const tokenCommand: CLICommand = {
   name: 'token',
-  aliases: ['t'],
   description: 'Print the GitHub token (matches octocode-mcp priority)',
   usage:
-    'octocode token [--type <auto|octocode|gh>] [--hostname <host>] [--source] [--validate] [--json]',
+    'octocode token [--type <auto|octocode|gh>] [--hostname <host>] [--source] [--validate] [--reveal] [--json]',
   options: [
     {
       name: 'type',
-      short: 't',
       description:
         'Token source: auto (default: env→octocode→gh), octocode, gh',
       hasValue: true,
@@ -95,13 +93,11 @@ export const tokenCommand: CLICommand = {
     },
     {
       name: 'hostname',
-      short: 'H',
       description: 'GitHub Enterprise hostname (default: github.com)',
       hasValue: true,
     },
     {
       name: 'source',
-      short: 's',
       description: 'Show token source and user info',
     },
     {
@@ -116,38 +112,32 @@ export const tokenCommand: CLICommand = {
     },
     {
       name: 'json',
-      short: 'j',
       description:
         'Output as JSON: { token, type, valid?, login?, rateLimit? }',
     },
   ],
   handler: async (args: ParsedArgs) => {
-    const hostnameOpt = args.options['hostname'] ?? args.options['H'];
+    const hostnameOpt = args.options['hostname'];
     const hostname =
       (typeof hostnameOpt === 'string' ? hostnameOpt : undefined) ||
       'github.com';
-    const showSource = Boolean(args.options['source'] || args.options['s']);
+    const showSource = Boolean(args.options['source']);
     const validateToken = Boolean(args.options['validate']);
-    const reveal = Boolean(args.options['reveal'] || args.options['raw']);
-    const jsonOutput = Boolean(args.options['json'] || args.options['j']);
-    const typeOpt = args.options['type'] ?? args.options['t'];
+    const reveal = Boolean(args.options['reveal']);
+    const jsonOutput = Boolean(args.options['json']);
+    const typeOpt = args.options['type'];
     const typeArg =
       (typeof typeOpt === 'string' ? typeOpt : undefined) || 'auto';
 
     let tokenSource: GetTokenSource;
     switch (typeArg.toLowerCase()) {
       case 'octocode':
-      case 'octocode-cli':
-      case 'o':
         tokenSource = 'octocode';
         break;
       case 'gh':
-      case 'gh-cli':
-      case 'g':
         tokenSource = 'gh';
         break;
       case 'auto':
-      case 'a':
         tokenSource = 'auto';
         break;
       default:

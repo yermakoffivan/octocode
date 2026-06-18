@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { clearAllCache } from '../../src/utils/http/cache.js';
-import { resetCircuitBreaker } from '../../src/utils/http/circuitBreaker.js';
+import { it, vi, beforeEach } from 'vitest';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
+import { resetCircuitBreaker } from '../../../octocode-tools-core/src/utils/http/circuitBreaker.js';
 
 const mockFetchWithRetries = vi.fn();
-vi.mock('../../src/utils/http/fetch.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/fetch.js', () => ({
   fetchWithRetries: (...args: unknown[]) => {
     console.log(
       'fetchWithRetries called with URL:',
@@ -14,14 +14,14 @@ vi.mock('../../src/utils/http/fetch.js', () => ({
 }));
 
 const mockExecuteNpmCommand = vi.fn();
-vi.mock('../../src/utils/exec/npm.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/exec/npm.js', () => ({
   executeNpmCommand: (...args: unknown[]) => mockExecuteNpmCommand(...args),
 }));
 
 import {
   searchNpmPackage,
   _resetNpmRegistryUrlCache,
-} from '../../src/utils/package/npm.js';
+} from '../../../octocode-tools-core/src/utils/package/npm.js';
 
 beforeEach(() => {
   vi.resetAllMocks();

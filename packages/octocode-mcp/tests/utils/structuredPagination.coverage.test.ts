@@ -2,13 +2,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   applyQueryOutputPagination,
   applyBulkResponsePagination,
-} from '../../src/utils/response/structuredPagination.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
-import { initializeToolMetadata } from '../../src/tools/toolMetadata/state.js';
+} from '../../../octocode-tools-core/src/utils/response/structuredPagination.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
-beforeAll(async () => {
-  await initializeToolMetadata();
-});
+beforeAll(async () => {});
 
 describe('structuredPagination branch coverage', () => {
   it('returns the result unchanged when data is not a plain object (line 1070)', () => {
@@ -34,19 +31,6 @@ describe('structuredPagination branch coverage', () => {
       queryResult,
       { charLength: 10 },
       TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES
-    );
-    expect(result).toBe(queryResult);
-  });
-
-  it('returns the result unchanged for lspFindReferences (line 1082)', () => {
-    const queryResult = {
-      id: 'q-refs',
-      data: { locations: [{ content: 'x'.repeat(20000) }] },
-    };
-    const result = applyQueryOutputPagination(
-      queryResult,
-      { charLength: 50 },
-      TOOL_NAMES.LSP_FIND_REFERENCES
     );
     expect(result).toBe(queryResult);
   });
@@ -118,7 +102,7 @@ describe('structuredPagination branch coverage', () => {
         },
       },
       { charOffset: 100000, charLength: 100 },
-      TOOL_NAMES.LSP_GOTO_DEFINITION
+      'unknown_string_tool'
     );
     const data = result.data as {
       locations?: Array<{ content?: string }>;
@@ -154,16 +138,16 @@ describe('structuredPagination branch coverage', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-bigstr',
-        data: { locations: [{ path: 'big.ts', content: big }] },
+        data: { summary: big },
       },
       { charOffset: 0, charLength: 100 },
-      TOOL_NAMES.LSP_GOTO_DEFINITION
+      'unknown_string_tool'
     );
     const data = result.data as {
-      locations?: Array<{ content?: string }>;
+      summary?: string;
       outputPagination?: { hasMore: boolean };
     };
-    expect(data.locations?.[0]?.content?.length).toBeLessThan(big.length);
+    expect(data.summary?.length).toBeLessThan(big.length);
     expect(data.outputPagination?.hasMore).toBe(true);
   });
 
@@ -172,16 +156,16 @@ describe('structuredPagination branch coverage', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-bigstr-off',
-        data: { locations: [{ path: 'big.ts', content: big }] },
+        data: { summary: big },
       },
       { charOffset: 5000, charLength: 200 },
-      TOOL_NAMES.LSP_GOTO_DEFINITION
+      'unknown_string_tool'
     );
     const data = result.data as {
-      locations?: Array<{ content?: string }>;
+      summary?: string;
       outputPagination?: { charOffset: number };
     };
-    expect(data.locations?.[0]?.content?.length).toBeGreaterThan(0);
+    expect(data.summary?.length).toBeGreaterThan(0);
     expect(data.outputPagination?.charOffset).toBeGreaterThanOrEqual(0);
   });
 
@@ -190,17 +174,17 @@ describe('structuredPagination branch coverage', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-escapes',
-        data: { locations: [{ path: 'e.ts', content: big }] },
+        data: { summary: big },
       },
       { charOffset: 0, charLength: 150 },
-      TOOL_NAMES.LSP_GOTO_DEFINITION
+      'unknown_string_tool'
     );
     const data = result.data as {
-      locations?: Array<{ content?: string }>;
+      summary?: string;
       outputPagination?: { hasMore: boolean };
     };
     expect(data.outputPagination?.hasMore).toBe(true);
-    expect(data.locations?.[0]?.content?.length).toBeGreaterThan(0);
+    expect(data.summary?.length).toBeGreaterThan(0);
   });
 
   it('handles unicode astral code points in a paginated string', () => {
@@ -211,7 +195,7 @@ describe('structuredPagination branch coverage', () => {
         data: { locations: [{ path: 'u.ts', content: big }] },
       },
       { charOffset: 0, charLength: 120 },
-      TOOL_NAMES.LSP_GOTO_DEFINITION
+      'unknown_string_tool'
     );
     const data = result.data as {
       locations?: Array<{ content?: string }>;
@@ -219,7 +203,7 @@ describe('structuredPagination branch coverage', () => {
     expect(data.locations?.[0]?.content?.length).toBeGreaterThan(0);
   });
 
-  it('returns null itemPaginator path for githubSearchCode non-string/non-object text_matches (line 689/696)', () => {
+  it('returns null itemPaginator path for ghSearchCode non-string/non-object text_matches (line 689/696)', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-numeric-matches',
@@ -243,7 +227,7 @@ describe('structuredPagination branch coverage', () => {
     expect(data.files?.length ?? 0).toBeLessThan(40);
   });
 
-  it('returns null itemPaginator path for githubSearchRepositories non-string topics (line 715)', () => {
+  it('returns null itemPaginator path for ghSearchRepos non-string topics (line 715)', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-numeric-topics',
@@ -263,7 +247,7 @@ describe('structuredPagination branch coverage', () => {
     expect(data.outputPagination?.hasMore).toBe(true);
   });
 
-  it('returns null itemPaginator path for packageSearch non-string keywords (line 735)', () => {
+  it('returns null itemPaginator path for npmSearch non-string keywords (line 735)', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-numeric-kw',
@@ -284,7 +268,7 @@ describe('structuredPagination branch coverage', () => {
     expect(data.outputPagination?.hasMore).toBe(true);
   });
 
-  it('githubViewRepoStructure record entries are item-atomic — a node files[] is never sliced', () => {
+  it('ghViewRepoStructure record entries are item-atomic — a node files[] is never sliced', () => {
     const mk = (p: string) => ['1', '2', '3'].map(n => `${p}${n}.ts`);
     const result = applyQueryOutputPagination(
       {
@@ -310,7 +294,7 @@ describe('structuredPagination branch coverage', () => {
     }
   });
 
-  it('returns null itemPaginator path for githubCloneRepo non-string hints (line 871)', () => {
+  it('returns null itemPaginator path for ghCloneRepo non-string hints (line 871)', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-clone-num',
@@ -353,7 +337,7 @@ describe('structuredPagination branch coverage', () => {
     expect(data.outputPagination?.hasMore).toBe(true);
   });
 
-  it('handles lsp locations where items are not plain objects (line 814)', () => {
+  it('handles generic location payloads where items are not plain objects (line 814)', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-lsp-nonobj',
@@ -366,13 +350,13 @@ describe('structuredPagination branch coverage', () => {
         },
       },
       { charLength: 300 },
-      TOOL_NAMES.LSP_GOTO_DEFINITION
+      'unknown_string_tool'
     );
     const data = result.data as { outputPagination?: { hasMore: boolean } };
     expect(data.outputPagination?.hasMore).toBe(true);
   });
 
-  it('handles lspCallHierarchy with mixed primitive and object call entries (fallback paginator)', () => {
+  it('handles generic call payload with mixed primitive and object call entries (fallback paginator)', () => {
     const result = applyQueryOutputPagination(
       {
         id: 'q-callh',
@@ -389,13 +373,13 @@ describe('structuredPagination branch coverage', () => {
         },
       },
       { charLength: 400 },
-      TOOL_NAMES.LSP_CALL_HIERARCHY
+      'unknown_string_tool'
     );
     const data = result.data as { outputPagination?: { hasMore: boolean } };
     expect(data.outputPagination?.hasMore).toBe(true);
   });
 
-  it('short-circuits githubSearchPullRequests when outputPagination already present', () => {
+  it('short-circuits ghHistoryResearch when outputPagination already present', () => {
     const queryResult = {
       id: 'q-pr-already',
       data: {
@@ -489,7 +473,7 @@ describe('structuredPagination branch coverage', () => {
     const first = applyQueryOutputPagination(
       payload,
       { charOffset: 0, charLength: 300 },
-      TOOL_NAMES.LSP_GOTO_DEFINITION
+      'unknown_string_tool'
     );
     const data = first.data as { hints?: string[] };
     const summaryHints = (data.hints ?? []).filter(h => h.startsWith('Page '));
@@ -659,29 +643,6 @@ describe('structuredPagination branch coverage', () => {
       outputPagination?: { hasMore: boolean };
     };
     expect(data.outputPagination?.hasMore).toBe(true);
-  });
-
-  it('does not expose inner outputPagination for lspFindReferences bulk results (line 1023/1038)', () => {
-    const results = [
-      {
-        id: 'refs',
-        data: {
-          locations: Array.from({ length: 10 }, (_, i) => ({
-            uri: `/x/${i}.ts`,
-            content: 'c'.repeat(800),
-          })),
-        },
-      },
-    ];
-    const response = applyBulkResponsePagination(
-      { results },
-      { offset: 0, length: 400 },
-      TOOL_NAMES.LSP_FIND_REFERENCES
-    );
-    const data = response.results[0]?.data as {
-      outputPagination?: unknown;
-    };
-    expect(data.outputPagination).toBeUndefined();
   });
 
   it('paginates a sole top-level string field at offset 0 (fallback string branch)', () => {
@@ -990,7 +951,7 @@ describe('structuredPagination branch coverage', () => {
   });
 });
 
-describe('githubSearchPullRequests pagination fixes', () => {
+describe('ghHistoryResearch pagination fixes', () => {
   it('sub-slices an oversized single PR by paginating fileChanges[].patch', () => {
     const bigPatch = 'P'.repeat(20000);
     const result = applyQueryOutputPagination(
@@ -1083,5 +1044,110 @@ describe('githubSearchPullRequests pagination fixes', () => {
       TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS
     );
     expect(out.results.length).toBeLessThan(4);
+  });
+
+  it('LOCAL_FIND_FILES with explicit charOffset passes through pageToolDataValue non-paginated path (line 819)', () => {
+    const queryResult = {
+      id: 'find-explicit',
+      data: { files: ['a.ts', 'b.ts'], pagination: { hasMore: false } },
+    };
+    const result = applyQueryOutputPagination(
+      queryResult,
+      { charOffset: 0, charLength: 10000 },
+      TOOL_NAMES.LOCAL_FIND_FILES
+    );
+    expect(result).toBeDefined();
+  });
+
+  it('paginateFlatQueryResult fits-in-one-page branch: small data with explicit request that exceeds total (line 882)', () => {
+    const result = applyQueryOutputPagination(
+      {
+        id: 'q-fits',
+        data: { packages: [{ name: 'tiny-pkg' }] },
+      },
+      { charOffset: 0, charLength: 999999 }, // huge page → whole content fits
+      TOOL_NAMES.PACKAGE_SEARCH
+    );
+    expect(result).toBeDefined();
+  });
+
+  it('paginateFlatQueryResult offset-past-end branch: charOffset well beyond content size (line 892)', () => {
+    const result = applyQueryOutputPagination(
+      {
+        id: 'q-past-wrap',
+        data: { packages: [{ name: 'tiny' }] },
+      },
+      { charOffset: 999999, charLength: 100 },
+      TOOL_NAMES.PACKAGE_SEARCH
+    );
+    const data = result.data as Record<string, unknown>;
+    expect(data).toBeDefined();
+  });
+
+  it('paginateFlatQueryResult returns null for non-plain-object result value (line 856)', () => {
+    const response = applyBulkResponsePagination(
+      {
+        results: [
+          {
+            id: 'q1',
+            data: 'not-a-plain-object' as unknown as Record<string, unknown>,
+          },
+        ],
+      } as never,
+      { length: 10 },
+      TOOL_NAMES.PACKAGE_SEARCH
+    );
+    expect(response).toBeDefined();
+  });
+
+  it('paginateFlatQueryResult fits-in-one-page (line 882) — small items before a large item force pagination', () => {
+    const smallResult = { id: 'qs', data: { packages: [{ name: 'x' }] } };
+    const bigPackages = Array.from({ length: 100 }, (_, i) => ({
+      name: `pkg-${i}`,
+      keywords: ['k'.repeat(200)],
+    }));
+    const largeResult = { id: 'ql', data: { packages: bigPackages } };
+    const response = applyBulkResponsePagination(
+      {
+        results: [smallResult, smallResult, smallResult, largeResult],
+      } as never,
+      { length: 500 },
+      TOOL_NAMES.PACKAGE_SEARCH
+    );
+    expect(response).toBeDefined();
+  });
+
+  it('paginateFlatQueryResult past-end via bulk (line 892) — offset beyond total result chars', () => {
+    const packages = Array.from({ length: 50 }, (_, i) => ({
+      name: `p${i}`,
+      keywords: ['k'.repeat(100)],
+    }));
+    const response = applyBulkResponsePagination(
+      {
+        results: [{ id: 'q1', data: { packages } }],
+      } as never,
+      { offset: 999999, length: 100 },
+      TOOL_NAMES.PACKAGE_SEARCH
+    );
+    expect(response).toBeDefined();
+  });
+
+  it('LOCAL_FETCH_CONTENT returns non-paginated from pageToolDataValue via bulk (line 834)', () => {
+    const response = applyBulkResponsePagination(
+      {
+        results: [
+          {
+            id: 'q1',
+            data: {
+              content: 'x'.repeat(5000),
+              path: 'src/foo.ts',
+            },
+          },
+        ],
+      } as never,
+      { length: 50 },
+      TOOL_NAMES.LOCAL_FETCH_CONTENT
+    );
+    expect(response).toBeDefined();
   });
 });

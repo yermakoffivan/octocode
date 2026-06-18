@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createSuccessResult } from '../../src/tools/utils.js';
+import { createSuccessResult } from '../../../octocode-tools-core/src/tools/utils.js';
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
-describe('githubSearchPullRequests Tool Handler - Pagination Fix', () => {
+describe('ghHistoryResearch Tool Handler - Pagination Fix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

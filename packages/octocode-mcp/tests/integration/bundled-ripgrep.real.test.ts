@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateCommand } from 'octocode-security-utils/commandValidator';
-import { resolveRipgrepBinary } from '../../src/utils/exec/ripgrepBinary.js';
+import { validateCommand } from 'octocode-security/commandValidator';
+import { resolveRipgrepBinary } from '../../../octocode-tools-core/src/utils/exec/ripgrepBinary.js';
 
 describe('bundled @vscode/ripgrep — absolute-path validator wiring', () => {
   it('resolveRipgrepBinary() returns a path the security validator accepts', () => {

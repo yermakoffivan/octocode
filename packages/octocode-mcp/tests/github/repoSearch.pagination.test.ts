@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchGitHubReposAPI } from '../../src/github/repoSearch.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { searchGitHubReposAPI } from '../../../octocode-tools-core/src/github/repoSearch.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -56,13 +56,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
       });
 
@@ -80,13 +80,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 3,
       });
@@ -107,13 +107,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 2,
       });
@@ -133,13 +133,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(95, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
       });
@@ -150,6 +150,18 @@ describe('Repository Search - Pagination', () => {
       expect(
         ('data' in result ? result.data : undefined)?.pagination?.totalMatches
       ).toBe(95);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reportedTotalMatches
+      ).toBe(95);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reachableTotalMatches
+      ).toBe(95);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.totalMatchesKind
+      ).toBe('reported');
     });
 
     it('should cap totalPages at 10 (GitHub 1000 result limit)', async () => {
@@ -158,13 +170,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(5000, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 100,
         page: 1,
       });
@@ -175,6 +187,18 @@ describe('Repository Search - Pagination', () => {
       expect(
         ('data' in result ? result.data : undefined)?.pagination?.totalMatches
       ).toBe(1000);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reportedTotalMatches
+      ).toBe(5000);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.reachableTotalMatches
+      ).toBe(1000);
+      expect(
+        ('data' in result ? result.data : undefined)?.pagination
+          ?.totalMatchesCapped
+      ).toBe(true);
     });
 
     it('should set hasMore=true when more pages exist', async () => {
@@ -183,13 +207,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
       });
@@ -208,13 +232,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(50, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 5,
       });
@@ -236,13 +260,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 25));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 25,
         page: 1,
       });
@@ -260,19 +284,19 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
       });
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 2,
       });
@@ -286,19 +310,19 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
       });
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
       });
@@ -312,13 +336,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
         mainResearchGoal: 'Goal 1',
@@ -327,7 +351,7 @@ describe('Repository Search - Pagination', () => {
       });
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
         mainResearchGoal: 'Different Goal',
@@ -346,13 +370,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(5, 5));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
       });
@@ -371,13 +395,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(0, 0));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['nonexistent-repo-xyz'],
+        keywords: ['nonexistent-repo-xyz'],
         limit: 10,
         page: 1,
       });
@@ -399,13 +423,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 30));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       const result = await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         page: 1,
       });
 
@@ -425,13 +449,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 100));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 150,
         page: 1,
       });
@@ -451,13 +475,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 2,
         sort: 'stars',
@@ -478,13 +502,13 @@ describe('Repository Search - Pagination', () => {
         .mockResolvedValue(createMockResponse(100, 10));
 
       vi.mocked(getOctokit).mockResolvedValue(
-        createMockOctokit(searchReposMock) as unknown as ReturnType<
-          typeof getOctokit
+        createMockOctokit(searchReposMock) as unknown as Awaited<
+          ReturnType<typeof getOctokit>
         >
       );
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         limit: 10,
         page: 1,
         sort: 'best-match',

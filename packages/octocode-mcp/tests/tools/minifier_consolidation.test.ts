@@ -5,11 +5,11 @@ import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const readSrc = (p: string): string =>
-  readFileSync(resolve(here, '../../src', p), 'utf8');
+  readFileSync(resolve(here, '../../../octocode-tools-core/src', p), 'utf8');
 
 describe('minifier consolidation (#4)', () => {
   it('applyMinification is exported from the shared minifier util', async () => {
-    const mod = await import('../../src/utils/minifier/applyMinification.js');
+    const mod = await import('@octocodeai/octocode-context-utils');
     expect(typeof mod.applyMinification).toBe('function');
     expect(mod.applyMinification('x', 'f.txt')).toBe('x');
   });
@@ -20,7 +20,7 @@ describe('minifier consolidation (#4)', () => {
   });
 
   it('applyMinification shared util is available and functional', async () => {
-    const mod = await import('../../src/utils/minifier/applyMinification.js');
+    const mod = await import('@octocodeai/octocode-context-utils');
     expect(typeof mod.applyMinification).toBe('function');
   });
 });

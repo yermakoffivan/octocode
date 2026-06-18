@@ -1,46 +1,38 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const emptyCompleteMetadata = {
+  instructions: '',
+  prompts: {},
+  toolNames: {
+    GITHUB_FETCH_CONTENT: 'ghGetFileContent',
+    GITHUB_SEARCH_CODE: 'ghSearchCode',
+    GITHUB_SEARCH_REPOSITORIES: 'ghSearchRepos',
+    GITHUB_SEARCH_PULL_REQUESTS: 'ghHistoryResearch',
+    GITHUB_VIEW_REPO_STRUCTURE: 'ghViewRepoStructure',
+    PACKAGE_SEARCH: 'npmSearch',
+    LOCAL_RIPGREP: 'localSearchCode',
+    LOCAL_FETCH_CONTENT: 'localGetFileContent',
+    LOCAL_FIND_FILES: 'localFindFiles',
+    LOCAL_VIEW_STRUCTURE: 'localViewStructure',
+    LSP_GOTO_DEFINITION: 'lspGotoDefinition',
+    LSP_FIND_REFERENCES: 'lspFindReferences',
+    LSP_CALL_HIERARCHY: 'lspCallHierarchy',
+  },
+  baseSchema: {
+    mainResearchGoal: '',
+    researchGoal: '',
+    reasoning: '',
+    bulkQuery: () => '',
+  },
+  tools: {},
+  baseHints: { hasResults: [], empty: [] },
+  genericErrorHints: [],
+  bulkOperations: {},
+};
+
 vi.mock('@octocodeai/octocode-core', () => ({
-  octocodeConfig: {
-    instructions: '',
-    prompts: {},
-    toolNames: {
-      GITHUB_FETCH_CONTENT: 'githubGetFileContent',
-      GITHUB_SEARCH_CODE: 'githubSearchCode',
-      GITHUB_SEARCH_REPOSITORIES: 'githubSearchRepositories',
-      GITHUB_SEARCH_PULL_REQUESTS: 'githubSearchPullRequests',
-      GITHUB_VIEW_REPO_STRUCTURE: 'githubViewRepoStructure',
-    },
-    baseSchema: {
-      mainResearchGoal: '',
-      researchGoal: '',
-      reasoning: '',
-      bulkQuery: (_: string) => '',
-    },
-    tools: {},
-    baseHints: { hasResults: [], empty: [] },
-    genericErrorHints: [],
-  },
-  completeMetadata: {
-    instructions: '',
-    prompts: {},
-    toolNames: {
-      GITHUB_FETCH_CONTENT: 'githubGetFileContent',
-      GITHUB_SEARCH_CODE: 'githubSearchCode',
-      GITHUB_SEARCH_REPOSITORIES: 'githubSearchRepositories',
-      GITHUB_SEARCH_PULL_REQUESTS: 'githubSearchPullRequests',
-      GITHUB_VIEW_REPO_STRUCTURE: 'githubViewRepoStructure',
-    },
-    baseSchema: {
-      mainResearchGoal: '',
-      researchGoal: '',
-      reasoning: '',
-      bulkQuery: (_: string) => '',
-    },
-    tools: {},
-    baseHints: { hasResults: [], empty: [] },
-    genericErrorHints: [],
-  },
+  octocodeConfig: {},
+  completeMetadata: emptyCompleteMetadata,
 }));
 
 describe('toolMetadata - TOOL_NAMES static fallback (lines 236-243)', () => {
@@ -53,7 +45,7 @@ describe('toolMetadata - TOOL_NAMES static fallback (lines 236-243)', () => {
     vi.resetModules();
 
     const { TOOL_NAMES } =
-      await import('../../src/tools/toolMetadata/proxies.js');
+      await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
 
     const desc1 = Object.getOwnPropertyDescriptor(
       TOOL_NAMES,
@@ -91,7 +83,7 @@ describe('toolMetadata - TOOL_NAMES static fallback (lines 236-243)', () => {
     vi.resetModules();
 
     const { TOOL_NAMES } =
-      await import('../../src/tools/toolMetadata/proxies.js');
+      await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
 
     const desc = Object.getOwnPropertyDescriptor(
       TOOL_NAMES,
@@ -105,7 +97,7 @@ describe('toolMetadata - TOOL_NAMES static fallback (lines 236-243)', () => {
     vi.resetModules();
 
     const { TOOL_NAMES } =
-      await import('../../src/tools/toolMetadata/proxies.js');
+      await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
 
     const keys = Object.keys(TOOL_NAMES);
 
@@ -119,7 +111,7 @@ describe('toolMetadata - TOOL_NAMES static fallback (lines 236-243)', () => {
     vi.resetModules();
 
     const { TOOL_NAMES } =
-      await import('../../src/tools/toolMetadata/proxies.js');
+      await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
 
     const entries = Object.entries(TOOL_NAMES);
 

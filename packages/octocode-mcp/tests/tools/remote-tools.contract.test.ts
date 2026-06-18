@@ -1,48 +1,13 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { getHints } from '../../src/hints/index.js';
-import { STATIC_TOOL_NAMES } from '../../src/tools/toolNames.js';
-import { initializeToolMetadata } from '../../src/tools/toolMetadata/state.js';
-import { applyGithubSearchCodeVerbosity } from '../../src/tools/github_search_code/finalizer.js';
-import { buildGithubFetchContentFinalizer } from '../../src/tools/github_fetch_content/finalizer.js';
-import { applyGithubViewRepoStructureVerbosity } from '../../src/tools/github_view_repo_structure/execution.js';
+import { getHints } from '../../../octocode-tools-core/src/hints/index.js';
+import { STATIC_TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolNames.js';
+import { buildGithubFetchContentFinalizer } from '../../../octocode-tools-core/src/tools/github_fetch_content/finalizer.js';
+import { buildRepoStructureOutput } from '../../../octocode-tools-core/src/tools/github_view_repo_structure/execution.js';
 
-beforeAll(async () => {
-  await initializeToolMetadata();
-});
+beforeAll(async () => {});
 
-describe('Verbosity: githubSearchCode', () => {
-  it('verbose=false strips matchIndices metadata, preserves core match data', () => {
-    const originalMatches = [
-      {
-        path: 'ReactFiberThrow.js',
-        value: 'function throwException() {',
-        matchIndices: [{ start: 0, end: 5 }],
-      },
-      { path: 'ReactFiberThrow.js', value: 'throw value;' },
-    ];
-    const responseData = {
-      results: [
-        {
-          id: 'facebook/react',
-          owner: 'facebook',
-          repo: 'react',
-          matches: [...originalMatches],
-        },
-      ],
-    };
-
-    applyGithubSearchCodeVerbosity(responseData, [{ verbose: false }]);
-    expect(responseData.results[0]!.matches[0]).not.toHaveProperty(
-      'matchIndices'
-    );
-    expect(responseData.results[0]!.matches[0]!.value).toBe(
-      originalMatches[0]!.value
-    );
-  });
-});
-
-describe('Evidence: githubGetFileContent', () => {
-  it('nudges the next pagination parameter for partial file content', () => {
+describe('Hints: ghGetFileContent', () => {
+  it('nudges the next pagination parameter for partial file content via hints', () => {
     const finalizer = buildGithubFetchContentFinalizer();
     const output = finalizer({
       queries: [
@@ -75,21 +40,17 @@ describe('Evidence: githubGetFileContent', () => {
       ],
       config: {
         toolName: STATIC_TOOL_NAMES.GITHUB_FETCH_CONTENT,
-        peerEvidence: true,
       },
     });
 
-    expect(output.structuredContent.evidence?.reason).toContain(
-      'Use charOffset=200 for o/r:src/a.ts.'
-    );
     const hints = output.structuredContent.hints as string[] | undefined;
     expect(hints?.some(h => h.includes('startLine=41'))).toBe(true);
   });
 });
 
-describe('Verbosity: githubViewRepoStructure', () => {
+describe('Verbosity: ghViewRepoStructure', () => {
   it('suggests concrete next paths when a structure response is truncated', () => {
-    const shaped = applyGithubViewRepoStructureVerbosity(
+    const shaped = buildRepoStructureOutput(
       {
         data: {
           path: '',
@@ -101,10 +62,10 @@ describe('Verbosity: githubViewRepoStructure', () => {
           },
         },
         entryCount: 3,
-        summary: { truncated: true },
+        wasTruncated: true,
         extraHints: [],
       },
-      { verbose: false }
+      {}
     );
 
     expect(shaped.extraHints).toContain(
@@ -120,8 +81,8 @@ const FORBIDDEN_STATIC_PHRASES = [
   'Got 3+ examples',
   'Check timestamps (pushedAt, lastModified)',
   'Check DEPRECATED warnings',
-  'Next: githubViewRepoStructure',
-  'Then: githubSearchCode',
+  'Next: ghViewRepoStructure',
+  'Then: ghSearchCode',
   'OUTPUT: Use owner, name',
   'Drill deeper: depth=2',
   'TO GET NEXT PAGE',
@@ -140,7 +101,7 @@ describe('hints contract — static guidance never reaches responses', () => {
   ];
 
   for (const tool of remoteTools) {
-    for (const status of [undefined, 'empty', 'error'] as const) {
+    for (const status of ['empty', 'error'] as const) {
       it(`${tool} (${status}) — no static guidance phrases`, () => {
         const hints = getHints(tool, status, { hasOwnerRepo: false });
         for (const phrase of FORBIDDEN_STATIC_PHRASES) {
@@ -152,7 +113,7 @@ describe('hints contract — static guidance never reaches responses', () => {
     }
   }
 
-  it('githubSearchCode error with rate limit emits a conditional retry hint', () => {
+  it('ghSearchCode error with rate limit emits a conditional retry hint', () => {
     const hints = getHints(STATIC_TOOL_NAMES.GITHUB_SEARCH_CODE, 'error', {
       isRateLimited: true,
       retryAfter: 30,
@@ -160,13 +121,17 @@ describe('hints contract — static guidance never reaches responses', () => {
     expect(hints.some(h => h.includes('Retry after 30s'))).toBe(true);
   });
 
-  it('githubSearchCode empty names the scope when owner/repo set', () => {
+  it('ghSearchCode empty returns actionable hint when owner/repo set', () => {
     const hints = getHints(STATIC_TOOL_NAMES.GITHUB_SEARCH_CODE, 'empty', {
       hasOwnerRepo: true,
       owner: 'a',
       repo: 'b',
     });
-    expect(hints.some(h => h.includes('a/b'))).toBe(true);
+    expect(
+      hints.some(h =>
+        /unindexed|ghGetFileContent|ghViewRepoStructure|default branch/.test(h)
+      )
+    ).toBe(true);
   });
 
   it('per-tool hints fire only on empty/error — hasResults channel is type-narrowed away', () => {
@@ -178,13 +143,13 @@ describe('hints contract — static guidance never reaches responses', () => {
     expect(emptyHints.length).toBeGreaterThan(0);
   });
 
-  it('githubGetFileContent error not_found emits path-aware recovery', () => {
+  it('ghGetFileContent error not_found emits recovery hint', () => {
     const hints = getHints(STATIC_TOOL_NAMES.GITHUB_FETCH_CONTENT, 'error', {
       errorType: 'not_found',
       path: 'src/foo.ts',
       branch: 'main',
     });
-    expect(hints.some(h => h.includes('src/foo.ts'))).toBe(true);
+    expect(hints.some(h => h.includes('ghViewRepoStructure'))).toBe(true);
   });
 });
 
@@ -253,7 +218,7 @@ function buildScorecard(sample: {
 }
 
 describe('agentic-flow quality scorecards', () => {
-  it('githubSearchCode: clean response scores full marks', () => {
+  it('ghSearchCode: clean response scores full marks', () => {
     const card = buildScorecard({
       data: {
         results: [
@@ -273,7 +238,7 @@ describe('agentic-flow quality scorecards', () => {
     expect(score).toBe(MAX_SCORE);
   });
 
-  it('githubGetFileContent: response with a continuation hint scores full marks', () => {
+  it('ghGetFileContent: response with a continuation hint scores full marks', () => {
     const card = buildScorecard({
       data: {
         results: [
@@ -292,7 +257,7 @@ describe('agentic-flow quality scorecards', () => {
     expect(rateAgenticQuality(card).score).toBe(MAX_SCORE);
   });
 
-  it('githubSearchRepositories: full marks with a peer pagination hint', () => {
+  it('ghSearchRepos: full marks with a peer pagination hint', () => {
     const card = buildScorecard({
       data: {
         repositories: [{ owner: 'o', repo: 'r', stars: 1, topics: ['x'] }],
@@ -304,7 +269,7 @@ describe('agentic-flow quality scorecards', () => {
     expect(rateAgenticQuality(card).failures).toEqual([]);
   });
 
-  it('githubSearchPullRequests: clean scorecard', () => {
+  it('ghHistoryResearch: clean scorecard', () => {
     const card = buildScorecard({
       data: {
         pull_requests: [
@@ -326,7 +291,7 @@ describe('agentic-flow quality scorecards', () => {
     expect(rateAgenticQuality(card).score).toBe(MAX_SCORE);
   });
 
-  it('githubViewRepoStructure: scorecard for nested tree', () => {
+  it('ghViewRepoStructure: scorecard for nested tree', () => {
     const card = buildScorecard({
       data: {
         structure: {
@@ -340,7 +305,7 @@ describe('agentic-flow quality scorecards', () => {
     expect(rateAgenticQuality(card).score).toBe(MAX_SCORE);
   });
 
-  it('packageSearch: scorecard with empty rows still scores full marks', () => {
+  it('npmSearch: scorecard with empty rows still scores full marks', () => {
     const card = buildScorecard({
       data: { packages: [] },
       hints: [],

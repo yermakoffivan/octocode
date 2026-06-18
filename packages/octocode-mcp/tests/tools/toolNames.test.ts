@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
-import { STATIC_TOOL_NAMES } from '../../src/tools/toolNames.js';
-import { isLocalTool } from '../../src/tools/toolNames.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
+import { STATIC_TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolNames.js';
+import { isLocalTool } from '../../../octocode-tools-core/src/tools/toolNames.js';
 
 describe('TOOL_NAMES proxy (TDD for local tools registration)', () => {
   describe('before metadata initialization', () => {
@@ -33,18 +33,12 @@ describe('TOOL_NAMES proxy (TDD for local tools registration)', () => {
     });
 
     it('should return correct value for all GitHub tools', () => {
-      expect(TOOL_NAMES.GITHUB_FETCH_CONTENT).toBe('githubGetFileContent');
-      expect(TOOL_NAMES.GITHUB_SEARCH_CODE).toBe('githubSearchCode');
-      expect(TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES).toBe(
-        'githubSearchRepositories'
-      );
-      expect(TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE).toBe(
-        'githubViewRepoStructure'
-      );
-      expect(TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS).toBe(
-        'githubSearchPullRequests'
-      );
-      expect(TOOL_NAMES.PACKAGE_SEARCH).toBe('packageSearch');
+      expect(TOOL_NAMES.GITHUB_FETCH_CONTENT).toBe('ghGetFileContent');
+      expect(TOOL_NAMES.GITHUB_SEARCH_CODE).toBe('ghSearchCode');
+      expect(TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES).toBe('ghSearchRepos');
+      expect(TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE).toBe('ghViewRepoStructure');
+      expect(TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS).toBe('ghHistoryResearch');
+      expect(TOOL_NAMES.PACKAGE_SEARCH).toBe('npmSearch');
     });
 
     it('should not return undefined for any defined tool', () => {
@@ -93,30 +87,30 @@ describe('isLocalTool', () => {
   });
 
   describe('GitHub tools', () => {
-    it('should return false for githubSearchCode', () => {
-      expect(isLocalTool('githubSearchCode')).toBe(false);
+    it('should return false for ghSearchCode', () => {
+      expect(isLocalTool('ghSearchCode')).toBe(false);
     });
 
-    it('should return false for githubGetFileContent', () => {
-      expect(isLocalTool('githubGetFileContent')).toBe(false);
+    it('should return false for ghGetFileContent', () => {
+      expect(isLocalTool('ghGetFileContent')).toBe(false);
     });
 
-    it('should return false for githubViewRepoStructure', () => {
-      expect(isLocalTool('githubViewRepoStructure')).toBe(false);
+    it('should return false for ghViewRepoStructure', () => {
+      expect(isLocalTool('ghViewRepoStructure')).toBe(false);
     });
 
-    it('should return false for githubSearchRepositories', () => {
-      expect(isLocalTool('githubSearchRepositories')).toBe(false);
+    it('should return false for ghSearchRepos', () => {
+      expect(isLocalTool('ghSearchRepos')).toBe(false);
     });
 
-    it('should return false for githubSearchPullRequests', () => {
-      expect(isLocalTool('githubSearchPullRequests')).toBe(false);
+    it('should return false for ghHistoryResearch', () => {
+      expect(isLocalTool('ghHistoryResearch')).toBe(false);
     });
   });
 
   describe('other tools', () => {
-    it('should return false for packageSearch', () => {
-      expect(isLocalTool('packageSearch')).toBe(false);
+    it('should return false for npmSearch', () => {
+      expect(isLocalTool('npmSearch')).toBe(false);
     });
 
     it('should return false for unknown tool names', () => {

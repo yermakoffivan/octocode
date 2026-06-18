@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { viewGitHubRepositoryStructureAPI } from '../../src/github/repoStructure.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
-import { GITHUB_STRUCTURE_DEFAULTS } from '../../src/tools/github_view_repo_structure/constants.js';
+import { viewGitHubRepositoryStructureAPI } from '../../../octocode-tools-core/src/github/repoStructure.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
+import { GITHUB_STRUCTURE_DEFAULTS } from '../../../octocode-tools-core/src/tools/github_view_repo_structure/constants.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -49,7 +49,7 @@ describe('GitHub Repository Structure - Pagination', () => {
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -71,19 +71,19 @@ describe('GitHub Repository Structure - Pagination', () => {
       }
     });
 
-    it('should paginate results when exceeding entriesPerPage', async () => {
+    it('should paginate results when exceeding itemsPerPage', async () => {
       const files = createMockFiles(100);
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        entriesPerPage: 20,
+        itemsPerPage: 20,
       });
 
       expect('structure' in result).toBe(true);
@@ -99,20 +99,20 @@ describe('GitHub Repository Structure - Pagination', () => {
       }
     });
 
-    it('should return correct page when entryPageNumber is specified', async () => {
+    it('should return correct page when page is specified', async () => {
       const files = createMockFiles(100);
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        entriesPerPage: 20,
-        entryPageNumber: 3,
+        itemsPerPage: 20,
+        page: 3,
       });
 
       expect('structure' in result).toBe(true);
@@ -130,15 +130,15 @@ describe('GitHub Repository Structure - Pagination', () => {
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        entriesPerPage: 20,
-        entryPageNumber: 5,
+        itemsPerPage: 20,
+        page: 5,
       });
 
       expect('structure' in result).toBe(true);
@@ -156,7 +156,7 @@ describe('GitHub Repository Structure - Pagination', () => {
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -180,14 +180,14 @@ describe('GitHub Repository Structure - Pagination', () => {
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        entriesPerPage: 20,
+        itemsPerPage: 20,
       });
 
       expect('structure' in result).toBe(true);
@@ -202,7 +202,7 @@ describe('GitHub Repository Structure - Pagination', () => {
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -224,15 +224,15 @@ describe('GitHub Repository Structure - Pagination', () => {
       const mockOctokit = createMockOctokit(files);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        entriesPerPage: 20,
-        entryPageNumber: 10,
+        itemsPerPage: 20,
+        page: 10,
       });
 
       expect('structure' in result).toBe(true);
@@ -246,14 +246,14 @@ describe('GitHub Repository Structure - Pagination', () => {
       const mockOctokit = createMockOctokit([]);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        entriesPerPage: 20,
+        itemsPerPage: 20,
       });
 
       expect('structure' in result).toBe(true);

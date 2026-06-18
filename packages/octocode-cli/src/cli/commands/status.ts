@@ -15,13 +15,11 @@ import path from 'node:path';
 
 export const statusCommand: CLICommand = {
   name: 'status',
-  aliases: ['s'],
   description: 'Show full Octocode health status (auth + MCPs + cache)',
-  usage: 'octocode status [--hostname <host>] [--json]',
+  usage: 'octocode status [--hostname <host>] [--sync] [--json]',
   options: [
     {
       name: 'hostname',
-      short: 'H',
       description: 'GitHub Enterprise hostname (default: github.com)',
       hasValue: true,
     },
@@ -31,16 +29,15 @@ export const statusCommand: CLICommand = {
     },
     {
       name: 'json',
-      short: 'j',
       description: 'Output as JSON: { auth, mcpClients, cache, sync? }',
     },
   ],
   handler: async (args: ParsedArgs) => {
-    const hostnameOpt = args.options['hostname'] ?? args.options['H'];
+    const hostnameOpt = args.options['hostname'];
     const hostname =
       (typeof hostnameOpt === 'string' ? hostnameOpt : undefined) ||
       'github.com';
-    const jsonOutput = Boolean(args.options['json'] || args.options['j']);
+    const jsonOutput = Boolean(args.options['json']);
     const includeSyncAnalysis = Boolean(args.options['sync']);
 
     const auth = formatAuthStatusAsJson(hostname);
@@ -182,12 +179,12 @@ export const statusCommand: CLICommand = {
       }
       if (syncData.summary.needsSyncCount > 0) {
         console.log(
-          `    ${c('yellow', '○')} ${syncData.summary.needsSyncCount} can be auto-synced — run ${c('cyan', 'octocode sync')}`
+          `    ${c('yellow', '○')} ${syncData.summary.needsSyncCount} missing in some configs`
         );
       }
       if (syncData.summary.conflictCount > 0) {
         console.log(
-          `    ${c('red', '!')} ${syncData.summary.conflictCount} conflicts — run ${c('cyan', 'octocode sync --force')}`
+          `    ${c('red', '!')} ${syncData.summary.conflictCount} conflicts across MCP configs`
         );
       }
     } else {

@@ -102,17 +102,14 @@ const skillsUtilsMocks = vi.hoisted(() => {
     getSkillsSourceDir: vi.fn().mockReturnValue('/fake/skills/src'),
     getSkillsDestDir: vi.fn().mockReturnValue('/fake/skills/dest'),
     normalizeSkillTarget: vi.fn((target: string) => {
-      const aliases: Record<string, string> = {
-        claude: 'claude-code',
+      const targets: Record<string, string> = {
         'claude-code': 'claude-code',
-        claudecode: 'claude-code',
         'claude-desktop': 'claude-desktop',
-        claudedesktop: 'claude-desktop',
         cursor: 'cursor',
         codex: 'codex',
         opencode: 'opencode',
       };
-      return aliases[target.trim().toLowerCase()] ?? null;
+      return targets[target.trim().toLowerCase()] ?? null;
     }),
     getSkillsDirForTarget: vi.fn((target: string, defaultDestDir?: string) => {
       const base = defaultDestDir ?? '/fake/skills/dest';
@@ -216,21 +213,6 @@ vi.mock('../../../src/utils/skills-fetch.js', () => ({
   getSkillsCacheDir: vi.fn().mockReturnValue('/fake/cache'),
 }));
 
-const octocodePublicMocks = vi.hoisted(() => ({
-  executeDirectTool: vi.fn(),
-  prepareDirectToolInputFromJsonText: vi.fn(),
-}));
-
-vi.mock('octocode-mcp/public', async importOriginal => {
-  const original = await importOriginal<typeof import('octocode-mcp/public')>();
-  return {
-    ...original,
-    executeDirectTool: octocodePublicMocks.executeDirectTool,
-    prepareDirectToolInputFromJsonText:
-      octocodePublicMocks.prepareDirectToolInputFromJsonText,
-  };
-});
-
 vi.mock('../../../src/configs/skills-marketplace.js', () => ({
   SKILLS_MARKETPLACES: [
     {
@@ -315,13 +297,6 @@ describe('skillsCommand', () => {
     promptsMocks.select.mockReset();
     promptsMocks.checkbox.mockReset();
     platformFlags.isWindows = false;
-
-    octocodePublicMocks.prepareDirectToolInputFromJsonText.mockReturnValue({});
-    octocodePublicMocks.executeDirectTool.mockResolvedValue({
-      isError: false,
-      content: [],
-      structuredContent: { results: [] },
-    });
 
     fsReadMocks.fileExists.mockReturnValue(false);
     fsReadMocks.readFileContent.mockReturnValue(null);

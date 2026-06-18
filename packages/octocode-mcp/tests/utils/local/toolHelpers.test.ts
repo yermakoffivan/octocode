@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   checkLargeOutputSafety,
   validateToolPath,
-} from '../../../src/utils/file/toolHelpers.js';
+} from '../../../../octocode-tools-core/src/utils/file/toolHelpers.js';
+import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from '../../../../octocode-tools-core/src/tools/lsp/shared/semanticTypes.js';
 
 describe('toolHelpers', () => {
   describe('validateToolPath', () => {
@@ -52,7 +53,10 @@ describe('toolHelpers', () => {
           reasoning: 'test reasoning',
         };
 
-        const result = validateToolPath(query, 'LSP_GOTO_DEFINITION');
+        const result = validateToolPath(
+          query,
+          LSP_GET_SEMANTIC_CONTENT_TOOL_NAME
+        );
 
         expect(result.isValid).toBe(true);
         expect(result.sanitizedPath).toBeDefined();
@@ -66,7 +70,10 @@ describe('toolHelpers', () => {
           reasoning: 'test reasoning',
         };
 
-        const result = validateToolPath(query, 'LSP_FIND_REFERENCES');
+        const result = validateToolPath(
+          query,
+          LSP_GET_SEMANTIC_CONTENT_TOOL_NAME
+        );
 
         expect(result.isValid).toBe(true);
         expect(result.sanitizedPath).toBeDefined();
@@ -80,7 +87,10 @@ describe('toolHelpers', () => {
           reasoning: 'test reasoning',
         };
 
-        const result = validateToolPath(query, 'LSP_CALL_HIERARCHY');
+        const result = validateToolPath(
+          query,
+          LSP_GET_SEMANTIC_CONTENT_TOOL_NAME
+        );
 
         expect(result.isValid).toBe(true);
         expect(result.sanitizedPath).toBeDefined();

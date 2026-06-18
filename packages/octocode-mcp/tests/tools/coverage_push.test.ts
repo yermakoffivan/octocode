@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { hints as codeSearchHints } from '../../src/tools/github_search_code/hints.js';
+import { hints as codeSearchHints } from '../../../octocode-tools-core/src/tools/github_search_code/hints.js';
 
 describe('github_search_code hints - error branches', () => {
   it('should generate rate limit hint with retryAfter', () => {
@@ -38,7 +38,7 @@ describe('github_search_code hints - error branches', () => {
   });
 });
 
-import { extractMatchingLines } from '../../src/tools/local_fetch_content/contentExtractor.js';
+import { extractMatchingLines } from '../../../octocode-tools-core/src/tools/local_fetch_content/contentExtractor.js';
 
 describe('contentExtractor - empty matches branch', () => {
   it('should return empty result when no matches found (line 61)', () => {
@@ -56,13 +56,13 @@ describe('contentExtractor - empty matches branch', () => {
   });
 });
 
-import { fetchDirectoryContentsRecursivelyAPI } from '../../src/github/repoStructureRecursive.js';
+import { fetchDirectoryContentsRecursivelyAPI } from '../../../octocode-tools-core/src/github/repoStructureRecursive.js';
 
-vi.mock('../../src/github/client.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: vi.fn(),
 }));
 
-import { getOctokit } from '../../src/github/client.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
 
 describe('repoStructureRecursive - error branches', () => {
   beforeEach(() => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { FindCommandBuilder } from '../../src/commands/FindCommandBuilder.js';
+import { FindCommandBuilder } from '../../../octocode-tools-core/src/commands/FindCommandBuilder.js';
 
 describe('FindCommandBuilder', () => {
   const originalPlatform = process.platform;
@@ -74,9 +74,11 @@ describe('FindCommandBuilder', () => {
       expect(args).toContain('2');
     });
 
-    it('should handle type filter', () => {
+    it('should handle entryType filter', () => {
       const builder = new FindCommandBuilder();
-      const { args } = builder.fromQuery({ path: '/test', type: 'f' }).build();
+      const { args } = builder
+        .fromQuery({ path: '/test', entryType: 'f' })
+        .build();
 
       expect(args).toContain('-type');
       expect(args).toContain('f');
@@ -85,7 +87,7 @@ describe('FindCommandBuilder', () => {
     it('should handle single name pattern', () => {
       const builder = new FindCommandBuilder();
       const { args } = builder
-        .fromQuery({ path: '/test', name: '*.js' })
+        .fromQuery({ path: '/test', names: ['*.js'] })
         .build();
 
       expect(args).toContain('-name');
@@ -115,16 +117,6 @@ describe('FindCommandBuilder', () => {
       expect(args).toContain('-name');
       expect(args).toContain('*.ts');
       expect(args).not.toContain('(');
-    });
-
-    it('should handle iname (case-insensitive)', () => {
-      const builder = new FindCommandBuilder();
-      const { args } = builder
-        .fromQuery({ path: '/test', iname: 'README*' })
-        .build();
-
-      expect(args).toContain('-iname');
-      expect(args).toContain('README*');
     });
 
     it('should handle pathPattern', () => {
@@ -187,26 +179,18 @@ describe('FindCommandBuilder', () => {
       expect(args).toContain('^/test/.*\\.ts$');
     });
 
-    it('should handle regex with custom type (platform-aware)', () => {
+    it('should handle regex without regex type flags', () => {
       const builder = new FindCommandBuilder();
       const { args } = builder
         .fromQuery({
           path: '/test',
           regex: '.*test.*',
-          regexType: 'posix-extended',
         })
         .build();
 
       expect(args).toContain('-regex');
       expect(args).toContain('.*test.*');
-
-      if (process.platform === 'linux') {
-        expect(args).toContain('-regextype');
-        expect(args).toContain('posix-extended');
-      } else if (process.platform === 'darwin') {
-        expect(args).toContain('-E');
-        expect(args).not.toContain('-regextype');
-      }
+      expect(args).not.toContain('-regextype');
     });
 
     it('should handle empty flag', () => {
@@ -424,9 +408,9 @@ describe('FindCommandBuilder', () => {
   });
 
   describe('chainable methods', () => {
-    it('should chain type method', () => {
+    it('should chain entryType method', () => {
       const builder = new FindCommandBuilder();
-      const { args } = builder.path('/test').type('d').build();
+      const { args } = builder.path('/test').entryType('d').build();
 
       expect(args).toContain('-type');
       expect(args).toContain('d');
@@ -438,14 +422,6 @@ describe('FindCommandBuilder', () => {
 
       expect(args).toContain('-name');
       expect(args).toContain('*.ts');
-    });
-
-    it('should chain iname method', () => {
-      const builder = new FindCommandBuilder();
-      const { args } = builder.path('/test').iname('readme*').build();
-
-      expect(args).toContain('-iname');
-      expect(args).toContain('readme*');
     });
 
     it('should chain maxDepth method', () => {
@@ -524,7 +500,7 @@ describe('FindCommandBuilder', () => {
       expect(args).not.toContain('-regextype');
     });
 
-    it('should use -regextype for regex on Linux', () => {
+    it('should not use -regextype for regex on Linux', () => {
       Object.defineProperty(process, 'platform', { value: 'linux' });
 
       const builder = new FindCommandBuilder();
@@ -532,12 +508,11 @@ describe('FindCommandBuilder', () => {
         .fromQuery({
           path: '/test',
           regex: '.*\\.test\\.ts$',
-          regexType: 'posix-egrep',
         })
         .build();
 
-      expect(args).toContain('-regextype');
-      expect(args).toContain('posix-egrep');
+      expect(args).not.toContain('-regextype');
+      expect(args).not.toContain('posix-egrep');
       expect(args).not.toContain('-E');
     });
 
@@ -549,7 +524,6 @@ describe('FindCommandBuilder', () => {
         .fromQuery({
           path: '/test',
           regex: '.*test.*',
-          regexType: 'posix-extended',
         })
         .build();
 
@@ -565,7 +539,6 @@ describe('FindCommandBuilder', () => {
         .fromQuery({
           path: '/test',
           regex: '\\.(test|spec)\\.ts$',
-          regexType: 'posix-extended',
         })
         .build();
 
@@ -583,18 +556,16 @@ describe('FindCommandBuilder', () => {
         .fromQuery({
           path: '/test',
           regex: '\\.(test|spec)\\.ts$',
-          regexType: 'posix-extended',
         })
         .build();
 
       expect(args).not.toContain('-E');
-      expect(args).toContain('-regextype');
-      expect(args).toContain('posix-extended');
+      expect(args).not.toContain('-regextype');
       expect(args).toContain('-regex');
       expect(args).toContain('.*\\.(test|spec)\\.ts$');
     });
 
-    it('should normalize regex for full path on Linux with posix-egrep', () => {
+    it('should normalize regex for full path on Linux without regex type flags', () => {
       Object.defineProperty(process, 'platform', { value: 'linux' });
 
       const builder = new FindCommandBuilder();
@@ -602,17 +573,16 @@ describe('FindCommandBuilder', () => {
         .fromQuery({
           path: '/test',
           regex: '\\.(test|spec)\\.ts$',
-          regexType: 'posix-egrep',
         })
         .build();
 
-      expect(args).toContain('-regextype');
-      expect(args).toContain('posix-egrep');
+      expect(args).not.toContain('-regextype');
+      expect(args).not.toContain('posix-egrep');
       expect(args).toContain('-regex');
       expect(args).toContain('.*\\.(test|spec)\\.ts$');
     });
 
-    it('should normalize regex on Linux without regexType', () => {
+    it('should normalize regex on Linux without regex type flags', () => {
       Object.defineProperty(process, 'platform', { value: 'linux' });
 
       const builder = new FindCommandBuilder();
@@ -652,7 +622,6 @@ describe('FindCommandBuilder', () => {
         .fromQuery({
           path: '/test',
           regex: '.*\\.(test|spec)\\.ts$',
-          regexType: 'posix-extended',
         })
         .build();
 
@@ -698,7 +667,6 @@ describe('FindCommandBuilder', () => {
           .fromQuery({
             path: 'C:\\test',
             regex: '\\.(test|spec)\\.ts$',
-            regexType: 'posix-extended',
           })
           .build();
       }).toThrow(/windows|unsupported|not supported/i);
@@ -706,12 +674,12 @@ describe('FindCommandBuilder', () => {
   });
 
   describe('command structure with excludeDir (BUG-002 fix)', () => {
-    it('should place type filter AFTER prune when excludeDir is used', () => {
+    it('should place entryType filter AFTER prune when excludeDir is used', () => {
       const builder = new FindCommandBuilder();
       const { args } = builder
         .fromQuery({
           path: '/test',
-          type: 'f',
+          entryType: 'f',
           excludeDir: ['node_modules'],
         })
         .build();
@@ -749,7 +717,7 @@ describe('FindCommandBuilder', () => {
       const { args } = builder
         .fromQuery({
           path: '/test',
-          type: 'f',
+          entryType: 'f',
           name: '*.ts',
           excludeDir: ['node_modules'],
         })
@@ -767,7 +735,7 @@ describe('FindCommandBuilder', () => {
       const { args } = builder
         .fromQuery({
           path: '/test',
-          type: 'f',
+          entryType: 'f',
           names: ['*.json', '*.md'],
           excludeDir: ['node_modules', 'coverage', 'dist'],
           maxDepth: 5,

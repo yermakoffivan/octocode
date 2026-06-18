@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fetchGitHubFileContentAPI } from '../../src/github/fileContent.js';
-import { getOctokit } from '../../src/github/client.js';
-import * as minifierModule from '../../src/utils/minifier/minifier.js';
+import { fetchGitHubFileContentAPI } from '../../../octocode-tools-core/src/github/fileContent.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import * as minifierModule from '@octocodeai/octocode-context-utils';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/utils/minifier/minifier.js');
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('@octocodeai/octocode-context-utils', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, minifyContent: vi.fn(), minifyContentSync: vi.fn() };
+});
 
 describe('GitHub File Operations - Pagination', () => {
   beforeEach(() => {
@@ -33,11 +36,11 @@ describe('GitHub File Operations - Pagination', () => {
 
   describe('auto-pagination', () => {
     it('should NOT paginate small files below the shared output budget', async () => {
-      const smallContent = 'x'.repeat(5000);
+      const smallContent = 'x'.repeat(800);
       const mockOctokit = createMockOctokit(smallContent);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({
@@ -56,7 +59,7 @@ describe('GitHub File Operations - Pagination', () => {
       expect(result).toHaveProperty('data');
       if ('data' in result && result.data && !('error' in result.data)) {
         expect(result.data.pagination).toBeUndefined();
-        expect(result.data.content?.length).toBe(5000);
+        expect(result.data.content?.length).toBe(800);
       }
     });
 
@@ -65,7 +68,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(largeContent);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({
@@ -94,7 +97,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(largeContent);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({
@@ -122,7 +125,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(content);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(async c => ({
         content: c,
@@ -144,7 +147,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(content);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(async c => ({
         content: c,
@@ -161,12 +164,12 @@ describe('GitHub File Operations - Pagination', () => {
       expect(result).toHaveProperty('data');
     });
 
-    it('should paginate when explicit charOffset=0 but content < threshold', async () => {
-      const smallContent = 'x'.repeat(5000);
+    it('should not paginate when explicit charOffset=0 and content is below the page budget', async () => {
+      const smallContent = 'x'.repeat(800);
       const mockOctokit = createMockOctokit(smallContent);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(async c => ({
         content: c,
@@ -194,7 +197,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(largeContent);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(async c => ({
         content: c,
@@ -220,7 +223,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(largeContent);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(async c => ({
         content: c,
@@ -233,7 +236,7 @@ describe('GitHub File Operations - Pagination', () => {
         repo: 'repo',
         path: 'functions.ts',
         matchString: 'function',
-        matchStringContextLines: 50,
+        contextLines: 50,
       });
 
       expect(result).toHaveProperty('data');
@@ -252,7 +255,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(largeContent, uniquePath);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(async c => ({
         content: c,
@@ -291,7 +294,7 @@ describe('GitHub File Operations - Pagination', () => {
       const mockOctokit = createMockOctokit(largeContent);
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({

@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mockSearchAPI = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/github/pullRequestSearch.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/pullRequestSearch.js', () => ({
   searchGitHubPullRequestsAPI: mockSearchAPI,
 }));
 
-import { searchPullRequests } from '../../src/providers/github/githubPullRequests.js';
+import { searchPullRequests } from '../../../octocode-tools-core/src/providers/github/githubPullRequests.js';
 
 type PRQuery = Parameters<typeof searchPullRequests>[0];
 
@@ -24,36 +24,36 @@ function emptyApiResult() {
   };
 }
 
-describe('searchPullRequests — matchScope mapping to API `match`', () => {
+describe('searchPullRequests — match field forwarded to GitHub API `match`', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSearchAPI.mockResolvedValue(emptyApiResult());
   });
 
-  it('forwards a single-value matchScope as `match`', async () => {
+  it('forwards a single-value match as `match`', async () => {
     await searchPullRequests({
       query: 'Suspense',
-      matchScope: ['title'],
+      match: ['title'],
     } as PRQuery);
 
     expect(mockSearchAPI).toHaveBeenCalledTimes(1);
-    const forwarded = mockSearchAPI.mock.calls[0][0];
+    const forwarded = mockSearchAPI.mock.calls[0]![0];
     expect(forwarded.match).toEqual(['title']);
     expect(forwarded.query).toBe('Suspense');
   });
 
-  it('forwards a multi-value matchScope as `match`', async () => {
+  it('forwards a multi-value match as `match`', async () => {
     await searchPullRequests({
       query: 'x',
-      matchScope: ['title', 'body'],
+      match: ['title', 'body'],
     } as PRQuery);
 
-    expect(mockSearchAPI.mock.calls[0][0].match).toEqual(['title', 'body']);
+    expect(mockSearchAPI.mock.calls[0]![0].match).toEqual(['title', 'body']);
   });
 
-  it('forwards undefined `match` when matchScope is absent', async () => {
+  it('forwards undefined match when match is absent', async () => {
     await searchPullRequests({ query: 'x' } as PRQuery);
 
-    expect(mockSearchAPI.mock.calls[0][0].match).toBeUndefined();
+    expect(mockSearchAPI.mock.calls[0]![0].match).toBeUndefined();
   });
 });

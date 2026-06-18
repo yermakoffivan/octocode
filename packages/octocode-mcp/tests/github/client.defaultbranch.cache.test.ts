@@ -3,9 +3,9 @@ import {
   resolveDefaultBranch,
   clearOctokitInstances,
   MAX_BRANCH_CACHE_SIZE,
-} from '../../src/github/client.js';
+} from '../../../octocode-tools-core/src/github/client.js';
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getGitHubToken: vi.fn(function () {}),
   getServerConfig: vi.fn(function () {
     return {
@@ -44,7 +44,10 @@ vi.mock('@octokit/plugin-throttling', () => ({
   throttling: {},
 }));
 
-import { getGitHubToken, getServerConfig } from '../../src/serverConfig.js';
+import {
+  getGitHubToken,
+  getServerConfig,
+} from '../../../octocode-tools-core/src/serverConfig.js';
 import { Octokit } from 'octokit';
 
 const mockGetGitHubToken = vi.mocked(getGitHubToken);

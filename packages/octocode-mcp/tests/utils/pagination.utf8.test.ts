@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   applyPagination,
   createPaginationInfo,
-} from '../../src/utils/pagination/core.js';
-import { generatePaginationHints } from '../../src/utils/pagination/hints.js';
+} from '../../../octocode-tools-core/src/utils/pagination/core.js';
+import { generatePaginationHints } from '../../../octocode-tools-core/src/utils/pagination/hints.js';
 
 describe('UTF-8 Pagination - Byte/Character Separation', () => {
   const TEST_CONTENT = {
@@ -319,15 +319,15 @@ describe('UTF-8 Pagination - Byte/Character Separation', () => {
   });
 
   describe('createPaginationInfo with UTF-8', () => {
-    it('should preserve both byte and char fields', () => {
+    it('should expose only char fields — no byte fields in public PaginationInfo', () => {
       const metadata = applyPagination(TEST_CONTENT.emoji, 0, 10, {
         mode: 'bytes',
       });
       const info = createPaginationInfo(metadata);
 
-      expect(info.byteOffset).toBe(metadata.byteOffset);
-      expect(info.byteLength).toBe(metadata.byteLength);
-      expect(info.totalBytes).toBe(metadata.totalBytes);
+      expect(info).not.toHaveProperty('byteOffset');
+      expect(info).not.toHaveProperty('byteLength');
+      expect(info).not.toHaveProperty('totalBytes');
 
       expect(info.charOffset).toBe(metadata.charOffset);
       expect(info.charLength).toBe(metadata.charLength);
@@ -336,6 +336,21 @@ describe('UTF-8 Pagination - Byte/Character Separation', () => {
       expect(info.currentPage).toBe(metadata.currentPage);
       expect(info.totalPages).toBe(metadata.totalPages);
       expect(info.hasMore).toBe(metadata.hasMore);
+    });
+
+    it('should expose nextCharOffset when hasMore', () => {
+      const metadata = applyPagination(TEST_CONTENT.emoji, 0, 8);
+      const info = createPaginationInfo(metadata);
+      expect(info.hasMore).toBe(true);
+      expect(info.nextCharOffset).toBeDefined();
+      expect(info.nextCharOffset).toBe(metadata.nextCharOffset);
+    });
+
+    it('should expose nextCharOffset as undefined when no more content', () => {
+      const metadata = applyPagination('short', 0, 1000);
+      const info = createPaginationInfo(metadata);
+      expect(info.hasMore).toBe(false);
+      expect(info.nextCharOffset).toBeUndefined();
     });
   });
 

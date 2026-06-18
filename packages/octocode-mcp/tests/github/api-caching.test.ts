@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { clearAllCache, getCacheStats } from '../../src/utils/http/cache.js';
-import { getOctokit } from '../../src/github/client';
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch';
-import { searchGitHubReposAPI } from '../../src/github/repoSearch';
-import { searchGitHubPullRequestsAPI } from '../../src/github/pullRequestSearch';
-import { fetchGitHubFileContentAPI } from '../../src/github/fileContent.js';
-import { viewGitHubRepositoryStructureAPI } from '../../src/github/repoStructure.js';
+import {
+  clearAllCache,
+  getCacheStats,
+} from '../../../octocode-tools-core/src/utils/http/cache.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch';
+import { searchGitHubReposAPI } from '../../../octocode-tools-core/src/github/repoSearch';
+import { searchGitHubPullRequestsAPI } from '../../../octocode-tools-core/src/github/pullRequestSearch';
+import { fetchGitHubFileContentAPI } from '../../../octocode-tools-core/src/github/fileContent.js';
+import { viewGitHubRepositoryStructureAPI } from '../../../octocode-tools-core/src/github/repoStructure.js';
 
-vi.mock('../../src/github/client');
+vi.mock('../../../octocode-tools-core/src/github/client');
 
 const mockOctokit = {
   rest: {
@@ -40,7 +43,7 @@ describe('GitHub API Caching', () => {
     );
   });
 
-  describe('githubSearchCode caching', () => {
+  describe('ghSearchCode caching', () => {
     beforeEach(() => {
       mockOctokit.rest.search.code.mockResolvedValue({
         data: {
@@ -67,7 +70,7 @@ describe('GitHub API Caching', () => {
 
     it('should cache code search results and return cached on second call', async () => {
       const params = {
-        keywordsToSearch: ['useState'],
+        keywords: ['useState'],
         owner: 'facebook',
         repo: 'react',
         mainResearchGoal: 'Find hooks',
@@ -87,7 +90,7 @@ describe('GitHub API Caching', () => {
 
     it('should hit cache when only context params differ', async () => {
       const params1 = {
-        keywordsToSearch: ['useState'],
+        keywords: ['useState'],
         owner: 'facebook',
         repo: 'react',
         mainResearchGoal: 'Goal 1',
@@ -96,7 +99,7 @@ describe('GitHub API Caching', () => {
       };
 
       const params2 = {
-        keywordsToSearch: ['useState'],
+        keywords: ['useState'],
         owner: 'facebook',
         repo: 'react',
         mainResearchGoal: 'DIFFERENT GOAL',
@@ -112,7 +115,7 @@ describe('GitHub API Caching', () => {
 
     it('should miss cache when API params differ', async () => {
       const params1 = {
-        keywordsToSearch: ['useState'],
+        keywords: ['useState'],
         owner: 'facebook',
         repo: 'react',
         mainResearchGoal: 'Goal',
@@ -121,7 +124,7 @@ describe('GitHub API Caching', () => {
       };
 
       const params2 = {
-        keywordsToSearch: ['useEffect'],
+        keywords: ['useEffect'],
         owner: 'facebook',
         repo: 'react',
         mainResearchGoal: 'Goal',
@@ -136,7 +139,7 @@ describe('GitHub API Caching', () => {
     });
   });
 
-  describe('githubSearchRepositories caching', () => {
+  describe('ghSearchRepos caching', () => {
     beforeEach(() => {
       mockOctokit.rest.search.repos.mockResolvedValue({
         data: {
@@ -168,7 +171,7 @@ describe('GitHub API Caching', () => {
 
     it('should cache repo search results and return cached on second call', async () => {
       const params = {
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         mainResearchGoal: 'Find repos',
         researchGoal: 'Find react',
         reasoning: 'Testing',
@@ -182,7 +185,7 @@ describe('GitHub API Caching', () => {
 
     it('should hit cache when only context params differ', async () => {
       const params1 = {
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         stars: '>1000',
         mainResearchGoal: 'Goal 1',
         researchGoal: 'Research 1',
@@ -190,7 +193,7 @@ describe('GitHub API Caching', () => {
       };
 
       const params2 = {
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
         stars: '>1000',
         mainResearchGoal: 'DIFFERENT',
         researchGoal: 'DIFFERENT',
@@ -204,7 +207,7 @@ describe('GitHub API Caching', () => {
     });
   });
 
-  describe('githubSearchPullRequests caching', () => {
+  describe('ghHistoryResearch caching', () => {
     beforeEach(() => {
       mockOctokit.rest.search.issuesAndPullRequests.mockResolvedValue({
         data: {
@@ -277,7 +280,7 @@ describe('GitHub API Caching', () => {
     });
   });
 
-  describe('githubGetFileContent caching', () => {
+  describe('ghGetFileContent caching', () => {
     const fileContent = 'line 1\nline 2\nline 3\nline 4\nline 5';
 
     beforeEach(() => {
@@ -392,7 +395,7 @@ describe('GitHub API Caching', () => {
     });
   });
 
-  describe('githubViewRepoStructure caching', () => {
+  describe('ghViewRepoStructure caching', () => {
     beforeEach(() => {
       mockOctokit.rest.repos.getContent.mockResolvedValue({
         data: [
@@ -417,7 +420,7 @@ describe('GitHub API Caching', () => {
         repo: 'react',
         branch: 'main',
         path: 'src',
-        depth: 1,
+        maxDepth: 1,
         mainResearchGoal: 'View structure',
         researchGoal: 'Get files',
         reasoning: 'Testing',
@@ -435,9 +438,9 @@ describe('GitHub API Caching', () => {
         repo: 'react',
         branch: 'main',
         path: 'src',
-        depth: 1,
-        entriesPerPage: 2,
-        entryPageNumber: 1,
+        maxDepth: 1,
+        itemsPerPage: 2,
+        page: 1,
         mainResearchGoal: 'View structure',
         researchGoal: 'Get files',
         reasoning: 'Testing',
@@ -448,9 +451,9 @@ describe('GitHub API Caching', () => {
         repo: 'react',
         branch: 'main',
         path: 'src',
-        depth: 1,
-        entriesPerPage: 2,
-        entryPageNumber: 2,
+        maxDepth: 1,
+        itemsPerPage: 2,
+        page: 2,
         mainResearchGoal: 'View structure',
         researchGoal: 'Get files',
         reasoning: 'Testing',
@@ -462,14 +465,14 @@ describe('GitHub API Caching', () => {
       expect(mockOctokit.rest.repos.getContent).toHaveBeenCalledTimes(1);
     });
 
-    it('returns the correct page per entryPageNumber from one cached tree (not a stale fixed page)', async () => {
+    it('returns the correct page per page from one cached tree (not a stale fixed page)', async () => {
       const base = {
         owner: 'facebook',
         repo: 'react',
         branch: 'main',
         path: 'src',
-        depth: 1,
-        entriesPerPage: 2,
+        maxDepth: 1,
+        itemsPerPage: 2,
         mainResearchGoal: 'View structure',
         researchGoal: 'Get files',
         reasoning: 'Testing',
@@ -477,14 +480,14 @@ describe('GitHub API Caching', () => {
 
       const r1 = (await viewGitHubRepositoryStructureAPI({
         ...base,
-        entryPageNumber: 1,
+        page: 1,
       })) as {
         pagination?: { currentPage?: number; totalEntries?: number };
         structure?: unknown;
       };
       const r2 = (await viewGitHubRepositoryStructureAPI({
         ...base,
-        entryPageNumber: 2,
+        page: 2,
       })) as {
         pagination?: { currentPage?: number; totalEntries?: number };
         structure?: unknown;
@@ -506,7 +509,7 @@ describe('GitHub API Caching', () => {
         repo: 'react',
         branch: 'main',
         path: 'src',
-        depth: 1,
+        maxDepth: 1,
         mainResearchGoal: 'View structure',
         researchGoal: 'Get files',
         reasoning: 'Testing',
@@ -517,7 +520,7 @@ describe('GitHub API Caching', () => {
         repo: 'react',
         branch: 'main',
         path: 'packages',
-        depth: 1,
+        maxDepth: 1,
         mainResearchGoal: 'View structure',
         researchGoal: 'Get files',
         reasoning: 'Testing',
@@ -540,7 +543,7 @@ describe('GitHub API Caching', () => {
       });
 
       await searchGitHubCodeAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'owner',
         repo: 'repo',
         mainResearchGoal: 'Goal',
@@ -549,7 +552,7 @@ describe('GitHub API Caching', () => {
       });
 
       await searchGitHubReposAPI({
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'owner',
         mainResearchGoal: 'Goal',
         researchGoal: 'Research',

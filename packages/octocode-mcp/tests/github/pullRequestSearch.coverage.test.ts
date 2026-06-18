@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { searchGitHubPullRequestsAPI } from '../../src/github/pullRequestSearch';
-import * as client from '../../src/github/client';
-import * as queryBuilders from '../../src/github/queryBuilders';
+import { searchGitHubPullRequestsAPI } from '../../../octocode-tools-core/src/github/pullRequestSearch';
+import * as client from '../../../octocode-tools-core/src/github/client';
+import * as queryBuilders from '../../../octocode-tools-core/src/github/queryBuilders';
 
-vi.mock('../../src/github/client');
-vi.mock('../../src/session');
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client');
+vi.mock('../../../octocode-tools-core/src/session');
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   withDataCache: vi.fn((_key, fn) => fn()),
   generateCacheKey: vi.fn(() => 'cache-key'),
 }));
@@ -116,7 +116,7 @@ describe('pullRequestSearch coverage', () => {
       query: 'test',
       owner: 'owner',
       repo: 'repo',
-      withComments: true,
+      content: { comments: { discussion: true, reviewInline: true } },
     });
 
     expect(result.pull_requests).toBeDefined();
@@ -151,7 +151,7 @@ describe('pullRequestSearch coverage', () => {
       query: 'test',
       owner: 'owner',
       repo: 'repo',
-      type: 'fullContent',
+      content: { changedFiles: true, patches: { mode: 'all' } },
     });
 
     expect(result.pull_requests).toBeDefined();
@@ -318,7 +318,7 @@ describe('pullRequestSearch coverage', () => {
       query: 'test',
       owner: 'owner',
       repo: 'repo',
-      type: 'fullContent',
+      content: { changedFiles: true, patches: { mode: 'all' } },
     });
 
     expect(result.pull_requests).toBeDefined();
@@ -410,7 +410,7 @@ describe('pullRequestSearch coverage', () => {
       query: 'test',
       owner: 'owner',
       repo: 'repo',
-      type: 'fullContent',
+      content: { changedFiles: true, patches: { mode: 'all' } },
     });
 
     expect(result.pull_requests).toBeDefined();

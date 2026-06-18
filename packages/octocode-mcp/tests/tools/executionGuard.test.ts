@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../src/tools/utils.js', () => ({
+vi.mock('../../../octocode-tools-core/src/tools/utils.js', () => ({
   handleCatchError: vi
     .fn()
     .mockReturnValue({ status: 'error', error: 'guarded failure' }),
 }));
 
-import { handleCatchError } from '../../src/tools/utils.js';
-import { executeWithToolBoundary } from '../../src/tools/executionGuard.js';
+import { handleCatchError } from '../../../octocode-tools-core/src/tools/utils.js';
+import { executeWithToolBoundary } from '../../../octocode-tools-core/src/tools/executionGuard.js';
 
 describe('executeWithToolBoundary', () => {
   beforeEach(() => {
@@ -18,10 +18,10 @@ describe('executeWithToolBoundary', () => {
     const result = await executeWithToolBoundary({
       toolName: 'localGetFileContent',
       query: { researchGoal: 'test', reasoning: 'test' },
-      execute: async () => ({ status: 'hasResults', content: 'ok' }),
+      execute: async () => ({ data: { content: 'ok' } }),
     });
 
-    expect(result).toEqual({ status: 'hasResults', content: 'ok' });
+    expect(result).toEqual({ data: { content: 'ok' } });
     expect(handleCatchError).not.toHaveBeenCalled();
   });
 
@@ -29,7 +29,7 @@ describe('executeWithToolBoundary', () => {
     const query = { researchGoal: 'test', reasoning: 'test' };
 
     const result = await executeWithToolBoundary({
-      toolName: 'githubCloneRepo',
+      toolName: 'ghCloneRepo',
       query,
       contextMessage: 'Clone failed for owner/repo',
       execute: async () => {
@@ -41,7 +41,7 @@ describe('executeWithToolBoundary', () => {
       expect.any(Error),
       query,
       'Clone failed for owner/repo',
-      'githubCloneRepo'
+      'ghCloneRepo'
     );
     expect(result).toEqual({ status: 'error', error: 'guarded failure' });
   });

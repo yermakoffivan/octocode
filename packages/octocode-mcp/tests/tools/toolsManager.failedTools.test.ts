@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from '../../src/tools/toolsManager.js';
 import type { ToolConfig } from '../../src/tools/toolConfig.js';
-import { initialize, cleanup } from '../../src/serverConfig.js';
+import {
+  initialize,
+  cleanup,
+} from '../../../octocode-tools-core/src/serverConfig.js';
 import {
   _setTokenResolvers,
   _resetTokenResolvers,
-} from '../../src/serverConfig.js';
+} from '../../../octocode-tools-core/src/serverConfig.js';
 
 const createTestTool = (name: string): ToolConfig => ({
   name,
@@ -20,6 +24,12 @@ const createTestTool = (name: string): ToolConfig => ({
       { description: `${name} test tool` },
       async () => ({ content: [{ type: 'text', text: 'ok' }] })
     ),
+  direct: {
+    schema: z.object({}),
+    inputSchema: z.object({}),
+    executionFn: async () => ({ content: [] }),
+    security: 'basic',
+  },
 });
 
 const createThrowingTool = (name: string): ToolConfig => ({

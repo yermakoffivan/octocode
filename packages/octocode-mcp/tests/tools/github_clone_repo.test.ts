@@ -25,7 +25,7 @@ import {
   getMaxCloneCount,
   startCacheGC,
   stopCacheGC,
-} from '../../src/tools/github_clone_repo/cache.js';
+} from '../../../octocode-tools-core/src/tools/github_clone_repo/cache.js';
 
 describe('github_clone_repo cache', () => {
   const testBaseDir = join(tmpdir(), `octocode-cache-test-${Date.now()}`);
@@ -67,7 +67,7 @@ describe('github_clone_repo cache', () => {
       expect(dir).not.toBe(dir2);
     });
 
-    it('same sparse_path produces same suffix (deterministic)', () => {
+    it('same sparsePath produces same suffix (deterministic)', () => {
       const dir1 = getCloneDir(
         '/home/.octocode',
         'fb',
@@ -128,13 +128,13 @@ describe('github_clone_repo cache', () => {
       expect(loaded).toEqual(meta);
     });
 
-    it('round-trips metadata with sparse_path', () => {
+    it('round-trips metadata with sparsePath', () => {
       const dir = join(testBaseDir, 'sparse-roundtrip');
       mkdirSync(dir, { recursive: true });
       const meta = createCacheMeta('fb', 'react', 'main', 'clone', 'src/core');
       writeCacheMeta(dir, meta);
       const loaded = readCacheMeta(dir);
-      expect(loaded?.sparse_path).toBe('src/core');
+      expect(loaded?.sparsePath).toBe('src/core');
     });
   });
 
@@ -208,14 +208,14 @@ describe('github_clone_repo cache', () => {
       expect(expiresAt - clonedAt).toBe(twentyFourHours);
     });
 
-    it('omits sparse_path when not provided', () => {
+    it('omits sparsePath when not provided', () => {
       const meta = createCacheMeta('fb', 'react', 'main', 'clone');
-      expect(meta).not.toHaveProperty('sparse_path');
+      expect(meta).not.toHaveProperty('sparsePath');
     });
 
-    it('includes sparse_path when provided', () => {
+    it('includes sparsePath when provided', () => {
       const meta = createCacheMeta('fb', 'react', 'main', 'clone', 'src/core');
-      expect(meta.sparse_path).toBe('src/core');
+      expect(meta.sparsePath).toBe('src/core');
     });
 
     it('sets source to clone', () => {
@@ -506,17 +506,20 @@ const mockSpawnWithTimeout = vi.hoisted(() => vi.fn());
 const mockGetOctokit = vi.hoisted(() => vi.fn());
 const mockGetOctocodeDir = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/utils/exec/spawn.js', async importOriginal => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    spawnWithTimeout: mockSpawnWithTimeout,
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/utils/exec/spawn.js',
+  async importOriginal => {
+    const actual = (await importOriginal()) as Record<string, unknown>;
+    return {
+      ...actual,
+      spawnWithTimeout: mockSpawnWithTimeout,
+    };
+  }
+);
 
 const mockResolveDefaultBranch = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/github/client.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: mockGetOctokit,
   resolveDefaultBranch: mockResolveDefaultBranch,
 }));
@@ -529,7 +532,7 @@ vi.mock('octocode-shared', async importOriginal => {
   };
 });
 
-import { cloneRepo } from '../../src/tools/github_clone_repo/cloneRepo.js';
+import { cloneRepo } from '../../../octocode-tools-core/src/tools/github_clone_repo/cloneRepo.js';
 
 describe('cloneRepo', () => {
   let testDir: string;
@@ -548,6 +551,14 @@ describe('cloneRepo', () => {
           const targetDir = args[args.length - 1]!;
           if (targetDir && !existsSync(targetDir)) {
             mkdirSync(targetDir, { recursive: true });
+          }
+        }
+        if (args.includes('sparse-checkout')) {
+          const cIdx = args.indexOf('-C');
+          const targetDir = cIdx !== -1 ? args[cIdx + 1] : undefined;
+          const sparsePath = args[args.length - 1];
+          if (targetDir && sparsePath) {
+            mkdirSync(join(targetDir, sparsePath), { recursive: true });
           }
         }
         return { success: true, stdout: 'ok', stderr: '', exitCode: 0 };
@@ -573,7 +584,7 @@ describe('cloneRepo', () => {
     }
   });
 
-  it('performs full clone when no sparse_path', async () => {
+  it('performs full clone when no sparsePath', async () => {
     const result = await cloneRepo({
       mainResearchGoal: 'test',
       researchGoal: 'test',
@@ -588,7 +599,7 @@ describe('cloneRepo', () => {
     expect(result.repo).toBe('react');
     expect(result.branch).toBe('main');
     expect(result.localPath).toContain('facebook/react/main');
-    expect(result.sparse_path).toBeUndefined();
+    expect(result.sparsePath).toBeUndefined();
 
     const cloneCall = mockSpawnWithTimeout.mock.calls.find(
       (call: unknown[]) => {
@@ -603,7 +614,7 @@ describe('cloneRepo', () => {
     expect(cloneArgs).toContain('--');
   });
 
-  it('performs sparse clone when sparse_path given', async () => {
+  it('performs sparse clone when sparsePath given', async () => {
     const result = await cloneRepo({
       mainResearchGoal: 'test',
       researchGoal: 'test',
@@ -611,10 +622,10 @@ describe('cloneRepo', () => {
       owner: 'facebook',
       repo: 'react',
       branch: 'main',
-      sparse_path: 'packages/core',
+      sparsePath: 'packages/core',
     });
 
-    expect(result.sparse_path).toBe('packages/core');
+    expect(result.sparsePath).toBe('packages/core');
     expect(result.localPath).toContain('__sp_');
 
     expect(mockSpawnWithTimeout).toHaveBeenCalledTimes(3);
@@ -642,7 +653,7 @@ describe('cloneRepo', () => {
         owner: 'facebook',
         repo: 'react',
         branch: 'main',
-        sparse_path: 'src',
+        sparsePath: 'src',
       },
       undefined,
       'ghp_secret_token_123'
@@ -670,7 +681,7 @@ describe('cloneRepo', () => {
         owner: 'org',
         repo: 'monorepo',
         branch: 'main',
-        sparse_path: 'packages/core',
+        sparsePath: 'packages/core',
       },
       undefined,
       'ghp_mytoken'
@@ -1073,7 +1084,7 @@ describe('cloneRepo', () => {
       owner: 'fb',
       repo: 'react',
       branch: 'main',
-      sparse_path: 'packages/core',
+      sparsePath: 'packages/core',
     });
 
     const cloneCall = mockSpawnWithTimeout.mock.calls.find(
@@ -1140,7 +1151,7 @@ describe('cloneRepo', () => {
     expect(cloneArgStr).not.toContain('Bearer');
   });
 
-  it('returns cached result with sparse_path when cache is valid', async () => {
+  it('returns cached result with sparsePath when cache is valid', async () => {
     await cloneRepo({
       mainResearchGoal: 'test',
       researchGoal: 'test',
@@ -1148,7 +1159,7 @@ describe('cloneRepo', () => {
       owner: 'facebook',
       repo: 'react',
       branch: 'main',
-      sparse_path: 'packages/core',
+      sparsePath: 'packages/core',
     });
 
     mockSpawnWithTimeout.mockClear();
@@ -1166,11 +1177,11 @@ describe('cloneRepo', () => {
       owner: 'facebook',
       repo: 'react',
       branch: 'main',
-      sparse_path: 'packages/core',
+      sparsePath: 'packages/core',
     });
 
     expect(result.cached).toBe(true);
-    expect(result.sparse_path).toBe('packages/core');
+    expect(result.sparsePath).toBe('packages/core');
   });
 
   it('throws clear error when spawn itself throws (git not on PATH)', async () => {
@@ -1268,18 +1279,18 @@ const mockGetActiveProvider = vi.hoisted(() => vi.fn());
 const mockGetActiveProviderConfig = vi.hoisted(() => vi.fn());
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getActiveProvider: mockGetActiveProvider,
   getActiveProviderConfig: mockGetActiveProviderConfig,
   isLoggingEnabled: vi.fn(() => false),
 }));
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-import { executeCloneRepo } from '../../src/tools/github_clone_repo/execution.js';
-import { registerGitHubCloneRepoTool } from '../../src/tools/github_clone_repo/register.js';
+import { executeCloneRepo } from '../../../octocode-tools-core/src/tools/github_clone_repo/execution.js';
+import { registerGitHubCloneRepoTool } from '../../src/tools/github_clone_repo/github_clone_repo.js';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
 
 function createMockProviderCapabilities(type?: string) {
@@ -1300,7 +1311,7 @@ describe('registerGitHubCloneRepoTool', () => {
     expect(mockServer.server.registerTool).toHaveBeenCalledTimes(1);
     const [toolName, options] = (mockServer.server.registerTool as any).mock
       .calls[0];
-    expect(toolName).toBe('githubCloneRepo');
+    expect(toolName).toBe('ghCloneRepo');
     expect(options.description).toContain('Clone');
     expect(options.annotations.idempotentHint).toBe(true);
     expect(options.annotations.readOnlyHint).toBe(false);
@@ -1341,7 +1352,7 @@ describe('registerGitHubCloneRepoTool', () => {
     const mockServer = createMockMcpServer();
     registerGitHubCloneRepoTool(mockServer.server);
 
-    const result = await mockServer.callTool('githubCloneRepo', {
+    const result = await mockServer.callTool('ghCloneRepo', {
       queries: [
         {
           mainResearchGoal: 'test',
@@ -1464,7 +1475,7 @@ describe('executeCloneRepo', () => {
           owner: 'fb',
           repo: 'react',
           branch: 'main',
-          sparse_path: 'packages/core',
+          sparsePath: 'packages/core',
         },
       ],
     });

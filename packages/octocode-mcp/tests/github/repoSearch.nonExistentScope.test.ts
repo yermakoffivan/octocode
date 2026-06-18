@@ -8,26 +8,26 @@ const mockWithDataCache = vi.hoisted(() => vi.fn());
 const mockLogSessionError = vi.hoisted(() => vi.fn());
 const mockLogRateLimit = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: mockLogSessionError,
   logRateLimit: mockLogRateLimit,
 }));
 
-vi.mock('../../src/github/client.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: mockGetOctokit,
   OctokitWithThrottling: class MockOctokit {},
 }));
 
-vi.mock('../../src/github/queryBuilders.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/queryBuilders.js', () => ({
   buildRepoSearchQuery: mockBuildRepoSearchQuery,
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: mockGenerateCacheKey,
   withDataCache: mockWithDataCache,
 }));
 
-import { searchGitHubReposAPI } from '../../src/github/repoSearch.js';
+import { searchGitHubReposAPI } from '../../../octocode-tools-core/src/github/repoSearch.js';
 
 function makeSearch422(
   errorEntries: Array<Record<string, unknown>>
@@ -82,7 +82,7 @@ describe('repo search — nonexistent owner degrades to empty + flag', () => {
 
     const result = await searchGitHubReposAPI({
       owner: 'zzz_nonexistent_org_xyz999',
-      keywordsToSearch: ['anything'],
+      keywords: ['anything'],
     });
 
     expect('error' in result).toBe(false);
@@ -99,7 +99,7 @@ describe('repo search — nonexistent owner degrades to empty + flag', () => {
     });
 
     const result = await searchGitHubReposAPI({
-      keywordsToSearch: ['zzz_no_such_repo_xyz'],
+      keywords: ['zzz_no_such_repo_xyz'],
     });
 
     expect('error' in result).toBe(false);

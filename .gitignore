@@ -7,6 +7,14 @@ _scripts
 
 # DXT files (distribute via GitHub releases)
 *.dxt
+
+# ─── Rust / NAPI (packages/octocode-security) ────────────────────────────────
+# Cargo build artefacts
+target/
+# Compiled NAPI native bindings — built locally per platform, never committed
+*.node
+# Benchmark results (local timing data, machine-specific)
+**/bench/results/
 out
 coverage
 .octocode
@@ -27,3 +35,5 @@ AUDIT.md
 autoresearch.*
 
 devScripts
+
+.agents

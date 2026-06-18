@@ -12,9 +12,9 @@ import {
   STARTUP_ERRORS,
   PROMISE_ERRORS,
   TOOL_ERRORS,
-} from '../src/errors/domainErrors.js';
-import { ALL_ERROR_CODES } from '../src/errors/domainErrors.js';
-import { redactPath } from '../src/errors/pathUtils.js';
+} from '../../octocode-tools-core/src/errors/domainErrors.js';
+import { ALL_ERROR_CODES } from '../../octocode-tools-core/src/errors/domainErrors.js';
+import { redactPath } from '../../octocode-tools-core/src/errors/pathUtils.js';
 
 describe('errorCodes', () => {
   describe('Error Constants', () => {
@@ -98,8 +98,8 @@ describe('errorCodes', () => {
         const error = FILE_OPERATION_ERRORS.PATH_IS_DIRECTORY;
         expect(error.code).toBe('FILE_PATH_IS_DIRECTORY');
         expect(error.message).toBeTypeOf('function');
-        expect(error.message('githubViewRepoStructure')).toContain(
-          'githubViewRepoStructure'
+        expect(error.message('ghViewRepoStructure')).toContain(
+          'ghViewRepoStructure'
         );
       });
 
@@ -107,10 +107,10 @@ describe('errorCodes', () => {
         const error = FILE_OPERATION_ERRORS.FILE_TOO_LARGE;
         expect(error.code).toBe('FILE_TOO_LARGE');
         expect(error.message).toBeTypeOf('function');
-        const msg = error.message(1000, 500, 'githubSearchCode');
+        const msg = error.message(1000, 500, 'ghSearchCode');
         expect(msg).toContain('1000KB');
         expect(msg).toContain('500KB');
-        expect(msg).toContain('githubSearchCode');
+        expect(msg).toContain('ghSearchCode');
       });
 
       it('should have FILE_EMPTY error', () => {

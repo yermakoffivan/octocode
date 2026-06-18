@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import path from 'path';
 
-vi.mock('octocode-security-utils/pathValidator', () => {
+vi.mock('octocode-security/pathValidator', () => {
   return {
     pathValidator: {
       validate: vi.fn((inputPath: string) => ({
@@ -12,7 +12,7 @@ vi.mock('octocode-security-utils/pathValidator', () => {
   };
 });
 
-vi.mock('../../src/errors/errorFactories.js', () => ({
+vi.mock('../../../octocode-tools-core/src/errors/errorFactories.js', () => ({
   ToolErrors: {
     pathValidationFailed: vi.fn(
       (p: string, msg: string) => new Error(`${p}: ${msg}`)
@@ -20,7 +20,7 @@ vi.mock('../../src/errors/errorFactories.js', () => ({
   },
 }));
 
-vi.mock('../../src/utils/response/error.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/response/error.js', () => ({
   createErrorResult: vi.fn((_err: Error, _query: unknown, _opts: unknown) => ({
     status: 'error',
     data: { error: 'mocked error' },
@@ -28,39 +28,35 @@ vi.mock('../../src/utils/response/error.js', () => ({
 }));
 
 const { validateToolPath } =
-  await import('../../src/utils/file/toolHelpers.js');
-const { pathValidator } = await import('octocode-security-utils/pathValidator');
+  await import('../../../octocode-tools-core/src/utils/file/toolHelpers.js');
+const { pathValidator } = await import('octocode-security/pathValidator');
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.mocked(pathValidator.validate).mockClear();
 });
 
-describe('validateToolPath — WORKSPACE_ROOT path resolution', () => {
+describe('validateToolPath — cwd path resolution', () => {
   it('resolves relative path against WORKSPACE_ROOT when set', () => {
     vi.stubEnv('WORKSPACE_ROOT', '/workspace/project');
 
     validateToolPath({ path: 'src/index.ts' }, 'localSearchCode');
 
-    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0][0];
+    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0]?.[0];
     expect(calledWith).toBe('/workspace/project/src/index.ts');
   });
 
   it('resolves relative path against process.cwd() when WORKSPACE_ROOT is not set', () => {
-    delete process.env.WORKSPACE_ROOT;
-
     validateToolPath({ path: 'src/index.ts' }, 'localSearchCode');
 
-    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0][0];
+    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0]?.[0];
     expect(calledWith).toBe(path.resolve(process.cwd(), 'src/index.ts'));
   });
 
-  it('passes absolute paths through unchanged (no WORKSPACE_ROOT interference)', () => {
-    vi.stubEnv('WORKSPACE_ROOT', '/workspace/project');
-
+  it('passes absolute paths through unchanged', () => {
     validateToolPath({ path: '/absolute/path/to/file.ts' }, 'localSearchCode');
 
-    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0][0];
+    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0]?.[0];
     expect(calledWith).toBe('/absolute/path/to/file.ts');
   });
 
@@ -74,7 +70,7 @@ describe('validateToolPath — WORKSPACE_ROOT path resolution', () => {
 
     validateToolPath({ path: 'file://src/index.ts' }, 'localSearchCode');
 
-    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0][0];
+    const calledWith = vi.mocked(pathValidator.validate).mock.calls[0]?.[0];
     expect(calledWith).toBe('/workspace/project/src/index.ts');
   });
 });

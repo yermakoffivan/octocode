@@ -1,15 +1,12 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { executeBulkOperation } from '../../src/utils/response/bulk.js';
-import { createErrorResult } from '../../src/utils/response/error.js';
-import { buildSearchResult } from '../../src/tools/local_ripgrep/ripgrepResultBuilder.js';
-import { validateToolPath } from '../../src/utils/file/toolHelpers.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
-import { initializeToolMetadata } from '../../src/tools/toolMetadata/state.js';
+import { executeBulkOperation } from '../../../octocode-tools-core/src/utils/response/bulk.js';
+import { createErrorResult } from '../../../octocode-tools-core/src/utils/response/error.js';
+import { buildSearchResult } from '../../../octocode-tools-core/src/tools/local_ripgrep/ripgrepResultBuilder.js';
+import { validateToolPath } from '../../../octocode-tools-core/src/utils/file/toolHelpers.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import { getTextContent } from '../utils/testHelpers.js';
 
-beforeAll(async () => {
-  await initializeToolMetadata();
-});
+beforeAll(async () => {});
 
 describe('Hint conciseness', () => {
   describe('empty string filtering in bulk responses', () => {
@@ -129,7 +126,7 @@ describe('Hint conciseness', () => {
         makeFiles(3),
         {
           path: '/test',
-          pattern: 'export',
+          keywords: 'export',
           mode: 'discovery',
           researchGoal: 'test',
           reasoning: 'test',
@@ -148,7 +145,7 @@ describe('Hint conciseness', () => {
         makeFiles(3),
         {
           path: '/test',
-          pattern: 'export',
+          keywords: 'export',
           mode: 'paginated',
           researchGoal: 'test',
           reasoning: 'test',
@@ -167,7 +164,7 @@ describe('Hint conciseness', () => {
         makeFiles(3),
         {
           path: '/test',
-          pattern: 'export',
+          keywords: 'export',
           researchGoal: 'test',
           reasoning: 'test',
         } as any,
@@ -234,7 +231,7 @@ describe('Hint conciseness', () => {
       expect(hints.some(h => h.startsWith('Fix:'))).toBe(true);
     });
 
-    it('should not contain the old verbose TIP or multi-line format', () => {
+    it('should not contain the old wordy TIP or multi-line format', () => {
       const result = validateToolPath(
         { path: '/outside/path', researchGoal: 'test', reasoning: 'test' },
         'LOCAL_RIPGREP'
@@ -277,7 +274,7 @@ describe('Hint conciseness', () => {
         makeFiles(5),
         {
           path: '/test',
-          pattern: 'export',
+          keywords: 'export',
           mode: 'discovery',
           researchGoal: 'test',
           reasoning: 'test',
@@ -296,7 +293,7 @@ describe('Hint conciseness', () => {
         makeFiles(50),
         {
           path: '/test',
-          pattern: 'export',
+          keywords: 'export',
           mode: 'paginated',
           researchGoal: 'test',
           reasoning: 'test',

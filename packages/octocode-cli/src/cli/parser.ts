@@ -3,33 +3,24 @@ import type { ParsedArgs } from './types.js';
 const OPTIONS_WITH_VALUES = new Set([
   'ide',
   'method',
-  'm',
   'output',
-  'o',
   'hostname',
-  'H',
   'git-protocol',
-  'p',
+  'path',
+  'github',
+  'branch',
   'type',
-  't',
   'skill',
-  'k',
   'local',
   'limit',
-  'l',
+  'depth',
   'targets',
   'mode',
   'model',
   'resume',
-  'r',
   'id',
-  'client',
-  'c',
+  'content',
   'search',
-  'category',
-  'env',
-  'config',
-  'tool',
   'queries',
   'format',
   'input',
@@ -37,34 +28,80 @@ const OPTIONS_WITH_VALUES = new Set([
   'responseCharOffset',
   'target',
   'backup-path',
+  'query',
+  'state',
+  'author',
+  'label',
+  'base',
+  'file',
+  'pr',
+  'page',
+  'page-size',
+  'char-offset',
+  'char-length',
+  'symbol',
+  'line',
+  'workspace-root',
+  'context-lines',
+  'ext',
+  'kind',
+  'entry',
+  'name',
+  'path-pattern',
+  'regex',
+  'min-depth',
+  'max-depth',
+  'modified-within',
+  'modified-before',
+  'accessed-within',
+  'size-greater',
+  'size-less',
+  'permissions',
+  'include',
+  'exclude',
+  'exclude-dir',
+  'filename',
+  'match-length',
+  'max-matches-per-file',
+  'max-files',
+  'match-page',
+  'topic',
+  'language',
+  'owner',
+  'repo',
+  'stars',
+  'forks',
+  'good-first-issues',
+  'license',
+  'created',
+  'updated',
+  'size',
+  'match',
+  'content-type',
+  'sort',
+  'visibility',
+  'archived',
+  'match-string',
+  'start-line',
+  'end-line',
 ]);
 
 const BOOLEAN_OPTIONS = new Set([
   'help',
-  'h',
   'version',
-  'v',
   'force',
   'source',
   'json',
   'status',
+  'stats',
+  'context',
   'dry-run',
-  'installed',
-  'repos',
   'skills',
-  'logs',
-  'all',
-  'tools',
   'full',
   'direct',
-  'lsp',
-  'api',
   'list',
-  'schema',
-  'tools-context',
-  'agent',
+  'scheme',
   'compact',
-  'full',
   'no-color',
   'reveal',
   'raw',
@@ -72,20 +109,40 @@ const BOOLEAN_OPTIONS = new Set([
   'rollback',
   'install',
   'yes',
-  'y',
   'validate',
-  'sync',
-]);
-
-const SINGLE_DASH_LONG_OPTIONS = new Set([
-  'output',
-  'responseCharLength',
-  'responseCharOffset',
-  'tool',
-  'queries',
+  'verbose',
+  'empty',
+  'executable',
+  'readable',
+  'writable',
+  'details',
+  'show-modified',
+  'fixed-string',
+  'perl-regex',
+  'case-insensitive',
+  'case-sensitive',
+  'whole-word',
+  'invert-match',
+  'hidden',
+  'no-ignore',
+  'files-only',
+  'files-without-match',
+  'multiline',
+  'multiline-dotall',
+  'sort-reverse',
+  'count-lines',
+  'count-matches',
+  'match-regex',
+  'match-case-sensitive',
+  'full-content',
+  'force-refresh',
 ]);
 
 function shouldConsumeNextValue(args: ParsedArgs, key: string): boolean {
+  if (key === 'source' && args.command === 'files') {
+    return true;
+  }
+
   if (BOOLEAN_OPTIONS.has(key)) {
     return false;
   }
@@ -94,7 +151,7 @@ function shouldConsumeNextValue(args: ParsedArgs, key: string): boolean {
     return true;
   }
 
-  return args.command === 'tool' || typeof args.options['tool'] === 'string';
+  return args.command === 'tools';
 }
 
 export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
@@ -122,62 +179,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       } else {
         result.options[key] = true;
       }
-    } else if (arg.startsWith('-') && !arg.startsWith('--') && arg.length > 2) {
-      const normalized = arg.slice(1);
-      const [key, value] = normalized.split('=');
-
-      if (SINGLE_DASH_LONG_OPTIONS.has(key)) {
-        if (value !== undefined) {
-          result.options[key] = value;
-        } else if (
-          shouldConsumeNextValue(result, key) &&
-          i + 1 < argv.length &&
-          !argv[i + 1].startsWith('-')
-        ) {
-          result.options[key] = argv[i + 1];
-          i++;
-        } else {
-          result.options[key] = true;
-        }
-      } else {
-        const flags = normalized;
-        const lastFlag = flags[flags.length - 1];
-        if (
-          flags.length === 1 &&
-          OPTIONS_WITH_VALUES.has(lastFlag) &&
-          i + 1 < argv.length &&
-          !argv[i + 1].startsWith('-')
-        ) {
-          result.options[lastFlag] = argv[i + 1];
-          i++;
-        } else {
-          for (const flag of flags) {
-            result.options[flag] = true;
-          }
-        }
-      }
-    } else if (arg.startsWith('-') && arg.length > 1) {
-      const flags = arg.slice(1);
-      const lastFlag = flags[flags.length - 1];
-      if (
-        flags.length === 1 &&
-        OPTIONS_WITH_VALUES.has(lastFlag) &&
-        i + 1 < argv.length &&
-        !argv[i + 1].startsWith('-')
-      ) {
-        result.options[lastFlag] = argv[i + 1];
-        i++;
-      } else {
-        for (const flag of flags) {
-          result.options[flag] = true;
-        }
-      }
     } else if (!result.command) {
-      if (typeof result.options['tool'] === 'string') {
-        result.args.push(arg);
-      } else {
-        result.command = arg;
-      }
+      result.command = arg;
     } else {
       result.args.push(arg);
     }
@@ -185,18 +188,13 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     i++;
   }
 
-  if (!result.command && typeof result.options['tool'] === 'string') {
-    result.command = 'tool';
-    result.args = [result.options['tool'], ...result.args];
-  }
-
   return result;
 }
 
 export function hasHelpFlag(args: ParsedArgs): boolean {
-  return Boolean(args.options['help'] || args.options['h']);
+  return Boolean(args.options['help']);
 }
 
 export function hasVersionFlag(args: ParsedArgs): boolean {
-  return Boolean(args.options['version'] || args.options['v']);
+  return Boolean(args.options['version']);
 }

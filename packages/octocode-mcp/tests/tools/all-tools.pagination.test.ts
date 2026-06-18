@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildPaginationHints } from '../../src/tools/providerMappers.js';
+import { buildPaginationHints } from '../../../octocode-tools-core/src/tools/providerMappers.js';
 import {
-  generateGitHubPaginationHints,
   generatePaginationHints,
   generateStructurePaginationHints,
-} from '../../src/utils/pagination/hints.js';
+} from '../../../octocode-tools-core/src/utils/pagination/hints.js';
 
 describe('pagination cursor uniformity', () => {
   const buildPagination = (hasMore: boolean) =>
@@ -19,9 +18,12 @@ describe('pagination cursor uniformity', () => {
       'matches'
     );
 
-  it('providerMappers.buildPaginationHints: 1 line on hasMore, [] on final', () => {
-    expect(buildPagination(true)).toHaveLength(1);
+  it('providerMappers.buildPaginationHints: cursor + enumeration hint on hasMore, [] on final', () => {
+    expect(buildPagination(true).length).toBeGreaterThanOrEqual(1);
     expect(buildPagination(true)[0]).toMatch(/Page 2\/5.*page=3/);
+    expect(buildPagination(true).some(h => h.includes('page through'))).toBe(
+      true
+    );
     expect(buildPagination(false)).toEqual([]);
   });
 
@@ -46,36 +48,7 @@ describe('pagination cursor uniformity', () => {
     expect(generatePaginationHints(meta(false))).toEqual([]);
   });
 
-  it('GitHub file-content cursor: byte-offset based; final page silent', () => {
-    expect(
-      generateGitHubPaginationHints(
-        {
-          currentPage: 1,
-          totalPages: 3,
-          hasMore: true,
-          byteOffset: 0,
-          byteLength: 20000,
-          totalBytes: 60000,
-        },
-        { owner: 'o', repo: 'r', path: 'a.ts' }
-      )[0]
-    ).toMatch(/Page 1\/3.*charOffset=20000/);
-    expect(
-      generateGitHubPaginationHints(
-        {
-          currentPage: 3,
-          totalPages: 3,
-          hasMore: false,
-          byteOffset: 40000,
-          byteLength: 20000,
-          totalBytes: 60000,
-        },
-        { owner: 'o', repo: 'r', path: 'a.ts' }
-      )
-    ).toEqual([]);
-  });
-
-  it('Structure cursor uses entryPageNumber; final page silent', () => {
+  it('Structure cursor uses page; final page silent', () => {
     expect(
       generateStructurePaginationHints(
         {
@@ -95,7 +68,7 @@ describe('pagination cursor uniformity', () => {
           allFolders: 1,
         }
       )[0]
-    ).toMatch(/Page 1\/3.*entryPageNumber=2/);
+    ).toMatch(/Page 1\/3.*page=2/);
     expect(
       generateStructurePaginationHints(
         {

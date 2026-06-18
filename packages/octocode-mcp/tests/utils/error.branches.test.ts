@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../../src/hints/index.js', () => ({
+vi.mock('../../../octocode-tools-core/src/hints/index.js', () => ({
   getHints: vi.fn(() => ['mock-hint']),
 }));
 
-import { createErrorResult } from '../../src/utils/response/error.js';
+import { createErrorResult } from '../../../octocode-tools-core/src/utils/response/error.js';
+import { ToolError } from '../../../octocode-tools-core/src/errors/ToolError.js';
+import { LOCAL_TOOL_ERROR_CODES } from '../../../octocode-tools-core/src/errors/localToolErrors.js';
 
 const baseQuery = {
   researchGoal: 'test',
@@ -17,8 +19,7 @@ describe('createErrorResult - branch coverage', () => {
       const apiError = { error: 'Not Found', type: 'NOT_FOUND' };
       const result = createErrorResult(apiError, baseQuery);
       expect(result.error).toBe(apiError);
-      expect(result.hints).toBeDefined();
-      expect(result.hints!.some(h => h.includes('API Error'))).toBe(true);
+      // No 'API Error' echo hint — raw error string is not re-emitted as a hint
     });
 
     it('should detect GitHubAPIError with "status" field', () => {
@@ -50,8 +51,7 @@ describe('createErrorResult - branch coverage', () => {
       });
       expect(result.error).toBe(apiError);
       expect(result.hints!.some(h => h.includes('Rate limit:'))).toBe(true);
-      const githubErrors = result.hints!.filter(h => h.includes('API Error'));
-      expect(githubErrors).toHaveLength(1);
+      // 'API Error' echo removed — hintSourceError rate-limit hint present but no raw error string echoed
     });
   });
 
@@ -122,6 +122,42 @@ describe('createErrorResult - branch coverage', () => {
       });
       expect(result.error).toBe('Something failed');
       expect(result.errorCode).toBeDefined();
+    });
+
+    it('should skip tool hints when toolName is empty (line 105 false branch)', () => {
+      const error = new Error('Something failed');
+      const result = createErrorResult(error, baseQuery, {
+        toolName: '',
+      });
+      expect(result.error).toBe('Something failed');
+    });
+
+    it('should skip tool hints when ToolError is passed with empty toolName (line 105 ToolError false branch)', () => {
+      const toolError = new ToolError(
+        LOCAL_TOOL_ERROR_CODES.COMMAND_EXECUTION_FAILED,
+        'Tool failed'
+      );
+      const result = createErrorResult(toolError, baseQuery, {
+        toolName: '',
+      });
+      expect(result.error).toBe('Tool failed');
+    });
+  });
+
+  describe('rateLimitReset NaN handling (line 53 false branch)', () => {
+    it('should skip rate-limit hint when rateLimitReset is NaN', () => {
+      const hintSourceError = {
+        error: 'Rate limit',
+        type: 'http' as const,
+        rateLimitRemaining: 0,
+        rateLimitReset: NaN,
+      };
+      const result = createErrorResult('main error', baseQuery, {
+        hintSourceError,
+      });
+      const rateHints =
+        result.hints?.filter(h => h.includes('Rate limit:')) ?? [];
+      expect(rateHints).toHaveLength(0);
     });
   });
 });

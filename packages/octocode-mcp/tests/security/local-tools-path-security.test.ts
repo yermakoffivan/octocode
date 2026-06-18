@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   PathValidator,
-  reinitializePathValidator,
-} from 'octocode-security-utils/pathValidator';
-import { validateCommand } from 'octocode-security-utils/commandValidator';
-import { validateToolPath } from '../../src/utils/file/toolHelpers.js';
+  resetPathValidator,
+} from 'octocode-security/pathValidator';
+import { validateCommand } from 'octocode-security/commandValidator';
+import { validateToolPath } from '../../../octocode-tools-core/src/utils/file/toolHelpers.js';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -458,11 +458,11 @@ describe('SEC-04: validateToolPath – Tool Entry Point Security', () => {
 
   describe('Strict mode: reinitialize global validator without home dir', () => {
     afterEach(() => {
-      reinitializePathValidator();
+      resetPathValidator();
     });
 
     it('should BLOCK relative traversal to parent when strict', () => {
-      reinitializePathValidator({
+      resetPathValidator({
         workspaceRoot: WORKSPACE,
         includeHomeDir: false,
       });
@@ -474,7 +474,7 @@ describe('SEC-04: validateToolPath – Tool Entry Point Security', () => {
     });
 
     it('should BLOCK sibling workspace-evil when strict', () => {
-      reinitializePathValidator({
+      resetPathValidator({
         workspaceRoot: WORKSPACE,
         includeHomeDir: false,
       });
@@ -486,7 +486,7 @@ describe('SEC-04: validateToolPath – Tool Entry Point Security', () => {
     });
 
     it('should BLOCK parent directory when strict', () => {
-      reinitializePathValidator({
+      resetPathValidator({
         workspaceRoot: WORKSPACE,
         includeHomeDir: false,
       });
@@ -495,7 +495,7 @@ describe('SEC-04: validateToolPath – Tool Entry Point Security', () => {
     });
 
     it('should ALLOW workspace itself when strict', () => {
-      reinitializePathValidator({
+      resetPathValidator({
         workspaceRoot: WORKSPACE,
         includeHomeDir: false,
       });

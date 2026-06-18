@@ -3,16 +3,17 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 interface CallToolResult {
   content: Array<{ type: string; text: string }>;
+  structuredContent?: unknown;
   isError?: boolean;
 }
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getGitHubToken: vi.fn(() => Promise.resolve('test-token')),
   getActiveProviderConfig: vi.fn(() => ({

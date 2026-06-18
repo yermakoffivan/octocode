@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchGitHubPullRequestByNumberAPI } from '../../src/github/prByNumber.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { fetchGitHubPullRequestByNumberAPI } from '../../../octocode-tools-core/src/github/prByNumber.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -28,7 +28,7 @@ describe('PR Search - Error Propagation', () => {
     };
 
     vi.mocked(getOctokit).mockResolvedValue(
-      mockOctokit as unknown as ReturnType<typeof getOctokit>
+      mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
     );
 
     getPRMock.mockResolvedValue({
@@ -51,7 +51,7 @@ describe('PR Search - Error Propagation', () => {
       owner: 'test',
       repo: 'repo',
       prNumber: 123,
-      type: 'fullContent',
+      content: { changedFiles: true, patches: { mode: 'all' } },
     });
 
     expect(result.pull_requests?.length).toBe(1);

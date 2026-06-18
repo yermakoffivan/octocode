@@ -3,57 +3,60 @@ import {
   parseGitHubProjectId,
   transformFileContentResult,
   getFileContent,
-} from '../../../src/providers/github/githubContent.js';
+} from '../../../../octocode-tools-core/src/providers/github/githubContent.js';
 import {
   parseGitHubProjectId as parseGitHubProjectIdStructure,
   transformRepoStructureResult,
   getRepoStructure,
-} from '../../../src/providers/github/githubStructure.js';
+} from '../../../../octocode-tools-core/src/providers/github/githubStructure.js';
 import {
   parseGitHubProjectId as parseGitHubProjectIdSearch,
   transformCodeSearchResult,
   transformRepoSearchResult,
   searchCode,
   searchRepos,
-} from '../../../src/providers/github/githubSearch.js';
+} from '../../../../octocode-tools-core/src/providers/github/githubSearch.js';
 import {
   parseGitHubProjectId as parseGitHubProjectIdPR,
   transformPullRequestResult,
   searchPullRequests,
-} from '../../../src/providers/github/githubPullRequests.js';
+} from '../../../../octocode-tools-core/src/providers/github/githubPullRequests.js';
 import type {
   FileContentQuery,
   RepoStructureQuery,
   CodeSearchQuery,
   RepoSearchQuery,
   PullRequestQuery,
-} from '../../../src/providers/types.js';
+} from '../../../../octocode-tools-core/src/providers/types.js';
 
-vi.mock('../../../src/github/fileContent.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/fileContent.js', () => ({
   fetchGitHubFileContentAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/repoStructure.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/repoStructure.js', () => ({
   viewGitHubRepositoryStructureAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/codeSearch.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/codeSearch.js', () => ({
   searchGitHubCodeAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/repoSearch.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/repoSearch.js', () => ({
   searchGitHubReposAPI: vi.fn(),
 }));
 
-vi.mock('../../../src/github/pullRequestSearch.js', () => ({
-  searchGitHubPullRequestsAPI: vi.fn(),
-}));
+vi.mock(
+  '../../../../octocode-tools-core/src/github/pullRequestSearch.js',
+  () => ({
+    searchGitHubPullRequestsAPI: vi.fn(),
+  })
+);
 
-import { fetchGitHubFileContentAPI } from '../../../src/github/fileContent.js';
-import { viewGitHubRepositoryStructureAPI } from '../../../src/github/repoStructure.js';
-import { searchGitHubCodeAPI } from '../../../src/github/codeSearch.js';
-import { searchGitHubReposAPI } from '../../../src/github/repoSearch.js';
-import { searchGitHubPullRequestsAPI } from '../../../src/github/pullRequestSearch.js';
+import { fetchGitHubFileContentAPI } from '../../../../octocode-tools-core/src/github/fileContent.js';
+import { viewGitHubRepositoryStructureAPI } from '../../../../octocode-tools-core/src/github/repoStructure.js';
+import { searchGitHubCodeAPI } from '../../../../octocode-tools-core/src/github/codeSearch.js';
+import { searchGitHubReposAPI } from '../../../../octocode-tools-core/src/github/repoSearch.js';
+import { searchGitHubPullRequestsAPI } from '../../../../octocode-tools-core/src/github/pullRequestSearch.js';
 
 const mockFetchGitHubFileContentAPI = vi.mocked(fetchGitHubFileContentAPI);
 const mockViewGitHubRepositoryStructureAPI = vi.mocked(
@@ -641,6 +644,10 @@ describe('GitHub Provider Delegates', () => {
                 createdAt: '2024-01-01T00:00:00Z',
                 updatedAt: '2024-01-01T00:00:00Z',
                 pushedAt: '2024-01-01T00:00:00Z',
+                defaultBranch: 'main',
+                visibility: 'public' as const,
+                topics: [],
+                forksCount: 0,
               },
             ],
           },

@@ -1,22 +1,56 @@
 import { c, bold, dim } from '../utils/colors.js';
+import { getAuthStatus } from '../features/github-oauth.js';
 import {
-  TOOL_CATEGORIES,
-  TOOL_DEFINITIONS,
-  getToolCategory,
-} from './tool-command.js';
+  DIRECT_TOOL_CATEGORIES,
+  DIRECT_TOOL_DEFINITIONS,
+  getDirectToolCategory,
+  getDirectToolDisplayFields,
+  sortDirectToolNames,
+} from '@octocodeai/octocode-tools-core/direct';
 
-function buildToolLines(): string[] {
+const LSP_TOOL = 'lspGetSemantics';
+
+/** Brief [required*, optional?] summary for the --help tool list (top-level fields only). */
+function formatBriefFields(toolName: string): string {
+  if (toolName === LSP_TOOL) return '[uri*, type, symbolName?, lineHint?]';
+  const fields = getDirectToolDisplayFields(toolName).filter(
+    f => !f.name.includes('.')
+  );
+  const required = fields.filter(f => f.required).map(f => `${f.name}*`);
+  const optional = fields.filter(f => !f.required);
+  if (required.length > 0) {
+    const optHint = optional.slice(0, 2).map(f => `${f.name}?`);
+    return `[${[...required, ...optHint].join(', ')}]`;
+  }
+  return `[${optional
+    .slice(0, 3)
+    .map(f => `${f.name}?`)
+    .join(', ')}]`;
+}
+
+function buildToolBlock(): string[] {
   const lines: string[] = [];
+  const allNames = sortDirectToolNames(
+    DIRECT_TOOL_DEFINITIONS.map(t => t.name)
+  );
 
-  for (const category of TOOL_CATEGORIES) {
-    const tools = TOOL_DEFINITIONS.filter(
-      t => getToolCategory(t.name) === category
-    );
-    if (tools.length === 0) continue;
+  for (const category of DIRECT_TOOL_CATEGORIES) {
+    const names = allNames.filter(n => getDirectToolCategory(n) === category);
+    if (names.length === 0) continue;
 
     lines.push(`    ${dim(category)}`);
-    for (const tool of tools) {
-      lines.push(`    ${c('cyan', tool.name)}`);
+    for (const name of names) {
+      const namePad = name.padEnd(28);
+      lines.push(`      ${c('cyan', namePad)} ${dim(formatBriefFields(name))}`);
+      if (name === LSP_TOOL) {
+        const indent = ''.padEnd(34);
+        lines.push(
+          `      ${dim(indent)} ${dim('type: definition | references | callers | callees | callHierarchy | hover | documentSymbols | typeDefinition | implementation')}`
+        );
+        lines.push(
+          `      ${dim(indent)} ${dim('! run localSearchCode first → get uri + lineHint')}`
+        );
+      }
     }
   }
 
@@ -24,67 +58,71 @@ function buildToolLines(): string[] {
 }
 
 export function showHelp(): void {
-  const toolLines = buildToolLines();
-  const toolCount = TOOL_DEFINITIONS.length;
+  const toolCount = DIRECT_TOOL_DEFINITIONS.length;
+  const toolLines = buildToolBlock();
+
+  let isAuthenticated = false;
+  try {
+    isAuthenticated = getAuthStatus().authenticated;
+  } catch {
+    // ignore — treat as unauthenticated
+  }
+
+  const authBanner: string[] = isAuthenticated
+    ? []
+    : [
+        `  ${c('red', '─'.repeat(62))}`,
+        `  ${c('red', bold('  ⚠  NOT AUTHENTICATED'))}  ${c('red', 'GitHub token required for tool calls.')}`,
+        `  ${c('red', '     Run: ')}${c('yellow', bold('octocode login'))}`,
+        `  ${c('red', '─'.repeat(62))}`,
+        '',
+      ];
 
   const lines = [
     '',
-    `  ${c('magenta', bold('🔍🐙 Octocode CLI'))}`,
+    ...authBanner,
+    `  ${c('magenta', bold('🔍🐙 Octocode'))}  ${dim('Code research CLI — GitHub · Local · LSP · AST · Package')}`,
     '',
-    `  ${bold('INSTRUCTIONS FOR AGENTS')}  ${dim('(do this before making any tool request)')}`,
-    `    ${dim('0.')} Load agent context (protocol + tools + fields)    ${c('yellow', 'octocode --agent')}`,
-    `    ${dim('1.')} List all available tools                          ${c('yellow', 'octocode tools')}`,
-    `    ${dim('2.')} Read a tool's input schema                        ${c('yellow', 'octocode tools <name>')}`,
-    `    ${dim('3.')} Full context with every JSON schema inline        ${c('yellow', 'octocode --agent --full')}`,
+
+    // ── Agent rule — first thing an agent sees ──────────────────────────────
+    `  ${c('red', bold('AGENTS — read schema before every raw tool call. Never guess fields.'))}`,
+    `    ${c('yellow', 'octocode tools <name>')}           ${dim('# required fields, types, example call')}`,
+    `    ${c('yellow', 'octocode tools <n1> <n2> ...')}    ${dim('# batch schema reads')}`,
+    `    ${c('yellow', 'octocode context')}                ${dim('# protocol + system prompt + tool descriptions')}`,
+    `    ${c('yellow', 'octocode auth login')}             ${dim('# authenticate — GitHub token required for all GitHub tools')}`,
+    `    ${c('yellow', 'octocode skills list')}            ${dim('# browse agent skills (install with: octocode skills install --skill <name>)')}`,
+    `    ${c('yellow', 'octocode status')}                 ${dim('# health check: auth + cache + MCP')}`,
     '',
-    `  ${bold('USAGE')}`,
-    `    ${c('magenta', 'octocode')} <command> [options]                    ${dim('manage Octocode')}`,
-    `    ${c('magenta', 'octocode')} tools                                  ${dim('list all tools')}`,
-    `    ${c('magenta', 'octocode')} tools <name>                           ${dim('show input schema')}`,
-    `    ${c('magenta', 'octocode')} tools <n1> <n2> ...                    ${dim('batch input schemas')}`,
-    `    ${c('magenta', 'octocode')} tools <name> --queries '<json>'        ${dim('run a tool')}`,
-    `    ${c('magenta', 'octocode')} instructions                           ${dim('MCP instructions + all schemas')}`,
+
+    // ── Smart-usage playbook (distilled from the system prompt) ─────────────
+    `  ${c('green', bold('PLAYBOOK'))}  ${dim('locate → map → search → read → prove — cheapest tool that proves/disproves, smallest slice, stop when evidence.answerReady')}`,
+    `    ${c('cyan', 'orient cheap')}    ${dim('concise:true (string list) · localSearchCode mode:discovery (paths) · localViewStructure maxDepth:1 then drill')}`,
+    `    ${c('cyan', 'minify by goal')}  ${dim('symbols=skeleton (orient unknown) · standard=read (default) · none=exact quote/diff')}`,
+    `    ${c('cyan', 'batch')}           ${dim('up to 5 sub-queries/call (N paths/PRs/pkgs in one); serialize only search→read→LSP')}`,
+    `    ${c('cyan', 'prove')}           ${dim('snippets are discovery, not proof — re-read exact text · search→lineHint→LSP · npmSearch→owner/repo')}`,
     '',
-    `  ${bold('COMMANDS')}  ${dim('(manage Octocode configuration)')}`,
-    `    ${c('magenta', 'install')}          Configure octocode-mcp for an IDE`,
-    `    ${c('magenta', 'auth')}             Manage GitHub authentication`,
-    `    ${c('magenta', 'login / logout')}   Sign in or out of GitHub`,
-    `    ${c('magenta', 'status / token')}   Show auth status or print token`,
-    `    ${c('magenta', 'skills')}           Search, install & manage Octocode skills`,
-    `    ${c('magenta', 'mcp')}              Manage MCP marketplace`,
-    `    ${c('magenta', 'sync')}             Sync MCP configs across IDEs`,
-    `    ${c('magenta', 'cache')}            Inspect and clean Octocode cache`,
-    '',
-    `  ${bold('SKILLS')}  ${dim('(octocode skills <subcommand>)')}`,
-    `    ${c('magenta', 'search')} ${dim('<query>')}    Find skills ${dim('(agent protocol; --direct for skills.sh results)')}`,
-    `    ${c('magenta', 'read')} ${dim('<path|url>')}   Print a SKILL.md ${dim('(local path, owner/repo/path, or GitHub URL)')}`,
-    `    ${c('magenta', 'list')}              List skills installed across all AI clients`,
-    `    ${c('magenta', 'install')}           Install skills ${dim('(--skill <name>, --local <path>, --targets <list>)')}`,
-    `    ${c('magenta', 'remove')}            Remove a skill ${dim('(--skill <name> or --local <path>)')}`,
-    `    ${c('magenta', 'sync')} ${dim('<from> <to>')}  Copy skills from one client target to another`,
-    '',
-    `  ${bold('TOOLS')}  ${dim(`(${toolCount} tools — run directly from terminal)`)}`,
+
+    // ── Live tool list ──────────────────────────────────────────────────────
+    `  ${bold(`TOOLS (${toolCount})`)}  ${dim('* = required   ? = optional   |  octocode tools <name> → full schema + examples')}`,
     ...toolLines,
     '',
-    `  ${bold('OPTIONS')}`,
-    `    ${c('cyan', '--json')}            Raw JSON (full MCP envelope) for tool runs`,
-    `    ${c('cyan', '--compact')}         Leanest tool output (concise verbosity, fewer tokens)`,
-    `    ${c('cyan', '--no-color')}        Disable ANSI colors (also via NO_COLOR=1)`,
-    `    ${c('cyan', '-h, --help')}        Show this help`,
-    `    ${c('cyan', '-v, --version')}     Show version`,
+
+    // Smart commands temporarily unhooked — will be re-added in a future release.
+    // octocode get / tree / files / search / pr / repo / pkg / symbols / lsp
+
+    // ── Management (users) ─────────────────────────────────────────────────
+    `  ${bold('MANAGEMENT')}`,
+    `    ${c('cyan', 'install')} ${dim('--ide <cursor|claude-desktop|windsurf|...>')}  ${dim('configure IDE')}`,
+    `    ${c('cyan', 'auth')}    ${dim('<login|logout|status|token>')}                 ${dim('GitHub authentication')}`,
+    `    ${c('cyan', 'skills')}  ${dim('<install|remove|list|sync>')}                  ${dim('skills marketplace')}`,
+    `    ${c('cyan', 'status')}  ${dim('[--sync]')}                                    ${dim('auth + cache status')}`,
     '',
-    `  ${bold('EXAMPLES')}`,
-    `    ${c('yellow', 'octocode tools')}                                                          ${dim('# list')}`,
-    `    ${c('yellow', 'octocode tools localSearchCode')}                                          ${dim('# schema')}`,
-    `    ${c('yellow', 'octocode tools localSearchCode githubSearchCode')}                         ${dim('# batch schemas')}`,
-    `    ${c('yellow', `octocode tools localSearchCode --queries '{"path":".","pattern":"fn"}'`)}  ${dim('# run')}`,
-    `    ${c('yellow', 'octocode instructions')}                                                   ${dim('# full context')}`,
+
+    // ── Flags + exit codes (one line each) ─────────────────────────────────
+    `  ${bold('FLAGS')}  ${c('cyan', '--json')} raw envelope  ${c('cyan', '--compact')} leanest  ${c('cyan', '--no-color')} no ANSI`,
+    `  ${bold('EXIT')}   0=ok  2=bad-input  3=not-found  4=auth  5=tool-error  7=rate-limited`,
     '',
-    `    ${c('yellow', 'octocode install --ide cursor')}`,
-    `    ${c('yellow', 'octocode skills search "code review"')}                                     ${dim('# find skills')}`,
-    `    ${c('yellow', 'octocode skills search "code review" --direct')}                            ${dim('# skills.sh results')}`,
-    `    ${c('yellow', 'octocode skills install --targets claude-code,cursor')}`,
-    '',
+
     c('magenta', `  ─── 🔍🐙 ${bold('https://octocode.ai')} ───`),
     '',
   ];

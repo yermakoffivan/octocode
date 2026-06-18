@@ -71,37 +71,42 @@ vi.mock('@octokit/plugin-throttling', () => ({
   throttling: vi.fn(),
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: mockGenerateCacheKey,
   withCache: mockWithCache,
   withDataCache: mockWithDataCache,
 }));
 
-vi.mock('../../src/mcp/responses.js', () => ({
+vi.mock('../../../octocode-tools-core/src/mcp/responses.js', () => ({
   createResult: mockCreateResult,
   optimizeTextMatch: mockOptimizeTextMatch,
 }));
 
-vi.mock('octocode-security-utils/contentSanitizer', () => ({
+vi.mock('octocode-security/contentSanitizer', () => ({
   ContentSanitizer: mockContentSanitizer,
 }));
 
-vi.mock('../../src/utils/minifier/minifier.js', () => ({
-  minifyContent: mockminifyContent,
-}));
+vi.mock('@octocodeai/octocode-context-utils', async importOriginal => {
+  const actual =
+    await importOriginal<typeof import('@octocodeai/octocode-context-utils')>();
+  return { ...actual, minifyContent: mockminifyContent };
+});
 
-vi.mock('../../src/github/client.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: vi.fn(() => Promise.resolve(mockOctokit)),
   clearOctokitInstances: vi.fn(),
 }));
 
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
-import { searchGitHubReposAPI } from '../../src/github/repoSearch.js';
-import { fetchGitHubFileContentAPI } from '../../src/github/fileContent.js';
-import { viewGitHubRepositoryStructureAPI } from '../../src/github/repoStructure.js';
-import { searchGitHubPullRequestsAPI } from '../../src/github/pullRequestSearch.js';
-import type { GitHubCodeSearchQuery } from '@octocodeai/octocode-core';
-import { initialize, cleanup } from '../../src/serverConfig.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
+import { searchGitHubReposAPI } from '../../../octocode-tools-core/src/github/repoSearch.js';
+import { fetchGitHubFileContentAPI } from '../../../octocode-tools-core/src/github/fileContent.js';
+import { viewGitHubRepositoryStructureAPI } from '../../../octocode-tools-core/src/github/repoStructure.js';
+import { searchGitHubPullRequestsAPI } from '../../../octocode-tools-core/src/github/pullRequestSearch.js';
+import type { GitHubCodeSearchQuery } from '../../src/public.js';
+import {
+  initialize,
+  cleanup,
+} from '../../../octocode-tools-core/src/serverConfig.js';
 
 describe('GitHub API Utils', () => {
   beforeEach(async () => {
@@ -190,7 +195,7 @@ describe('GitHub API Utils', () => {
       mockOctokit.rest.search.code.mockResolvedValue(mockSearchResponse);
 
       const params = {
-        keywordsToSearch: ['Button'],
+        keywords: ['Button'],
         language: 'typescript',
         owner: 'facebook',
         repo: 'react',
@@ -201,7 +206,7 @@ describe('GitHub API Utils', () => {
       await searchGitHubCodeAPI(params);
 
       expect(mockOctokit.rest.search.code).toHaveBeenCalledWith({
-        q: 'Button repo:facebook/react',
+        q: 'Button language:typescript repo:facebook/react',
         per_page: 30,
         page: 1,
         headers: {
@@ -228,7 +233,7 @@ describe('GitHub API Utils', () => {
       });
 
       const params = {
-        keywordsToSearch: [''],
+        keywords: [''],
         owner: 'test',
         repo: 'repo',
         minify: true,
@@ -264,7 +269,7 @@ describe('GitHub API Utils', () => {
       mockOctokit.rest.search.code.mockRejectedValue(rateLimitError);
 
       const params = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'test',
         repo: 'repo',
         minify: true,
@@ -293,7 +298,7 @@ describe('GitHub API Utils', () => {
       mockOctokit.rest.search.code.mockRejectedValue(authError);
 
       const params = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'test',
         repo: 'repo',
         minify: true,
@@ -322,7 +327,7 @@ describe('GitHub API Utils', () => {
       mockOctokit.rest.search.code.mockRejectedValue(validationError);
 
       const params = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         owner: 'test',
         repo: 'repo',
         minify: true,
@@ -344,7 +349,7 @@ describe('GitHub API Utils', () => {
       });
 
       const params: GitHubCodeSearchQuery = {
-        keywordsToSearch: ['function', 'export'],
+        keywords: ['function', 'export'],
         owner: 'microsoft',
         repo: 'vscode',
         filename: 'index.js',
@@ -371,7 +376,7 @@ describe('GitHub API Utils', () => {
       });
 
       const userParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'octocat',
         repo: 'test',
         minify: true,
@@ -389,7 +394,7 @@ describe('GitHub API Utils', () => {
       });
 
       const orgParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'github',
         repo: 'test',
         minify: true,
@@ -407,7 +412,7 @@ describe('GitHub API Utils', () => {
       });
 
       const multipleOwnersParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'octocat',
         repo: 'test',
         minify: true,
@@ -433,7 +438,7 @@ describe('GitHub API Utils', () => {
       });
 
       const forkTrueParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'test',
         repo: 'repo',
         minify: true,
@@ -451,7 +456,7 @@ describe('GitHub API Utils', () => {
       });
 
       const forkFalseParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'facebook',
         repo: 'react',
         minify: true,
@@ -469,7 +474,7 @@ describe('GitHub API Utils', () => {
       });
 
       const ownerRepoParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'test',
         repo: 'repo',
         minify: true,
@@ -493,7 +498,7 @@ describe('GitHub API Utils', () => {
       });
 
       const archivedTrueParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'test',
         repo: 'repo',
         minify: true,
@@ -511,7 +516,7 @@ describe('GitHub API Utils', () => {
       });
 
       const archivedFalseParams = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'microsoft',
         repo: 'test',
         minify: true,
@@ -535,7 +540,7 @@ describe('GitHub API Utils', () => {
       });
 
       const params = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'facebook',
         repo: 'react',
         minify: true,
@@ -559,7 +564,7 @@ describe('GitHub API Utils', () => {
       });
 
       const params = {
-        keywordsToSearch: ['function'],
+        keywords: ['function'],
         owner: 'octocat',
         repo: 'test',
         language: 'javascript',
@@ -569,7 +574,7 @@ describe('GitHub API Utils', () => {
       await searchGitHubCodeAPI(params);
 
       expect(mockOctokit.rest.search.code).toHaveBeenCalledWith({
-        q: 'function repo:octocat/test',
+        q: 'function language:javascript repo:octocat/test',
         per_page: 30,
         page: 1,
         headers: {
@@ -604,7 +609,7 @@ describe('GitHub API Utils', () => {
         mockOctokit.rest.search.repos.mockResolvedValue(mockRepoResponse);
 
         const params = {
-          keywordsToSearch: ['react'],
+          keywords: ['react'],
           stars: '>1000',
         };
 
@@ -640,6 +645,10 @@ describe('GitHub API Utils', () => {
               totalPages: 1,
               perPage: 30,
               totalMatches: 1,
+              reportedTotalMatches: 1,
+              reachableTotalMatches: 1,
+              totalMatchesCapped: false,
+              totalMatchesKind: 'reported',
               hasMore: false,
             },
           },
@@ -667,7 +676,7 @@ describe('GitHub API Utils', () => {
         });
 
         const params = {
-          keywordsToSearch: ['machine', 'learning'],
+          keywords: ['machine', 'learning'],
           owner: 'google',
           topicsToSearch: ['ml', 'ai'],
           stars: '>100',
@@ -688,7 +697,7 @@ describe('GitHub API Utils', () => {
         await searchGitHubReposAPI(params);
 
         const expectedQuery =
-          'machine learning user:google topic:ml topic:ai stars:>100 size:<1000 created:>2020-01-01 pushed:<2023-12-31 in:name in:description is:not-archived';
+          'machine learning user:google topic:ml topic:ai stars:>100 size:<1000 created:>2020-01-01 pushed:<2023-12-31 forks:10..50 in:name in:description is:not-archived';
 
         expect(mockOctokit.rest.search.repos).toHaveBeenCalledWith({
           q: expectedQuery,
@@ -719,7 +728,7 @@ describe('GitHub API Utils', () => {
 
         mockOctokit.rest.search.repos.mockRejectedValue(rateLimitError);
 
-        const params = { keywordsToSearch: ['test'] };
+        const params = { keywords: ['test'] };
         const result = await searchGitHubReposAPI(params);
 
         expect(result).toEqual(
@@ -755,7 +764,7 @@ describe('GitHub API Utils', () => {
 
         mockOctokit.rest.search.repos.mockResolvedValue(mockRepoResponse);
 
-        const params = { keywordsToSearch: ['test'] };
+        const params = { keywords: ['test'] };
         const result = await searchGitHubReposAPI(params);
 
         expect(result).toEqual(

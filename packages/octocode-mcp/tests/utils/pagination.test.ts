@@ -3,14 +3,13 @@ import {
   applyPagination,
   serializeForPagination,
   createPaginationInfo,
-} from '../../src/utils/pagination/core.js';
+} from '../../../octocode-tools-core/src/utils/pagination/core.js';
 import {
   generatePaginationHints,
-  generateGitHubPaginationHints,
   generateStructurePaginationHints,
-} from '../../src/utils/pagination/hints.js';
-import type { PaginationMetadata } from '../../src/utils/pagination/types.js';
-import { sliceByCharRespectLines } from '../../src/utils/pagination/core.js';
+} from '../../../octocode-tools-core/src/utils/pagination/hints.js';
+import type { PaginationMetadata } from '../../../octocode-tools-core/src/utils/pagination/types.js';
+import { sliceByCharRespectLines } from '../../../octocode-tools-core/src/utils/pagination/core.js';
 
 describe('pagination utility', () => {
   describe('applyPagination', () => {
@@ -654,69 +653,27 @@ describe('pagination utility', () => {
       expect(info.totalPages).toBe(1);
       expect(info.hasMore).toBe(false);
     });
-  });
 
-  describe('generateGitHubPaginationHints', () => {
-    it('emits NO hints on final page (no "Complete content retrieved" tautology)', () => {
-      const pagination = {
+    it('should NOT include byte fields — public PaginationInfo is char-only', () => {
+      const metadata: PaginationMetadata = withByteFieldsInfo({
+        paginatedContent: '中文内容',
+        charOffset: 0,
+        charLength: 4,
+        totalChars: 4,
+        hasMore: false,
+        estimatedTokens: 1,
         currentPage: 1,
         totalPages: 1,
-        hasMore: false,
-        charOffset: 0,
-        charLength: 100,
-        totalChars: 100,
-      };
-      const query = {
-        owner: 'test-owner',
-        repo: 'test-repo',
-        path: 'src/index.ts',
-        branch: 'main',
-      };
+      });
 
-      expect(generateGitHubPaginationHints(pagination, query)).toEqual([]);
-    });
+      const info = createPaginationInfo(metadata);
 
-    it('emits a single cursor line when hasMore is true', () => {
-      const pagination = {
-        currentPage: 1,
-        totalPages: 3,
-        hasMore: true,
-        byteOffset: 0,
-        byteLength: 20000,
-        totalBytes: 60000,
-      };
-      const query = {
-        owner: 'test-owner',
-        repo: 'test-repo',
-        path: 'src/index.ts',
-        branch: 'main',
-      };
-
-      const hints = generateGitHubPaginationHints(pagination, query);
-
-      expect(hints).toHaveLength(1);
-      expect(hints[0]).toContain('Page 1/3');
-      expect(hints[0]).toContain('charOffset=20000');
-      expect(hints[0]).not.toContain('owner=');
-      expect(hints[0]).not.toContain('TO GET NEXT PAGE');
-    });
-
-    it('emits no hint on the final page even with branch provided', () => {
-      const pagination = {
-        currentPage: 2,
-        totalPages: 3,
-        hasMore: false,
-        charOffset: 40000,
-        charLength: 20000,
-        totalChars: 60000,
-      };
-      const query = {
-        owner: 'test-owner',
-        repo: 'test-repo',
-        path: 'src/index.ts',
-      };
-
-      expect(generateGitHubPaginationHints(pagination, query)).toEqual([]);
+      expect(info).not.toHaveProperty('byteOffset');
+      expect(info).not.toHaveProperty('byteLength');
+      expect(info).not.toHaveProperty('totalBytes');
+      expect(info.charOffset).toBe(0);
+      expect(info.charLength).toBe(4);
+      expect(info.totalChars).toBe(4);
     });
   });
 
@@ -766,7 +723,7 @@ describe('pagination utility', () => {
 
       expect(hints).toHaveLength(1);
       expect(hints[0]).toContain('Page 1/3');
-      expect(hints[0]).toContain('entryPageNumber=2');
+      expect(hints[0]).toContain('page=2');
       expect(hints[0]).not.toContain('owner=');
       expect(hints[0]).not.toContain('TO GET NEXT PAGE');
     });

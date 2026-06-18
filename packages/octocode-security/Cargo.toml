@@ -1,0 +1,34 @@
+[package]
+name = "octocode-security"
+version = "16.0.0"
+edition = "2021"
+description = "Rust-backed secret detection for Node.js — high-performance regex scanning with napi-rs"
+license = "MIT"
+repository = "https://github.com/bgauryy/octocode-mcp"
+keywords = ["napi", "nodejs", "security", "secrets", "detection"]
+categories = ["development-tools"]
+
+[lints.clippy]
+all            = { level = "deny", priority = -1 }
+unwrap_used    = "deny"
+needless_pass_by_value = "allow"
+dbg_macro      = "deny"
+print_stdout   = "deny"
+print_stderr   = "deny"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "3", default-features = false, features = ["napi9"] }
+napi-derive = "3"
+regex = "1"
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+strip = "symbols"
+
+[build-dependencies]
+napi-build = "2"

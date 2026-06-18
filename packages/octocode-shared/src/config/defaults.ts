@@ -42,7 +42,7 @@ export const DEFAULT_LSP_CONFIG: RequiredLspConfig = {
 export const DEFAULT_OUTPUT_CONFIG: RequiredOutputConfig = {
   format: 'yaml',
   pagination: {
-    defaultCharLength: 8000,
+    defaultCharLength: 20000,
   },
 };
 

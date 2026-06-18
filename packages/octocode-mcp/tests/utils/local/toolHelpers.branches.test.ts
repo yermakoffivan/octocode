@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('octocode-security-utils/pathValidator', () => ({
+vi.mock('octocode-security/pathValidator', () => ({
   pathValidator: {
     validate: vi.fn(),
   },
 }));
 
-vi.mock('../../../src/hints/index.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/hints/index.js', () => ({
   getHints: vi.fn(() => []),
 }));
 
-import { pathValidator } from 'octocode-security-utils/pathValidator';
-import { validateToolPath } from '../../../src/utils/file/toolHelpers.js';
+import { pathValidator } from 'octocode-security/pathValidator';
+import { validateToolPath } from '../../../../octocode-tools-core/src/utils/file/toolHelpers.js';
 
 describe('getPathErrorHints - branch coverage', () => {
   const baseQuery = {

@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchGitHubReposAPI } from '../../src/github/repoSearch.js';
-import { getOctokit } from '../../src/github/client.js';
-import { handleGitHubAPIError } from '../../src/github/errors.js';
-import { buildRepoSearchQuery } from '../../src/github/queryBuilders.js';
-import type { GitHubReposSearchQuery } from '@octocodeai/octocode-core';
+import { searchGitHubReposAPI } from '../../../octocode-tools-core/src/github/repoSearch.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { handleGitHubAPIError } from '../../../octocode-tools-core/src/github/errors.js';
+import { buildRepoSearchQuery } from '../../../octocode-tools-core/src/github/queryBuilders.js';
+import type { GitHubReposSearchQuery } from '../../src/public.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/github/errors.js');
-vi.mock('../../src/github/queryBuilders.js');
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/github/errors.js');
+vi.mock('../../../octocode-tools-core/src/github/queryBuilders.js');
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(() => 'test-cache-key'),
   withDataCache: vi.fn((_, operation) => operation()),
 }));
@@ -60,7 +60,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['react', 'javascript'],
+        keywords: ['react', 'javascript'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -86,7 +86,7 @@ describe('GitHub Repository Search', () => {
       vi.mocked(buildRepoSearchQuery).mockReturnValue('');
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: [],
+        keywords: [],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -103,7 +103,7 @@ describe('GitHub Repository Search', () => {
       vi.mocked(buildRepoSearchQuery).mockReturnValue('   ');
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: [''],
+        keywords: [''],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -134,7 +134,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -166,7 +166,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -209,7 +209,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -247,7 +247,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -271,7 +271,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         sort: 'stars',
       };
 
@@ -295,7 +295,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         sort: 'best-match',
       };
 
@@ -319,7 +319,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 50,
       };
 
@@ -343,7 +343,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
         limit: 200,
       };
 
@@ -367,7 +367,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       await searchGitHubReposAPI(params);
@@ -398,7 +398,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -427,7 +427,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -462,7 +462,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -495,7 +495,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -528,7 +528,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -565,7 +565,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -597,7 +597,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -630,7 +630,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -662,7 +662,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -695,7 +695,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -733,7 +733,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['react'],
+        keywords: ['react'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -759,7 +759,7 @@ describe('GitHub Repository Search', () => {
       });
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -777,7 +777,7 @@ describe('GitHub Repository Search', () => {
       });
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       const result = await searchGitHubReposAPI(params);
@@ -798,7 +798,7 @@ describe('GitHub Repository Search', () => {
 
       const authInfo = { user: 'test-user', token: 'test-token' };
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       await searchGitHubReposAPI(params, authInfo as any);
@@ -809,7 +809,8 @@ describe('GitHub Repository Search', () => {
 
   describe('searchGitHubReposAPI - Caching', () => {
     it('should use cache with session ID', async () => {
-      const { withDataCache } = await import('../../src/utils/http/cache.js');
+      const { withDataCache } =
+        await import('../../../octocode-tools-core/src/utils/http/cache.js');
       const mockWithDataCache = vi.mocked(withDataCache);
 
       const mockResponse = {
@@ -820,7 +821,7 @@ describe('GitHub Repository Search', () => {
       mockOctokit.rest.search.repos.mockResolvedValue(mockResponse);
 
       const params: GitHubReposSearchQuery = {
-        keywordsToSearch: ['test'],
+        keywords: ['test'],
       };
 
       await searchGitHubReposAPI(params, undefined, 'test-session');

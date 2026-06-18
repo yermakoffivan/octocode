@@ -132,12 +132,12 @@ All tools support bulk operations (1–5 queries).
 
 | Tool | Purpose | Key Args |
 |------|---------|----------|
-| `githubSearchRepositories` | **DISCOVER**: Find repos | `stars`, `topicsToSearch` |
-| `githubViewRepoStructure` | **EXPLORE**: Map layout | `depth`, `path` |
-| `githubSearchCode` | **SEARCH**: Find patterns | `keywordsToSearch`, `match="path"\|"file"` |
-| `githubGetFileContent` | **ANALYZE**: Read logic | `matchString`, `startLine` |
-| `githubSearchPullRequests` | **HISTORY**: PR context | `prNumber`, `state`, `diff` |
-| `packageSearch` | **DEPS**: Library meta | `query` |
+| `ghSearchRepos` | **DISCOVER**: Find repos | `stars`, `topicsToSearch` |
+| `ghViewRepoStructure` | **EXPLORE**: Map layout | `depth`, `path` |
+| `ghSearchCode` | **SEARCH**: Find patterns | `keywordsToSearch`, `match="path"\|"file"` |
+| `ghGetFileContent` | **ANALYZE**: Read logic | `matchString`, `startLine` |
+| `ghSearchPRs` | **HISTORY**: PR context | `prNumber`, `state`, `diff` |
+| `npmSearch` | **DEPS**: Library meta | `query` |
 
 > **Note**: Octocode also supports NPM for smart research and dependency analysis.
 
@@ -169,7 +169,6 @@ This extension works with all major AI-powered editors and assistants:
 - [Docs Index](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md) — all Octocode docs
 - [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) — GitHub auth model
 - [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) — MCP env/config options
-- [Troubleshooting](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/TROUBLESHOOTING.md) — install, Node.js, auth, and MCP startup issues
 
 ## Troubleshooting & More Info
 

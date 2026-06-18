@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { parseRipgrepJson } from '../../../src/utils/parsers/ripgrep.js';
+import { parseRipgrepJson } from '../../../../octocode-tools-core/src/utils/parsers/ripgrep.js';
 import {
   parseCountOutput,
   parseFilesOnlyOutput,
   parseRipgrepOutput,
-} from '../../../src/tools/local_ripgrep/ripgrepParser.js';
-import type { RipgrepQuery } from '@octocodeai/octocode-core';
+} from '../../../../octocode-tools-core/src/tools/local_ripgrep/ripgrepParser.js';
+import type { RipgrepQuery } from '../../../../octocode-tools-core/src/tools/local_ripgrep/scheme.js';
 
 const baseQuery = {
-  pattern: 'test',
+  keywords: 'test',
   path: '/test/path',
 } as RipgrepQuery;
 
@@ -30,8 +30,8 @@ describe('parseRipgrepJson', () => {
     expect(files).toHaveLength(1);
     expect(files[0]!.path).toBe('/test/file.ts');
     expect(files[0]!.matchCount).toBe(1);
-    expect(files[0]!.matches[0]!.line).toBe(10);
-    expect(files[0]!.matches[0]!.column).toBe(6);
+    expect(files[0]!.matches![0]!.line).toBe(10);
+    expect(files[0]!.matches![0]!.column).toBe(6);
     expect(stats).toEqual({});
   });
 
@@ -129,14 +129,13 @@ describe('parseRipgrepJson', () => {
 
     const { files } = parseRipgrepJson(jsonOutput, {
       ...baseQuery,
-      beforeContext: 1,
-      afterContext: 1,
+      contextLines: 1,
     });
 
     expect(files).toHaveLength(1);
-    expect(files[0]!.matches[0]!.value).toContain('context before');
-    expect(files[0]!.matches[0]!.value).toContain('test match');
-    expect(files[0]!.matches[0]!.value).toContain('context after');
+    expect(files[0]!.matches![0]!.value).toContain('context before');
+    expect(files[0]!.matches![0]!.value).toContain('test match');
+    expect(files[0]!.matches![0]!.value).toContain('context after');
   });
 
   it('should parse summary statistics', () => {
@@ -193,7 +192,7 @@ describe('parseRipgrepJson', () => {
     const { files } = parseRipgrepJson(jsonOutput, baseQuery);
 
     expect(files).toHaveLength(1);
-    expect(files[0]!.matches[0]!.column).toBe(0);
+    expect(files[0]!.matches![0]!.column).toBe(0);
   });
 
   it('should truncate long match values', () => {
@@ -214,8 +213,8 @@ describe('parseRipgrepJson', () => {
       matchContentLength: 100,
     });
 
-    expect(files[0]!.matches[0]!.value!.length).toBeLessThanOrEqual(100);
-    expect(files[0]!.matches[0]!.value).toMatch(/\.\.\.$/);
+    expect(files[0]!.matches![0]!.value!.length).toBeLessThanOrEqual(100);
+    expect(files[0]!.matches![0]!.value).toMatch(/\.\.\.$/);
   });
 
   it('should skip malformed JSON lines', () => {
@@ -323,8 +322,8 @@ describe('parseRipgrepJson', () => {
       contextLines: 2,
     });
 
-    expect(files[0]!.matches[0]!.value).toContain('context before');
-    expect(files[0]!.matches[0]!.value).toContain('context before 2');
+    expect(files[0]!.matches![0]!.value).toContain('context before');
+    expect(files[0]!.matches![0]!.value).toContain('context before 2');
   });
 
   it('should not double-space snippets when ripgrep JSON lines include trailing newlines', () => {
@@ -364,7 +363,7 @@ describe('parseRipgrepJson', () => {
       contextLines: 1,
     });
 
-    expect(files[0]!.matches[0]!.value).toBe(
+    expect(files[0]!.matches![0]!.value).toBe(
       ['context before', 'test match', 'context after'].join('\n')
     );
   });
@@ -512,7 +511,7 @@ describe('parseFilesOnlyOutput', () => {
 describe('parseRipgrepOutput routing', () => {
   it('should route count queries to parseCountOutput', () => {
     const stdout = '/src/file.ts:7\n/src/other.ts:3\n';
-    const query = { ...baseQuery, count: true } as RipgrepQuery;
+    const query = { ...baseQuery, countLinesPerFile: true } as RipgrepQuery;
 
     const { files, stats } = parseRipgrepOutput(stdout, query);
 
@@ -522,9 +521,12 @@ describe('parseRipgrepOutput routing', () => {
     expect(stats.matchCount).toBe(10);
   });
 
-  it('should route countMatches queries to parseCountOutput', () => {
+  it('should route countMatchesPerFile queries to parseCountOutput', () => {
     const stdout = '/src/file.ts:15\n';
-    const query = { ...baseQuery, countMatches: true } as RipgrepQuery;
+    const query = {
+      ...baseQuery,
+      countMatchesPerFile: true,
+    } as RipgrepQuery;
 
     const { files, stats } = parseRipgrepOutput(stdout, query);
 

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchGitHubFileContentAPI } from '../../src/github/fileContent.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { fetchGitHubFileContentAPI } from '../../../octocode-tools-core/src/github/fileContent.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -28,7 +28,7 @@ describe('File Operations - Timestamp Optimization', () => {
     };
 
     vi.mocked(getOctokit).mockResolvedValue(
-      mockOctokit as unknown as ReturnType<typeof getOctokit>
+      mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
     );
 
     getContentMock.mockResolvedValue({
@@ -59,7 +59,7 @@ describe('File Operations - Timestamp Optimization', () => {
     };
 
     vi.mocked(getOctokit).mockResolvedValue(
-      mockOctokit as unknown as ReturnType<typeof getOctokit>
+      mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
     );
 
     getContentMock.mockResolvedValue({

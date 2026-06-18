@@ -8,20 +8,20 @@ import { getTextContent } from '../utils/testHelpers.js';
 const mockGetProvider = vi.hoisted(() => vi.fn());
 const mockGetGitHubToken = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(),
   withCache: vi.fn(),
 }));
 
-vi.mock('../../src/tools/utils/tokenManager.js', () => ({
+vi.mock('../../../octocode-tools-core/src/tools/utils/tokenManager.js', () => ({
   getGitHubToken: mockGetGitHubToken,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getGitHubToken: mockGetGitHubToken,
   getActiveProviderConfig: vi.fn(() => ({
@@ -38,7 +38,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 import { registerSearchGitHubPullRequestsTool } from '../../src/tools/github_search_pull_requests/github_search_pull_requests.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 function createLargePR(prNumber: number, contentSize: number) {
   return {
@@ -101,7 +101,7 @@ function createLargePRProviderResponse(prCount: number, contentSize: number) {
   };
 }
 
-describe('githubSearchPullRequests output size limits', () => {
+describe('ghHistoryResearch output size limits', () => {
   let mockServer: MockMcpServer;
   let mockProvider: {
     searchCode: ReturnType<typeof vi.fn>;
@@ -146,8 +146,11 @@ describe('githubSearchPullRequests output size limits', () => {
               owner: 'test',
               repo: 'repo',
               prNumber: 320,
-              type: 'fullContent',
-              withComments: true,
+              content: {
+                changedFiles: true,
+                patches: { mode: 'all' },
+                comments: { discussion: true, reviewInline: true },
+              },
             },
           ],
         }
@@ -171,8 +174,11 @@ describe('githubSearchPullRequests output size limits', () => {
               owner: 'test',
               repo: 'repo',
               prNumber: 320,
-              type: 'fullContent',
-              withComments: true,
+              content: {
+                changedFiles: true,
+                patches: { mode: 'all' },
+                comments: { discussion: true, reviewInline: true },
+              },
             },
           ],
         }
@@ -201,7 +207,7 @@ describe('githubSearchPullRequests output size limits', () => {
               owner: 'test',
               repo: 'repo',
               prNumber: 320,
-              type: 'metadata',
+              content: { changedFiles: true },
               charLength: 2000,
             },
           ],
@@ -226,7 +232,7 @@ describe('githubSearchPullRequests output size limits', () => {
               owner: 'test',
               repo: 'repo',
               prNumber: 320,
-              type: 'metadata',
+              content: { changedFiles: true },
               charOffset: 1000,
               charLength: 2000,
             },
@@ -278,6 +284,85 @@ describe('githubSearchPullRequests output size limits', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).not.toContain('outputPagination');
+    });
+
+    it('keeps PR patches raw when minify=none and minifies only when minify=standard', async () => {
+      const response = {
+        data: {
+          items: [
+            {
+              number: 7,
+              title: 'Patch review PR',
+              state: 'open',
+              draft: false,
+              createdAt: '2023-01-01T00:00:00Z',
+              updatedAt: '2023-01-01T00:00:00Z',
+              author: { login: 'user', id: '1' },
+              body: 'Small body',
+              url: 'https://github.com/test/repo/pull/7',
+              fileChanges: [
+                {
+                  path: 'src/a.ts',
+                  status: 'modified',
+                  additions: 2,
+                  deletions: 0,
+                  patch: [
+                    '@@ -1,2 +1,2 @@',
+                    '+const value = 1; // exact review comment',
+                    '+// comment-only change',
+                  ].join('\n'),
+                },
+              ],
+            },
+          ],
+          totalCount: 1,
+          pagination: { currentPage: 1, totalPages: 1, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      };
+      mockProvider.searchPullRequests
+        .mockResolvedValueOnce(response)
+        .mockResolvedValueOnce(response);
+
+      const rawResult = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
+        {
+          queries: [
+            {
+              owner: 'test',
+              repo: 'repo',
+              prNumber: 7,
+              content: { changedFiles: true, patches: { mode: 'all' } },
+              minify: 'none',
+              charLength: 5000,
+            },
+          ],
+        }
+      );
+      const standardResult = await mockServer.callTool(
+        TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
+        {
+          queries: [
+            {
+              owner: 'test',
+              repo: 'repo',
+              prNumber: 7,
+              content: { changedFiles: true, patches: { mode: 'all' } },
+              minify: 'standard',
+              charLength: 5000,
+            },
+          ],
+        }
+      );
+
+      const rawText = getTextContent(rawResult.content);
+      const standardText = getTextContent(standardResult.content);
+      expect(rawText).toContain('// exact review comment');
+      expect(rawText).toContain('// comment-only change');
+      expect(standardText).not.toContain('// exact review comment');
+      expect(standardText).not.toContain('// comment-only change');
+      expect(standardText).toContain('const value = 1;');
     });
   });
 

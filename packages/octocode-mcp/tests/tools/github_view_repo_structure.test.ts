@@ -7,11 +7,11 @@ import { getTextContent } from '../utils/testHelpers.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
@@ -26,7 +26,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 import { registerViewGitHubRepoStructureTool } from '../../src/tools/github_view_repo_structure/github_view_repo_structure.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('GitHub View Repository Structure Tool', () => {
   let mockServer: MockMcpServer;
@@ -102,6 +102,55 @@ describe('GitHub View Repository Structure Tool', () => {
     const responseText = getTextContent(result.content);
     expect(responseText).toContain('README.md');
     expect(responseText).toContain('package.json');
+  });
+
+  it('uses partial wording when structure results are paginated or truncated', async () => {
+    mockProvider.getRepoStructure.mockResolvedValue({
+      data: {
+        projectPath: 'test/repo',
+        branch: 'main',
+        path: 'src',
+        structure: {
+          '.': {
+            files: ['a.ts', 'b.ts'],
+            folders: ['nested'],
+          },
+        },
+        summary: {
+          totalFiles: 10,
+          totalFolders: 3,
+          truncated: true,
+        },
+        pagination: {
+          currentPage: 1,
+          totalPages: 2,
+          hasMore: true,
+          entriesPerPage: 3,
+          totalEntries: 13,
+        },
+      },
+      status: 200,
+      provider: 'github',
+    });
+
+    const result = await mockServer.callTool(
+      TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE,
+      {
+        queries: [
+          {
+            owner: 'test',
+            repo: 'repo',
+            path: 'src',
+            page: 1,
+            itemsPerPage: 3,
+          },
+        ],
+      }
+    );
+
+    const responseText = getTextContent(result.content);
+    expect(responseText).toContain('Tree paginated');
+    expect(responseText).not.toContain('Structure complete');
   });
 
   it('should resolve default branch when branch is omitted', async () => {
@@ -310,7 +359,10 @@ describe('GitHub View Repository Structure Tool', () => {
 
     expect(result.isError).toBe(true);
     const responseText = getTextContent(result.content);
-    expect(responseText).toContain('error');
+    expect(responseText).toContain('error: Repository not found');
+    expect(responseText).toContain('statusCode: 404');
+    expect(responseText).toContain('owner: nonexistent');
+    expect(responseText).not.toContain('error:\n        status: 404');
   });
 
   it('should filter out directories with only ignored files and folders', async () => {
@@ -544,7 +596,6 @@ describe('GitHub View Repository Structure Tool', () => {
               owner: 'facebook',
               repo: 'react',
               branch: 'nonexistent-branch',
-              verbose: true,
             },
           ],
         }
@@ -555,9 +606,7 @@ describe('GitHub View Repository Structure Tool', () => {
       expect(responseText).toContain('nonexistent-branch');
       expect(responseText).toContain('main');
       expect(responseText).toContain('defaultBranch');
-      expect(responseText).toContain(
-        "WARNING: Branch 'nonexistent-branch' not found"
-      );
+      expect(responseText).toContain("Branch 'nonexistent-branch' not found");
       expect(responseText).not.toContain('⚠️ IMPORTANT');
     });
   });
@@ -641,13 +690,55 @@ describe('GitHub View Repository Structure Tool', () => {
             owner: 'test',
             repo: 'repo',
             branch: 'main',
-            entriesPerPage: 10,
-            entryPageNumber: 1,
+            itemsPerPage: 10,
+            page: 1,
           },
         ],
       }
     );
 
     expect(result.isError).toBe(false);
+  });
+
+  it('includes fileSizes field when includeSizes=true and fileSizeMap is returned', async () => {
+    mockProvider.getRepoStructure.mockResolvedValue({
+      data: {
+        projectPath: 'owner/sized',
+        branch: 'main',
+        path: '',
+        structure: {
+          '.': {
+            files: ['README.md', 'package.json'],
+            folders: ['src'],
+          },
+        },
+        fileSizeMap: {
+          '.': {
+            'README.md': 2048,
+            'package.json': 1024,
+          },
+        },
+        summary: { totalFiles: 2, totalFolders: 1, truncated: false },
+      },
+      status: 200,
+      provider: 'github',
+    });
+
+    const result = await mockServer.callTool(
+      TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE,
+      {
+        queries: [{ owner: 'owner', repo: 'sized', includeSizes: true }],
+      }
+    );
+
+    expect(result.isError).toBe(false);
+    const structured = result.structuredContent as {
+      results?: Array<{ data?: Record<string, unknown> }>;
+    };
+    const data = structured.results?.[0]?.data ?? {};
+    expect(data).toHaveProperty('fileSizes');
+    const fileSizes = data.fileSizes as Record<string, number>;
+    expect(fileSizes['README.md']).toBe(2048);
+    expect(fileSizes['package.json']).toBe(1024);
   });
 });

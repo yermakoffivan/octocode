@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { incrementRateLimits, updateSessionStats } from 'octocode-shared';
-import { initializeSession, resetSessionManager } from '../../src/session.js';
-import { fetchWithRetries } from '../../src/utils/http/fetch.js';
+import {
+  initializeSession,
+  resetSessionManager,
+} from '../../../octocode-tools-core/src/session.js';
+import { fetchWithRetries } from '../../../octocode-tools-core/src/utils/http/fetch.js';
 
 describe('fetchWithRetries rate limit stats', () => {
   beforeEach(() => {

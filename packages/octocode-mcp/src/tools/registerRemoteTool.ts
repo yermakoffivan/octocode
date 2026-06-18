@@ -4,12 +4,16 @@ import {
 } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { toMCPSchema } from '../types/toolTypes.js';
-import { withSecurityValidation } from '../utils/securityBridge.js';
-import type { ToolInvocationCallback } from '../types/toolResults.js';
-import { DESCRIPTIONS } from './toolMetadata/proxies.js';
-import { invokeCallbackSafely } from './utils.js';
-import type { ToolExecutionArgs } from '../types/execution.js';
-import { logSessionError } from '../session.js';
+import { withSecurityValidation } from '@octocodeai/octocode-tools-core';
+import {
+  DESCRIPTIONS,
+  invokeCallbackSafely,
+  logSessionError,
+} from '@octocodeai/octocode-tools-core';
+import type {
+  ToolInvocationCallback,
+  ToolExecutionArgs,
+} from '@octocodeai/octocode-tools-core';
 
 interface RemoteToolConfig<TQuery> {
   name: string;
@@ -17,8 +21,6 @@ interface RemoteToolConfig<TQuery> {
   title: string;
 
   inputSchema: object;
-
-  outputSchema: object;
 
   executionFn: (args: ToolExecutionArgs<TQuery>) => Promise<CallToolResult>;
 
@@ -44,7 +46,6 @@ export function createRemoteToolRegistration<TQuery>(
     name,
     title,
     inputSchema,
-    outputSchema,
     executionFn,
     describe,
     annotations,
@@ -62,7 +63,6 @@ export function createRemoteToolRegistration<TQuery>(
         {
           description,
           inputSchema: toMCPSchema(inputSchema),
-          outputSchema: toMCPSchema(outputSchema),
           annotations: {
             title,
             readOnlyHint: annotations?.readOnlyHint ?? true,
@@ -76,6 +76,8 @@ export function createRemoteToolRegistration<TQuery>(
           async (
             args: {
               queries: TQuery[];
+              responseCharOffset?: number;
+              responseCharLength?: number;
             },
             authInfo,
             sessionId
@@ -86,6 +88,8 @@ export function createRemoteToolRegistration<TQuery>(
 
             return executionFn({
               queries,
+              responseCharOffset: args.responseCharOffset,
+              responseCharLength: args.responseCharLength,
               authInfo,
               sessionId,
             });

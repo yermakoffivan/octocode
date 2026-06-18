@@ -1,12 +1,12 @@
 # Advanced MCP Tool Verification
 
-This playbook verifies that every Octocode MCP tool works as a research tool, not just as a callable function. Use it before releases, after schema changes, after response-shape changes, and after changes to pagination, hints, security, LSP behavior, provider mapping, or verbosity.
+This playbook verifies that every Octocode MCP tool works as a research tool, not just as a callable function. Use it before releases, after schema changes, after response-shape changes, and after changes to pagination, hints, security, LSP behavior, provider mapping.
 
 ## Source Of Truth
 
-The active MCP tool catalog is defined in [packages/octocode-mcp/src/tools/toolConfig.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/tools/toolConfig.ts). The public schema overlays live in [packages/octocode-mcp/src/scheme/localSchemaOverlay.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/scheme/localSchemaOverlay.ts), [packages/octocode-mcp/src/scheme/remoteSchemaOverlay.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/scheme/remoteSchemaOverlay.ts), and [packages/octocode-mcp/src/scheme/lspSchemaOverlay.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/scheme/lspSchemaOverlay.ts).
+The active MCP tool catalog is defined in [packages/octocode-tools-core/src/tools/toolConfig.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/toolConfig.ts). Local schema helpers live in [packages/octocode-tools-core/src/scheme/fields.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/scheme/fields.ts); each GitHub/package/LSP tool owns its independent `scheme.ts` beside the tool implementation, for example [packages/octocode-tools-core/src/tools/github_search_pull_requests/scheme.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/github_search_pull_requests/scheme.ts) and [packages/octocode-tools-core/src/tools/lsp/semantic_content/scheme.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/lsp/semantic_content/scheme.ts).
 
-Response behavior is shared through [packages/octocode-mcp/src/utils/response/bulk.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/utils/response/bulk.ts), [packages/octocode-mcp/src/utils/response/structuredPagination.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/utils/response/structuredPagination.ts), [packages/octocode-mcp/src/utils/pagination/hints.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/utils/pagination/hints.ts), [packages/octocode-mcp/src/scheme/responseEnvelope.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/scheme/responseEnvelope.ts), and [packages/octocode-mcp/src/scheme/verbosity.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/scheme/verbosity.ts).
+Response behavior is shared through [packages/octocode-tools-core/src/utils/response/bulk.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/utils/response/bulk.ts), [packages/octocode-tools-core/src/utils/response/structuredPagination.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/utils/response/structuredPagination.ts), [packages/octocode-tools-core/src/utils/pagination/hints.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/utils/pagination/hints.ts), and [packages/octocode-tools-core/src/scheme/responseEnvelope.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/scheme/responseEnvelope.ts).
 
 Existing contract tests that this playbook extends include [packages/octocode-mcp/tests/tools/all-tools.pagination.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/all-tools.pagination.test.ts), [packages/octocode-mcp/tests/tools/hints/all-tools.lean-contract.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/hints/all-tools.lean-contract.test.ts), [packages/octocode-mcp/tests/tools/response_structure.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/response_structure.test.ts), and [packages/octocode-mcp/tests/tools/executionBoundaries.flows.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/executionBoundaries.flows.test.ts).
 
@@ -25,7 +25,6 @@ Every tool must pass the same top-level contract:
 | Empty results | Successful no-match responses are not errors. They must include a clear empty signal, preserve query identity, and provide recovery hints only when the query context makes a concrete next step possible. |
 | Errors | Provider, validation, path, auth, rate-limit, timeout, LSP-unavailable, and command failures return structured errors with recovery context and without leaking secrets. |
 | Evidence | Tools that can report evidence should set `evidence.kind`, `answerReady`, `confidence`, and `complete` consistently. Aggregated evidence should downgrade confidence and completeness when any query is partial or fallback-based. |
-| Verbosity | Omitted verbosity behaves as `basic`. `compact` keeps full returned values but trims fields or rows. `concise` returns a tiny lossy summary and emits no verbosity-specific hints. |
 | Security | Local tools respect path validation and command allow-lists. Remote tools sanitize errors and redact secrets. Clone and directory fetch do not write outside the intended cache or checkout root. |
 
 ## Global Scenario Matrix
@@ -47,33 +46,32 @@ Run these scenarios for every tool before adding tool-specific edge cases:
 | Query pagination | `charLength` creates query-level pagination metadata and a next cursor; re-calling with the cursor continues without duplicating content. |
 | Response pagination | `responseCharLength` pages the outer multi-query response and leaves native per-query pagination intact. |
 | Final page | No pagination hint appears when `hasMore=false`. |
-| Basic/compact/concise | Payload size and shape follow the shared verbosity contract. |
 | Auth unavailable | Remote tools return actionable auth errors without exposing token names beyond approved env var guidance. |
 | Rate limit | Remote tools preserve rate-limit reset/retry metadata when provider data includes it. |
 | Secret redaction | Responses and errors redact tokens, keys, and credentials from content, paths, and provider errors. |
 
 ## Tool Checklist
 
-### `githubSearchCode`
+### `ghSearchCode`
 
 Primary code: [src/tools/github_search_code/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_search_code). Schema: `GitHubCodeSearchQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify `keywordsToSearch`, owner/repo scoping, path/name/extension filters, match mode, `page`, `limit`, `charOffset`, `charLength`, `verbosity`, and bulk response pagination. |
+| Params | Verify `keywordsToSearch`, owner/repo scoping, path/name/extension filters, match mode, `page`, `limit`, `charOffset`, `charLength`, and bulk response pagination. |
 | Implementation | Provider query is built with exact filters, default branch context is preserved for single-repo hits, results are grouped by `owner/repo`, and match values are sanitized. |
 | Pagination | Upstream provider pagination, per-query `outputPagination`, and top-level `responsePagination` can all appear without overwriting each other. |
 | Empty | No-match queries appear in `emptyQueries` with query id and concrete recovery hints. Empty groups are not silently dropped in mixed bulk calls. |
 | Warnings | `match-value-truncated` includes group id, path, full length, truncation point, and recovery. |
-| Research quality | A hit must include enough path and snippet evidence to justify a follow-up `githubGetFileContent` call. Each result must carry `owner`, `repo`, and per-match `path` and `value`. |
+| Research quality | A hit must include enough path and snippet evidence to justify a follow-up `ghGetFileContent` call. Each result must carry `owner`, `repo`, and per-match `path` and `value`. |
 
-### `githubGetFileContent`
+### `ghGetFileContent`
 
 Primary code: [src/tools/github_fetch_content/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_fetch_content). Schema: `FileContentQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify owner, repo, path, branch/ref, file versus directory mode, `fullContent`, `matchString`, `startLine`/`endLine`, `matchStringContextLines`, `charOffset`, `charLength`, and `verbosity`. |
+| Params | Verify owner, repo, path, branch/ref, file versus directory mode, `fullContent`, `matchString`, `startLine`/`endLine`, `matchStringContextLines`, `charOffset`, `charLength`. |
 | Mutex | `fullContent`, `matchString`, and line ranges are mutually exclusive. Invalid combinations produce per-query errors in bulk calls. |
 | File mode | Line ranges are accurate, `totalLines` is correct, branch fallback/resolution is reported, large files page by character cursor, and partial content sets `isPartial=true`. |
 | Directory mode | Requires local and clone support. Returns `localPath`, file count, total size, cached state, and resolved branch. Follow-up local tools must work against `localPath`. |
@@ -81,55 +79,55 @@ Primary code: [src/tools/github_fetch_content/](https://github.com/bgauryy/octoc
 | Warnings | `content-truncated` includes group id, path, full content length, truncation point, and recovery. |
 | Research quality | File content should be answer-ready when the query requested a line range or match. Directory mode should be treated as setup evidence for local and LSP follow-ups. |
 
-### `githubViewRepoStructure`
+### `ghViewRepoStructure`
 
 Primary code: [src/tools/github_view_repo_structure/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_view_repo_structure). Schema: `GitHubViewRepoStructureQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify owner, repo, branch/ref, path, depth, folder/file limits, `entriesPerPage`, `entryPageNumber`, and `verbosity`. |
+| Params | Verify owner, repo, branch/ref, path, depth, folder/file limits, `entriesPerPage`, `entryPageNumber`. |
 | Implementation | Tree keys are stable, files and folders are separated, branch fallback details are preserved, and provider errors retain owner/repo/path context. |
 | Pagination | Entry pagination uses `entryPageNumber=N+1` hints only while more entries exist. Page counts must match total entries, not only visible folders. |
 | Empty | Empty repository paths or filters return empty with precise path/branch context. Missing paths return error. |
 | Research quality | Structure should support choosing the next content or search query without guessing. Entries must expose `path` and `type`. |
 
-### `githubSearchRepositories`
+### `ghSearchRepos`
 
 Primary code: [src/tools/github_search_repos/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_search_repos). Schema: `GitHubReposSearchSingleQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify query text, topics, language, owner/user/org qualifiers, stars/forks/created/pushed filters, sort/order, `page`, `limit`, and `verbosity`. |
+| Params | Verify query text, topics, language, owner/user/org qualifiers, stars/forks/created/pushed filters, sort/order, `page`, `limit`. |
 | Implementation | Keyword and topic searches merge deterministically, duplicate repos collapse, partial variant failures are reported, and language maps to GitHub's `language:` qualifier. |
 | Pagination | Pagination is preserved when exactly one provider result set succeeds. It is omitted or explained when multiple result sets are merged. |
 | Empty | Empty results name active filters so the agent can broaden language, topics, or pushed-date constraints. |
 | Research quality | Results must include repository identity, description, URL, default branch, pushed date, language, stars, topics, and enough metadata to choose follow-up search or structure calls. |
 
-### `githubSearchPullRequests`
+### `ghSearchPRs`
 
 Primary code: [src/tools/github_search_pull_requests/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_search_pull_requests). Schema: `GitHubPullRequestSearchQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify owner/repo, query, PR number, author, state `open|closed|merged`, `matchScope`, sort `created|updated|best-match`, page, limit, diff/content options, `charOffset`, `charLength`, and `verbosity`. |
+| Params | Verify owner/repo, query, PR number, author, state `open|closed|merged`, `matchScope`, sort `created|updated|best-match`, page, limit, diff/content options, `charOffset`, `charLength`. |
 | Implementation | `state:"merged"` maps to merged search, approximate-title archaeology works with `matchScope:["title"]` and `sort:"best-match"`, and PR-number fetch returns full body when requested. |
 | Pagination | Provider page metadata and output-size pagination coexist. Large diffs or many file changes should emit a targeted follow-up hint instead of dumping unusable data. |
 | Empty | Empty responses name state, owner/repo, match scope, and query terms when present. |
 | Research quality | A PR result should expose title, state, author, timestamps, branches, SHAs when present, changed-file counts, comments/diffs when requested, and enough evidence to explain why the PR matters. |
 
-### `packageSearch`
+### `npmSearch`
 
-Primary code: [src/tools/package_search/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/package_search). Schema: `PackageSearchQueryLocalSchema`.
+Primary code: [src/tools/package_search/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/package_search). Schema: `NpmSearchQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify `name`, default `ecosystem:"npm"`, explicit non-npm ecosystem rejection, `limit`, `searchLimit`, metadata fetch options, and `verbosity`. |
+| Params | Verify `name`, default `ecosystem:"npm"`, explicit non-npm ecosystem rejection, `limit`, `searchLimit`, metadata fetch options. |
 | Implementation | `limit` maps to `searchLimit`, npm registry metadata is normalized, repository URLs are parsed into owner/repo when possible, deprecated packages add warning context, and package-not-found is empty. |
 | Pagination | Limit controls search breadth. Top-level `responseCharLength` still pages large metadata responses. |
 | Empty | Empty search returns package-specific recovery without pretending the package exists. |
 | Research quality | Results must include package identity, version, description, repository URL or owner/repo, homepage, weekly downloads if fetched, license, keywords, and freshness metadata when available. |
 
-### `githubCloneRepo`
+### `ghCloneRepo`
 
 Primary code: [src/tools/github_clone_repo/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_clone_repo). Schema: `CloneRepoQueryLocalSchema`.
 
@@ -148,13 +146,13 @@ Primary code: [src/tools/local_ripgrep/](https://github.com/bgauryy/octocode-mcp
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify `path`, `pattern`, search mode, `fixedString`, `perlRegex`, `wholeWord`, `caseSensitive`, type/include/exclude/excludeDir, hidden/noIgnore, `filesOnly`, `filesWithoutMatch`, `count`, `countMatches`, `contextLines`, `matchContentLength`, `filesPerPage`, `matchesPerPage`, `filePageNumber`, `charOffset`, `charLength`, and `verbosity`. |
+| Params | Verify `path`, `pattern`, search mode, `fixedString`, `perlRegex`, `wholeWord`, `caseSensitive`, type/include/exclude/excludeDir, hidden/noIgnore, `filesOnly`, `filesWithoutMatch`, `count`, `countMatches`, `contextLines`, `matchContentLength`, `filesPerPage`, `matchesPerPage`, `filePageNumber`, `charOffset`, `charLength`. |
 | Hidden fields | MCP schema must not expose hidden performance or diagnostic knobs such as threads, multiline, binary, encoding, sort, debug, passthru, or symlink following. |
 | Mutex | `filesOnly` conflicts with `filesWithoutMatch`; `fixedString` conflicts with `perlRegex`. Violations become per-query errors. |
 | Implementation | Uses the bundled `@vscode/ripgrep` path only. No grep fallback. Invalid regex, path errors, and no-permission paths are structured errors. |
 | Pagination | File and match pagination work independently. `line` values are stable 1-indexed `lineHint` inputs for LSP tools. |
 | Empty | Empty hints name active filters such as type, include, exclude, excludeDir, or path. No-filter empty stays silent. |
-| Research quality | Results must include file path, match count, line, column, snippet value, and enough context to drive precise `lspGotoDefinition`, `lspFindReferences`, or `lspCallHierarchy`. |
+| Research quality | Results must include file path, match count, line, column, snippet value, and enough context to drive precise `lspGetSemantics` queries such as `type="definition"`, `type="references"`, `type="callers"`, or `type="callees"`. |
 
 ### `localViewStructure`
 
@@ -162,7 +160,7 @@ Primary code: [src/tools/local_view_structure/](https://github.com/bgauryy/octoc
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify `path`, pattern filters, `extensions`, exclude filters, `depth`, `limit`, `entriesPerPage`, `entryPageNumber`, `charOffset`, `charLength`, and `verbosity`. |
+| Params | Verify `path`, pattern filters, `extensions`, exclude filters, `depth`, `limit`, `entriesPerPage`, `entryPageNumber`, `charOffset`, `charLength`. |
 | Hidden fields | `extension` singular and unbounded `recursive` are not exposed in MCP. Use `extensions` and bounded `depth` instead. |
 | Implementation | Directory walk respects path validation, depth cap, ignored directories, sorting, and entry typing. Symlink and permission cases are explicit. |
 | Pagination | Entry pagination uses stable ordering so page 2 continues page 1 without duplicates or missed entries. |
@@ -175,7 +173,7 @@ Primary code: [src/tools/local_find_files/](https://github.com/bgauryy/octocode-
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify `path`, name/pattern filters, file type, size filters, modified/accessed/created filters, permissions if exposed, `limit`, `filesPerPage`, `filePageNumber`, `charOffset`, `charLength`, and `verbosity`. |
+| Params | Verify `path`, name/pattern filters, file type, size filters, modified/accessed/created filters, permissions if exposed, `limit`, `filesPerPage`, `filePageNumber`, `charOffset`, `charLength`. |
 | Implementation | Uses the safe find command builder, respects allowed paths, handles large trees without unbounded output, and returns stable metadata. |
 | Pagination | File pagination and char pagination both work. Cap notices must not replace next-page cursors. |
 | Empty | Empty hints quote active filters such as `name`, `modifiedWithin`, or `sizeGreater`. No-filter empty stays silent. |
@@ -187,48 +185,24 @@ Primary code: [src/tools/local_fetch_content/](https://github.com/bgauryy/octoco
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify `path`, `fullContent`, `matchString`, `startLine`, `endLine`, `matchStringContextLines`, `charOffset`, `charLength`, and `verbosity`. |
+| Params | Verify `path`, `fullContent`, `matchString`, `startLine`, `endLine`, `matchStringContextLines`, `charOffset`, `charLength`. |
 | Mutex | `fullContent`, `matchString`, and line ranges are mutually exclusive, with per-query errors inside bulk calls. |
 | Implementation | Handles UTF-8 files, large files, minified content, binary/unreadable files, no trailing newline, and out-of-range line requests. |
 | Pagination | Character pagination continues exact content without overlap. Match extraction plus pagination should preserve `matchRanges`. |
 | Empty | A missing `matchString` result returns empty with no fake content. Missing file and invalid path are errors. |
 | Research quality | Returned content must include path, line range, total lines, `isPartial`, and enough source text to cite or reason from. Partial line-range reads emit a `startLine=N` continuation hint. |
 
-### `lspGotoDefinition`
+### `lspGetSemantics`
 
-Primary code: [src/tools/lsp_goto_definition/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/lsp_goto_definition). Schema: `LSPGotoDefinitionQuerySchema`.
-
-| Surface | Checks |
-| --- | --- |
-| Params | Verify `uri`, `symbolName`, `lineHint`, `orderHint`, `contextLines`, query-level output pagination if supported by upstream schema, response pagination, and `verbosity`. |
-| Implementation | Requires a `lineHint` from `localSearchCode`, resolves exact code occurrence while ignoring string/comment hits, follows import/export definitions when safe, and falls back cleanly when LSP is unavailable. |
-| Pagination | Large definition payloads page by character cursor without losing target identity. |
-| Empty | Symbol-not-found reports searched radius and the requested line. File-not-found reports the URI. |
-| Semantic quality | Returned definitions must identify URI, range, name/kind when known, content or snippet, and `lspMode` or fallback confidence. |
-
-### `lspFindReferences`
-
-Primary code: [src/tools/lsp_find_references/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/lsp_find_references). Schema: `LSPFindReferencesQuerySchema`.
+Primary code: [src/tools/lsp/semantic_content/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/lsp/semantic_content). Schema: `LspGetSemanticsQuerySchema`.
 
 | Surface | Checks |
 | --- | --- |
-| Params | Verify `uri`, `symbolName`, `lineHint`, `orderHint`, `includeDeclaration`, include/exclude patterns, `groupByFile`, `referencesPerPage`, `page`, `contextLines`, output pagination, and `verbosity`. |
-| Implementation | LSP references and ripgrep fallback dedupe by URI/range, declaration filtering works, include/exclude filters apply to workspace-relative URIs, and fallback confidence is visible. |
-| Pagination | Normal reference mode pages by row. `groupByFile` must aggregate the full result set, not only the current page. |
-| Empty | No-reference results distinguish no usages from symbol-resolution failure. |
-| Semantic quality | Results should support blast-radius analysis with exact URI, line, column, snippet/content, declaration flag, and per-file grouping. |
-
-### `lspCallHierarchy`
-
-Primary code: [src/tools/lsp_call_hierarchy/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/lsp_call_hierarchy). Schema: `LSPCallHierarchyQuerySchema`.
-
-| Surface | Checks |
-| --- | --- |
-| Params | Verify `uri`, `symbolName`, `lineHint`, `orderHint`, `direction:"incoming"|"outgoing"`, `depth`, `callsPerPage`, `page`, `contextLines`, output pagination, and `verbosity`. |
-| Implementation | Uses `LspClientPool`, never stops pooled clients directly, resolves target symbol before hierarchy, follows definitions when needed, and uses pattern fallback only when semantic LSP cannot provide call hierarchy. |
-| Pagination | Incoming/outgoing rows paginate by call count, and output-size pagination can still page a large structured response. |
-| Empty | Incoming empty means no callers. Outgoing empty means no callees. Symbol-resolution failure is an error or empty with precise hints, not a misleading no-call result. |
-| Semantic quality | Calls should include direction, callee/caller item, URI, range, fromRanges when available, depth, and confidence/fallback mode. |
+| Params | Verify `uri`/`filePath`, `type`, `symbolName`, `lineHint`, `orderHint`, `includeDeclaration`, `groupByFile`, `depth`, `page`, `contextLines`, and output pagination. |
+| Implementation | Requires a `lineHint` for symbol-anchored types, resolves exact code occurrences while ignoring string/comment hits, uses pooled LSP clients, and reports capability gaps explicitly. |
+| Pagination | Large semantic payloads page without losing target identity. |
+| Empty | Symbol-not-found, unsupported capability, and LSP-unavailable paths are explicit. |
+| Semantic quality | Definition/reference/call/hover/symbol outputs identify URI, range, symbol identity, completeness, and static-vs-dynamic limits where applicable. |
 
 ## Cross-Tool Research Quality Suites
 
@@ -236,11 +210,11 @@ These suites verify that tools compose into reliable research workflows.
 
 | Suite | Steps | Pass criteria |
 | --- | --- | --- |
-| Local semantic navigation | `localSearchCode` for a symbol, then `lspGotoDefinition`, `lspFindReferences`, and `lspCallHierarchy` with returned line hints. | LSP tools resolve the same symbol, references include the definition when requested, call hierarchy direction is correct, and fallback mode is explicit if used. |
-| Remote to local deep dive | `githubSearchCode` or `githubSearchRepositories`, then `githubCloneRepo`, then local search and LSP tools on `localPath`. | Remote identity, branch, clone path, and local path all line up. No result requires guessing a path or branch. |
-| Structure to content | `githubViewRepoStructure` or `localViewStructure`, then content fetch on selected entries. | Paths emitted by structure tools are directly accepted by content tools. Empty directories and missing files are differentiated. |
-| Package provenance | `packageSearch`, then `githubViewRepoStructure` or `githubSearchCode` on parsed repo owner/name. | Package repo metadata is normalized enough to drive GitHub tools, and missing/ambiguous repo URLs are represented as missing evidence. |
-| PR archaeology | `githubSearchPullRequests` with title search, then PR number fetch and file-content or code search follow-up. | Approximate search finds candidates; PR-number path returns full body/diff data requested; large diffs guide targeted follow-up. |
+| Local semantic navigation | `localSearchCode` for a symbol, then `lspGetSemantics` with `type="definition"`, `type="references"`, and `type="callers"`/`type="callees"` using returned line hints. | LSP tools resolve the same symbol, references include the definition when requested, call direction is correct, and fallback mode is explicit if used. |
+| Remote to local deep dive | `ghSearchCode` or `ghSearchRepos`, then `ghCloneRepo`, then local search and LSP tools on `localPath`. | Remote identity, branch, clone path, and local path all line up. No result requires guessing a path or branch. |
+| Structure to content | `ghViewRepoStructure` or `localViewStructure`, then content fetch on selected entries. | Paths emitted by structure tools are directly accepted by content tools. Empty directories and missing files are differentiated. |
+| Package provenance | `npmSearch`, then `ghViewRepoStructure` or `ghSearchCode` on parsed repo owner/name. | Package repo metadata is normalized enough to drive GitHub tools, and missing/ambiguous repo URLs are represented as missing evidence. |
+| PR archaeology | `ghSearchPRs` with title search, then PR number fetch and file-content or code search follow-up. | Approximate search finds candidates; PR-number path returns full body/diff data requested; large diffs guide targeted follow-up. |
 | Empty-result recovery | Run over-constrained queries across GitHub, local, and LSP tools. | Each tool either stays silent when no concrete advice exists or names exactly which filter to relax. |
 | Pagination chain | Force small `limit`, `entriesPerPage`, `filesPerPage`, `matchesPerPage`, `referencesPerPage`, `callsPerPage`, `charLength`, and `responseCharLength`. | Every next cursor continues the same result set without duplicates, missing entries, or final-page chatter. |
 | Verbosity chain | Run the same broad task with `concise`, drill down with `compact`, and confirm with `basic`. | `concise` is tiny and lossy, `compact` is enough to choose a target, and `basic` provides citeable evidence. |
@@ -305,7 +279,7 @@ npx knip
 
 Do not mark a tool-surface change complete until these are true:
 
-1. All 14 tools still register with input and output schemas.
+1. All 13 tools still register with input and output schemas.
 2. All public schema defaults, caps, hidden fields, and mutex rules have tests.
 3. Every tool has success, empty, error, mixed-bulk, pagination, lean-output (`base`/`shared`), and verbosity coverage.
 4. Remote tools cover auth, rate limit, provider error, no results, and provider-mapper edge cases.

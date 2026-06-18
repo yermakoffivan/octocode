@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { LOCAL_TOOL_ERROR_CODES } from '../../src/errors/localToolErrors.js';
+import { LOCAL_TOOL_ERROR_CODES } from '../../../octocode-tools-core/src/errors/localToolErrors.js';
 import {
   ToolError,
   isToolError,
   toToolError,
-} from '../../src/errors/ToolError.js';
-import { ToolErrors } from '../../src/errors/errorFactories.js';
+} from '../../../octocode-tools-core/src/errors/ToolError.js';
+import { ToolErrors } from '../../../octocode-tools-core/src/errors/errorFactories.js';
 import {
   LOCAL_TOOL_ERROR_REGISTRY,
   LocalToolErrorCategory as ErrorCategory,
-} from '../../src/errors/localToolErrors.js';
+} from '../../../octocode-tools-core/src/errors/localToolErrors.js';
 
 describe('Local Error Codes', () => {
   describe('LOCAL_TOOL_ERROR_CODES', () => {
@@ -402,6 +402,19 @@ describe('Local Error Codes', () => {
       expect(error.message).toContain('localSearchCode');
       expect(error.context).toEqual({ toolName: 'localSearchCode' });
       expect(error.stack).toContain('Caused by:');
+    });
+
+    it('should use registry description when no message given to ToolError (ToolError.ts line 24)', () => {
+      const error = new ToolError(LOCAL_TOOL_ERROR_CODES.COMMAND_NOT_AVAILABLE);
+      expect(error.message).toBe(
+        LOCAL_TOOL_ERROR_REGISTRY[LOCAL_TOOL_ERROR_CODES.COMMAND_NOT_AVAILABLE]
+          .description
+      );
+    });
+
+    it('should use default installHint text when none provided (errorFactories.ts line 86)', () => {
+      const error = ToolErrors.commandNotAvailable('rg');
+      expect(error.message).toContain('Please install it');
     });
   });
 });

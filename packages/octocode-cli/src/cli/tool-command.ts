@@ -10,20 +10,17 @@ import {
   executeDirectTool,
   findDirectToolDefinition,
   formatCallToolResultForOutput,
-  formatDirectToolOutputSchemaText,
-  formatDirectToolMetadataSchemaText,
   formatDirectToolSchemaText,
   getDirectToolAutoFilledFields,
   getDirectToolCategory,
   getDirectToolDescription,
   getDirectToolDisplayFields,
-  getDirectToolOutputFields,
   loadToolContent,
   prepareDirectToolInputFromJsonText,
   sortDirectToolNames,
   type DirectToolDefinition,
   type DirectToolDisplayField,
-} from 'octocode-mcp/public';
+} from '@octocodeai/octocode-tools-core/direct';
 
 type ToolResult = Parameters<typeof formatCallToolResultForOutput>[0];
 
@@ -31,32 +28,17 @@ export type ToolDefinition = DirectToolDefinition;
 export const TOOL_CATEGORIES = DIRECT_TOOL_CATEGORIES;
 
 const TOOL_RUNTIME_OPTION_KEYS = new Set([
-  'tool',
   'queries',
-  'output',
-  'o',
   'json',
   'help',
-  'h',
   'version',
-  'v',
   'list',
-  'schema',
-  'tools-context',
+  'scheme',
   'compact',
   'format',
   'full',
   'no-color',
 ]);
-
-const CANONICAL_TOOL_USAGE = [
-  'octocode tools                                   # list all tools',
-  'octocode tools <name>                            # show input schema',
-  'octocode tools <n1> <n2> ...                     # batch input schemas',
-  "octocode tools <name> --queries '<json>'         # run a tool",
-  "octocode tools <name> --queries '<json>' --json  # run, raw JSON output",
-  'octocode instructions                            # MCP instructions + all schemas',
-].join('\n');
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = DIRECT_TOOL_DEFINITIONS;
 let toolMetadataPromise: Promise<
@@ -139,6 +121,38 @@ function getInputText(toolName: string, args: ParsedArgs): string | undefined {
     : args.args[1];
 }
 
+export function truncateDescription(desc: string, maxLen: number): string {
+  if (desc.length <= maxLen) return desc;
+  const cut = desc.lastIndexOf(' ', maxLen - 1);
+  return cut > maxLen * 0.6
+    ? desc.slice(0, cut) + '…'
+    : desc.slice(0, maxLen - 1) + '…';
+}
+
+export function formatRequiredFields(toolName: string): string {
+  if (toolName === LSP_TOOL_NAME) {
+    return '[uri*, type, symbolName?, lineHint?]';
+  }
+
+  const tool = findToolDefinition(toolName);
+  if (!tool) return '';
+  // Top-level fields only — filter out nested dotted paths (e.g. content.patches.ranges.file)
+  const fields = getDirectToolDisplayFields(tool.name).filter(
+    f => !f.name.includes('.')
+  );
+  const required = fields.filter(f => f.required).map(f => `${f.name}*`);
+  const optional = fields.filter(f => !f.required);
+  if (required.length > 0) {
+    const optHint = optional.slice(0, 2).map(f => `${f.name}?`);
+    const parts = optHint.length > 0 ? [...required, ...optHint] : required;
+    return `[${parts.join(', ')}]`;
+  }
+  return `[${optional
+    .slice(0, 3)
+    .map(f => `${f.name}?`)
+    .join(', ')}]`;
+}
+
 function extractShortDescription(fullDescription: string): string {
   return fullDescription
     .split('\n')[0]
@@ -146,14 +160,109 @@ function extractShortDescription(fullDescription: string): string {
     .replace(/^##\s*/, '');
 }
 
+function formatFullDescription(fullDescription: string): string {
+  const short = extractShortDescription(fullDescription);
+  const rest = fullDescription.slice(short.length).trim();
+  if (!rest) return '';
+
+  return rest
+    .replace(/<\/?[a-z][a-z0-9]*>/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const LSP_TOOL_NAME = 'lspGetSemantics';
+
+const LSP_TYPE_EXAMPLES: Array<[string, Record<string, unknown>]> = [
+  [
+    'definition — jump to declaration',
+    {
+      uri: '/path/to/file.ts',
+      type: 'definition',
+      symbolName: 'myFunction',
+      lineHint: 42,
+    },
+  ],
+  [
+    'references — all usages',
+    {
+      uri: '/path/to/file.ts',
+      type: 'references',
+      symbolName: 'MyClass',
+      lineHint: 10,
+    },
+  ],
+  [
+    'callers — who calls this function',
+    {
+      uri: '/path/to/file.ts',
+      type: 'callers',
+      symbolName: 'handleRequest',
+      lineHint: 55,
+    },
+  ],
+  [
+    'callees — what this function calls',
+    {
+      uri: '/path/to/file.ts',
+      type: 'callees',
+      symbolName: 'handleRequest',
+      lineHint: 55,
+    },
+  ],
+  [
+    'hover — type signature + docs',
+    {
+      uri: '/path/to/file.ts',
+      type: 'hover',
+      symbolName: 'myVar',
+      lineHint: 20,
+    },
+  ],
+  [
+    'documentSymbols — file outline (no symbolName/lineHint needed)',
+    { uri: '/path/to/file.ts', type: 'documentSymbols' },
+  ],
+  [
+    'typeDefinition — where the type was declared',
+    {
+      uri: '/path/to/file.ts',
+      type: 'typeDefinition',
+      symbolName: 'myVar',
+      lineHint: 20,
+    },
+  ],
+  [
+    'implementation — concrete impl of interface member',
+    {
+      uri: '/path/to/file.ts',
+      type: 'implementation',
+      symbolName: 'render',
+      lineHint: 88,
+    },
+  ],
+];
+
 export async function showAvailableTools(): Promise<void> {
   const metadata = await getOptionalToolMetadata();
 
   console.log();
-  console.log(`  ${c('magenta', bold('Octocode Tools'))}`);
   console.log(
-    `  ${dim('tools <name>')} ${dim('→ schema')}   ${dim("tools <name> --queries '<json>'")} ${dim('→ run')}`
+    `  ${c('red', bold('SCHEMA REQUIRED — never call a tool without reading its schema:'))}`
   );
+  console.log(
+    `    ${c('yellow', 'octocode tools <name>')}                            ${dim('# required fields, types, example call')}`
+  );
+  console.log(
+    `    ${c('yellow', 'octocode tools <name> --scheme')}                   ${dim('# schema only, never runs')}`
+  );
+  console.log(
+    `    ${c('yellow', 'octocode tools <n1> <n2> ...')}                     ${dim('# batch schema reads')}`
+  );
+  console.log(
+    `    ${c('yellow', 'octocode context --full')}                          ${dim('# full protocol + complete tool descriptions')}`
+  );
+  console.log();
 
   const toolNames = sortDirectToolNames(
     TOOL_DEFINITIONS.map(tool => tool.name)
@@ -167,17 +276,45 @@ export async function showAvailableTools(): Promise<void> {
       continue;
     }
 
-    console.log();
     console.log(`  ${bold(category)}`);
     for (const toolName of toolsInCategory) {
-      const shortDesc = extractShortDescription(
-        getDirectToolDescription(toolName, metadata)
+      const shortDesc = truncateDescription(
+        extractShortDescription(getDirectToolDescription(toolName, metadata)),
+        60
       );
-      const padded = toolName.padEnd(32);
-      console.log(`    ${c('cyan', padded)} ${dim(shortDesc)}`);
+      const fields = formatRequiredFields(toolName);
+      const namePadded = toolName.padEnd(26);
+      const fieldsPadded = fields.padEnd(32);
+      console.log(
+        `    ${c('cyan', namePadded)} ${dim(fieldsPadded)} ${dim(shortDesc)}`
+      );
+      if (toolName === LSP_TOOL_NAME) {
+        const indent = ''.padEnd(30);
+        console.log(
+          `    ${dim(indent)} ${dim('type: definition|references|callers|callees|callHierarchy')}`
+        );
+        console.log(
+          `    ${dim(indent)} ${dim('      hover|documentSymbols|typeDefinition|implementation')}`
+        );
+      }
     }
+    console.log();
   }
 
+  console.log(
+    `  ${bold('TO CALL')}  octocode tools <name> --queries '<json>'  ${dim('# YAML (default)')}`
+  );
+  console.log(
+    `           octocode tools <name> --queries '<json>' --json  ${dim('# raw envelope')}`
+  );
+  console.log(
+    `           octocode tools <name> --queries '<json>' --compact  ${dim('# leanest')}`
+  );
+  console.log();
+  // Smart commands temporarily unhooked — will be re-added in a future release.
+  console.log(
+    `  ${dim('Full protocol: octocode context  |  All commands: octocode --help')}`
+  );
   console.log();
 }
 
@@ -190,19 +327,31 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
   const metadata = await getOptionalToolMetadata();
   const fields = getDirectToolDisplayFields(tool.name);
   const autoFilledFields = getDirectToolAutoFilledFields(tool.name);
-  const shortDesc = extractShortDescription(
-    getDirectToolDescription(tool.name, metadata)
-  );
+  const fullDescription = getDirectToolDescription(tool.name, metadata);
+  const shortDesc = extractShortDescription(fullDescription);
+  const extendedDesc = formatFullDescription(fullDescription);
 
   console.log();
   console.log(`  ${c('magenta', bold(tool.name))}  ${dim(shortDesc)}`);
+  console.log(
+    `  ${dim('Runtime: same Octocode MCP tool implementation under the hood.')}`
+  );
   console.log();
+
+  if (extendedDesc) {
+    console.log(`  ${bold('Description')}`);
+    for (const line of extendedDesc.split('\n')) {
+      console.log(`  ${dim(line)}`);
+    }
+    console.log();
+  }
 
   console.log(`  ${bold('Input Schema')}`);
   for (const field of fields) {
     const reqTag = field.required ? c('red', ' [required]') : '';
+    const meta = field.constraints ? `, ${field.constraints}` : '';
     console.log(
-      `    ${c('cyan', field.name)} (${field.type})${reqTag}${field.description ? dim(` - ${field.description}`) : ''}`
+      `    ${c('cyan', field.name)} (${field.type}${meta})${reqTag}${field.description ? dim(` - ${field.description}`) : ''}`
     );
   }
   console.log();
@@ -211,24 +360,65 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
   console.log();
 
   console.log(`  ${bold('Output Schema')}`);
-  for (const field of getDirectToolOutputFields()) {
-    const optional = field.optional ? ' (optional)' : '';
-    console.log(`    ${dim(field.name)}: ${field.type}${optional}`);
-  }
+  console.log(`    ${dim('Default (YAML):')}`);
+  console.log(
+    `      ${dim('Clean YAML — read directly. Trust hints[] for next steps.')}`
+  );
+  console.log(`    ${dim('--json envelope:')}`);
+  console.log(
+    `      ${c('cyan', 'isError')}                          ${dim('true = tool failed')}`
+  );
+  console.log(
+    `      ${c('cyan', 'content[].text')}                   ${dim('YAML string (same as default output)')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.results[]')}      ${dim('tool result objects  (id + data)')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.base')}           ${dim('cwd / workspace root used for the query')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.hints[]')}        ${dim('next-step suggestions — follow them')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.evidence')}       ${dim('{ answerReady, complete, kind }')}`
+  );
+  console.log(
+    `      ${dim('Trust evidence.answerReady — true = answer complete, stop calling')}`
+  );
   console.log();
 
   console.log(`  ${bold('Flags')}`);
   console.log(
-    `    ${c('cyan', '--json')}   ${dim('Output raw JSON (structuredContent + content + isError)')}`
+    `    ${c('cyan', '--json')}     ${dim('raw JSON envelope (structuredContent + content + isError)')}`
   );
+  console.log(
+    `    ${c('cyan', '--compact')}  ${dim('leanest output — fewer tokens')}`
+  );
+
   console.log();
 
-  console.log(`  ${bold('Example')}`);
-  console.log(`    ${c('yellow', formatToolExampleCommand(tool.name))}`);
-  console.log(
-    `    ${c('yellow', formatToolExampleCommand(tool.name) + ' --json')}`
-  );
-  console.log();
+  if (tool.name === LSP_TOOL_NAME) {
+    console.log(`  ${bold('Examples by type')}`);
+    console.log(
+      `  ${dim('Run localSearchCode first to get the exact uri + lineHint, then:')}`
+    );
+    console.log();
+    for (const [label, query] of LSP_TYPE_EXAMPLES) {
+      console.log(`    ${dim('#')} ${label}`);
+      console.log(
+        `    ${c('yellow', `octocode tools ${LSP_TOOL_NAME} --queries '${JSON.stringify(query)}'`)}`
+      );
+      console.log();
+    }
+  } else {
+    console.log(`  ${bold('Example')}`);
+    console.log(`    ${c('yellow', formatToolExampleCommand(tool.name))}`);
+    console.log(
+      `    ${c('yellow', formatToolExampleCommand(tool.name) + ' --json')}`
+    );
+    console.log();
+  }
 
   return true;
 }
@@ -257,8 +447,9 @@ export async function showMultipleToolSchemas(
     console.log(`  ${bold('Input Schema')}`);
     for (const field of fields) {
       const reqTag = field.required ? c('red', ' [required]') : '';
+      const meta = field.constraints ? `, ${field.constraints}` : '';
       console.log(
-        `    ${c('cyan', field.name)} (${field.type})${reqTag}${field.description ? dim(` - ${field.description}`) : ''}`
+        `    ${c('cyan', field.name)} (${field.type}${meta})${reqTag}${field.description ? dim(` - ${field.description}`) : ''}`
       );
     }
     console.log(`  ${dim('Auto-filled')}: ${autoFilledFields.join(', ')}`);
@@ -270,19 +461,6 @@ export async function showMultipleToolSchemas(
   console.log();
 }
 
-function formatToolFieldsCompact(toolName: string): string {
-  const fields = getDirectToolDisplayFields(toolName);
-  if (fields.length === 0) {
-    return '  (no input fields)';
-  }
-  return fields
-    .map(field => {
-      const req = field.required ? ' [required]' : '';
-      return `  ${field.name} (${field.type})${req}`;
-    })
-    .join('\n');
-}
-
 export async function getToolsContextString(
   options: { full?: boolean } = {}
 ): Promise<string> {
@@ -291,60 +469,99 @@ export async function getToolsContextString(
   const toolNames = sortDirectToolNames(Object.keys(metadata.tools));
 
   const sections: string[] = [
-    'Octocode CLI — Agent Protocol',
+    'Octocode CLI — Agent Context',
     [
-      'You are an agent driving the octocode CLI. Follow this protocol:',
-      '  1. This output lists every tool with its name, description, and key input fields below' +
-        (full ? ' (full JSON schemas included).' : '.'),
-      '  2. REQUIRED before calling any tool: read its exact schema with `octocode tools <name>`' +
-        (full
-          ? '.'
-          : ' (or run `octocode --agent --full` for all schemas inline).'),
-      "  3. Run a tool: `octocode tools <name> --queries '<json>'`.",
-      '     Output contract: clean YAML by default (read it directly); add --json for the full',
-      '     MCP envelope (structuredContent + content + isError); add --compact for the leanest output.',
-      '     Trust evidence.answerReady / hints in each result — they signal whether the answer is complete.',
-      '  4. Exit codes: 0 ok, 2 bad input, 3 unknown tool, 4 auth, 5 tool error, 7 rate-limited.',
-      '  5. See all management commands (install, auth, skills, mcp, sync, cache): `octocode --help`.',
+      full
+        ? 'Agent context: protocol, system prompt, full tool descriptions. Schemas are read separately, on demand.'
+        : 'Agent context: protocol, system prompt, short tool descriptions. Use --full for complete descriptions; read schemas separately.',
+      'Follow this protocol:',
+      '',
+      '  *** SCHEMA CHECK — REQUIRED BEFORE EVERY RAW TOOL CALL ***',
+      '  This context lists what each tool is for. It does NOT include schemas —',
+      "  read a tool's schema before calling it:",
+      '    octocode tools <name> --scheme           # schema: fields, types, bounds, defaults',
+      '    octocode tools <name>                    # same schema/help shortcut',
+      '    octocode tools <n1> <n2> ... --scheme    # batch: read multiple schemas at once',
+      '',
+      '  *** RESEARCH LOOP ***',
+      '  1. Orient: localViewStructure / ghViewRepoStructure / npmSearch.',
+      '  2. Search: localSearchCode / ghSearchCode.',
+      '  3. Read: localGetFileContent / ghGetFileContent — smallest slice, choose minify standard|symbols|none.',
+      '  4. Prove: lspGetSemantics or ghHistoryResearch; stop when evidence.answerReady is true.',
+      '',
+      '  *** TOOL CALLS ***',
+      "  octocode tools <name> --queries '<json>'           # run tool, YAML output",
+      "  octocode tools <name> --queries '<json>' --json    # run tool, raw JSON envelope",
+      "  octocode tools <name> --queries '<json>' --compact # run tool, leanest output",
+      '',
+      '  Output: clean YAML by default; use --compact for leanest text, --json for the raw envelope.',
+      '',
+      '  Exit codes: 0=ok  2=bad-input  3=not-found  4=auth  5=tool-error  7=rate-limited',
+      '',
     ].join('\n'),
     '',
-    'CLI Usage:',
-    CANONICAL_TOOL_USAGE,
-    '',
-    'Octocode MCP Instructions:',
+    'Agent System Prompt (Octocode MCP Instructions):',
     metadata.instructions.trim(),
     '',
-    'Output schema (all tools):',
-    formatDirectToolOutputSchemaText(),
+    'Output contract (all tools):',
+    [
+      '  Default output: clean YAML — read it directly. No parsing needed.',
+      '  Add --compact for leanest output. Add --json for the full envelope below.',
+      '',
+      '  --json envelope:',
+      '    isError: boolean                       true = tool failed',
+      '    content[].text: string                 YAML string (same as default output)',
+      '    structuredContent.results[]: array     tool result objects (id + data)',
+      '    structuredContent.base: string         cwd / workspace root used for the query',
+      '    structuredContent.hints[]: string[]    next-step suggestions — follow them',
+      '    structuredContent.evidence: object     { answerReady: boolean, complete: boolean, kind: string }',
+      '  Trust evidence.answerReady — when true, the answer is complete; stop calling.',
+    ].join('\n'),
     '',
-    'Tools:',
+    'Tools (grouped by source):',
   ];
 
-  toolNames.forEach((toolName, index) => {
-    const shortDesc = extractShortDescription(
-      getDirectToolDescription(toolName, metadata)
+  const CATEGORY_ORDER: Array<{
+    cat: ReturnType<typeof getDirectToolCategory>;
+    label: string;
+  }> = [
+    { cat: 'GitHub', label: 'GitHub' },
+    { cat: 'Local', label: 'Local' },
+    { cat: 'LSP', label: 'LSP' },
+    { cat: 'Package', label: 'npm' },
+    { cat: 'Other', label: 'Other' },
+  ];
+
+  let toolIndex = 0;
+  for (const { cat, label } of CATEGORY_ORDER) {
+    const inCategory = toolNames.filter(
+      toolName => getDirectToolCategory(toolName) === cat
     );
+    if (inCategory.length === 0) continue;
 
-    sections.push(`${index + 1}. ${toolName}`);
-    sections.push(`Description: ${shortDesc}`);
-
-    if (full) {
-      const schemaText = findDirectToolDefinition(toolName)
-        ? formatDirectToolSchemaText(toolName)
-        : formatDirectToolMetadataSchemaText(metadata.tools[toolName]?.schema);
-      sections.push('Input schema:');
-      sections.push(schemaText);
-    } else if (findDirectToolDefinition(toolName)) {
-      sections.push('Input fields:');
-      sections.push(formatToolFieldsCompact(toolName));
-    } else {
-      sections.push('Input schema:');
-      sections.push(
-        formatDirectToolMetadataSchemaText(metadata.tools[toolName]?.schema)
-      );
+    sections.push(`${label}:`);
+    for (const toolName of inCategory) {
+      toolIndex += 1;
+      const description = getDirectToolDescription(toolName, metadata);
+      if (full) {
+        sections.push(`  ${toolIndex}. ${toolName}`);
+        sections.push(description.trim());
+      } else {
+        sections.push(
+          `  ${toolIndex}. ${toolName} — ${extractShortDescription(description)}`
+        );
+      }
     }
     sections.push('');
-  });
+  }
+
+  sections.push(
+    'Schemas are not shown here — read them on demand (required before any call):'
+  );
+  sections.push(
+    '  octocode tools <name> --scheme            # one tool',
+    '  octocode tools <n1> <n2> ... --scheme     # several tools at once'
+  );
 
   return sections.join('\n').trim();
 }
@@ -365,47 +582,7 @@ function getOutputMode(args: ParsedArgs): OutputMode {
     return 'json';
   }
 
-  const output = args.options.output ?? args.options.o;
-  if (typeof output === 'string' && output.toLowerCase() === 'json') {
-    return 'json';
-  }
-
   return 'text';
-}
-
-function isCompact(args: ParsedArgs): boolean {
-  return args.options.compact === true;
-}
-
-function applyCompactToInputText(jsonText: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    return jsonText;
-  }
-
-  const setVerbosity = (obj: unknown): void => {
-    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-      const record = obj as Record<string, unknown>;
-      if (record.verbosity === undefined) {
-        record.verbosity = 'concise';
-      }
-    }
-  };
-
-  if (Array.isArray(parsed)) {
-    parsed.forEach(setVerbosity);
-  } else if (parsed && typeof parsed === 'object') {
-    const record = parsed as Record<string, unknown>;
-    if (Array.isArray(record.queries)) {
-      record.queries.forEach(setVerbosity);
-    } else {
-      setVerbosity(parsed);
-    }
-  }
-
-  return JSON.stringify(parsed);
 }
 
 function printToolResult(result: ToolResult, outputMode: OutputMode): void {
@@ -439,11 +616,7 @@ function getErrorDetails(error: unknown): string[] {
 export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
   const maybeToolName = args.args[0];
   const toolName =
-    typeof maybeToolName === 'string'
-      ? maybeToolName
-      : typeof args.options.tool === 'string'
-        ? args.options.tool
-        : undefined;
+    typeof maybeToolName === 'string' ? maybeToolName : undefined;
 
   if (!toolName || toolName === 'list' || args.options.list === true) {
     await showAvailableTools();
@@ -475,9 +648,7 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
       JSON.stringify(
         {
           name: tool.name,
-          description: extractShortDescription(
-            getDirectToolDescription(tool.name, metadata)
-          ),
+          description: getDirectToolDescription(tool.name, metadata),
           inputSchema,
         },
         null,
@@ -487,7 +658,7 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
     return true;
   }
 
-  if (args.options.schema === true) {
+  if (args.options.scheme === true) {
     await showToolHelp(tool.name);
     return true;
   }
@@ -509,13 +680,14 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
     return true;
   }
 
-  if (isCompact(args)) {
-    inputText = applyCompactToInputText(inputText);
-  }
-
   try {
     const input = prepareDirectToolInputFromJsonText(tool.name, inputText, {
       sourceLabel: 'octocode-cli',
+      onUnknownFields: (unknownFields, queryIndex) => {
+        console.error(
+          `  ${c('yellow', '!')} Query ${queryIndex + 1}: unknown field(s): ${unknownFields.join(', ')} — run \`octocode tools ${tool.name}\` to see valid fields.`
+        );
+      },
     });
     if (!input) {
       await showToolHelp(tool.name);
@@ -545,33 +717,22 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
 }
 
 export const toolCommand: CLICommand = {
-  name: 'tool',
-  description: 'Run an Octocode tool directly',
-  usage: `octocode --tool <toolName> --queries '<json-stringified-input>'`,
+  name: 'tools',
+  description:
+    'Run an Octocode MCP tool directly using the same implementation under the hood',
+  usage: `octocode tools <toolName> [--scheme] [--queries '<json-stringified-input>']`,
   options: [
-    {
-      name: 'tool',
-      description: 'Tool name to execute.',
-      hasValue: true,
-    },
     {
       name: 'queries',
       description: 'JSON-stringified tool input (query object or array).',
       hasValue: true,
     },
     {
-      name: 'output',
-      short: 'o',
-      description: 'Output format: text (default) or json.',
-      hasValue: true,
-      default: 'text',
-    },
-    {
       name: 'list',
       description: 'List available tools.',
     },
     {
-      name: 'schema',
+      name: 'scheme',
       description:
         'Show the selected tool schema summary instead of running it.',
     },

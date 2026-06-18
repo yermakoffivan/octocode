@@ -8,7 +8,7 @@ import { getTextContent } from './testHelpers.js';
 const mockGetServerConfig = vi.hoisted(() => vi.fn());
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   initialize: vi.fn(),
   getServerConfig: mockGetServerConfig,
   getGitHubToken: vi.fn(() => Promise.resolve('mock-token')),
@@ -20,12 +20,12 @@ vi.mock('../../src/serverConfig.js', () => ({
   })),
 }));
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
 import { registerGitHubSearchCodeTool } from '../../src/tools/github_search_code/github_search_code.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('Empty Arrays Removal in Responses', () => {
   let mockServer: MockMcpServer;
@@ -91,7 +91,7 @@ describe('Empty Arrays Removal in Responses', () => {
           queries: [
             {
               id: 'search_empty_query',
-              keywordsToSearch: ['nonexistent'],
+              keywords: ['nonexistent'],
               researchGoal: 'Verify empty search responses stay clean',
               reasoning: 'Test empty array removal',
             },
@@ -138,7 +138,7 @@ describe('Empty Arrays Removal in Responses', () => {
           queries: [
             {
               id: 'search_empty_matches_query',
-              keywordsToSearch: ['test'],
+              keywords: ['test'],
               researchGoal:
                 'Verify files remain even when match arrays are empty',
               reasoning: 'Test file presence with empty matches',
@@ -151,7 +151,7 @@ describe('Empty Arrays Removal in Responses', () => {
       const responseText = getTextContent(result.content);
 
       expect(responseText).toContain('test.js');
-      expect(responseText).toContain('repo: "test-repo"');
+      expect(responseText).toContain('repo: test-repo');
     });
   });
 
@@ -198,13 +198,13 @@ describe('Empty Arrays Removal in Responses', () => {
           queries: [
             {
               id: 'mixed_empty_query',
-              keywordsToSearch: ['empty'],
+              keywords: ['empty'],
               researchGoal: 'Verify empty result rendering',
               reasoning: 'Will be empty',
             },
             {
               id: 'mixed_found_query',
-              keywordsToSearch: ['found'],
+              keywords: ['found'],
               researchGoal: 'Verify successful result rendering',
               reasoning: 'Will find results',
             },
@@ -253,7 +253,7 @@ describe('Empty Arrays Removal in Responses', () => {
           queries: [
             {
               id: 'nested_empty_arrays_query',
-              keywordsToSearch: ['test'],
+              keywords: ['test'],
               researchGoal: 'Verify nested empty arrays are removed',
               reasoning: 'Test nested empty array removal',
             },
@@ -305,7 +305,7 @@ describe('Empty Arrays Removal in Responses', () => {
           queries: [
             {
               id: 'empty_hints_query',
-              keywordsToSearch: ['test'],
+              keywords: ['test'],
               researchGoal: 'Verify empty hints do not appear',
               reasoning: 'Test empty hints removal',
             },
@@ -354,7 +354,7 @@ describe('Empty Arrays Removal in Responses', () => {
         {
           queries: [
             {
-              keywordsToSearch: ['empty_match'],
+              keywords: ['empty_match'],
               match: 'path',
               reasoning: 'Test path-only match preservation',
             },

@@ -7,7 +7,7 @@ import {
   clearLocalToolCache,
   clearLSPToolCache,
   clearRemoteAPICache,
-} from '../../../src/utils/http/cache.js';
+} from '../../../../octocode-tools-core/src/utils/http/cache.js';
 
 describe('cache - branch coverage', () => {
   beforeEach(() => {

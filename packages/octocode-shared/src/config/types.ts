@@ -42,6 +42,8 @@ export interface OutputPaginationConfigOptions {
   defaultCharLength?: number;
 }
 
+export type MinifyMode = 'none' | 'standard' | 'symbols';
+
 export interface OutputConfigOptions {
   format?: 'yaml' | 'json';
 

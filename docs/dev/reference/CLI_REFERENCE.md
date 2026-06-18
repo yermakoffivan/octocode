@@ -1,162 +1,268 @@
 # Octocode CLI Reference
 
-Two things in one binary: **manage** Octocode configuration and **run tools** directly from the terminal.
+`octocode` is the terminal interface for code research:
+
+- Run Octocode MCP tools directly from the shell.
+- Use smart research commands for files, trees, search, PRs, packages, and LSP workflows.
+- Use raw tools for lower-level GitHub/local research and exact schema-driven calls.
+- Manage Octocode setup for IDEs when needed.
 
 ## Usage
 
 ```bash
-# Manage Octocode (install, auth, skills, MCP marketplace, sync, cache)
 octocode <command> [options]
-
-# Run any Octocode tool directly (agents and humans)
-octocode --tool <toolName> --queries '<json>'
-octocode --tool <toolName> --help
-octocode --agent            # agent bootstrap: protocol + tools + input fields (add --full for schemas)
+octocode tools
+octocode tools <name>
+octocode tools <name> --queries '<json>'
+octocode repo <keywords...>
+octocode files <query> [path|owner/repo]
+octocode pkg <package>
+octocode symbols <file|path>
+octocode lsp <file> --type <type>
+octocode context
 ```
 
-## Global Flags
+## Agent Flow
 
-| Flag | Effect |
-|---|---|
-| `--help` / `-h` | Show help |
-| `--version` / `-v` | Show version |
-| `--agent` | Agent bootstrap: protocol + tools + input fields (add `--full` for all JSON schemas; `instructions` / `--tools-context` are aliases) |
-| `--tool <name> --queries '<json>'` | Run one Octocode tool |
-| `--tool <name> --help` | Show tool name, description, input/output schema |
-| `--json` / `--output json` | Raw JSON result (full MCP envelope) |
-| `--compact` | Leanest tool output: minified `structuredContent` only (~60% smaller than `--json`) |
-| `--no-color` | Disable ANSI colors (also via `NO_COLOR=1`) |
+Agents should use this order:
 
-## Tools
+1. `octocode context`
+2. `octocode tools`
+3. `octocode tools <name> --scheme`
+4. `octocode tools <name> --queries '<json>'`
 
-Run any Octocode tool directly — for agents, scripts, and humans. The CLI does not maintain separate tool schemas or execution logic; it imports the canonical public catalog, schemas, and executors from `octocode-mcp/public`, then handles only CLI parsing, autofill, and terminal output.
+Use `octocode context --full` only when every inline JSON schema is needed.
 
-`--queries` accepts a JSON object, array of objects, or `{ "queries": [...] }`. Fields `id`, `researchGoal`, `reasoning`, `mainResearchGoal` are auto-filled.
+## Global Options
 
-| Tool | Category | Description |
-|---|---|---|
-| `githubSearchCode` | GitHub | Search code across repositories |
-| `githubGetFileContent` | GitHub | Fetch file content (supports matchString, line ranges) |
-| `githubViewRepoStructure` | GitHub | List repo directory tree |
-| `githubSearchRepositories` | GitHub | Search repos by keywords/topics |
-| `githubSearchPullRequests` | GitHub | Search pull requests |
-| `githubCloneRepo` | GitHub + Local | Clone GitHub repos/subtrees for local + LSP analysis |
-| `localSearchCode` | Local | Ripgrep search in local files |
-| `localGetFileContent` | Local | Read local file content |
-| `localFindFiles` | Local | Find files by glob/pattern |
-| `localViewStructure` | Local | View local directory tree |
-| `lspGotoDefinition` | LSP | Go to symbol definition |
-| `lspFindReferences` | LSP | Find all references to a symbol |
-| `lspCallHierarchy` | LSP | Trace call hierarchy |
-| `packageSearch` | Package | Search npm or Python packages |
+| Option | Meaning |
+|--------|---------|
+| `--help` | Show help. |
+| `--version` | Show version. |
+| `--json` | Print raw JSON MCP envelope for tool runs. |
+| `--compact` | Print lean tool output. |
+| `--no-color` | Disable ANSI color. Also honors `NO_COLOR=1`. |
 
-Output schema (all tools):
+## Tool Runner
+
+`octocode tools` imports the canonical public catalog from `octocode-mcp/public`; the CLI does not maintain separate tool schemas.
+
+`--queries` accepts:
 
 ```json
-{ "content": [{ "type": "text", "text": "..." }], "structuredContent": {}, "isError": false }
+{ "path": ".", "keywords": "runCLI" }
+```
+
+```json
+[{ "path": ".", "keywords": "runCLI" }]
+```
+
+```json
+{ "queries": [{ "path": ".", "keywords": "runCLI" }] }
+```
+
+Direct CLI runs auto-fill `id`, `mainResearchGoal`, `researchGoal`, and `reasoning` when omitted.
+
+### Tools
+
+| Category | Tools |
+|----------|-------|
+| GitHub | `ghSearchCode`, `ghGetFileContent`, `ghViewRepoStructure`, `ghSearchRepos`, `ghSearchPRs`, `ghCloneRepo` |
+| Local | `localSearchCode`, `localViewStructure`, `localFindFiles`, `localGetFileContent` |
+| LSP | `lspGetSemantics` |
+| Package | `npmSearch` |
+
+Examples:
+
+```bash
+octocode tools localSearchCode
+octocode tools localSearchCode --scheme
+octocode tools localSearchCode --queries '{"path":".","keywords":"runCLI"}'
+octocode tools ghSearchCode --queries '{"keywordsToSearch":["useReducer"],"owner":"facebook","repo":"react"}'
+```
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `get` | Fetch and minify local or GitHub file content. |
+| `tree` | View local or GitHub directory structure. |
+| `files` | Find file paths and content matches locally or on GitHub. |
+| `search` | Search local or GitHub code. |
+| `pr` | Search or deep-dive pull requests. |
+| `repo` | Discover GitHub repositories by keyword, topic, owner, and quality filters. |
+| `pkg` | Research npm package metadata and source repositories. |
+| `symbols` | Show semantic symbol outlines for local files or directories. |
+| `lsp` | Run LSP semantic navigation for a local source file. |
+| `tools` | List tools, show schemas, or run tools. |
+| `context` | Print agent protocol and tool schemas. |
+| `install` | Configure `octocode-mcp` for an IDE/client. |
+| `auth` | Auth menu and auth subcommands. |
+| `login` | GitHub OAuth login. |
+| `logout` | Remove stored Octocode auth. |
+| `status` | Show health status. |
+| `token` | Print the resolved token. |
+| `skills` | Search, read, install, remove, list, or sync skills. |
+
+### files
+
+```bash
+octocode files <query> [path|owner/repo] [--owner <owner> --repo <repo>] [--source auto|local|github] [--search path|content|both] [--ext <list>] [--path <subpath>] [--limit <n>] [--page <n>] [--json]
 ```
 
 Examples:
 
 ```bash
-octocode --tool githubSearchCode --queries '{"keywordsToSearch":["useReducer"],"owner":"facebook","repo":"react"}'
-octocode --tool githubGetFileContent --queries '{"owner":"facebook","repo":"react","path":"packages/react/src/React.js","matchString":"useState"}'
-octocode --tool githubCloneRepo --queries '{"owner":"facebook","repo":"react"}'
-octocode --tool localSearchCode --queries '{"path":".","pattern":"runCLI"}'
-octocode --tool packageSearch --queries '{"name":"react","ecosystem":"npm"}'
+octocode files auth src --source local --search path --ext ts
+octocode files executeDirectTool . --source local --search content --ext ts
+octocode files auth bgauryy/octocode-mcp --source github --search path --ext ts
+octocode files auth --owner bgauryy --repo octocode-mcp --source github
+octocode files executeDirectTool bgauryy/octocode-mcp --source github --search content
+octocode files auth . --search both --limit 20
 ```
 
-## Commands
+`--search path` uses metadata/path search (`localFindFiles` or `ghSearchCode match:path`).
+`--search content` uses content search (`localSearchCode` or `ghSearchCode match:file`).
+Local path filters include `--name`, `--path-pattern`, `--regex`, `--entry`, depth, size, time, permission, and metadata flags.
+Local content filters include ripgrep-style flags such as `--include`, `--exclude`, `--fixed-string`, `--perl-regex`, case, word, hidden, count, match, and sort controls.
+GitHub filters include `--owner`, `--repo`, `--filename`, `--path`, `--ext`, pagination, and `--verbose`.
+Use `octocode get <returned-path> --match-string <query> --mode none` to fetch exact evidence.
 
-Manage Octocode installation, authentication, skills, marketplace, sync, and cache.
+### get
 
-| Command | Alias | What it does |
-|---|---|---|
-| `install` | `i`, `setup` | Configure octocode-mcp for an IDE |
-| `auth` | `a`, `gh` | Auth menu or `auth login/logout/status/token` |
-| `login` | `l` | GitHub OAuth login |
-| `logout` | - | Remove Octocode auth |
-| `status` | `s` | GitHub auth status |
-| `token` | `t` | Print token (`--type`, `--hostname`, `--source`, `--json`) |
-| `sync` | `sy` | Sync MCP configs (`--force`, `--dry-run`, `--status`) |
-| `mcp` | - | Marketplace: `list`, `install`, `remove`, `status` |
-| `skills` | `sk` | Skills: `list`, `install`, `remove` |
-| `cache` | - | Cache: `status`, `clean` |
+```bash
+octocode get <path|github-ref> [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]
+```
+
+Examples:
+
+```bash
+octocode get src/cli/commands/search.ts --match-string executeDirectTool --mode none
+octocode get bgauryy/octocode-mcp/packages/octocode-cli/src/cli/commands/search.ts --match-string executeDirectTool --mode none
+octocode get src/index.ts --start-line 40 --end-line 90 --mode none
+octocode get src/index.ts --mode symbols
+```
+
+### repo
+
+```bash
+octocode repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--forks <range>] [--good-first-issues <range>] [--license <spdx>] [--created <range>] [--updated <range>] [--size <range>] [--match name,description,readme] [--sort stars|forks|help-wanted-issues|updated|best-match] [--archived true|false] [--visibility public|private] [--limit <n>] [--page <n>] [--verbose] [--json]
+```
+
+Examples:
+
+```bash
+octocode repo react state --language TypeScript --stars '>1000'
+octocode repo --topic mcp,agents --sort stars --limit 10
+octocode repo --owner vercel --language TypeScript --verbose
+```
+
+Use results with `octocode tree <owner/repo>`, `octocode search <pattern> <owner/repo>`, or `octocode get <owner/repo/path>`.
+
+### pkg
+
+```bash
+octocode pkg <package> [--page <n>] [--json]
+```
+
+Examples:
+
+```bash
+octocode pkg zod
+octocode pkg @modelcontextprotocol/sdk
+```
+
+### lsp
+
+```bash
+octocode lsp <file> --type <type> [--symbol <name>] [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]
+```
+
+Supported `--type` values: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, `implementation`.
+
+`documentSymbols` only needs a file. All other types require `--symbol` and `--line`.
+
+Examples:
+
+```bash
+octocode lsp src/index.ts --type documentSymbols
+octocode lsp src/index.ts --type references --symbol runCLI --line 42
+octocode lsp src/index.ts --type hover --symbol runCLI --line 42
+```
+
+### symbols
+
+```bash
+octocode symbols <file|path> [--ext <list>] [--kind <kind>] [--limit <n>] [--depth <n>] [--page-size <n>] [--json]
+```
+
+For a file, `symbols` runs `lspGetSemantics` with `type=documentSymbols`.
+For a directory, it uses `localFindFiles` to discover source files, then batches
+`lspGetSemantics type=documentSymbols` over those files.
+
+Examples:
+
+```bash
+octocode symbols src/index.ts
+octocode symbols src --ext ts,tsx --limit 10
+octocode symbols src/index.ts --kind function
+```
 
 ### install
 
 ```bash
-octocode install --ide <client> [--method <npx>] [--force]
-octocode install --ide <client> [-m <npx>] [-f]
+octocode install --ide <client> [--method npx] [--force] [--check] [--rollback] [--backup-path <path>] [--json]
 ```
 
-Supported clients: `cursor`, `claude`/`claude-desktop`, `claude-code`, `windsurf`, `zed`, `vscode-cline`, `vscode-roo`, `vscode-continue`, `opencode`, `trae`, `antigravity`, `codex`, `gemini-cli`, `goose`, `kiro`.
+Supported clients: `cursor`, `claude-desktop`, `claude-code`, `windsurf`, `zed`, `vscode-cline`, `vscode-roo`, `vscode-continue`, `opencode`, `trae`, `antigravity`, `codex`, `gemini-cli`, `goose`, `kiro`.
 
-Use `npx` unless you intentionally want `direct` mode to write a local binary path.
+Only `npx` is supported as an install method.
 
-### auth / login / logout / status / token
+### auth
 
 ```bash
-octocode auth [login|logout|status|token]
-octocode login [--hostname <host>] [--git-protocol <ssh|https>]
-octocode login [-H <host>] [-p <ssh|https>]
-octocode logout [--hostname <host>]
-octocode status [--hostname <host>]
-octocode token [--type <auto|octocode|gh>] [--hostname <host>] [--source] [--json]
-octocode token [-t <auto|octocode|gh>] [-H <host>] [-s] [-j]
+octocode auth [login|logout|status|token|refresh] [--hostname <host>] [--json]
+octocode login [--hostname <host>] [--git-protocol <ssh|https>] [--force] [--json]
+octocode logout [--hostname <host>] [--yes] [--json]
+octocode status [--hostname <host>] [--sync] [--json]
+octocode token [--type auto|octocode|gh] [--hostname <host>] [--source] [--validate] [--reveal] [--json]
 ```
 
-`token --type auto` matches Octocode MCP token priority: environment variables first (`OCTOCODE_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`), then encrypted Octocode credentials, then `gh auth token`.
-
-### sync
-
-```bash
-octocode sync [--force] [--dry-run] [--status]
-```
-
-### mcp
-
-```bash
-octocode mcp list [--search <text>] [--category <name>] [--installed] [--client <client>|--config <path>]
-octocode mcp install --id <mcp-id> [--client <client>] [--env KEY=VALUE] [--force]
-octocode mcp remove --id <mcp-id> [--client <client>]
-```
+Token priority for `auto`: `OCTOCODE_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, encrypted Octocode credentials, then `gh auth token`.
 
 ### skills
 
 ```bash
+octocode skills search <query> [--direct]
+octocode skills read <path|url>
 octocode skills list
-octocode skills install [--skill <name>] [--targets <list>] [--mode <copy|symlink>] [--force]
-octocode skills remove --skill <name> [--targets <list>]
+octocode skills install [--skill <name>|--local <path>] [--targets <list>] [--mode copy|symlink] [--force]
+octocode skills remove [--skill <name>|--local <path>] [--targets <list>]
+octocode skills sync <from> <to>
 ```
 
-Supported targets: `claude-code`, `claude-desktop`, `cursor`, `codex`, `opencode`. `--mode copy` is safest everywhere; `--mode symlink` is useful for local iteration.
+Supported targets include `claude-code`, `claude-desktop`, `cursor`, `codex`, and `opencode`.
 
-See [Skills Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/SKILLS_GUIDE.md).
-
-### cache
-
-```bash
-octocode cache [status|clean] [--repos] [--skills] [--logs] [--all] [--tools|--local|--lsp|--api]
-```
+Skills guide: [docs/dev/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/SKILLS_GUIDE.md).
 
 ## Environment
 
 | Variable | Meaning |
-|---|---|
-| `OCTOCODE_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` | GitHub token, checked in this order |
-| `OCTOCODE_HOME` | Override data directory |
+|----------|---------|
+| `OCTOCODE_TOKEN` | Highest-priority GitHub token. |
+| `GH_TOKEN` | GitHub CLI compatible token. |
+| `GITHUB_TOKEN` | GitHub token fallback. |
+| `OCTOCODE_HOME` | Override Octocode data directory. |
+| `NO_COLOR` | Disable terminal color. |
 
 ## Exit Codes
 
 | Code | Meaning |
-|---|---|
-| `0` | Success |
-| `1` | General error |
-| `2` | Invalid input / unsupported flags |
-| `3` | Unknown tool or command |
-| `4` | Authentication failure |
-| `5` | Tool / API execution error |
-| `7` | Rate limited |
-
-Typed codes `2`–`7` apply to the tool surface (`tools`, `--tool`) and command dispatch so agents can branch on the failure mode. Management commands use `0`/`1`.
+|------|---------|
+| `0` | Success. |
+| `1` | General error. |
+| `2` | Invalid input or unsupported flags. |
+| `3` | Unknown tool or command. |
+| `4` | Authentication failure. |
+| `5` | Tool/API execution error. |
+| `7` | Rate limited. |

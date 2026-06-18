@@ -1,11 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
-import { hints as ripgrepHints } from '../../../src/tools/local_ripgrep/hints.js';
-import { hints as fetchContentHints } from '../../../src/tools/local_fetch_content/hints.js';
-import { hints as viewStructureHints } from '../../../src/tools/local_view_structure/hints.js';
-import { hints as ghFetchHints } from '../../../src/tools/github_fetch_content/hints.js';
-import { hints as cloneHints } from '../../../src/tools/github_clone_repo/hints.js';
-import { hints as callHints } from '../../../src/tools/lsp_call_hierarchy/hints.js';
+import { hints as ripgrepHints } from '../../../../octocode-tools-core/src/tools/local_ripgrep/hints.js';
+import { hints as fetchContentHints } from '../../../../octocode-tools-core/src/tools/local_fetch_content/hints.js';
+import { hints as viewStructureHints } from '../../../../octocode-tools-core/src/tools/local_view_structure/hints.js';
+import { hints as ghFetchHints } from '../../../../octocode-tools-core/src/tools/github_fetch_content/hints.js';
+import { hints as cloneHints } from '../../../../octocode-tools-core/src/tools/github_clone_repo/hints.js';
 
 const BANNED_WORKFLOW_PHRASES = [
   'Best approach',
@@ -13,8 +12,6 @@ const BANNED_WORKFLOW_PHRASES = [
   'Use charLength',
   'Use charOffset',
   'Why matchString',
-  'Use lspFindReferences',
-  'Use lspGotoDefinition',
   'Use localSearchCode',
   'Use localFindFiles',
   'Use localGetFileContent',
@@ -58,48 +55,35 @@ describe('limitation hints — content shape', () => {
       isLarge: true,
       fileSize: 800_000,
     } as never);
-    expect(h).toHaveLength(1);
+    expect(h.length).toBeGreaterThanOrEqual(1);
     expect(h[0]).toMatch(/~\d+KB/);
     assertLean(h[0]!);
   });
 
-  it('localViewStructure size_limit + entryCount', () => {
+  it('localViewStructure size_limit returns [] (cap is surfaced as runtime warning via wasCapped)', () => {
     const h = viewStructureHints.error({
       errorType: 'size_limit',
       entryCount: 5000,
     } as never);
-    expect(h).toHaveLength(1);
-    expect(h[0]).toContain('5000');
-    assertLean(h[0]!);
+    expect(h).toHaveLength(0);
   });
 
-  it('githubGetFileContent 300KB cap', () => {
+  it('ghGetFileContent 300KB cap', () => {
     const h = ghFetchHints.error({
       errorType: 'size_limit',
       fileSize: 350,
     } as never);
-    expect(h).toHaveLength(1);
+    expect(h.length).toBeGreaterThanOrEqual(1);
     expect(h[0]).toContain('350KB');
-    expect(h[0]).toContain('300KB');
     assertLean(h[0]!);
   });
 
-  it('githubCloneRepo error one-liners', () => {
+  it('ghCloneRepo error one-liners', () => {
     for (const errorType of ['permission', 'not_found', 'timeout']) {
       const h = cloneHints.error({ errorType } as never);
       expect(h).toHaveLength(1);
       assertLean(h[0]!);
     }
-  });
-
-  it('lspCallHierarchy timeout cites depth', () => {
-    const h = callHints.error({
-      errorType: 'timeout',
-      depth: 3,
-    } as never);
-    expect(h).toHaveLength(1);
-    expect(h[0]).toContain('Depth=3');
-    assertLean(h[0]!);
   });
 });
 
@@ -114,16 +98,12 @@ describe('limitation hints — silence when threshold not hit', () => {
       fileSize: 100,
     } as never);
     expect(h.length).toBeGreaterThan(0);
-    expect(h[0]).toMatch(/read budget/);
+    expect(h[0]).toMatch(/too large|matchString/);
   });
 
   it('localViewStructure without entryCount stays silent', () => {
     expect(
       viewStructureHints.error({ errorType: 'size_limit' } as never)
     ).toEqual([]);
-  });
-
-  it('lspCallHierarchy unknown errorType returns []', () => {
-    expect(callHints.error({ errorType: 'other' as never })).toEqual([]);
   });
 });

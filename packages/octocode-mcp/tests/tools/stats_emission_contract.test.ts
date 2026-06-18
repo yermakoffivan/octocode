@@ -1,16 +1,19 @@
 import { readFile } from 'fs/promises';
 import { describe, expect, it } from 'vitest';
+import { ALL_TOOLS } from '../../src/tools/toolConfig.js';
 
+import { resolve } from 'path';
 const ROOT = process.cwd();
+const CORE_ROOT = resolve(ROOT, '../octocode-tools-core');
 
 const registeredTools = [
   {
-    name: 'githubSearchCode',
+    name: 'ghSearchCode',
     executionFiles: ['src/tools/github_search_code/execution.ts'],
     rawEvidence: [/rawResponse:\s*providerResult\.response\.rawResponseChars/],
   },
   {
-    name: 'githubGetFileContent',
+    name: 'ghGetFileContent',
     executionFiles: ['src/tools/github_fetch_content/execution.ts'],
     rawEvidence: [
       /rawResponse:\s*providerResult\.response\.rawResponseChars/,
@@ -18,27 +21,27 @@ const registeredTools = [
     ],
   },
   {
-    name: 'githubViewRepoStructure',
+    name: 'ghViewRepoStructure',
     executionFiles: ['src/tools/github_view_repo_structure/execution.ts'],
     rawEvidence: [/rawResponse:\s*providerResult\.response\.rawResponseChars/],
   },
   {
-    name: 'githubSearchRepositories',
+    name: 'ghSearchRepos',
     executionFiles: ['src/tools/github_search_repos/execution.ts'],
     rawEvidence: [/rawResponse:\s*sumVariantRawResponseChars\(/],
   },
   {
-    name: 'githubSearchPullRequests',
+    name: 'ghHistoryResearch',
     executionFiles: ['src/tools/github_search_pull_requests/execution.ts'],
     rawEvidence: [/rawResponse:\s*providerResult\.response\.rawResponseChars/],
   },
   {
-    name: 'packageSearch',
+    name: 'npmSearch',
     executionFiles: ['src/tools/package_search/execution.ts'],
     rawEvidence: [/rawResponse:\s*apiResult/],
   },
   {
-    name: 'githubCloneRepo',
+    name: 'ghCloneRepo',
     executionFiles: ['src/tools/github_clone_repo/execution.ts'],
     rawEvidence: [/rawResponse:\s*getDirectorySizeBytes\(result\.localPath\)/],
   },
@@ -60,8 +63,7 @@ const registeredTools = [
       'src/tools/local_view_structure/local_view_structure.ts',
     ],
     rawEvidence: [
-      /rawResponse:\s*result\.stdout\.length\s*\+\s*result\.stderr\.length/,
-      /attachRawResponseChars\([\s\S]*countSerializedChars\(entries\)/,
+      /attachRawResponseChars\([\s\S]*nativeResult\.entries\.reduce\(\s*\(sum, entry\) => sum \+ entry\.path\.length/,
     ],
   },
   {
@@ -71,8 +73,7 @@ const registeredTools = [
       'src/tools/local_find_files/findFiles.ts',
     ],
     rawEvidence: [
-      /rawResponse:\s*result\.stdout\.length\s*\+\s*result\.stderr\.length/,
-      /attachRawResponseChars\([\s\S]*result\.stdout\.length/,
+      /attachRawResponseChars\([\s\S]*nativeResult\.entries\.reduce\(\s*\(sum, entry\) => sum \+ entry\.path\.length/,
     ],
   },
   {
@@ -87,49 +88,39 @@ const registeredTools = [
     ],
   },
   {
-    name: 'lspGotoDefinition',
-    executionFiles: ['src/tools/lsp_goto_definition/execution.ts'],
+    name: 'lspGetSemantics',
+    executionFiles: ['src/tools/lsp/semantic_content/execution.ts'],
     rawEvidence: [
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(result\)/,
+      /attachRawResponseChars\(result,\s*countSerializedChars\(result\)\)/,
     ],
   },
   {
-    name: 'lspFindReferences',
-    executionFiles: [
-      'src/tools/lsp_find_references/execution.ts',
-      'src/tools/lsp_find_references/lsp_find_references.ts',
-    ],
-    rawEvidence: [
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(lspResult\)/,
-    ],
-  },
-  {
-    name: 'lspCallHierarchy',
-    executionFiles: [
-      'src/tools/lsp_call_hierarchy/execution.ts',
-      'src/tools/lsp_call_hierarchy/callHierarchy.ts',
-    ],
-    rawEvidence: [
-      /attachRawResponseChars\([\s\S]*content\.length\s*\+\s*countSerializedChars\(result\)/,
-    ],
+    name: 'localBinaryInspect',
+    executionFiles: ['src/tools/local_binary_inspect/execution.ts'],
+    rawEvidence: [/attachRawResponseChars\(result/],
   },
 ] as const;
 
 async function readProjectFile(relativePath: string): Promise<string> {
-  return readFile(`${ROOT}/${relativePath}`, 'utf-8');
+  const isMcpOnly =
+    relativePath.startsWith('src/index.ts') ||
+    relativePath.startsWith('src/public') ||
+    relativePath.startsWith('src/tools/toolsManager') ||
+    relativePath.startsWith('src/tools/toolConfig') ||
+    relativePath.startsWith('src/tools/toolFilters') ||
+    relativePath.startsWith('src/utils/core/logger') ||
+    relativePath.startsWith('src/utils/secureServer');
+  const root = isMcpOnly ? ROOT : CORE_ROOT;
+  return readFile(`${root}/${relativePath}`, 'utf-8');
 }
 
 describe('tool stats emission contract', () => {
   it('covers every registered tool from the catalog', async () => {
-    const toolConfig = await readProjectFile('src/tools/toolConfig.ts');
-    const catalogNames = [
-      ...toolConfig.matchAll(/const\s+([A-Z_]+)\s*=\s*createTool\(/g),
-    ].map(match => match[1]);
+    const catalogNames = ALL_TOOLS.map(tool => tool.name).sort();
+    const coveredNames = registeredTools.map(tool => tool.name).sort();
 
-    expect(catalogNames).toHaveLength(14);
-    expect(registeredTools.map(tool => tool.name)).toHaveLength(
-      catalogNames.length
-    );
+    expect(catalogNames).toHaveLength(13);
+    expect(coveredNames).toEqual(catalogNames);
   });
 
   it('records final sent response length once per bulk tool invocation', async () => {
@@ -137,7 +128,7 @@ describe('tool stats emission contract', () => {
 
     expect(bulk).toMatch(/createResponseFormat\(/);
     expect(bulk).toMatch(
-      /recordBulkCharSavings\(config\.toolName, results, errors, text\.length\);/
+      /recordBulkCharSavings\(\s*config\.toolName,\s*results,\s*errors,\s*paginated\.text\.length\s*\);/
     );
     expect(bulk).toMatch(
       /incrementToolCharSavings\(toolName, rawChars, responseChars\);/
@@ -168,16 +159,17 @@ describe('tool stats emission contract', () => {
   it('security wrappers emit tool-call state for both remote and local tools', async () => {
     const indexSource = await readProjectFile('src/index.ts');
     const securitySource = await readProjectFile(
-      '../octocode-security-utils/src/withSecurityValidation.ts'
+      '../octocode-security/src/withSecurityValidation.ts'
     );
 
     expect(indexSource).toMatch(/configureSecurity\(\{[\s\S]*logToolCall/);
-    expect(indexSource).toMatch(/configureSecurity\(\{[\s\S]*isLocalTool/);
+    expect(indexSource).not.toMatch(/configureSecurity\(\{[\s\S]*isLocalTool/);
     expect(securitySource).toMatch(
-      /withSecurityValidation[\s\S]*handleBulk\(toolName, sanitizedParams\)/
+      /runSecure[\s\S]*handleBulk\(toolName, sanitizedParams\)/
     );
+    expect(securitySource).toMatch(/withSecurityValidation[\s\S]*runSecure\(/);
     expect(securitySource).toMatch(
-      /withBasicSecurityValidation[\s\S]*_deps\.isLocalTool\?\.\(toolName\)[\s\S]*handleBulk\(/
+      /withBasicSecurityValidation[\s\S]*runSecure\(/
     );
   });
 });

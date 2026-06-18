@@ -13,11 +13,18 @@
   },
   "scripts": {
     "build": "node ./scripts/workspace-health.mjs run build",
+    "build:native:all": "yarn workspace octocode-security build:all && yarn workspace @octocodeai/octocode-context-utils build:all && yarn workspace octocode-lsp build:all",
+    "platforms:check": "yarn workspace octocode-security platforms:check && yarn workspace @octocodeai/octocode-context-utils platforms:check && yarn workspace octocode-lsp platforms:check",
+    "build:publish": "yarn build:native:all && yarn platforms:check && yarn workspace octocode-mcp build:publish",
     "docs:verify": "node ./scripts/docs-verify.mjs",
     "health:check": "node ./scripts/workspace-health.mjs check",
     "health:report": "node ./scripts/workspace-health.mjs report",
     "lint": "node ./scripts/workspace-health.mjs run lint",
     "lint:fix": "yarn workspaces foreach -Apt run lint:fix",
+    "local:check": "node ./release/sync-packages-local.mjs",
+    "local:fix": "node ./release/sync-packages-local.mjs --fix",
+    "sync:version": "node ./release/sync-packages-version.mjs",
+    "sync:version:publish": "node ./release/sync-packages-version.mjs --pin-for-publish",
     "syncpack:fix": "syncpack fix",
     "syncpack:format": "syncpack format",
     "syncpack:lint": "syncpack lint",
@@ -28,21 +35,21 @@
     "verify": "node ./scripts/workspace-health.mjs verify"
   },
   "devDependencies": {
-    "@eslint/js": "^9.27.0",
+    "@eslint/js": "^9.35.0",
     "eslint": "^9.18.0",
-    "eslint-config-prettier": "^10.1.5",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
-    "prettier": "^3.5.3",
+    "prettier": "^3.6.2",
     "syncpack": "^14.0.0-alpha.19",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.52.0"
   },
-  "resolutions": {
-    "axios": "1.13.2"
-  },
   "private": true,
   "workspaces": [
     "skills/*",
-    "packages/*"
+    "packages/*",
+    "packages/octocode-context-utils/npm/*",
+    "packages/octocode-security/npm/*",
+    "packages/octocode-lsp/npm/*"
   ]
 }

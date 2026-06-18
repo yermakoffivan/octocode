@@ -7,11 +7,11 @@ import {
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
@@ -28,7 +28,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 import { registerGitHubSearchCodeTool } from '../../src/tools/github_search_code/github_search_code.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('GitHub Search Code - match Parameter Modes', () => {
   let mockServer: MockMcpServer;
@@ -189,6 +189,41 @@ describe('GitHub Search Code - match Parameter Modes', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('useData');
+    });
+
+    it('marks file-mode results as path-only when GitHub returns no text matches', async () => {
+      mockProvider.searchCode.mockResolvedValue({
+        data: {
+          items: [
+            {
+              path: 'src/no-snippet.ts',
+              repository: { id: '1', name: 'test/repo', url: '' },
+              matches: [],
+              url: '',
+            },
+          ],
+          totalCount: 1,
+          pagination: { currentPage: 1, totalPages: 1, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      });
+
+      const result = await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
+        queries: [
+          {
+            keywordsToSearch: ['noSnippet'],
+            owner: 'test',
+            repo: 'repo',
+            match: 'file',
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(false);
+      const responseText = getTextContent(result.content);
+      expect(responseText).toContain('pathOnly: true');
+      expect(responseText).toContain('GitHub did not return text matches');
     });
   });
 
@@ -398,7 +433,7 @@ describe('GitHub Search Code - match Parameter Modes', () => {
       expect(providerQuery.match).toBe('file');
     });
 
-    it('verbose=false is a no-op — provider uses default page size', async () => {
+    it('provider receives undefined limit when agent omits it (execution layer applies default)', async () => {
       mockProvider.searchCode.mockResolvedValue({
         data: {
           items: [],
@@ -416,16 +451,15 @@ describe('GitHub Search Code - match Parameter Modes', () => {
             owner: 'test',
             repo: 'repo',
             match: 'file',
-            verbose: false,
           },
         ],
       });
 
       const providerQuery = mockProvider.searchCode.mock.calls[0]?.[0];
-      expect(providerQuery.limit).toBeGreaterThan(0);
+      expect(providerQuery.limit).toBeUndefined();
     });
 
-    it('leaves the provider-bound limit at the fixed page size by default', async () => {
+    it('provider receives agent-supplied limit when limit is set', async () => {
       mockProvider.searchCode.mockResolvedValue({
         data: {
           items: [],
@@ -443,12 +477,13 @@ describe('GitHub Search Code - match Parameter Modes', () => {
             owner: 'test',
             repo: 'repo',
             match: 'file',
+            limit: 100,
           },
         ],
       });
 
       const providerQuery = mockProvider.searchCode.mock.calls[0]?.[0];
-      expect(providerQuery.limit).toBeGreaterThan(0);
+      expect(providerQuery.limit).toBe(100);
     });
 
     it('should pass match="path" to the provider searchCode call', async () => {

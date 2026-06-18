@@ -2,17 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from '../../src/tools/toolsManager.js';
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getServerConfig: vi.fn(),
   isLocalEnabled: vi.fn(),
   isCloneEnabled: vi.fn(),
 }));
 
-vi.mock('../../src/tools/toolMetadata/proxies.js', () => ({
-  isToolInMetadata: vi.fn(),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js',
+  async importOriginal => ({
+    ...(await importOriginal<object>()),
+    isToolInMetadata: vi.fn(),
+  })
+);
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(),
 }));
 
@@ -24,8 +28,8 @@ import {
   getServerConfig,
   isLocalEnabled,
   isCloneEnabled,
-} from '../../src/serverConfig.js';
-import { isToolInMetadata } from '../../src/tools/toolMetadata/proxies.js';
+} from '../../../octocode-tools-core/src/serverConfig.js';
+import { isToolInMetadata } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 const mockGetServerConfig = vi.mocked(getServerConfig);
 const mockIsLocalEnabled = vi.mocked(isLocalEnabled);

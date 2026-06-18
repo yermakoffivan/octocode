@@ -1,6 +1,5 @@
 import { beforeEach, afterEach, afterAll, vi } from 'vitest';
-import { initializeToolMetadata } from '../src/tools/toolMetadata/state.js';
-import { resetCircuitBreaker } from '../src/utils/http/circuitBreaker.js';
+import { resetCircuitBreaker } from '../../octocode-tools-core/src/utils/http/circuitBreaker.js';
 import {
   consumeExpectedStderrWarning,
   resetExpectedStderrWarnings,
@@ -239,7 +238,7 @@ const mockToolSchema = {
 };
 
 const githubFetchContentSchema = {
-  name: 'githubGetFileContent',
+  name: 'ghGetFileContent',
   description: 'Read file content from GitHub',
   schema: {
     owner: 'GitHub owner',
@@ -274,88 +273,32 @@ const mockDynamicHints = {
   batchParallel: ['Use parallel queries for batch operations'],
   manyResults: ['Many results found - consider filtering'],
   configFiles: ['Config files found - check for project settings'],
-  singleRepo: ['Searching single repo: use githubGetFileContent for details'],
+  singleRepo: ['Searching single repo: use ghGetFileContent for details'],
   multiRepo: ['Searching multiple repos: narrow with owner/repo'],
   pathEmpty: ['Path search empty - try match="file" instead'],
   crossRepoEmpty: ['Cross-repo search empty - specify owner/repo'],
   fileTooLarge: ['File too large - use matchString or line range'],
 };
 
-const lspGotoDefinitionSchema = {
-  name: 'lspGotoDefinition',
-  description: 'Navigate to symbol definition using Language Server Protocol',
+const lspGetSemanticsSchema = {
+  name: 'lspGetSemantics',
+  description: 'Get semantic code intelligence using Language Server Protocol',
   schema: {
     uri: 'File URI',
+    type: 'Semantic content type',
     symbolName: 'Symbol name to find',
     lineHint: 'Line number hint',
     orderHint: 'Order hint for multiple occurrences',
+    itemsPerPage: 'Semantic items per page',
     contextLines: 'Lines of context to include',
   },
   hints: {
     ...mockToolHints,
     dynamic: {
-      multipleDefinitions: ['Multiple definitions found - check all locations'],
-      externalPackage: ['Definition in external package - use packageSearch'],
-      fallbackMode: ['Using text-based fallback (LSP unavailable)'],
+      semanticContent: ['Semantic content returned'],
       symbolNotFound: ['Symbol not found - verify name and lineHint'],
       fileNotFound: ['File not found - check path'],
       timeout: ['LSP timeout - try again or use localSearchCode'],
-    },
-  },
-};
-
-const lspFindReferencesSchema = {
-  name: 'lspFindReferences',
-  description: 'Find all references to a symbol using Language Server Protocol',
-  schema: {
-    uri: 'File URI',
-    symbolName: 'Symbol name to find',
-    lineHint: 'Line number hint',
-    orderHint: 'Order hint',
-    includeDeclaration: 'Include declaration in results',
-    contextLines: 'Lines of context',
-    referencesPerPage: 'References per page',
-    page: 'Page number',
-  },
-  hints: {
-    ...mockToolHints,
-    dynamic: {
-      manyReferences: ['Many references - use pagination'],
-      multipleFiles: ['References span multiple files'],
-      pagination: ['More results available - increment page'],
-      fallbackMode: ['Using text-based fallback (LSP unavailable)'],
-      symbolNotFound: ['Symbol not found - verify name and lineHint'],
-      timeout: ['LSP timeout - try localSearchCode instead'],
-    },
-  },
-};
-
-const lspCallHierarchySchema = {
-  name: 'lspCallHierarchy',
-  description: 'Explore function call hierarchy using Language Server Protocol',
-  schema: {
-    uri: 'File URI',
-    symbolName: 'Symbol name',
-    lineHint: 'Line number hint',
-    orderHint: 'Order hint',
-    direction: 'incoming or outgoing',
-    depth: 'Call chain depth',
-    contextLines: 'Lines of context',
-    callsPerPage: 'Calls per page',
-    page: 'Page number',
-  },
-  hints: {
-    ...mockToolHints,
-    dynamic: {
-      incomingResults: ['Found callers - trace the call chain'],
-      outgoingResults: ['Found callees - explore dependencies'],
-      deepChain: ['Deep call chain - use depth=1 for performance'],
-      pagination: ['More calls available - increment page'],
-      fallbackMode: ['Using pattern-based fallback (LSP unavailable)'],
-      noCallers: ['No callers found - function may be entry point'],
-      noCallees: ['No callees found - function is leaf node'],
-      notAFunction: ['Symbol is not a function - use lspFindReferences'],
-      timeout: ['LSP timeout - reduce depth or use localSearchCode'],
     },
   },
 };
@@ -400,8 +343,8 @@ const localFindFilesSchema = {
   },
 };
 
-const githubSearchCodeSchema = {
-  name: 'githubSearchCode',
+const ghSearchCodeSchema = {
+  name: 'ghSearchCode',
   description: 'Search code across GitHub',
   schema: {},
   hints: {
@@ -414,43 +357,42 @@ const mockContent = {
   instructions: 'Test instructions',
   prompts: {},
   toolNames: {
-    GITHUB_FETCH_CONTENT: 'githubGetFileContent',
-    GITHUB_SEARCH_CODE: 'githubSearchCode',
-    GITHUB_SEARCH_PULL_REQUESTS: 'githubSearchPullRequests',
-    GITHUB_SEARCH_REPOSITORIES: 'githubSearchRepositories',
-    GITHUB_VIEW_REPO_STRUCTURE: 'githubViewRepoStructure',
-    PACKAGE_SEARCH: 'packageSearch',
-    GITHUB_CLONE_REPO: 'githubCloneRepo',
+    GITHUB_FETCH_CONTENT: 'ghGetFileContent',
+    GITHUB_SEARCH_CODE: 'ghSearchCode',
+    GITHUB_SEARCH_PULL_REQUESTS: 'ghHistoryResearch',
+    GITHUB_SEARCH_REPOSITORIES: 'ghSearchRepos',
+    GITHUB_VIEW_REPO_STRUCTURE: 'ghViewRepoStructure',
+    PACKAGE_SEARCH: 'npmSearch',
+    GITHUB_CLONE_REPO: 'ghCloneRepo',
     LOCAL_RIPGREP: 'localSearchCode',
     LOCAL_FETCH_CONTENT: 'localGetFileContent',
     LOCAL_FIND_FILES: 'localFindFiles',
     LOCAL_VIEW_STRUCTURE: 'localViewStructure',
-    LSP_GOTO_DEFINITION: 'lspGotoDefinition',
-    LSP_FIND_REFERENCES: 'lspFindReferences',
-    LSP_CALL_HIERARCHY: 'lspCallHierarchy',
+    LSP_GET_SEMANTIC_CONTENT: 'lspGetSemantics',
+    GITHUB_HISTORY: 'ghHistorySearch',
+    LOCAL_BINARY_INSPECT: 'localBinaryInspect',
   },
   baseSchema: {
+    id: 'Stable query identifier.',
     mainResearchGoal: 'Main research goal description',
     researchGoal: 'Research goal description',
     reasoning: 'Reasoning description',
-    bulkQuery: (toolName: string) =>
-      `Research queries for ${toolName} (1-3 queries per call for optimal resource management). Review schema before use for optimal results`,
   },
   tools: {
-    githubGetFileContent: githubFetchContentSchema,
-    githubSearchCode: githubSearchCodeSchema,
-    githubSearchPullRequests: mockToolSchema,
-    githubSearchRepositories: mockToolSchema,
-    githubViewRepoStructure: mockToolSchema,
-    packageSearch: mockToolSchema,
-    githubCloneRepo: {
-      name: 'githubCloneRepo',
+    ghGetFileContent: githubFetchContentSchema,
+    ghSearchCode: ghSearchCodeSchema,
+    ghHistoryResearch: mockToolSchema,
+    ghSearchRepos: mockToolSchema,
+    ghViewRepoStructure: mockToolSchema,
+    npmSearch: mockToolSchema,
+    ghCloneRepo: {
+      name: 'ghCloneRepo',
       description: 'Clone GitHub repository to local filesystem',
       schema: {
         owner: 'Repository owner (user or org)',
         repo: 'Repository name',
         branch: 'Branch/tag/SHA to clone',
-        sparse_path: 'Fetch only this subdirectory (sparse checkout)',
+        sparsePath: 'Fetch only this subdirectory (sparse checkout)',
         forceRefresh: 'Bypass cache and force a fresh clone',
         charOffset: 'Character offset for output pagination',
         charLength: 'Character budget for output pagination',
@@ -461,9 +403,9 @@ const mockContent = {
     localGetFileContent: localFetchContentSchema,
     localFindFiles: localFindFilesSchema,
     localViewStructure: localViewStructureSchema,
-    lspGotoDefinition: lspGotoDefinitionSchema,
-    lspFindReferences: lspFindReferencesSchema,
-    lspCallHierarchy: lspCallHierarchySchema,
+    lspGetSemantics: lspGetSemanticsSchema,
+    ghHistorySearch: mockToolSchema,
+    localBinaryInspect: mockToolSchema,
   },
   baseHints: {
     hasResults: ['Base hint for hasResults'],
@@ -530,69 +472,44 @@ vi.mock('@octocodeai/octocode-core', async importOriginal => {
     BulkCloneRepoSchema: stubBulkSchema(),
     GitHubCloneRepoOutputSchema: passthrough(),
     NpmPackageQuerySchema: passthrough(),
-    PackageSearchBulkQuerySchema: stubBulkSchema(),
-    PackageSearchOutputSchema: passthrough(),
-    LSPGotoDefinitionQuerySchema: passthrough(),
-    BulkLSPGotoDefinitionSchema: stubBulkSchema(),
-    BulkLSPGotoDefinitionQuerySchema: stubBulkSchema(),
-    LspGotoDefinitionOutputSchema: passthrough(),
-    LSPFindReferencesQuerySchema: passthrough(),
-    BulkLSPFindReferencesSchema: stubBulkSchema(),
-    BulkLSPFindReferencesQuerySchema: stubBulkSchema(),
-    LspFindReferencesOutputSchema: passthrough(),
-    LSPCallHierarchyQuerySchema: passthrough(),
-    BulkLSPCallHierarchySchema: stubBulkSchema(),
-    BulkLSPCallHierarchyQuerySchema: stubBulkSchema(),
-    LspCallHierarchyOutputSchema: passthrough(),
+    NpmSearchBulkQuerySchema: stubBulkSchema(),
+    NpmSearchOutputSchema: passthrough(),
     BaseQuerySchema: passthrough(),
     BaseQuerySchemaLocal: passthrough(),
     ErrorDataSchema: passthrough(),
     BulkFetchContentSchema: stubBulkSchema(),
     BulkViewStructureSchema: stubBulkSchema(),
     BulkFindFilesSchema: stubBulkSchema(),
-    GITHUB_FETCH_CONTENT: 'githubGetFileContent',
-    GITHUB_SEARCH_CODE: 'githubSearchCode',
-    GITHUB_SEARCH_PULL_REQUESTS: 'githubSearchPullRequests',
-    GITHUB_SEARCH_REPOSITORIES: 'githubSearchRepositories',
-    GITHUB_VIEW_REPO_STRUCTURE: 'githubViewRepoStructure',
-    GITHUB_CLONE_REPO: 'githubCloneRepo',
-    PACKAGE_SEARCH: 'packageSearch',
+    GITHUB_FETCH_CONTENT: 'ghGetFileContent',
+    GITHUB_SEARCH_CODE: 'ghSearchCode',
+    GITHUB_SEARCH_PULL_REQUESTS: 'ghHistoryResearch',
+    GITHUB_SEARCH_REPOSITORIES: 'ghSearchRepos',
+    GITHUB_VIEW_REPO_STRUCTURE: 'ghViewRepoStructure',
+    GITHUB_CLONE_REPO: 'ghCloneRepo',
+    PACKAGE_SEARCH: 'npmSearch',
     LOCAL_RIPGREP: 'localSearchCode',
     LOCAL_FETCH_CONTENT: 'localGetFileContent',
     LOCAL_FIND_FILES: 'localFindFiles',
     LOCAL_VIEW_STRUCTURE: 'localViewStructure',
-    LSP_GOTO_DEFINITION: 'lspGotoDefinition',
-    LSP_FIND_REFERENCES: 'lspFindReferences',
-    LSP_CALL_HIERARCHY: 'lspCallHierarchy',
+    LSP_GET_SEMANTIC_CONTENT: 'lspGetSemantics',
     validateRipgrepQuery: identityValidator,
     validateFindFilesQuery: identityValidator,
     validateViewStructureQuery: identityValidator,
     validateFetchContentQuery: identityValidator,
     applyWorkflowMode: identityValidator,
     createBulkQuerySchema: stubBulkSchema,
-    LOCAL_RIPGREP_DESCRIPTION: 'localSearchCode',
-    LOCAL_FIND_FILES_DESCRIPTION: 'localFindFiles',
-    LOCAL_VIEW_STRUCTURE_DESCRIPTION: 'localViewStructure',
-    LOCAL_FETCH_CONTENT_DESCRIPTION: 'localGetFileContent',
-    LSP_GOTO_DEFINITION_DESCRIPTION: 'lspGotoDefinition',
-    LSP_FIND_REFERENCES_DESCRIPTION: 'lspFindReferences',
-    LSP_CALL_HIERARCHY_DESCRIPTION: 'lspCallHierarchy',
-    GITHUB_CLONE_REPO_DESCRIPTION: 'githubCloneRepo',
-    PackageSearchQuerySchema: passthrough(),
+    NpmSearchQuerySchema: passthrough(),
     LocalSearchCodeDataSchema: passthrough(),
     LocalFindFilesDataSchema: passthrough(),
     LocalViewStructureDataSchema: passthrough(),
     LocalGetFileContentDataSchema: passthrough(),
-    LspGotoDefinitionDataSchema: passthrough(),
-    LspFindReferencesDataSchema: passthrough(),
-    LspCallHierarchyDataSchema: passthrough(),
     GitHubSearchCodeDataSchema: passthrough(),
     GitHubGetFileContentDataSchema: passthrough(),
     GitHubSearchPullRequestsDataSchema: passthrough(),
     GitHubSearchRepositoriesDataSchema: passthrough(),
     GitHubViewRepoStructureDataSchema: passthrough(),
     GitHubCloneRepoDataSchema: passthrough(),
-    PackageSearchDataSchema: passthrough(),
+    NpmSearchDataSchema: passthrough(),
   };
 
   return {
@@ -602,7 +519,11 @@ vi.mock('@octocodeai/octocode-core', async importOriginal => {
       return _coreMock.ref;
     },
     get completeMetadata() {
-      return _coreMock.ref;
+      return {
+        ...(_coreMock.ref as Record<string, unknown>),
+        baseSchema: actual.completeMetadata.baseSchema,
+        tools: actual.completeMetadata.tools,
+      };
     },
   };
 });
@@ -657,8 +578,6 @@ function captureStderrWrite(chunk: string | Uint8Array): boolean {
 }
 
 _coreMock.ref = mockContent;
-
-await initializeToolMetadata();
 
 beforeEach(() => {
   sessionMockState.sessionId = generateMockUUID();

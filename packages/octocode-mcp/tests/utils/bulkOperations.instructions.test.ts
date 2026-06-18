@@ -1,12 +1,9 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { executeBulkOperation } from '../../src/utils/response/bulk.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
-import { initializeToolMetadata } from '../../src/tools/toolMetadata/state.js';
+import { executeBulkOperation } from '../../../octocode-tools-core/src/utils/response/bulk.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import { getTextContent } from './testHelpers.js';
 
-beforeAll(async () => {
-  await initializeToolMetadata();
-});
+beforeAll(async () => {});
 
 describe('Bulk Response Envelope', () => {
   const toolName = TOOL_NAMES.GITHUB_SEARCH_CODE;
@@ -21,7 +18,7 @@ describe('Bulk Response Envelope', () => {
     const text = getTextContent(result.content);
 
     expect(text).toContain('results:');
-    expect(text).toContain('id: "q1"');
+    expect(text).toContain('id: q1');
     expect(text).not.toContain('instructions:');
     expect(text).not.toContain('original query');
   });
@@ -47,9 +44,9 @@ describe('Bulk Response Envelope', () => {
     const result = await executeBulkOperation(queries, processor, { toolName });
     const text = getTextContent(result.content);
 
-    expect(text).toContain('id: "q1"');
-    expect(text).toContain('id: "q2"');
-    expect(text).toContain('id: "q3"');
+    expect(text).toContain('id: q1');
+    expect(text).toContain('id: q2');
+    expect(text).toContain('id: q3');
     expect(text).not.toContain('instructions:');
   });
 

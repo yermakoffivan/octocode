@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from '../../src/tools/toolsManager.js';
-import { STATIC_TOOL_NAMES } from '../../src/tools/toolNames.js';
+import { STATIC_TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolNames.js';
 
 type MockServer = {
   registerTool: (name: string, options: unknown, handler: unknown) => unknown;
@@ -64,17 +64,20 @@ vi.mock('../../src/tools/toolConfig.js', () => ({
   ],
 }));
 
-vi.mock('../../src/tools/toolMetadata/proxies.js', async () => {
-  const actual = await vi.importActual<
-    typeof import('../../src/tools/toolMetadata/proxies.js')
-  >('../../src/tools/toolMetadata/proxies.js');
-  return {
-    ...actual,
-    isToolInMetadata: vi.fn().mockReturnValue(true),
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js',
+  async () => {
+    const actual = await vi.importActual<
+      typeof import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js')
+    >('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
+    return {
+      ...actual,
+      isToolInMetadata: vi.fn().mockReturnValue(true),
+    };
+  }
+);
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getServerConfig: vi.fn().mockReturnValue({
     version: '1.0.0',
     githubApiUrl: 'https://api.github.com',
@@ -88,7 +91,7 @@ vi.mock('../../src/serverConfig.js', () => ({
   isCloneEnabled: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(),
 }));
 
@@ -104,7 +107,7 @@ vi.mock('../../src/tools/local_find_files/register.js', () => ({
 vi.mock('../../src/tools/local_fetch_content/register.js', () => ({
   fetchContent: vi.fn().mockResolvedValue({ status: 'hasResults' }),
 }));
-vi.mock('../../src/utils/bulkOperations.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/bulkOperations.js', () => ({
   executeBulkOperation: vi.fn().mockResolvedValue({
     content: [{ type: 'text', text: 'test' }],
   }),

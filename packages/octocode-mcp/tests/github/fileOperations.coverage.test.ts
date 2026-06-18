@@ -1,16 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchGitHubFileContentAPI } from '../../src/github/fileContent.js';
-import { viewGitHubRepositoryStructureAPI } from '../../src/github/repoStructure.js';
-import { getOctokit, resolveDefaultBranch } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { fetchGitHubFileContentAPI } from '../../../octocode-tools-core/src/github/fileContent.js';
+import { viewGitHubRepositoryStructureAPI } from '../../../octocode-tools-core/src/github/repoStructure.js';
+import {
+  getOctokit,
+  resolveDefaultBranch,
+} from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 import { RequestError } from 'octokit';
-import * as minifierModule from '../../src/utils/minifier/minifier.js';
+import * as minifierModule from '@octocodeai/octocode-context-utils';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
-vi.mock('../../src/utils/minifier/minifier.js');
+vi.mock('@octocodeai/octocode-context-utils', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, minifyContent: vi.fn(), minifyContentSync: vi.fn() };
+});
 
 function createRequestError(message: string, status: number) {
   return new RequestError(message, status, {
@@ -73,7 +79,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockResolvedValue({
         content: 'test content',
@@ -128,7 +134,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockResolvedValue({
         content: 'test content',
@@ -180,7 +186,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockResolvedValue({
         content: 'test content',
@@ -230,7 +236,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockResolvedValue({
         content: 'test content',
@@ -281,7 +287,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -328,7 +334,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -374,7 +380,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -409,7 +415,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -420,7 +426,6 @@ describe('File Operations - Additional Coverage Tests', () => {
 
       expect('error' in result).toBe(true);
       if ('error' in result) {
-        // "io" is < 3 chars so prefix match should NOT fire
         expect(result.hints?.some(h => h.includes('Did you mean'))).toBeFalsy();
       }
     });
@@ -441,7 +446,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -479,7 +484,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -518,7 +523,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -553,7 +558,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -586,7 +591,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -618,7 +623,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -649,7 +654,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -679,7 +684,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -722,7 +727,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -766,7 +771,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -810,7 +815,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -881,7 +886,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
@@ -889,7 +894,7 @@ describe('File Operations - Additional Coverage Tests', () => {
         repo: 'repo',
         branch: 'main',
         path: '',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);
@@ -903,7 +908,8 @@ describe('File Operations - Additional Coverage Tests', () => {
   });
 
   describe('File content with no content returned', () => {
-    it('should handle file with null content field', async () => {
+    it('should fall back to blob API when content field is null but file has size', async () => {
+      const blobContent = Buffer.from('hello from blob').toString('base64');
       const mockOctokit = {
         rest: {
           repos: {
@@ -917,12 +923,18 @@ describe('File Operations - Additional Coverage Tests', () => {
                 path: 'test.txt',
               },
             }),
+            listCommits: vi.fn().mockResolvedValue({ data: [] }),
+          },
+          git: {
+            getBlob: vi.fn().mockResolvedValue({
+              data: { content: blobContent, encoding: 'base64' },
+            }),
           },
         },
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await fetchGitHubFileContentAPI({
@@ -931,10 +943,8 @@ describe('File Operations - Additional Coverage Tests', () => {
         path: 'test-null.txt',
       });
 
-      expect('error' in result).toBe(true);
-      if ('error' in result) {
-        expect(result.error).toContain('File is empty');
-      }
+      expect('error' in result).toBe(false);
+      expect(result).toHaveProperty('data');
     });
   });
 
@@ -962,7 +972,7 @@ describe('File Operations - Additional Coverage Tests', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
       vi.mocked(minifierModule.minifyContent).mockImplementation(
         async content => ({
@@ -977,17 +987,20 @@ describe('File Operations - Additional Coverage Tests', () => {
         repo: 'repo',
         path: 'multi-match.txt',
         matchString: 'TODO',
-        matchStringContextLines: 1,
+        contextLines: 1,
       });
 
       expect(result).toHaveProperty('data');
       if ('data' in result && result.data) {
         expect(result.data.matchLocations).toBeDefined();
         expect(
-          result.data.matchLocations?.some(
-            w => w.includes('2 other locations') || w.includes('other location')
+          result.data.matchLocations?.some(w =>
+            w.includes('occurrences of "TODO"')
           )
         ).toBe(true);
+        expect(result.data.content).toContain('TODO: first');
+        expect(result.data.content).toContain('TODO: second');
+        expect(result.data.content).toContain('TODO: third');
       }
     });
   });

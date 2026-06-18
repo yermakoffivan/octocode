@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import * as githubAPI from '../../src/github/githubAPI.js';
+import * as githubAPI from '../../../octocode-tools-core/src/github/githubAPI.js';
 
 describe('GitHub API Types', () => {
   describe('Type guards', () => {

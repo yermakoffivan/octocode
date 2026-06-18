@@ -1,56 +1,65 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { incrementToolCharSavings } from 'octocode-shared';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
-import { attachRawResponseChars } from '../../src/utils/response/charSavings.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
+import { attachRawResponseChars } from '../../../octocode-tools-core/src/utils/response/charSavings.js';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
+import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from '../../../octocode-tools-core/src/tools/lsp/shared/semanticTypes.js';
 
 const mockSearchContentRipgrep = vi.hoisted(() => vi.fn());
 const mockViewStructure = vi.hoisted(() => vi.fn());
 const mockFindFiles = vi.hoisted(() => vi.fn());
 const mockFetchContent = vi.hoisted(() => vi.fn());
-const mockFindReferences = vi.hoisted(() => vi.fn());
-const mockProcessCallHierarchy = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/tools/local_ripgrep/searchContentRipgrep.js', () => ({
-  searchContentRipgrep: (...args: unknown[]) =>
-    mockSearchContentRipgrep(...args),
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_ripgrep/searchContentRipgrep.js',
+  () => ({
+    searchContentRipgrep: (...args: unknown[]) =>
+      mockSearchContentRipgrep(...args),
+  })
+);
+
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_view_structure/local_view_structure.js',
+  () => ({
+    viewStructure: (...args: unknown[]) => mockViewStructure(...args),
+  })
+);
+
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_find_files/findFiles.js',
+  () => ({
+    findFiles: (...args: unknown[]) => mockFindFiles(...args),
+  })
+);
+
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_fetch_content/fetchContent.js',
+  () => ({
+    fetchContent: (...args: unknown[]) => mockFetchContent(...args),
+  })
+);
+
+vi.mock('octocode-lsp/manager', () => ({
+  acquirePooledClient: vi.fn(),
+  isLanguageServerAvailable: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock('../../src/tools/local_view_structure/local_view_structure.js', () => ({
-  viewStructure: (...args: unknown[]) => mockViewStructure(...args),
-}));
-
-vi.mock('../../src/tools/local_find_files/findFiles.js', () => ({
-  findFiles: (...args: unknown[]) => mockFindFiles(...args),
-}));
-
-vi.mock('../../src/tools/local_fetch_content/fetchContent.js', () => ({
-  fetchContent: (...args: unknown[]) => mockFetchContent(...args),
-}));
-
-vi.mock('../../src/tools/lsp_find_references/lsp_find_references.js', () => ({
-  findReferences: (...args: unknown[]) => mockFindReferences(...args),
-}));
-
-vi.mock('../../src/tools/lsp_call_hierarchy/callHierarchy.js', () => ({
-  processCallHierarchy: (...args: unknown[]) =>
-    mockProcessCallHierarchy(...args),
+vi.mock('octocode-lsp/workspaceRoot', () => ({
+  resolveWorkspaceRootForFile: vi.fn().mockResolvedValue(process.cwd()),
 }));
 
 import { registerLocalRipgrepTool } from '../../src/tools/local_ripgrep/register.js';
 import { registerLocalViewStructureTool } from '../../src/tools/local_view_structure/register.js';
 import { registerLocalFindFilesTool } from '../../src/tools/local_find_files/register.js';
 import { registerLocalFetchContentTool } from '../../src/tools/local_fetch_content/register.js';
-import { registerLSPFindReferencesTool } from '../../src/tools/lsp_find_references/register.js';
-import { registerLSPCallHierarchyTool } from '../../src/tools/lsp_call_hierarchy/register.js';
+import { registerLspGetSemanticsTool } from '../../src/tools/lsp/semantic_content/register.js';
 
 const RAW_BY_TOOL: Record<string, number> = {
   [TOOL_NAMES.LOCAL_RIPGREP]: 11_111,
   [TOOL_NAMES.LOCAL_VIEW_STRUCTURE]: 22_222,
   [TOOL_NAMES.LOCAL_FIND_FILES]: 33_333,
   [TOOL_NAMES.LOCAL_FETCH_CONTENT]: 44_444,
-  [TOOL_NAMES.LSP_FIND_REFERENCES]: 55_555,
-  [TOOL_NAMES.LSP_CALL_HIERARCHY]: 66_666,
+  [LSP_GET_SEMANTIC_CONTENT_TOOL_NAME]: 55_555,
 };
 
 describe('local + LSP tool stats runtime contract', () => {
@@ -115,44 +124,6 @@ describe('local + LSP tool stats runtime contract', () => {
         RAW_BY_TOOL[TOOL_NAMES.LOCAL_FETCH_CONTENT]
       )
     );
-
-    mockFindReferences.mockResolvedValue(
-      attachRawResponseChars(
-        {
-          symbolName: 'foo',
-          references: [
-            {
-              uri: '/workspace/a.ts',
-              range: {
-                start: { line: 0, character: 0 },
-                end: { line: 0, character: 3 },
-              },
-              content: 'foo',
-            },
-          ],
-          pagination: {
-            currentPage: 1,
-            totalPages: 1,
-            referencesPerPage: 20,
-            totalReferences: 1,
-            hasMore: false,
-          },
-          hints: ['references hint'],
-        },
-        RAW_BY_TOOL[TOOL_NAMES.LSP_FIND_REFERENCES]
-      )
-    );
-
-    mockProcessCallHierarchy.mockResolvedValue(
-      attachRawResponseChars(
-        {
-          symbolName: 'foo',
-          calls: [],
-          hints: ['call hierarchy hint'],
-        },
-        RAW_BY_TOOL[TOOL_NAMES.LSP_CALL_HIERARCHY]
-      )
-    );
   });
 
   it('records charsSavedByTool for every local + LSP tool when invoked', async () => {
@@ -162,8 +133,7 @@ describe('local + LSP tool stats runtime contract', () => {
     registerLocalViewStructureTool(mockServer.server);
     registerLocalFindFilesTool(mockServer.server);
     registerLocalFetchContentTool(mockServer.server);
-    registerLSPFindReferencesTool(mockServer.server);
-    registerLSPCallHierarchyTool(mockServer.server);
+    registerLspGetSemanticsTool(mockServer.server);
 
     await mockServer.callTool(TOOL_NAMES.LOCAL_RIPGREP, {
       queries: [
@@ -171,7 +141,7 @@ describe('local + LSP tool stats runtime contract', () => {
           id: 'rg',
           researchGoal: 'exercise localSearchCode stats',
           reasoning: 'prove runtime char savings emission',
-          pattern: 'foo',
+          keywords: 'foo',
           path: '/workspace',
         },
       ],
@@ -210,29 +180,14 @@ describe('local + LSP tool stats runtime contract', () => {
       ],
     });
 
-    await mockServer.callTool(TOOL_NAMES.LSP_FIND_REFERENCES, {
+    await mockServer.callTool(LSP_GET_SEMANTIC_CONTENT_TOOL_NAME, {
       queries: [
         {
-          id: 'refs',
-          researchGoal: 'exercise lspFindReferences stats',
+          id: 'semantic',
+          researchGoal: 'exercise lspGetSemantics stats',
           reasoning: 'prove runtime char savings emission',
-          uri: '/workspace/a.ts',
-          symbolName: 'foo',
-          lineHint: 1,
-        },
-      ],
-    });
-
-    await mockServer.callTool(TOOL_NAMES.LSP_CALL_HIERARCHY, {
-      queries: [
-        {
-          id: 'calls',
-          researchGoal: 'exercise lspCallHierarchy stats',
-          reasoning: 'prove runtime char savings emission',
-          uri: '/workspace/a.ts',
-          symbolName: 'foo',
-          lineHint: 1,
-          direction: 'incoming',
+          uri: `${process.cwd()}/package.json`,
+          type: 'documentSymbols',
         },
       ],
     });
@@ -245,8 +200,7 @@ describe('local + LSP tool stats runtime contract', () => {
       TOOL_NAMES.LOCAL_VIEW_STRUCTURE,
       TOOL_NAMES.LOCAL_FIND_FILES,
       TOOL_NAMES.LOCAL_FETCH_CONTENT,
-      TOOL_NAMES.LSP_FIND_REFERENCES,
-      TOOL_NAMES.LSP_CALL_HIERARCHY,
+      LSP_GET_SEMANTIC_CONTENT_TOOL_NAME,
     ];
 
     expect(recordedToolNames).toEqual(expectedToolNames);
@@ -255,10 +209,17 @@ describe('local + LSP tool stats runtime contract', () => {
       const call = statsCalls.find(
         ([recordedName]) => recordedName === toolName
       );
-      expect(
-        call?.[1],
-        `${toolName} should forward upstream raw chars verbatim`
-      ).toBe(RAW_BY_TOOL[toolName]);
+      if (toolName.startsWith('lsp')) {
+        expect(
+          call?.[1],
+          `${toolName} should record raw chars`
+        ).toBeGreaterThan(0);
+      } else {
+        expect(
+          call?.[1],
+          `${toolName} should forward upstream raw chars verbatim`
+        ).toBe(RAW_BY_TOOL[toolName]);
+      }
       expect(
         call?.[2],
         `${toolName} should record positive response chars`

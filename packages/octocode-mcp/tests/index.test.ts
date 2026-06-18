@@ -7,7 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 vi.mock('@modelcontextprotocol/sdk/server/mcp.js');
 vi.mock('@modelcontextprotocol/sdk/server/stdio.js');
-vi.mock('../src/utils/http/cache.js');
+vi.mock('../../octocode-tools-core/src/utils/http/cache.js');
 vi.mock('../src/tools/github_search_code/github_search_code.js');
 vi.mock('../src/tools/github_fetch_content/github_fetch_content.js');
 vi.mock('../src/tools/github_search_repos/github_search_repos.js');
@@ -17,17 +17,17 @@ vi.mock(
 vi.mock(
   '../src/tools/github_view_repo_structure/github_view_repo_structure.js'
 );
-vi.mock('../src/utils/exec/npm.js');
-vi.mock('../src/serverConfig.js');
+vi.mock('../../octocode-tools-core/src/utils/exec/npm.js');
+vi.mock('../../octocode-tools-core/src/serverConfig.js');
 vi.mock('../src/tools/toolsManager.js');
-vi.mock('../src/providers/factory.js', () => ({
+vi.mock('../../octocode-tools-core/src/providers/factory.js', () => ({
   initializeProviders: vi.fn().mockResolvedValue(undefined),
   clearProviderCache: vi.fn(),
 }));
-vi.mock('../src/github/client.js', () => ({
+vi.mock('../../octocode-tools-core/src/github/client.js', () => ({
   clearOctokitInstances: vi.fn(),
 }));
-vi.mock('../src/session.js', () => ({
+vi.mock('../../octocode-tools-core/src/session.js', () => ({
   initializeSession: vi
     .fn()
     .mockReturnValue({ getSessionId: () => 'test-session-id' }),
@@ -35,19 +35,25 @@ vi.mock('../src/session.js', () => ({
   logSessionError: vi.fn().mockResolvedValue(undefined),
   logToolCall: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock('octocode-security-utils/withSecurityValidation', () => ({
+vi.mock('octocode-security/withSecurityValidation', () => ({
   configureSecurity: vi.fn(),
 }));
-vi.mock('../src/tools/toolMetadata/proxies.js', async importOriginal => ({
-  ...(await importOriginal<object>()),
-  loadToolContent: vi
-    .fn()
-    .mockResolvedValue({ instructions: 'Test instructions' }),
-}));
-vi.mock('../src/tools/github_clone_repo/cache.js', () => ({
-  startCacheGC: vi.fn(),
-  stopCacheGC: vi.fn(),
-}));
+vi.mock(
+  '../../octocode-tools-core/src/tools/toolMetadata/proxies.js',
+  async importOriginal => ({
+    ...(await importOriginal<object>()),
+    loadToolContent: vi
+      .fn()
+      .mockResolvedValue({ instructions: 'Test instructions' }),
+  })
+);
+vi.mock(
+  '../../octocode-tools-core/src/tools/github_clone_repo/cache.js',
+  () => ({
+    startCacheGC: vi.fn(),
+    stopCacheGC: vi.fn(),
+  })
+);
 vi.mock('../src/utils/core/logger.js', () => {
   const mockLogger = {
     info: vi.fn().mockResolvedValue(undefined),
@@ -73,9 +79,9 @@ import {
   getGitHubToken,
   isCloneEnabled,
   getActiveProvider,
-} from '../src/serverConfig.js';
+} from '../../octocode-tools-core/src/serverConfig.js';
 import { registerTools } from '../src/tools/toolsManager.js';
-import { TOOL_NAMES } from '../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import {
   allowExpectedStderrWarning,
   allowUnexpectedWarningFailureForCurrentTest,
@@ -542,26 +548,7 @@ describe('Index Module', () => {
         .spyOn(process.stderr, 'write')
         .mockImplementation(() => true);
 
-      const mockContent = {
-        instructions: 'test',
-        prompts: {},
-        toolNames: TOOL_NAMES,
-        baseSchema: {
-          id: 'test-id',
-          mainResearchGoal: '',
-          researchGoal: '',
-          reasoning: '',
-          bulkQuery: () => '',
-        },
-        tools: {},
-        baseHints: { hasResults: [], empty: [] },
-        genericErrorHints: [],
-      };
-
-      await registerAllTools(
-        mockMcpServer as unknown as McpServer,
-        mockContent
-      );
+      await registerAllTools(mockMcpServer as unknown as McpServer);
 
       expect(mockRegisterTools).toHaveBeenCalled();
       expect(stderrSpy).toHaveBeenCalledWith(
@@ -575,26 +562,7 @@ describe('Index Module', () => {
       mockGetGitHubToken.mockResolvedValue('test-token');
       const { registerAllTools } = await import('../src/index.js');
 
-      const mockContent = {
-        instructions: 'test',
-        prompts: {},
-        toolNames: TOOL_NAMES,
-        baseSchema: {
-          id: 'test-id',
-          mainResearchGoal: '',
-          researchGoal: '',
-          reasoning: '',
-          bulkQuery: () => '',
-        },
-        tools: {},
-        baseHints: { hasResults: [], empty: [] },
-        genericErrorHints: [],
-      };
-
-      await registerAllTools(
-        mockMcpServer as unknown as McpServer,
-        mockContent
-      );
+      await registerAllTools(mockMcpServer as unknown as McpServer);
 
       expect(mockRegisterTools).toHaveBeenCalled();
     });
@@ -672,7 +640,7 @@ describe('Index Module', () => {
     });
 
     it('should disable tools with DISABLE_TOOLS', async () => {
-      process.env.DISABLE_TOOLS = 'githubSearchCode,githubGetFileContent';
+      process.env.DISABLE_TOOLS = 'ghSearchCode,ghGetFileContent';
 
       await import('../src/index.js');
       await waitForAsyncOperations();
@@ -691,8 +659,8 @@ describe('Index Module', () => {
     });
 
     it('should handle whitespace in tool configuration', async () => {
-      process.env.ENABLE_TOOLS = ' githubSearchPullRequests ';
-      process.env.DISABLE_TOOLS = ' githubSearchCode ';
+      process.env.ENABLE_TOOLS = ' ghHistoryResearch ';
+      process.env.DISABLE_TOOLS = ' ghSearchCode ';
 
       await import('../src/index.js');
       await waitForAsyncOperations();
@@ -701,7 +669,7 @@ describe('Index Module', () => {
     });
 
     it('should handle invalid tool names gracefully', async () => {
-      process.env.ENABLE_TOOLS = 'githubSearchPullRequests,invalidTool';
+      process.env.ENABLE_TOOLS = 'ghHistoryResearch,invalidTool';
       process.env.DISABLE_TOOLS = 'nonExistentTool';
 
       await import('../src/index.js');

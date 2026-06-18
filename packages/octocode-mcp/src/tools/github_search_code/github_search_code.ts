@@ -1,15 +1,13 @@
-import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
+  TOOL_NAMES,
   GitHubCodeSearchBulkQueryLocalSchema,
-  GitHubCodeSearchOutputLocalSchema,
-} from '../../scheme/remoteSchemaOverlay.js';
-import { searchMultipleGitHubCode } from './execution.js';
+  searchMultipleGitHubCode,
+} from '@octocodeai/octocode-tools-core';
 import { createRemoteToolRegistration } from '../registerRemoteTool.js';
 
 export const registerGitHubSearchCodeTool = createRemoteToolRegistration({
   name: TOOL_NAMES.GITHUB_SEARCH_CODE,
   title: 'GitHub Code Search',
   inputSchema: GitHubCodeSearchBulkQueryLocalSchema,
-  outputSchema: GitHubCodeSearchOutputLocalSchema,
   executionFn: searchMultipleGitHubCode,
 });

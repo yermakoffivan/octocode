@@ -25,30 +25,32 @@ const mockWithDataCache = vi.hoisted(() => vi.fn());
 const mockGenerateCacheKey = vi.hoisted(() => vi.fn());
 const mockCreateResult = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../src/github/client.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: mockGetOctokit,
   OctokitWithThrottling: class MockOctokit {},
   resolveDefaultBranch: mockResolveDefaultBranch,
 }));
 
-vi.mock('octocode-security-utils/contentSanitizer', () => ({
+vi.mock('octocode-security/contentSanitizer', () => ({
   ContentSanitizer: mockContentSanitizer,
 }));
 
-vi.mock('../../../src/utils/minifier/minifier.js', () => ({
-  minifyContent: mockminifyContent,
-}));
+vi.mock('@octocodeai/octocode-context-utils', async importOriginal => {
+  const actual =
+    await importOriginal<typeof import('@octocodeai/octocode-context-utils')>();
+  return { ...actual, minifyContent: mockminifyContent };
+});
 
-vi.mock('../../../src/utils/http/cache.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: mockGenerateCacheKey,
   withDataCache: mockWithDataCache,
 }));
 
-vi.mock('../../../src/mcp/responses.js', () => ({
+vi.mock('../../../../octocode-tools-core/src/mcp/responses.js', () => ({
   createResult: mockCreateResult,
 }));
 
-import { fetchGitHubFileContentAPI } from '../../../src/github/fileContent.js';
+import { fetchGitHubFileContentAPI } from '../../../../octocode-tools-core/src/github/fileContent.js';
 
 function createTestParams(overrides: Record<string, unknown> = {}) {
   return {
@@ -56,7 +58,7 @@ function createTestParams(overrides: Record<string, unknown> = {}) {
     repo: 'repo',
     path: 'test.txt',
     fullContent: false,
-    matchStringContextLines: 5,
+    contextLines: 5,
     ...overrides,
   };
 }
@@ -165,6 +167,8 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
           totalLines: 5,
+          sourceBytes: 34,
+          sourceChars: 34,
         },
       });
     });
@@ -184,6 +188,8 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
           totalLines: 5,
+          sourceBytes: 34,
+          sourceChars: 34,
         },
       });
     });
@@ -205,6 +211,8 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           branch: 'master',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
           totalLines: 5,
+          sourceBytes: 34,
+          sourceChars: 34,
         },
       });
     });
@@ -226,11 +234,13 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
           totalLines: 5,
+          sourceBytes: 34,
+          sourceChars: 34,
         },
       });
     });
 
-    it('returns content verbatim — base processor never minifies (minify is concise-only)', async () => {
+    it("applies the schema-default 'standard' content view via applyContentViewMinification", async () => {
       const params = createTestParams();
 
       const result = await fetchGitHubFileContentAPI(params);
@@ -246,6 +256,8 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
           totalLines: 5,
+          sourceBytes: 34,
+          sourceChars: 34,
         },
       });
     });
@@ -269,6 +281,8 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
           branch: 'main',
           content: 'line 1\nline 2\nline 3\nline 4\nline 5',
           totalLines: 5,
+          sourceBytes: 34,
+          sourceChars: 34,
         },
       });
     });
@@ -419,7 +433,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
       });
     });
 
-    it('should find match and return context with default matchStringContextLines (5)', async () => {
+    it('should find match and return context with default contextLines (5)', async () => {
       const params = createTestParams({
         matchString: 'function MyComponent()',
       });
@@ -438,10 +452,10 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
       }
     });
 
-    it('should respect custom matchStringContextLines', async () => {
+    it('should respect custom contextLines', async () => {
       const params = createTestParams({
         matchString: 'function MyComponent()',
-        matchStringContextLines: 2,
+        contextLines: 2,
       });
 
       const result = await fetchGitHubFileContentAPI(params);
@@ -455,10 +469,10 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
       }
     });
 
-    it('should handle matchStringContextLines=0 (only matching line)', async () => {
+    it('should handle contextLines=0 (only matching line)', async () => {
       const params = createTestParams({
         matchString: 'function MyComponent()',
-        matchStringContextLines: 0,
+        contextLines: 0,
       });
 
       const result = await fetchGitHubFileContentAPI(params);
@@ -509,7 +523,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
 
       const params = createTestParams({
         matchString: 'export function createRef',
-        matchStringContextLines: 3,
+        contextLines: 3,
         minified: false,
       });
 
@@ -559,7 +573,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
     it('should handle matchString with multiple occurrences', async () => {
       const params = createTestParams({
         matchString: 'import',
-        matchStringContextLines: 1,
+        contextLines: 1,
       });
 
       const result = await fetchGitHubFileContentAPI(params);
@@ -567,9 +581,12 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
       expect(result.status).toBe(200);
       if ('data' in result) {
         expect(result.data.content).toContain('import React from "react"');
-        expect(result.data.matchLocations).toContain(
-          'Found "import" on line 2 (and 1 other locations)'
-        );
+        expect(
+          result.data.matchLocations?.some(
+            loc =>
+              loc.includes('occurrences of "import"') && loc.includes('slice')
+          )
+        ).toBe(true);
       }
     });
   });
@@ -595,7 +612,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
         startLine: 1,
         endLine: 5,
         matchString: 'line 10',
-        matchStringContextLines: 2,
+        contextLines: 2,
       });
 
       const result = await fetchGitHubFileContentAPI(params);
@@ -630,7 +647,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
     it('returns match-selected content verbatim (no base minify)', async () => {
       const params = createTestParams({
         matchString: 'line 15',
-        matchStringContextLines: 1,
+        contextLines: 1,
       });
 
       const result = await fetchGitHubFileContentAPI(params);
@@ -651,7 +668,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
         startLine: 5,
         endLine: 10,
         matchString: 'search term',
-        matchStringContextLines: 3,
+        contextLines: 3,
       });
 
       mockOctokit.rest.repos.getContent.mockResolvedValue({
@@ -697,29 +714,24 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
         endLine: 5,
       });
 
-      expect(mockGenerateCacheKey).toHaveBeenCalledTimes(2);
-      expect(mockGenerateCacheKey).toHaveBeenNthCalledWith(
-        1,
-        'gh-api-file-content',
-        {
+      expect(mockGenerateCacheKey).toHaveBeenCalledTimes(4);
+      const contentKeyCalls = mockGenerateCacheKey.mock.calls.filter(
+        call => !(call[1] as Record<string, unknown>).ts
+      );
+      expect(contentKeyCalls).toHaveLength(2);
+      for (const call of contentKeyCalls) {
+        expect(call[0]).toBe('gh-api-file-content');
+        expect(call[1]).toEqual({
           owner: 'test',
           repo: 'repo',
           path: 'test.txt',
           branch: undefined,
-        },
-        undefined
+        });
+      }
+      const tsKeyCalls = mockGenerateCacheKey.mock.calls.filter(
+        call => (call[1] as Record<string, unknown>).ts === true
       );
-      expect(mockGenerateCacheKey).toHaveBeenNthCalledWith(
-        2,
-        'gh-api-file-content',
-        {
-          owner: 'test',
-          repo: 'repo',
-          path: 'test.txt',
-          branch: undefined,
-        },
-        undefined
-      );
+      expect(tsKeyCalls).toHaveLength(2);
     });
   });
 
@@ -744,7 +756,7 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
       }
     });
 
-    it('should handle file too large error', async () => {
+    it('should decode files larger than 300KB that have inline content', async () => {
       const params = createTestParams();
       const largeContent = 'x'.repeat(500 * 1024);
 
@@ -759,11 +771,8 @@ describe('fetchGitHubFileContentAPI - Parameter Testing', () => {
 
       const result = await fetchGitHubFileContentAPI(params);
 
-      expect('error' in result).toBe(true);
-      if ('error' in result) {
-        expect(result.error).toContain('File too large');
-        expect(result.error).toContain('300KB');
-      }
+      expect('error' in result).toBe(false);
+      expect(result).toHaveProperty('data');
     });
 
     it('should handle empty file (no content)', async () => {

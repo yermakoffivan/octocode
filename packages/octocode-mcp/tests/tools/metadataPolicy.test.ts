@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { hasValidMetadata } from '../../src/tools/metadataPolicy.js';
-import { TOOL_METADATA_ERRORS } from '../../src/errors/domainErrors.js';
+import { TOOL_METADATA_ERRORS } from '../../../octocode-tools-core/src/errors/domainErrors.js';
 import type { ToolConfig } from '../../src/tools/toolConfig.js';
 
 function makeTool(
@@ -15,6 +16,12 @@ function makeTool(
     type: overrides.type ?? 'search',
     skipMetadataCheck: overrides.skipMetadataCheck,
     fn: overrides.fn ?? (() => ({}) as never),
+    direct: overrides.direct ?? {
+      schema: z.object({}),
+      inputSchema: z.object({}),
+      executionFn: async () => ({ content: [] }),
+      security: 'basic',
+    },
   };
 }
 

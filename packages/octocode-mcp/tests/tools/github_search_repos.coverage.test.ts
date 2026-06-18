@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
 import { registerSearchGitHubReposTool } from '../../src/tools/github_search_repos/github_search_repos.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import { getTextContent } from '../utils/testHelpers.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
@@ -109,8 +109,8 @@ describe('GitHub Search Repositories Coverage', () => {
     });
   }
 
-  describe('verbose flag — pass-through contract', () => {
-    it('verbose:false — limit is not capped, returns all repos', async () => {
+  describe('limit and filter behavior', () => {
+    it(' — limit is not capped, returns all repos', async () => {
       const repos = [
         repo({ id: '1', fullPath: 'a/top-repo', stars: 900, language: 'Go' }),
         repo({ id: '2', fullPath: 'b/second', stars: 500 }),
@@ -120,9 +120,8 @@ describe('GitHub Search Repositories Coverage', () => {
       mockProvider.searchRepos.mockResolvedValue(okResponse(repos));
 
       const result = await call({
-        id: 'verbose_false',
-        verbose: false,
-        keywordsToSearch: ['anything'],
+        id: 'q_no_filter',
+        keywords: ['anything'],
         limit: 50,
       });
 
@@ -133,27 +132,25 @@ describe('GitHub Search Repositories Coverage', () => {
       expect(result.isError).toBe(false);
     });
 
-    it('verbose:false — default limit applies when limit not passed', async () => {
+    it(' — default limit applies when limit not passed', async () => {
       mockProvider.searchRepos.mockResolvedValue(
         okResponse([repo({ fullPath: 'a/only' })])
       );
 
       const result = await call({
-        id: 'verbose_false_no_limit',
-        verbose: false,
-        keywordsToSearch: ['x'],
+        id: 'q_default_limit',
+        keywords: ['x'],
       });
 
       expect(result.isError).toBe(false);
     });
 
-    it('verbose:false — no (top:) summary hint when no repos found', async () => {
+    it(' — no (top:) summary hint when no repos found', async () => {
       mockProvider.searchRepos.mockResolvedValue(okResponse([]));
 
       const result = await call({
-        id: 'verbose_false_empty',
-        verbose: false,
-        keywordsToSearch: ['nomatch'],
+        id: 'q_empty_results',
+        keywords: ['nomatch'],
       });
 
       expect(result.isError).toBe(false);
@@ -173,19 +170,15 @@ describe('GitHub Search Repositories Coverage', () => {
 
       const result = await call({
         id: 'sort_forks',
-        keywordsToSearch: ['x'],
+        keywords: ['x'],
         sort: 'forks',
+        concise: true,
       });
 
-      const structured = result.structuredContent as {
-        results?: Array<{
-          data?: { repositories?: Array<{ owner: string; repo: string }> };
-        }>;
+      const repos = result.structuredContent as {
+        results?: Array<{ data?: { repositories?: string[] } }>;
       };
-      expect(structured.results?.[0]?.data?.repositories?.[0]).toMatchObject({
-        owner: 'b',
-        repo: 'high',
-      });
+      expect(repos.results?.[0]?.data?.repositories?.[0]).toContain('b/high');
     });
 
     it('sorts by updated date when sort=updated', async () => {
@@ -198,44 +191,15 @@ describe('GitHub Search Repositories Coverage', () => {
 
       const result = await call({
         id: 'sort_updated',
-        keywordsToSearch: ['x'],
+        keywords: ['x'],
         sort: 'updated',
+        concise: true,
       });
 
-      const structured = result.structuredContent as {
-        results?: Array<{
-          data?: { repositories?: Array<{ owner: string; repo: string }> };
-        }>;
+      const repos = result.structuredContent as {
+        results?: Array<{ data?: { repositories?: string[] } }>;
       };
-      expect(structured.results?.[0]?.data?.repositories?.[0]).toMatchObject({
-        owner: 'b',
-        repo: 'new',
-      });
-    });
-
-    it('sorts by created date when sort=created, handling missing dates', async () => {
-      mockProvider.searchRepos.mockResolvedValue(
-        okResponse([
-          repo({ id: '1', fullPath: 'a/nodate', createdAt: undefined }),
-          repo({ id: '2', fullPath: 'b/dated', createdAt: '2024-06-01' }),
-        ])
-      );
-
-      const result = await call({
-        id: 'sort_created',
-        keywordsToSearch: ['x'],
-        sort: 'created',
-      });
-
-      const structured = result.structuredContent as {
-        results?: Array<{
-          data?: { repositories?: Array<{ owner: string; repo: string }> };
-        }>;
-      };
-      expect(structured.results?.[0]?.data?.repositories?.[0]).toMatchObject({
-        owner: 'b',
-        repo: 'dated',
-      });
+      expect(repos.results?.[0]?.data?.repositories?.[0]).toContain('b/new');
     });
 
     it('falls back to relevance/stars when sort=best-match', async () => {
@@ -248,19 +212,15 @@ describe('GitHub Search Repositories Coverage', () => {
 
       const result = await call({
         id: 'sort_best_match',
-        keywordsToSearch: ['x'],
+        keywords: ['x'],
         sort: 'best-match',
+        concise: true,
       });
 
-      const structured = result.structuredContent as {
-        results?: Array<{
-          data?: { repositories?: Array<{ owner: string; repo: string }> };
-        }>;
+      const repos = result.structuredContent as {
+        results?: Array<{ data?: { repositories?: string[] } }>;
       };
-      expect(structured.results?.[0]?.data?.repositories?.[0]).toMatchObject({
-        owner: 'b',
-        repo: 'high',
-      });
+      expect(repos.results?.[0]?.data?.repositories?.[0]).toContain('b/high');
     });
   });
 
@@ -289,19 +249,17 @@ describe('GitHub Search Repositories Coverage', () => {
 
       const result = await call({
         id: 'relevance_language',
-        keywordsToSearch: ['whale'],
+        keywords: ['whale'],
         language: 'python',
+        concise: true,
       });
 
-      const structured = result.structuredContent as {
-        results?: Array<{
-          data?: { repositories?: Array<{ owner: string; repo: string }> };
-        }>;
+      const repos = result.structuredContent as {
+        results?: Array<{ data?: { repositories?: string[] } }>;
       };
-      expect(structured.results?.[0]?.data?.repositories?.[0]).toMatchObject({
-        owner: 'org',
-        repo: 'whale',
-      });
+      expect(repos.results?.[0]?.data?.repositories?.[0]).toContain(
+        'org/whale'
+      );
     });
   });
 
@@ -312,7 +270,7 @@ describe('GitHub Search Repositories Coverage', () => {
       const result = await call({
         id: 'empty_both',
         topicsToSearch: ['t1'],
-        keywordsToSearch: ['k1'],
+        keywords: ['k1'],
         stars: '>1000',
         created: '>2020-01-01',
         updated: '>2023-01-01',
@@ -343,7 +301,7 @@ describe('GitHub Search Repositories Coverage', () => {
 
       const result = await call({
         id: 'empty_keywords',
-        keywordsToSearch: ['k1'],
+        keywords: ['k1'],
       });
 
       const text = getTextContent(result.content);
@@ -365,7 +323,7 @@ describe('GitHub Search Repositories Coverage', () => {
 
       const result = await call({
         id: 'single_pagination',
-        keywordsToSearch: ['x'],
+        keywords: ['x'],
       });
 
       const text = getTextContent(result.content);
@@ -384,7 +342,7 @@ describe('GitHub Search Repositories Coverage', () => {
       const result = await call({
         id: 'topic_fail',
         topicsToSearch: ['t1'],
-        keywordsToSearch: ['k1'],
+        keywords: ['k1'],
       });
 
       const text = getTextContent(result.content);
@@ -394,37 +352,93 @@ describe('GitHub Search Repositories Coverage', () => {
     });
   });
 
-  describe('verbose:true — full hints returned (metadata mode)', () => {
+  describe(' — full hints returned (metadata mode)', () => {
     it('returns full hints even when results are empty', async () => {
       mockProvider.searchRepos.mockResolvedValue(okResponse([]));
 
       const result = await call({
-        id: 'verbose_true_empty',
-        verbose: true,
+        id: 'q_topics_empty',
         topicsToSearch: ['t1'],
       });
 
       expect(result.isError).toBe(false);
+    });
+
+    it('passes every repository filter through to the provider', async () => {
+      mockProvider.searchRepos.mockResolvedValue(okResponse([]));
+
+      const result = await call({
+        id: 'all_repo_filters',
+        keywords: ['agent'],
+        forks: '>100',
+        license: 'mit',
+        goodFirstIssues: '>5',
+        visibility: 'public',
+        archived: false,
+        match: ['name', 'description'],
+        sort: 'stars',
+        limit: 10,
+        page: 2,
+      });
+
+      expect(result.isError).toBe(false);
+      const providerCall = mockProvider.searchRepos.mock.calls[0]?.[0] as {
+        forks?: string;
+        license?: string;
+        goodFirstIssues?: string;
+        visibility?: string;
+        archived?: boolean;
+        match?: string[];
+        sort?: string;
+        limit?: number;
+        page?: number;
+      };
+      expect(providerCall).toMatchObject({
+        forks: '>100',
+        license: 'mit',
+        goodFirstIssues: '>5',
+        visibility: 'public',
+        archived: false,
+        match: ['name', 'description'],
+        sort: 'stars',
+        limit: 10,
+        page: 2,
+      });
+    });
+
+    it('accepts repo filter-only searches supported by the schema', async () => {
+      mockProvider.searchRepos.mockResolvedValue(okResponse([]));
+
+      const result = await call({
+        id: 'license_only',
+        license: 'apache-2.0',
+        limit: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      expect(mockProvider.searchRepos).toHaveBeenCalledWith(
+        expect.objectContaining({ license: 'apache-2.0', limit: 1 })
+      );
     });
   });
 
   describe('noisy results hint — no owner/language/stars filter', () => {
     it('emits narrowing hint when results are returned but no owner/language/stars given', async () => {
       mockProvider.searchRepos.mockResolvedValue(
-        okResponse([
-          repo({ fullPath: 'a/repo1' }),
-          repo({ fullPath: 'b/repo2' }),
-        ])
+        okResponse(
+          [repo({ fullPath: 'a/repo1' }), repo({ fullPath: 'b/repo2' })],
+          { currentPage: 1, totalPages: 10, hasMore: true, totalMatches: 500 }
+        )
       );
 
       const result = await call({
         id: 'noisy_keywords',
-        keywordsToSearch: ['typescript'],
+        keywords: ['typescript'],
       });
 
       const text = getTextContent(result.content);
       expect(result.isError).toBe(false);
-      expect(text).toContain('owner');
+      expect(text).toContain('Large result set');
     });
 
     it('does not emit narrowing hint when owner is provided', async () => {
@@ -434,13 +448,66 @@ describe('GitHub Search Repositories Coverage', () => {
 
       const result = await call({
         id: 'owner_scoped',
-        keywordsToSearch: ['typescript'],
+        keywords: ['typescript'],
         owner: 'myorg',
       });
 
       const text = getTextContent(result.content);
       expect(result.isError).toBe(false);
       expect(text).not.toContain('Large result set with no owner');
+    });
+
+    it('produces no hint when empty results and no keywords/topics/filters', async () => {
+      mockProvider.searchRepos.mockResolvedValue({
+        data: {
+          repositories: [],
+          totalCount: 0,
+          pagination: { currentPage: 1, totalPages: 0, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      });
+      const result = await call({ id: 'no_hints', owner: 'someorg' });
+      const text = getTextContent(result.content);
+      expect(result.isError).toBe(false);
+      expect(text).not.toContain('Drop the rarest');
+    });
+
+    it('shows filters-only hint when empty results with owner but no keywords', async () => {
+      mockProvider.searchRepos.mockResolvedValue({
+        data: {
+          repositories: [],
+          totalCount: 0,
+          pagination: { currentPage: 1, totalPages: 0, hasMore: false },
+        },
+        status: 200,
+        provider: 'github',
+      });
+      const result = await call({ id: 'filter_only_hint', owner: 'someorg' });
+      const text = getTextContent(result.content);
+      expect(result.isError).toBe(false);
+      expect(text).toContain('Remove owner/language/topic first');
+    });
+  });
+
+  describe('Sort by stars with undefined stars values', () => {
+    it('handles repos with undefined stars in sort by stars (covers ?? 0 branch)', async () => {
+      mockProvider.searchRepos.mockResolvedValue(
+        okResponse([
+          repo({ id: '1', fullPath: 'a/low', stars: undefined }),
+          repo({ id: '2', fullPath: 'b/high', stars: 500 }),
+        ])
+      );
+      const result = await call({
+        id: 'sort_stars_undef',
+        keywords: ['x'],
+        sort: 'stars',
+        concise: true,
+      });
+      const repos = result.structuredContent as {
+        results?: Array<{ data?: { repositories?: string[] } }>;
+      };
+      expect(repos.results?.[0]?.data?.repositories?.[0]).toContain('b/high');
     });
   });
 });

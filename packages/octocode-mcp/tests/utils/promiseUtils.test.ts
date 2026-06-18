@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeWithErrorIsolation } from '../../src/utils/core/promise.js';
-import type { PromiseExecutionOptions } from '../../src/types';
+import { executeWithErrorIsolation } from '../../../octocode-tools-core/src/utils/core/promise.js';
+import type { PromiseExecutionOptions } from '../../../octocode-tools-core/src/types/promise.js';
 import {
   VALIDATION_ERRORS,
   PROMISE_ERRORS,
-} from '../../src/errors/domainErrors.js';
-import { logSessionError } from '../../src/session';
+} from '../../../octocode-tools-core/src/errors/domainErrors.js';
+import { logSessionError } from '../../../octocode-tools-core/src/session';
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 

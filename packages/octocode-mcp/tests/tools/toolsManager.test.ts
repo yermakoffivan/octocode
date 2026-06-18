@@ -1,30 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from '../../src/tools/toolsManager.js';
 
 vi.mock('../../src/tools/toolConfig.js', () => {
   const mockGitHubTools = [
-    { name: 'githubSearchCode', isDefault: true, isLocal: false, fn: vi.fn() },
+    { name: 'ghSearchCode', isDefault: true, isLocal: false, fn: vi.fn() },
     {
-      name: 'githubGetFileContent',
+      name: 'ghGetFileContent',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
     },
     {
-      name: 'githubViewRepoStructure',
+      name: 'ghViewRepoStructure',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
     },
     {
-      name: 'githubSearchRepositories',
+      name: 'ghSearchRepos',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
     },
     {
-      name: 'githubSearchPullRequests',
+      name: 'ghHistoryResearch',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock('../../src/tools/toolConfig.js', () => {
   ];
 
   const mockCloneTool = {
-    name: 'githubCloneRepo',
+    name: 'ghCloneRepo',
     isDefault: true,
     isLocal: true,
     isClone: true,
@@ -70,35 +71,38 @@ vi.mock('../../src/tools/toolConfig.js', () => {
   };
 });
 
-vi.mock('../../src/tools/toolMetadata/proxies.js', async () => {
-  const actual = await vi.importActual<
-    typeof import('../../src/tools/toolMetadata/proxies.js')
-  >('../../src/tools/toolMetadata/proxies.js');
-  return {
-    ...actual,
-    isToolInMetadata: vi.fn(),
-    TOOL_NAMES: {
-      GITHUB_FETCH_CONTENT: 'githubGetFileContent',
-      GITHUB_SEARCH_CODE: 'githubSearchCode',
-      GITHUB_SEARCH_PULL_REQUESTS: 'githubSearchPullRequests',
-      GITHUB_SEARCH_REPOSITORIES: 'githubSearchRepositories',
-      GITHUB_VIEW_REPO_STRUCTURE: 'githubViewRepoStructure',
-      PACKAGE_SEARCH: 'packageSearch',
-      LOCAL_RIPGREP: 'localSearchCode',
-      LOCAL_FETCH_CONTENT: 'localGetFileContent',
-      LOCAL_FIND_FILES: 'localFindFiles',
-      LOCAL_VIEW_STRUCTURE: 'localViewStructure',
-    },
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js',
+  async () => {
+    const actual = await vi.importActual<
+      typeof import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js')
+    >('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
+    return {
+      ...actual,
+      isToolInMetadata: vi.fn(),
+      TOOL_NAMES: {
+        GITHUB_FETCH_CONTENT: 'ghGetFileContent',
+        GITHUB_SEARCH_CODE: 'ghSearchCode',
+        GITHUB_SEARCH_PULL_REQUESTS: 'ghHistoryResearch',
+        GITHUB_SEARCH_REPOSITORIES: 'ghSearchRepos',
+        GITHUB_VIEW_REPO_STRUCTURE: 'ghViewRepoStructure',
+        PACKAGE_SEARCH: 'npmSearch',
+        LOCAL_RIPGREP: 'localSearchCode',
+        LOCAL_FETCH_CONTENT: 'localGetFileContent',
+        LOCAL_FIND_FILES: 'localFindFiles',
+        LOCAL_VIEW_STRUCTURE: 'localViewStructure',
+      },
+    };
+  }
+);
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getServerConfig: vi.fn(),
   isLocalEnabled: vi.fn().mockReturnValue(false),
   isCloneEnabled: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(),
 }));
 
@@ -107,12 +111,12 @@ import {
   getServerConfig,
   isLocalEnabled,
   isCloneEnabled,
-} from '../../src/serverConfig.js';
+} from '../../../octocode-tools-core/src/serverConfig.js';
 import {
   TOOL_NAMES,
   isToolInMetadata,
-} from '../../src/tools/toolMetadata/proxies.js';
-import { logSessionError } from '../../src/session.js';
+} from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
+import { logSessionError } from '../../../octocode-tools-core/src/session.js';
 
 const mockGetServerConfig = vi.mocked(getServerConfig);
 const mockIsToolAvailableSync = vi.mocked(isToolInMetadata);
@@ -363,7 +367,7 @@ describe('ToolsManager', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        toolsToRun: ['githubSearchCode'],
+        toolsToRun: ['ghSearchCode'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -382,7 +386,7 @@ describe('ToolsManager', () => {
         t => vi.mocked(t.fn).mock.calls.length > 0
       );
       expect(calledTools).toHaveLength(1);
-      expect(calledTools[0]!.name).toBe('githubSearchCode');
+      expect(calledTools[0]!.name).toBe('ghSearchCode');
     });
 
     it('should select specific local tools via TOOLS_TO_RUN when ENABLE_LOCAL=true', async () => {
@@ -424,7 +428,7 @@ describe('ToolsManager', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        toolsToRun: ['localSearchCode', 'githubSearchCode'],
+        toolsToRun: ['localSearchCode', 'ghSearchCode'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -438,7 +442,7 @@ describe('ToolsManager', () => {
 
       expect(result.successCount).toBe(1);
 
-      const githubSearch = ALL_TOOLS.find(t => t.name === 'githubSearchCode');
+      const githubSearch = ALL_TOOLS.find(t => t.name === 'ghSearchCode');
       expect(githubSearch!.fn).toHaveBeenCalled();
 
       const localSearch = ALL_TOOLS.find(t => t.name === 'localSearchCode');
@@ -451,7 +455,7 @@ describe('ToolsManager', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        toolsToRun: ['githubCloneRepo', 'githubSearchCode'],
+        toolsToRun: ['ghCloneRepo', 'ghSearchCode'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -465,10 +469,10 @@ describe('ToolsManager', () => {
 
       expect(result.successCount).toBe(1);
 
-      const githubSearch = ALL_TOOLS.find(t => t.name === 'githubSearchCode');
+      const githubSearch = ALL_TOOLS.find(t => t.name === 'ghSearchCode');
       expect(githubSearch!.fn).toHaveBeenCalled();
 
-      const cloneTool = ALL_TOOLS.find(t => t.name === 'githubCloneRepo');
+      const cloneTool = ALL_TOOLS.find(t => t.name === 'ghCloneRepo');
       expect(cloneTool!.fn).not.toHaveBeenCalled();
     });
 
@@ -478,7 +482,7 @@ describe('ToolsManager', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        toolsToRun: ['githubCloneRepo'],
+        toolsToRun: ['ghCloneRepo'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -492,7 +496,7 @@ describe('ToolsManager', () => {
 
       expect(result.successCount).toBe(1);
 
-      const cloneTool = ALL_TOOLS.find(t => t.name === 'githubCloneRepo');
+      const cloneTool = ALL_TOOLS.find(t => t.name === 'ghCloneRepo');
       expect(cloneTool!.fn).toHaveBeenCalled();
 
       const githubTools = ALL_TOOLS.filter(
@@ -566,7 +570,7 @@ describe('ToolsManager', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        toolsToRun: ['githubSearchCode', 'localSearchCode', 'localFindFiles'],
+        toolsToRun: ['ghSearchCode', 'localSearchCode', 'localFindFiles'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -586,7 +590,7 @@ describe('ToolsManager', () => {
       );
       const calledNames = calledTools.map(t => t.name).sort();
       expect(calledNames).toEqual([
-        'githubSearchCode',
+        'ghSearchCode',
         'localFindFiles',
         'localSearchCode',
       ]);
@@ -927,6 +931,12 @@ describe('ToolsManager', () => {
         isLocal: false,
         type: 'debug' as const,
         fn: vi.fn(),
+        direct: {
+          schema: z.object({}),
+          inputSchema: z.object({}),
+          executionFn: async () => ({ content: [] }),
+          security: 'basic' as const,
+        },
       } as ToolConfig);
 
       mockIsToolAvailableSync.mockReturnValue(true);

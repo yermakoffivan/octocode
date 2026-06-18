@@ -1,16 +1,13 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { incrementToolCharSavings } from 'octocode-shared';
-import { executeBulkOperation } from '../../src/utils/response/bulk.js';
-import { attachRawResponseChars } from '../../src/utils/response/charSavings.js';
-import type { QueryStatus } from '../../src/types/toolResults.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
-import { initializeToolMetadata } from '../../src/tools/toolMetadata/state.js';
-import type { ToolName } from '../../src/tools/toolMetadata/types.js';
+import { executeBulkOperation } from '../../../octocode-tools-core/src/utils/response/bulk.js';
+import { attachRawResponseChars } from '../../../octocode-tools-core/src/utils/response/charSavings.js';
+import type { QueryStatus } from '../../../octocode-tools-core/src/types/toolResults.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
+import type { ToolName } from '../../../octocode-tools-core/src/tools/toolMetadata/types.js';
 import { getTextContent } from './testHelpers.js';
 
-beforeAll(async () => {
-  await initializeToolMetadata();
-});
+beforeAll(async () => {});
 
 describe('executeBulkOperation', () => {
   describe('Single query scenarios', () => {
@@ -39,82 +36,138 @@ describe('executeBulkOperation', () => {
       expect(structured.results[0]?.data.repositories).toHaveLength(3);
     });
 
-    it('marks peer evidence incomplete when query output pagination has more data', async () => {
+    it('paginates the formatted response with top-level responseCharLength', async () => {
       const queries = [{ id: 'q1' }];
       const processor = vi.fn().mockResolvedValue({
-        incomingCalls: [],
-        outputPagination: { hasMore: true },
-        evidence: {
-          kind: 'calls',
-          answerReady: true,
-          complete: true,
-          confidence: 'high',
-        },
+        repositories: [{ name: 'alpha' }, { name: 'beta' }],
       });
 
-      const result = await executeBulkOperation(queries, processor, {
-        toolName: TOOL_NAMES.LSP_CALL_HIERARCHY,
-        peerEvidence: true,
-      });
+      const result = await executeBulkOperation(
+        queries,
+        processor,
+        { toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES },
+        { responseCharLength: 40 }
+      );
 
+      const responseText = getTextContent(result.content);
       const structured = result.structuredContent as {
-        evidence?: {
-          kind?: string;
-          complete?: boolean;
-          confidence?: string;
-          reason?: string;
+        responsePagination?: {
+          hasMore: boolean;
+          charLength: number;
+          totalChars: number;
+          nextCharOffset?: number;
         };
+        hints?: string[];
       };
 
-      expect(structured.evidence).toMatchObject({
-        kind: 'calls',
-        complete: false,
-        confidence: 'high',
+      expect(responseText).toContain('Next: responseCharOffset=');
+      expect(responseText.length).toBeGreaterThan(40);
+      expect(structured.responsePagination).toMatchObject({
+        hasMore: true,
+        charOffset: 0,
       });
-      expect(structured.evidence?.reason).toContain(
-        'One or more query-level output pages have more data.'
+      expect(structured.responsePagination?.charLength).toBeLessThanOrEqual(40);
+      expect(structured.responsePagination?.totalChars).toBeGreaterThan(40);
+      expect(structured.responsePagination?.nextCharOffset).toBe(
+        structured.responsePagination?.charLength
+      );
+      expect(responseText.endsWith('\n')).toBe(true);
+      expect(
+        structured.hints?.some(h => h.includes('responseCharOffset='))
+      ).toBe(true);
+    });
+
+    it('uses newline boundaries inside block-scalar multiline content when available', async () => {
+      const queries = [{ id: 'q1' }];
+      const processor = vi.fn().mockResolvedValue({
+        content: Array.from({ length: 20 }, (_, index) => `line-${index}`).join(
+          '\n'
+        ),
+      });
+
+      const result = await executeBulkOperation(
+        queries,
+        processor,
+        { toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES },
+        { responseCharLength: 90 }
+      );
+      const text = getTextContent(result.content);
+      const structured = result.structuredContent as {
+        responsePagination?: { nextCharOffset?: number };
+      };
+      const nextOffset = structured.responsePagination?.nextCharOffset;
+
+      expect(text.endsWith('\n')).toBe(true);
+      expect(nextOffset).toBeTypeOf('number');
+    });
+
+    it('does not create tiny pages when the next YAML line is longer than the requested window', async () => {
+      const queries = [{ id: 'q1' }];
+      const processor = vi.fn().mockResolvedValue({
+        content: 'x'.repeat(200),
+      });
+
+      const result = await executeBulkOperation(
+        queries,
+        processor,
+        { toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES },
+        { responseCharLength: 80 }
+      );
+      const structured = result.structuredContent as {
+        responsePagination?: { charLength?: number; nextCharOffset?: number };
+      };
+
+      expect(structured.responsePagination?.charLength).toBeGreaterThanOrEqual(
+        40
+      );
+      expect(structured.responsePagination?.nextCharOffset).toBe(
+        structured.responsePagination?.charLength
       );
     });
 
-    it('marks peer evidence complete when all queries succeed', async () => {
-      const queries = Array.from({ length: 5 }, (_, index) => ({
-        id: `q${index + 1}`,
-      }));
-      const processor = vi.fn().mockImplementation(query =>
-        Promise.resolve({
-          packages: [
-            {
-              name: query.id,
-              description: 'x'.repeat(500),
-            },
-          ],
-          evidence: {
-            kind: 'package',
-            answerReady: true,
-            complete: true,
-            confidence: 'high',
-          },
-        })
+    it('uses newline-aware continuation offsets for formatted response pagination', async () => {
+      const queries = [{ id: 'q1' }];
+      const processor = vi.fn().mockResolvedValue({
+        repositories: [
+          { name: 'alpha-repository-with-long-name' },
+          { name: 'beta-repository-with-long-name' },
+        ],
+      });
+
+      const unpaginated = await executeBulkOperation(queries, processor, {
+        toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
+      });
+      const fullText = getTextContent(unpaginated.content);
+
+      const firstPage = await executeBulkOperation(
+        queries,
+        processor,
+        { toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES },
+        { responseCharLength: 40 }
       );
-
-      const result = await executeBulkOperation(queries, processor, {
-        toolName: TOOL_NAMES.PACKAGE_SEARCH,
-        peerEvidence: true,
-      });
-
-      const structured = result.structuredContent as {
-        evidence?: {
-          kind?: string;
-          complete?: boolean;
-          confidence?: string;
-        };
+      const firstStructured = firstPage.structuredContent as {
+        responsePagination?: { nextCharOffset?: number };
       };
+      const nextOffset = firstStructured.responsePagination?.nextCharOffset;
 
-      expect(structured.evidence).toMatchObject({
-        kind: 'package',
-        complete: true,
-        confidence: 'high',
-      });
+      expect(nextOffset).toBeTypeOf('number');
+      if (nextOffset === undefined) throw new Error('Expected next offset');
+      expect(nextOffset).toBeLessThanOrEqual(40);
+      expect(fullText[nextOffset - 1]).toBe('\n');
+
+      const secondPage = await executeBulkOperation(
+        queries,
+        processor,
+        { toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES },
+        { responseCharLength: 40, responseCharOffset: nextOffset }
+      );
+      const secondText = getTextContent(secondPage.content);
+      const secondBody = secondText.replace(/^# Response page [^\n]+\n/, '');
+
+      expect(secondBody).toBe(
+        fullText.slice(nextOffset, nextOffset + secondBody.length)
+      );
+      expect(secondBody.trim().length).toBeGreaterThan(0);
     });
 
     it('should process single query with hasResults status', async () => {
@@ -135,10 +188,10 @@ describe('executeBulkOperation', () => {
 
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('results:');
-      expect(responseText).toContain('id: "q1"');
+      expect(responseText).toContain('id: q1');
       expect(responseText).not.toContain('instructions:');
-      expect(responseText).not.toContain('status: "hasResults"');
-      expect(responseText).toContain('path: "test.ts"');
+      expect(responseText).not.toContain('status: hasResults');
+      expect(responseText).toContain('path: test.ts');
       expect(responseText).toContain('Test hint for hasResults');
     });
 
@@ -156,8 +209,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('status: "empty"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('status: empty');
       expect(responseText).toContain('Test hint for empty');
     });
 
@@ -175,16 +228,16 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('status: "error"');
-      expect(responseText).toContain('error: "Rate limit exceeded"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('status: error');
+      expect(responseText).toContain('error: Rate limit exceeded');
       expect(responseText).toContain('Test hint for error');
     });
 
     it('surfaces error messages in the text payload when every query fails (regression)', async () => {
       const queries = [
-        { id: 'q1', pattern: 'x', path: '/tmp' },
-        { id: 'q2', pattern: 'y', path: '/tmp' },
+        { id: 'q1', keywords: 'x', path: '/tmp' },
+        { id: 'q2', keywords: 'y', path: '/tmp' },
       ];
       const processor = vi.fn().mockResolvedValue({
         status: 'error' as const,
@@ -197,7 +250,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('status: "error"');
+      expect(responseText).toContain('status: error');
       expect(responseText).toContain('mutually exclusive');
     });
 
@@ -211,9 +264,9 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('status: "error"');
-      expect(responseText).toContain('error: "API error"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('status: error');
+      expect(responseText).toContain('error: API error');
     });
   });
 
@@ -289,13 +342,13 @@ describe('executeBulkOperation', () => {
       expect(processor).toHaveBeenCalledTimes(3);
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q3"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q3');
       expect(responseText).not.toContain('empty');
       expect(responseText).not.toContain('failed');
-      expect(responseText).toContain('name: "react-repo"');
-      expect(responseText).toContain('name: "vue-repo"');
-      expect(responseText).toContain('name: "angular-repo"');
+      expect(responseText).toContain('name: react-repo');
+      expect(responseText).toContain('name: vue-repo');
+      expect(responseText).toContain('name: angular-repo');
     });
 
     it('should process multiple queries all with empty status', async () => {
@@ -315,8 +368,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q2"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q2');
       expect(responseText).not.toContain('failed');
       expect(responseText).toContain('Test hint for empty');
     });
@@ -335,8 +388,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q3"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q3');
       expect(responseText).not.toContain('empty');
       expect(responseText).toContain('Test hint for error');
     });
@@ -351,9 +404,9 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q2"');
-      expect(responseText).toContain('error: "Network timeout"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q2');
+      expect(responseText).toContain('error: Network timeout');
     });
   });
 
@@ -466,11 +519,11 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText.indexOf('id: "q1"')).toBeLessThan(
-        responseText.indexOf('id: "q2"')
+      expect(responseText.indexOf('id: q1')).toBeLessThan(
+        responseText.indexOf('id: q2')
       );
-      expect(responseText.indexOf('id: "q2"')).toBeLessThan(
-        responseText.indexOf('id: "q3"')
+      expect(responseText.indexOf('id: q2')).toBeLessThan(
+        responseText.indexOf('id: q3')
       );
     });
 
@@ -497,8 +550,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q3"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q3');
       expect(responseText).not.toContain('failed');
       expect(responseText).toContain('Test hint');
     });
@@ -531,8 +584,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q3"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q3');
       expect(responseText).not.toContain(': 0 empty');
       expect(responseText).toContain('Test hint for success');
       expect(responseText).toContain('Test hint for error');
@@ -564,8 +617,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q4"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q4');
       expect(responseText).toContain('Test hint for empty');
     });
   });
@@ -604,8 +657,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q4"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q4');
       expect(responseText).toContain('Test hint');
     });
 
@@ -636,8 +689,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q6"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q6');
     });
   });
 
@@ -679,7 +732,7 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('actualData: "This should appear"');
+      expect(responseText).toContain('actualData: This should appear');
       expect(responseText).not.toContain('Result main goal');
       expect(responseText).not.toContain('Result goal');
       expect(responseText).not.toContain('Result reasoning');
@@ -709,11 +762,11 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('content: "# React"');
-      expect(responseText).toContain('owner: "facebook"');
-      expect(responseText).toContain('repo: "react"');
-      expect(responseText).toContain('path: "README.md"');
-      expect(responseText).toContain('branch: "main"');
+      expect(responseText).toContain("content: '# React'");
+      expect(responseText).toContain('owner: facebook');
+      expect(responseText).toContain('repo: react');
+      expect(responseText).toContain('path: README.md');
+      expect(responseText).toContain('branch: main');
     });
 
     it('should preserve structured error metadata from processor results', async () => {
@@ -735,8 +788,8 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('errorCode: "fileAccessFailed"');
-      expect(responseText).toContain('resolvedPath: "/repo/src/index.ts"');
+      expect(responseText).toContain('errorCode: fileAccessFailed');
+      expect(responseText).toContain('resolvedPath: /repo/src/index.ts');
     });
 
     it('should not echo query research metadata in thrown error responses', async () => {
@@ -755,8 +808,8 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('status: "error"');
-      expect(responseText).toContain('error: "Failed"');
+      expect(responseText).toContain('status: error');
+      expect(responseText).toContain('error: Failed');
       expect(responseText).not.toContain('mainResearchGoal:');
       expect(responseText).not.toContain('researchGoal:');
       expect(responseText).not.toContain('reasoning:');
@@ -777,7 +830,7 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('error: "Custom error"');
+      expect(responseText).toContain('error: Custom error');
       expect(responseText).not.toContain('Result main goal');
       expect(responseText).not.toContain('Result goal');
       expect(responseText).not.toContain('Result reasoning');
@@ -906,7 +959,7 @@ describe('executeBulkOperation', () => {
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('pull_requests:');
       expect(responseText).toContain('number: 123');
-      expect(responseText).toContain('title: "Test PR"');
+      expect(responseText).toContain('title: Test PR');
       expect(responseText).toContain('total_count: 1');
       expect(responseText).toContain('incomplete_results: false');
     });
@@ -930,7 +983,7 @@ describe('executeBulkOperation', () => {
       const responseText = getTextContent(result.content);
       expect(responseText).not.toContain('researchGoal:');
       expect(responseText).not.toContain('reasoning:');
-      expect(responseText).toContain('actualData: "This should appear"');
+      expect(responseText).toContain('actualData: This should appear');
       expect(responseText).toContain('data:');
     });
 
@@ -957,11 +1010,11 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('path: "src/index.ts"');
+      expect(responseText).toContain('path: src/index.ts');
       expect(responseText).toContain('line: 10');
-      expect(responseText).toContain('content: "match1"');
+      expect(responseText).toContain('content: match1');
       expect(responseText).toContain('line: 20');
-      expect(responseText).toContain('content: "match2"');
+      expect(responseText).toContain('content: match2');
       expect(responseText).toContain('total: 2');
       expect(responseText).toContain('page: 1');
     });
@@ -983,8 +1036,8 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('owner: "testowner"');
-      expect(responseText).toContain('repo: "testrepo"');
+      expect(responseText).toContain('owner: testowner');
+      expect(responseText).toContain('repo: testrepo');
       expect(responseText).toContain('files:');
     });
 
@@ -1009,7 +1062,7 @@ describe('executeBulkOperation', () => {
 
         expect(result.isError).toBe(false);
         const responseText = getTextContent(result.content);
-        expect(responseText).toContain('id: "q1"');
+        expect(responseText).toContain('id: q1');
       }
     });
 
@@ -1026,7 +1079,7 @@ describe('executeBulkOperation', () => {
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('files:');
-      expect(responseText).toContain('path: "test.ts"');
+      expect(responseText).toContain('path: test.ts');
     });
   });
 
@@ -1079,7 +1132,7 @@ describe('executeBulkOperation', () => {
 
       const responseText = getTextContent(result.content);
       expect(responseText).toContain(
-        'error: "Specific error: Repository not found"'
+        "error: 'Specific error: Repository not found'"
       );
     });
 
@@ -1095,7 +1148,7 @@ describe('executeBulkOperation', () => {
 
       const responseText = getTextContent(result.content);
       expect(responseText).toContain(
-        'error: "Network error: Connection refused"'
+        "error: 'Network error: Connection refused'"
       );
     });
 
@@ -1112,9 +1165,9 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('error: "Error for q1"');
-      expect(responseText).toContain('error: "Error for q2"');
-      expect(responseText).toContain('error: "Error for q3"');
+      expect(responseText).toContain('error: Error for q1');
+      expect(responseText).toContain('error: Error for q2');
+      expect(responseText).toContain('error: Error for q3');
     });
   });
 
@@ -1137,7 +1190,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).not.toContain('status: "hasResults"');
+      expect(responseText).not.toContain('status: hasResults');
       expect(responseText).not.toContain('researchGoal: 123');
     });
 
@@ -1159,7 +1212,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).not.toContain('status: "hasResults"');
+      expect(responseText).not.toContain('status: hasResults');
       expect(responseText).not.toContain('reasoning:');
     });
 
@@ -1181,7 +1234,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).not.toContain('status: "hasResults"');
+      expect(responseText).not.toContain('status: hasResults');
     });
   });
 
@@ -1203,7 +1256,7 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      const idIndex = responseText.indexOf('id: "q1"');
+      const idIndex = responseText.indexOf('id: q1');
       const statusIndex = responseText.indexOf('status:');
 
       expect(idIndex).toBeGreaterThan(-1);
@@ -1228,7 +1281,7 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "react_hooks_search"');
+      expect(responseText).toContain('id: react_hooks_search');
     });
 
     it('should generate qN ids when the caller omits query ids', async () => {
@@ -1245,8 +1298,8 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q2"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q2');
     });
 
     it('should output status before data in response', async () => {
@@ -1408,8 +1461,8 @@ describe('executeBulkOperation', () => {
       const responseText = getTextContent(result.content);
       expect(responseText).toContain('Wait 60 seconds');
       expect(responseText).toContain('Use authentication token');
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q2"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q2');
     });
 
     it('should collect unique error hints from multiple error results', async () => {
@@ -1437,8 +1490,8 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q3"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q3');
       const hintAMatches = (responseText.match(/Hint A/g) || []).length;
       const hintBMatches = (responseText.match(/Hint B/g) || []).length;
       expect(hintAMatches).toBe(2);
@@ -1458,7 +1511,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
+      expect(responseText).toContain('id: q1');
       expect(responseText).toContain('Simple error without hints');
     });
 
@@ -1496,8 +1549,8 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q3"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q3');
       expect(responseText).toContain('Success hint from processor');
       expect(responseText).toContain('Empty hint from processor');
       expect(responseText).toContain('Error hint from processor');
@@ -1518,7 +1571,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
+      expect(responseText).toContain('id: q1');
       expect(responseText).toContain('error:');
     });
 
@@ -1541,11 +1594,11 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q3"');
-      expect(responseText).toContain('error: "Error processing q1"');
-      expect(responseText).toContain('error: "Error processing q2"');
-      expect(responseText).toContain('error: "Error processing q3"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q3');
+      expect(responseText).toContain('error: Error processing q1');
+      expect(responseText).toContain('error: Error processing q2');
+      expect(responseText).toContain('error: Error processing q3');
       expect(responseText).not.toContain('mainResearchGoal:');
     });
   });
@@ -1629,8 +1682,8 @@ describe('executeBulkOperation', () => {
       });
 
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
-      expect(responseText).toContain('id: "q2"');
+      expect(responseText).toContain('id: q1');
+      expect(responseText).toContain('id: q2');
       expect(responseText).toContain('Success hint');
       expect(responseText).toContain('Error recovery hint');
     });
@@ -1648,7 +1701,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
+      expect(responseText).toContain('id: q1');
       expect(responseText).toContain('Generic error');
     });
 
@@ -1666,7 +1719,7 @@ describe('executeBulkOperation', () => {
 
       expect(result.isError).toBe(true);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('id: "q1"');
+      expect(responseText).toContain('id: q1');
       expect(responseText).toContain('Error with empty hints');
     });
   });
@@ -1688,21 +1741,23 @@ describe('OCTOCODE_BULK_QUERY_TIMEOUT_MS', () => {
     delete process.env.OCTOCODE_BULK_QUERY_TIMEOUT_MS;
     vi.resetModules();
     const { executeBulkOperation: freshBulk } =
-      await import('../../src/utils/response/bulk.js');
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     expect(freshBulk).toBeDefined();
   });
 
   it('should parse custom timeout from env var', async () => {
     process.env.OCTOCODE_BULK_QUERY_TIMEOUT_MS = '120000';
     vi.resetModules();
-    const mod = await import('../../src/utils/response/bulk.js');
+    const mod =
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     expect(mod.executeBulkOperation).toBeDefined();
   });
 
   it('should fall back to 60000ms for invalid env var', async () => {
     process.env.OCTOCODE_BULK_QUERY_TIMEOUT_MS = 'not-a-number';
     vi.resetModules();
-    const mod = await import('../../src/utils/response/bulk.js');
+    const mod =
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     expect(mod.executeBulkOperation).toBeDefined();
   });
 });
@@ -1710,27 +1765,27 @@ describe('OCTOCODE_BULK_QUERY_TIMEOUT_MS', () => {
 describe('computeQueryTimeout (concurrency-aware)', () => {
   it('should be exported for testing', async () => {
     const { computeQueryTimeout } =
-      await import('../../src/utils/response/bulk.js');
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     expect(typeof computeQueryTimeout).toBe('function');
   });
 
   it('should return full budget for single query', async () => {
     const { computeQueryTimeout } =
-      await import('../../src/utils/response/bulk.js');
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     const result = computeQueryTimeout(1, 3);
     expect(result).toBeGreaterThanOrEqual(60000);
   });
 
   it('should give full budget when concurrency >= queryCount (parallel)', async () => {
     const { computeQueryTimeout } =
-      await import('../../src/utils/response/bulk.js');
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     const result = computeQueryTimeout(2, 3);
     expect(result).toBeGreaterThanOrEqual(60000);
   });
 
   it('should divide budget by batches when concurrency < queryCount', async () => {
     const { computeQueryTimeout } =
-      await import('../../src/utils/response/bulk.js');
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     const result = computeQueryTimeout(5, 3);
     expect(result).toBeLessThanOrEqual(30000);
     expect(result).toBeGreaterThanOrEqual(5000);
@@ -1738,15 +1793,56 @@ describe('computeQueryTimeout (concurrency-aware)', () => {
 
   it('should respect minQueryTimeoutMs when higher than computed', async () => {
     const { computeQueryTimeout } =
-      await import('../../src/utils/response/bulk.js');
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     const result = computeQueryTimeout(5, 3, 45000);
     expect(result).toBe(45000);
   });
 
   it('should NOT lower timeout when minQueryTimeoutMs is below computed', async () => {
     const { computeQueryTimeout } =
-      await import('../../src/utils/response/bulk.js');
+      await import('../../../octocode-tools-core/src/utils/response/bulk.js');
     const result = computeQueryTimeout(2, 3, 30000);
     expect(result).toBeGreaterThanOrEqual(60000);
+  });
+});
+
+describe('executeBulkOperation — uncovered branches', () => {
+  it('normalises a numeric query id to a string (line 502)', async () => {
+    const queries = [{ id: 7 as unknown as string }];
+    const processor = vi.fn().mockResolvedValue({ status: 'empty' as const });
+
+    const result = await executeBulkOperation(queries, processor, {
+      toolName: TOOL_NAMES.GITHUB_SEARCH_CODE,
+    });
+
+    const text = getTextContent(result.content);
+    expect(text).toContain("id: '7'");
+  });
+
+  it('adds string missingFields entries to the missing set (lines 337-338)', async () => {
+    const queries = [{ id: 'q1' }];
+    const processor = vi.fn().mockResolvedValue({
+      missingFields: ['owner', 'repo', 42, ''],
+    });
+
+    const result = await executeBulkOperation(queries, processor, {
+      toolName: TOOL_NAMES.GITHUB_SEARCH_CODE,
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('swallows incrementToolCharSavings throw gracefully (line 381)', async () => {
+    vi.mocked(incrementToolCharSavings).mockImplementationOnce(() => {
+      throw new Error('stats unavailable');
+    });
+
+    const queries = [{ id: 'q1' }];
+    const processor = vi.fn().mockResolvedValue({ status: 'empty' as const });
+
+    await expect(
+      executeBulkOperation(queries, processor, {
+        toolName: TOOL_NAMES.GITHUB_SEARCH_CODE,
+      })
+    ).resolves.toBeDefined();
   });
 });

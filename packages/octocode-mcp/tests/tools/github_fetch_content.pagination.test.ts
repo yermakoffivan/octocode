@@ -8,7 +8,7 @@ const mockGetServerConfig = vi.hoisted(() => vi.fn());
 const mockGetGitHubToken = vi.hoisted(() => vi.fn());
 const mockGetProvider = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   initialize: vi.fn(),
   getServerConfig: mockGetServerConfig,
   isLoggingEnabled: vi.fn(() => false),
@@ -21,12 +21,12 @@ vi.mock('../../src/serverConfig.js', () => ({
   isCloneEnabled: vi.fn(() => false),
 }));
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
 import { registerFetchGitHubFileContentTool } from '../../src/tools/github_fetch_content/github_fetch_content.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 type Warning = { kind: string; [key: string]: unknown };
 
@@ -39,12 +39,15 @@ type FlatResponse = {
       path: string;
       content: string;
       warnings?: string[];
+      matchNotFound?: boolean;
+      searchedFor?: string;
     }>;
   }>;
   warnings?: Warning[];
+  hints?: string[];
 };
 
-describe('githubGetFileContent — content-truncated structured warning', () => {
+describe('ghGetFileContent — content-truncated structured warning', () => {
   let mockServer: MockMcpServer;
   let mockProvider: {
     searchCode: ReturnType<typeof vi.fn>;
@@ -112,6 +115,82 @@ describe('githubGetFileContent — content-truncated structured warning', () => 
     expect(first.warnings).toBeUndefined();
     const file = first.results[0]?.files?.[0];
     expect(file?.content).not.toMatch(/\[(truncated|clipped)\]/i);
+  });
+
+  it('preserves match-not-found metadata without generic empty-file hints', async () => {
+    mockProvider.getFileContent.mockResolvedValue({
+      data: {
+        path: 'src/small.ts',
+        content: '',
+        encoding: 'utf-8',
+        size: 0,
+        ref: 'main',
+        totalLines: 10,
+        matchNotFound: true,
+        searchedFor: 'missingAnchor',
+        warnings: [
+          'No matches for "missingAnchor" in file (10 lines scanned). Try matchStringIsRegex=true, a different anchor, or fullContent=true.',
+        ],
+      },
+      status: 200,
+      provider: 'github',
+      rawResponseChars: 0,
+    });
+
+    const result = await mockServer.callTool(TOOL_NAMES.GITHUB_FETCH_CONTENT, {
+      queries: [
+        {
+          owner: 'owner',
+          repo: 'small',
+          path: 'src/small.ts',
+          matchString: 'missingAnchor',
+        },
+      ],
+    });
+
+    const data = result.structuredContent as FlatResponse;
+    const file = data.results[0]?.files?.[0];
+    expect(result.isError).toBe(false);
+    expect(file).toMatchObject({
+      path: 'src/small.ts',
+      content: '',
+      matchNotFound: true,
+      searchedFor: 'missingAnchor',
+    });
+    expect(file?.warnings?.[0]).toContain('No matches for "missingAnchor"');
+    expect(data.hints?.join('\n') ?? '').not.toContain('may be an empty file');
+    expect(data.results[0]).toBeDefined();
+  });
+
+  it('exposes fileSize (bytes) from provider size field', async () => {
+    mockProvider.getFileContent.mockResolvedValue({
+      data: {
+        path: 'src/measured.ts',
+        content: 'const x = 1;',
+        encoding: 'utf-8',
+        size: 98765,
+        ref: 'main',
+      },
+      status: 200,
+      provider: 'github',
+      rawResponseChars: 13,
+    });
+
+    const result = await mockServer.callTool(TOOL_NAMES.GITHUB_FETCH_CONTENT, {
+      queries: [
+        {
+          owner: 'owner',
+          repo: 'measured',
+          path: 'src/measured.ts',
+          branch: 'main',
+        },
+      ],
+    });
+
+    const data = result.structuredContent as FlatResponse;
+    const file = data.results[0]?.files?.[0] as Record<string, unknown>;
+    expect(result.isError).toBe(false);
+    expect(file?.fileSize).toBe(98765);
   });
 
   it('emits no warnings when content fits the budget', async () => {

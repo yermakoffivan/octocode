@@ -8,26 +8,26 @@ const mockWithDataCache = vi.hoisted(() => vi.fn());
 const mockLogSessionError = vi.hoisted(() => vi.fn());
 const mockLogRateLimit = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: mockLogSessionError,
   logRateLimit: mockLogRateLimit,
 }));
 
-vi.mock('../../src/github/client.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: mockGetOctokit,
   OctokitWithThrottling: class MockOctokit {},
 }));
 
-vi.mock('../../src/github/queryBuilders.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/queryBuilders.js', () => ({
   buildCodeSearchQuery: mockBuildCodeSearchQuery,
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: mockGenerateCacheKey,
   withDataCache: mockWithDataCache,
 }));
 
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
 
 function makeSearch422(
   errorEntries: Array<Record<string, unknown>>
@@ -83,7 +83,7 @@ describe('code search — nonexistent scope degrades to empty + flag', () => {
     );
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['useSyncExternalStore'],
+      keywords: ['useSyncExternalStore'],
       owner: 'nope',
       repo: 'does-not-exist',
     });
@@ -103,7 +103,7 @@ describe('code search — nonexistent scope degrades to empty + flag', () => {
     });
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['zzz_no_such_symbol_xyz'],
+      keywords: ['zzz_no_such_symbol_xyz'],
       owner: 'facebook',
       repo: 'react',
     });

@@ -84,9 +84,12 @@ import {
   logToolCall,
   logSessionError,
   resetSessionManager,
-} from '../src/session.js';
-import { initialize, cleanup } from '../src/serverConfig.js';
-import { TOOL_NAMES } from '../src/tools/toolMetadata/proxies.js';
+} from '../../octocode-tools-core/src/session.js';
+import {
+  initialize,
+  cleanup,
+} from '../../octocode-tools-core/src/serverConfig.js';
+import { TOOL_NAMES } from '../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 process.env.LOG = 'true';
 

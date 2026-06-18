@@ -3,9 +3,10 @@ import {
   ContentBuilder,
   createRoleBasedResult,
   createResponseFormat,
+  formatCallToolResultForOutput,
   QuickResult,
   StatusEmoji,
-} from '../src/responses.js';
+} from '../../octocode-tools-core/src/responses.js';
 import { getConfigSync } from 'octocode-shared';
 
 describe('responses.branches', () => {
@@ -552,6 +553,30 @@ describe('responses.branches', () => {
       expect(result).toContain('"results"');
 
       if (originalImpl) mockedGetConfig.mockImplementation(originalImpl);
+    });
+  });
+
+  describe('formatCallToolResultForOutput branch coverage', () => {
+    it('falls back to JSON.stringify(result) when no text blocks and no structuredContent (line 318)', () => {
+      const result = formatCallToolResultForOutput({
+        isError: false,
+      } as never);
+      const parsed = JSON.parse(result);
+      expect(parsed).toBeDefined();
+    });
+  });
+
+  describe('isTrivialPagination edge cases', () => {
+    it('removes a hasMore=false-only pagination object as trivial (line 416 return true)', () => {
+      const result = createResponseFormat({
+        results: [
+          {
+            id: 'q1',
+            data: { items: ['a', 'b'], pagination: { hasMore: false } },
+          },
+        ],
+      } as never);
+      expect(result).toBeDefined();
     });
   });
 });

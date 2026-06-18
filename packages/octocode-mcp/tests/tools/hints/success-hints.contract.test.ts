@@ -1,39 +1,26 @@
 import { describe, it, expect } from 'vitest';
 
-describe('lspCallHierarchy — direction schema default', () => {
-  it('direction defaults to incoming when omitted', async () => {
-    const { LSPCallHierarchyQuerySchema } =
-      await import('../../../src/scheme/lspSchemaOverlay.js');
-    const parsed = LSPCallHierarchyQuerySchema.safeParse({
-      symbolName: 'foo',
-      lineHint: 1,
-      uri: '/tmp/foo.ts',
-    });
-    expect(parsed.success).toBe(true);
-    if (parsed.success) {
-      expect((parsed.data as Record<string, unknown>).direction).toBe(
-        'incoming'
-      );
-    }
-  });
+describe('lspGetSemantics — call-flow schema', () => {
+  it('accepts callers and callees as explicit semantic content types', async () => {
+    const { LspGetSemanticsQuerySchema } =
+      await import('../../../../octocode-tools-core/src/tools/lsp/semantic_content/scheme.js');
 
-  it('direction: outgoing is accepted', async () => {
-    const { LSPCallHierarchyQuerySchema } =
-      await import('../../../src/scheme/lspSchemaOverlay.js');
-    const parsed = LSPCallHierarchyQuerySchema.safeParse({
-      symbolName: 'bar',
-      lineHint: 5,
-      uri: '/tmp/bar.ts',
-      direction: 'outgoing',
-    });
-    expect(parsed.success).toBe(true);
+    for (const type of ['callers', 'callees'] as const) {
+      const parsed = LspGetSemanticsQuerySchema.safeParse({
+        type,
+        symbolName: 'foo',
+        lineHint: 1,
+        uri: '/tmp/foo.ts',
+      });
+      expect(parsed.success).toBe(true);
+    }
   });
 });
 
 describe('localViewStructure — success hint', () => {
   it('emits localSearchCode hint when directory has entries', async () => {
     const { viewStructure } =
-      await import('../../../src/tools/local_view_structure/local_view_structure.js');
+      await import('../../../../octocode-tools-core/src/tools/local_view_structure/local_view_structure.js');
     const result = (await viewStructure({
       path: '.',
       depth: 1,
@@ -54,80 +41,93 @@ describe('localSearchCode — LSP lineHint success hint', () => {
   it('ripgrepResultBuilder contains LSP chaining hint for non-empty results', async () => {
     const fs = await import('fs/promises');
     const src = await fs.readFile(
-      'src/tools/local_ripgrep/ripgrepResultBuilder.ts',
+      '../octocode-tools-core/src/tools/local_ripgrep/ripgrepResultBuilder.ts',
       'utf-8'
     );
-    expect(src).toContain('lspGotoDefinition');
+    expect(src).toContain('lspGetSemantics');
     expect(src).toContain('lineHint');
   });
 });
 
-describe('lspGotoDefinition — success-path extra hint', () => {
-  it('success return includes lspFindReferences chaining hint', async () => {
-    const { applyGotoDefinitionVerbosity } =
-      await import('../../../src/tools/lsp_goto_definition/execution.js');
-    const mockResult = {
-      locations: [
-        {
-          uri: '/tmp/foo.ts',
-          range: {
-            start: { line: 0, character: 0 },
-            end: { line: 0, character: 3 },
-          },
-        },
-      ],
-      resolvedPosition: { line: 0, character: 0 },
-      searchRadius: 5,
-      hints: [
-        'Definition found — use lspFindReferences with the same symbolName+lineHint to find all usages, or lspCallHierarchy to trace call flow.',
-      ],
-    };
-    const result = applyGotoDefinitionVerbosity(
-      mockResult as never,
-      {} as never
-    );
-    expect(result.hints).toBeDefined();
-    expect(
-      result.hints!.some(
-        (h: string) =>
-          h.includes('lspFindReferences') || h.includes('lspCallHierarchy')
-      )
-    ).toBe(true);
+describe('lspGetSemantics — success-path handoff hints', () => {
+  it('successful results return concise next-step hints', async () => {
+    const { semanticHints } =
+      await import('../../../../octocode-tools-core/src/tools/lsp/semantic_content/hints.js');
+
+    for (const type of [
+      'definition',
+      'references',
+      'callers',
+      'callees',
+      'callHierarchy',
+      'hover',
+      'documentSymbols',
+      'typeDefinition',
+      'implementation',
+    ] as const) {
+      expect(semanticHints(type, true).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('incomplete results still return targeted recovery guidance', async () => {
+    const { semanticHints } =
+      await import('../../../../octocode-tools-core/src/tools/lsp/semantic_content/hints.js');
+    const result = semanticHints('definition', false);
+
+    expect(result.length).toBeGreaterThan(0);
+    expect(result.join(' ')).toContain('localSearchCode');
   });
 });
 
-describe('githubSearchPullRequests — result hint exists in code', () => {
-  it('execution imports resultHints that include fullContent guidance', async () => {
+describe('ghHistoryResearch — result hint exists in code', () => {
+  it('execution imports resultHints that include reviewMode guidance', async () => {
     const fs = await import('fs/promises');
     const src = await fs.readFile(
-      'src/tools/github_search_pull_requests/execution.ts',
+      '../octocode-tools-core/src/tools/github_search_pull_requests/execution.ts',
       'utf-8'
     );
     expect(src).toContain('resultHints');
-    expect(src).toContain('fullContent');
+    expect(src).toContain('reviewMode');
   });
 });
 
-describe('githubSearchCode — chain hint', () => {
-  it('execution contains githubGetFileContent escalation hint', async () => {
+describe('ghSearchCode — chain hint', () => {
+  it('execution contains ghGetFileContent escalation hint', async () => {
     const fs = await import('fs/promises');
     const src = await fs.readFile(
-      'src/tools/github_search_code/execution.ts',
+      '../octocode-tools-core/src/tools/github_search_code/execution.ts',
       'utf-8'
     );
-    expect(src).toContain('githubGetFileContent');
+    expect(src).toContain('ghGetFileContent');
     expect(src).toContain('extraHints');
   });
 });
 
-describe('githubSearchRepositories — parallel explore hint', () => {
-  it('execution contains parallel githubViewRepoStructure hint', async () => {
+describe('lspGetSemantics — success handoff hints', () => {
+  it('semanticHints returns concrete next steps on successful definition', async () => {
+    const { semanticHints } =
+      await import('../../../../octocode-tools-core/src/tools/lsp/semantic_content/hints.js');
+    const hints = semanticHints('definition', true);
+    expect(hints.join('\n')).toContain('localGetFileContent');
+    expect(hints.join('\n')).toContain('references');
+  });
+
+  it('semanticHints returns lineHint guidance on successful documentSymbols', async () => {
+    const { semanticHints } =
+      await import('../../../../octocode-tools-core/src/tools/lsp/semantic_content/hints.js');
+    const hints = semanticHints('documentSymbols', true);
+    expect(hints.join('\n')).toContain('lineHint');
+  });
+});
+
+describe('ghSearchRepos — parallel explore hint', () => {
+  it('execution contains parallel ghViewRepoStructure hint', async () => {
     const fs = await import('fs/promises');
     const src = await fs.readFile(
-      'src/tools/github_search_repos/execution.ts',
+      '../octocode-tools-core/src/tools/github_search_repos/execution.ts',
       'utf-8'
     );
     expect(src).toContain('parallel');
-    expect(src).toContain('githubViewRepoStructure');
+    expect(src).toContain('ghViewRepoStructure');
   });
 });

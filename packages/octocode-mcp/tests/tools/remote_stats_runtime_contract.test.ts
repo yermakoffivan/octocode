@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { incrementToolCharSavings } from 'octocode-shared';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
@@ -12,11 +12,11 @@ const mockCreateLazyProviderContext = vi.hoisted(() => vi.fn());
 const mockProviderSupports = vi.hoisted(() => vi.fn());
 const mockCloneRepo = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getGitHubToken: vi.fn(async () => 'test-token'),
   isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
@@ -31,57 +31,78 @@ vi.mock('../../src/serverConfig.js', () => ({
   })),
 }));
 
-vi.mock('../../src/utils/exec/npm.js', async importOriginal => {
-  const actual =
-    await importOriginal<typeof import('../../src/utils/exec/npm.js')>();
-  return {
-    ...actual,
-    checkNpmAvailability: mockCheckNpmAvailability,
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/utils/exec/npm.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/utils/exec/npm.js')
+      >();
+    return {
+      ...actual,
+      checkNpmAvailability: mockCheckNpmAvailability,
+    };
+  }
+);
 
-vi.mock('../../src/utils/package/npm.js', async importOriginal => {
-  const actual =
-    await importOriginal<typeof import('../../src/utils/package/npm.js')>();
-  return {
-    ...actual,
-    checkNpmRegistryReachable: mockCheckNpmRegistryReachable,
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/utils/package/npm.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/utils/package/npm.js')
+      >();
+    return {
+      ...actual,
+      checkNpmRegistryReachable: mockCheckNpmRegistryReachable,
+    };
+  }
+);
 
-vi.mock('../../src/utils/package/common.js', async importOriginal => {
-  const actual =
-    await importOriginal<typeof import('../../src/utils/package/common.js')>();
-  return {
-    ...actual,
-    searchPackage: mockSearchPackage,
-    checkNpmDeprecation: mockCheckNpmDeprecation,
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/utils/package/common.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/utils/package/common.js')
+      >();
+    return {
+      ...actual,
+      searchPackage: mockSearchPackage,
+      checkNpmDeprecation: mockCheckNpmDeprecation,
+    };
+  }
+);
 
-vi.mock('../../src/tools/providerExecution.js', async importOriginal => {
-  const actual =
-    await importOriginal<
-      typeof import('../../src/tools/providerExecution.js')
-    >();
-  return {
-    ...actual,
-    createLazyProviderContext: mockCreateLazyProviderContext,
-    providerSupports: mockProviderSupports,
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/tools/providerExecution.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/tools/providerExecution.js')
+      >();
+    return {
+      ...actual,
+      createLazyProviderContext: mockCreateLazyProviderContext,
+      providerSupports: mockProviderSupports,
+    };
+  }
+);
 
-vi.mock('../../src/tools/github_clone_repo/cloneRepo.js', () => ({
-  cloneRepo: mockCloneRepo,
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/github_clone_repo/cloneRepo.js',
+  () => ({
+    cloneRepo: mockCloneRepo,
+  })
+);
 
 import { registerGitHubSearchCodeTool } from '../../src/tools/github_search_code/github_search_code.js';
 import { registerFetchGitHubFileContentTool } from '../../src/tools/github_fetch_content/github_fetch_content.js';
 import { registerViewGitHubRepoStructureTool } from '../../src/tools/github_view_repo_structure/github_view_repo_structure.js';
 import { registerSearchGitHubReposTool } from '../../src/tools/github_search_repos/github_search_repos.js';
 import { registerSearchGitHubPullRequestsTool } from '../../src/tools/github_search_pull_requests/github_search_pull_requests.js';
-import { registerGitHubCloneRepoTool } from '../../src/tools/github_clone_repo/register.js';
-import { registerPackageSearchTool } from '../../src/tools/package_search/package_search.js';
+import { registerGitHubCloneRepoTool } from '../../src/tools/github_clone_repo/github_clone_repo.js';
+import { registerNpmSearchTool } from '../../src/tools/package_search/package_search.js';
 
 describe('remote tool stats runtime contract', () => {
   beforeEach(() => {
@@ -184,7 +205,7 @@ describe('remote tool stats runtime contract', () => {
     });
   });
 
-  it('records charsSavedByTool for every GitHub tool and packageSearch when the tool runs', async () => {
+  it('records charsSavedByTool for every GitHub tool and npmSearch when the tool runs', async () => {
     const mockServer = createMockMcpServer();
 
     registerGitHubSearchCodeTool(mockServer.server);
@@ -193,18 +214,18 @@ describe('remote tool stats runtime contract', () => {
     registerSearchGitHubReposTool(mockServer.server);
     registerSearchGitHubPullRequestsTool(mockServer.server);
     registerGitHubCloneRepoTool(mockServer.server);
-    await registerPackageSearchTool(mockServer.server);
+    await registerNpmSearchTool(mockServer.server);
 
     await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_CODE, {
       queries: [
         {
           id: 'code',
           mainResearchGoal: 'stats telemetry',
-          researchGoal: 'exercise githubSearchCode stats',
+          researchGoal: 'exercise ghSearchCode stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
           repo: 'repo',
-          keywordsToSearch: ['foo'],
+          keywords: ['foo'],
         },
       ],
     });
@@ -213,7 +234,7 @@ describe('remote tool stats runtime contract', () => {
         {
           id: 'content',
           mainResearchGoal: 'stats telemetry',
-          researchGoal: 'exercise githubGetFileContent stats',
+          researchGoal: 'exercise ghGetFileContent stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
           repo: 'repo',
@@ -226,7 +247,7 @@ describe('remote tool stats runtime contract', () => {
         {
           id: 'structure',
           mainResearchGoal: 'stats telemetry',
-          researchGoal: 'exercise githubViewRepoStructure stats',
+          researchGoal: 'exercise ghViewRepoStructure stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
           repo: 'repo',
@@ -239,9 +260,9 @@ describe('remote tool stats runtime contract', () => {
         {
           id: 'repos',
           mainResearchGoal: 'stats telemetry',
-          researchGoal: 'exercise githubSearchRepositories stats',
+          researchGoal: 'exercise ghSearchRepos stats',
           reasoning: 'prove runtime char savings emission',
-          keywordsToSearch: ['repo'],
+          keywords: ['repo'],
           owner: 'owner',
         },
       ],
@@ -251,11 +272,11 @@ describe('remote tool stats runtime contract', () => {
         {
           id: 'prs',
           mainResearchGoal: 'stats telemetry',
-          researchGoal: 'exercise githubSearchPullRequests stats',
+          researchGoal: 'exercise ghHistoryResearch stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
           repo: 'repo',
-          query: 'fix',
+          keywords: ['fix'],
         },
       ],
     });
@@ -264,7 +285,7 @@ describe('remote tool stats runtime contract', () => {
         {
           id: 'clone',
           mainResearchGoal: 'stats telemetry',
-          researchGoal: 'exercise githubCloneRepo stats',
+          researchGoal: 'exercise ghCloneRepo stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
           repo: 'repo',
@@ -277,10 +298,9 @@ describe('remote tool stats runtime contract', () => {
         {
           id: 'pkg',
           mainResearchGoal: 'stats telemetry',
-          researchGoal: 'exercise packageSearch stats',
+          researchGoal: 'exercise npmSearch stats',
           reasoning: 'prove runtime char savings emission',
-          name: 'lodash',
-          searchLimit: 1,
+          packageName: 'lodash',
         },
       ],
     });

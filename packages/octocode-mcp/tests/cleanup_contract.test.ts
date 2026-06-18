@@ -1,7 +1,9 @@
 import { access } from 'fs/promises';
+import { resolve } from 'path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = process.cwd();
+const CORE_ROOT = resolve(ROOT, '../octocode-tools-core');
 
 async function fileExists(relative: string): Promise<boolean> {
   try {
@@ -25,6 +27,21 @@ const FILES_THAT_MUST_BE_GONE = [
   'src/tools/lsp_call_hierarchy/callHierarchyPatterns.ts',
   'src/tools/lsp_find_references/lspReferencesPatterns.ts',
   'src/tools/lsp_find_references/lspReferencesProcess.ts',
+  'src/scheme/lspSchemaOverlay.ts',
+  'src/scheme/lspOutputSchemaOverlay.ts',
+  'src/tools/lsp_goto_definition/execution.ts',
+  'src/tools/lsp_goto_definition/hints.ts',
+  'src/tools/lsp_goto_definition/lsp_goto_definition.ts',
+  'src/tools/lsp_find_references/execution.ts',
+  'src/tools/lsp_find_references/hints.ts',
+  'src/tools/lsp_find_references/lsp_find_references.ts',
+  'src/tools/lsp_find_references/lspReferencesCore.ts',
+  'src/tools/lsp_find_references/register.ts',
+  'src/tools/lsp_call_hierarchy/callHierarchy.ts',
+  'src/tools/lsp_call_hierarchy/callHierarchyLsp.ts',
+  'src/tools/lsp_call_hierarchy/register.ts',
+  'src/lsp',
+  'tests/lsp',
 ];
 
 const SOURCE_FILES_THAT_MUST_NOT_REFERENCE: Array<{
@@ -48,17 +65,7 @@ const SOURCE_FILES_THAT_MUST_NOT_REFERENCE: Array<{
     reason: 'grep fallback was removed',
   },
   {
-    file: 'src/tools/lsp_find_references/lspReferencesCore.ts',
-    banned: /\bcreateClient\b/,
-    reason: 'LSP tools must use acquirePooledClient, not createClient',
-  },
-  {
-    file: 'src/tools/lsp_call_hierarchy/callHierarchyLsp.ts',
-    banned: /\bcreateClient\b/,
-    reason: 'LSP tools must use acquirePooledClient, not createClient',
-  },
-  {
-    file: 'src/tools/lsp_goto_definition/execution.ts',
+    file: 'src/tools/lsp/semantic_content/execution.ts',
     banned: /\bcreateClient\b/,
     reason: 'LSP tools must use acquirePooledClient, not createClient',
   },
@@ -74,21 +81,19 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
   for (const target of SOURCE_FILES_THAT_MUST_NOT_REFERENCE) {
     it(`${target.file} no longer references the removed API (${target.reason})`, async () => {
       const { readFile } = await import('fs/promises');
-      const source = await readFile(`${ROOT}/${target.file}`, 'utf-8');
+      const source = await readFile(`${CORE_ROOT}/${target.file}`, 'utf-8');
       expect(source).not.toMatch(target.banned);
     });
   }
 
-  it('LSP pool is the only client factory exported from manager.ts', async () => {
-    const { readFile } = await import('fs/promises');
-    const source = await readFile(`${ROOT}/src/lsp/manager.ts`, 'utf-8');
-    expect(source).toMatch(/acquirePooledClient/);
-    expect(source).not.toMatch(/^export\s+(async\s+)?function\s+createClient/m);
+  it('MCP no longer owns an LSP runtime shim', async () => {
+    expect(await fileExists('src/lsp')).toBe(false);
+    expect(await fileExists('tests/lsp')).toBe(false);
   });
 
   it("REQUIRED_COMMANDS no longer includes 'grep'", async () => {
     const { REQUIRED_COMMANDS } =
-      await import('../src/utils/exec/commandAvailability.js');
+      await import('../../octocode-tools-core/src/utils/exec/commandAvailability.js');
     expect(
       Object.prototype.hasOwnProperty.call(REQUIRED_COMMANDS, 'grep')
     ).toBe(false);
@@ -96,7 +101,7 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
 
   it('ripgrep resolver does not fall back to PATH rg', async () => {
     const source = await import('fs/promises').then(fs =>
-      fs.readFile(`${ROOT}/src/utils/exec/ripgrepBinary.ts`, 'utf-8')
+      fs.readFile(`${CORE_ROOT}/src/utils/exec/ripgrepBinary.ts`, 'utf-8')
     );
     expect(source).not.toMatch(/RIPGREP_PATH_FALLBACK/);
     expect(source).not.toMatch(/return ['"]rg['"]/);
@@ -104,13 +109,9 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
 
   it('LSP tools never assign lspMode into result objects (LSP-only, absent ≡ semantic)', async () => {
     const { readFile } = await import('fs/promises');
-    const files = [
-      'src/tools/lsp_call_hierarchy/callHierarchy.ts',
-      'src/tools/lsp_goto_definition/execution.ts',
-      'src/tools/lsp_find_references/lsp_find_references.ts',
-    ];
+    const files = ['src/tools/lsp/semantic_content/execution.ts'];
     for (const file of files) {
-      const src = await readFile(`${ROOT}/${file}`, 'utf-8');
+      const src = await readFile(`${CORE_ROOT}/${file}`, 'utf-8');
       const assignPattern = /lspMode\s*:\s*(?!_)/g;
       const matches = [...src.matchAll(assignPattern)].filter(
         m =>
@@ -128,7 +129,7 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
   it('structured pagination never injects outputPagination into error/empty data', async () => {
     const { readFile } = await import('fs/promises');
     const source = await readFile(
-      `${ROOT}/src/utils/response/structuredPagination.ts`,
+      `${CORE_ROOT}/src/utils/response/structuredPagination.ts`,
       'utf-8'
     );
 
@@ -153,9 +154,9 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
 
   it('security validator accepts the bundled rg absolute path', async () => {
     const { validateCommand } =
-      await import('octocode-security-utils/commandValidator');
+      await import('octocode-security/commandValidator');
     const { resolveRipgrepBinary } =
-      await import('../src/utils/exec/ripgrepBinary.js');
+      await import('../../octocode-tools-core/src/utils/exec/ripgrepBinary.js');
     const binary = resolveRipgrepBinary();
     const validation = validateCommand(binary, [
       '-n',

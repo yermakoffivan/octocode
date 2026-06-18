@@ -8,23 +8,23 @@ const mockOctokit = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/github/client.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: vi.fn(() => mockOctokit),
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(() => 'test-cache-key'),
   withDataCache: vi.fn(async (_key: string, fn: () => unknown) => {
     return await fn();
   }),
 }));
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
-import { SEARCH_ERRORS } from '../../src/errors/domainErrors.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
+import { SEARCH_ERRORS } from '../../../octocode-tools-core/src/errors/domainErrors.js';
 
 describe('Code Search - Empty Query Validation', () => {
   beforeEach(() => {
@@ -33,7 +33,7 @@ describe('Code Search - Empty Query Validation', () => {
 
   it('should return error when all keywords are empty strings', async () => {
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['', ' ', '  '],
+      keywords: ['', ' ', '  '],
       owner: 'test',
       repo: 'repo',
     });
@@ -59,7 +59,7 @@ describe('Code Search - Empty Query Validation', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: [],
+      keywords: [],
       owner: 'test',
       repo: 'repo',
     });
@@ -69,7 +69,7 @@ describe('Code Search - Empty Query Validation', () => {
 
   it('should return error when built query is empty after trimming', async () => {
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['   '],
+      keywords: ['   '],
       owner: 'test',
       repo: 'repo',
     });
@@ -116,7 +116,7 @@ describe('Code Search - Security Warnings', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['API_KEY'],
+      keywords: ['API_KEY'],
       owner: 'test',
       repo: 'repo',
     });
@@ -155,7 +155,7 @@ describe('Code Search - Security Warnings', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['value'],
+      keywords: ['value'],
       owner: 'test',
       repo: 'repo',
     });
@@ -208,7 +208,7 @@ describe('Code Search - Security Warnings', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['token', 'script'],
+      keywords: ['token', 'script'],
       owner: 'test',
       repo: 'repo',
     });
@@ -254,7 +254,7 @@ describe('Code Search - Minification', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['function'],
+      keywords: ['function'],
       owner: 'test',
       repo: 'repo',
     });
@@ -266,7 +266,7 @@ describe('Code Search - Minification', () => {
     }
   });
 
-  it('should include minification types when minification succeeds', async () => {
+  it('should set minified and minificationFailed flags', async () => {
     const mockResponse = {
       data: {
         total_count: 1,
@@ -293,14 +293,14 @@ describe('Code Search - Minification', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['function'],
+      keywords: ['function'],
       owner: 'test',
       repo: 'repo',
     });
 
     if ('data' in result) {
-      expect(result.data.minified).toBeDefined();
-      expect(result.data.minificationTypes).toBeDefined();
+      expect(typeof result.data.minified).toBe('boolean');
+      expect(typeof result.data.minificationFailed).toBe('boolean');
     } else {
       expect.fail('Expected successful result');
     }
@@ -339,7 +339,7 @@ describe('Code Search - Security Warnings Array Creation', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['API_KEY'],
+      keywords: ['API_KEY'],
       owner: 'test',
       repo: 'repo',
     });
@@ -378,7 +378,7 @@ describe('Code Search - Security Warnings Array Creation', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['API_KEY'],
+      keywords: ['API_KEY'],
       owner: 'test',
       repo: 'repo',
     });
@@ -437,7 +437,7 @@ describe('Code Search - Security Warning Structure', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['key', 'token'],
+      keywords: ['key', 'token'],
       owner: 'test',
       repo: 'repo',
     });
@@ -478,7 +478,7 @@ describe('Code Search - Security Warning Structure', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['API_KEY'],
+      keywords: ['API_KEY'],
       owner: 'test',
       repo: 'repo',
     });

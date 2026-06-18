@@ -5,12 +5,12 @@ import {
   handleProviderError,
   handleCatchError,
   invokeCallbackSafely,
-} from '../../src/tools/utils.js';
-import type { GitHubAPIError } from '../../src/github/githubAPI.js';
-import type { ToolInvocationCallback } from '../../src/types/toolResults.js';
-import { logSessionError } from '../../src/session.js';
+} from '../../../octocode-tools-core/src/tools/utils.js';
+import type { GitHubAPIError } from '../../../octocode-tools-core/src/github/githubAPI.js';
+import type { ToolInvocationCallback } from '../../../octocode-tools-core/src/types/toolResults.js';
+import { logSessionError } from '../../../octocode-tools-core/src/session.js';
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -546,7 +546,7 @@ describe('Tools Utils', () => {
         }
       }
 
-      expect(result.hints!.some(h => h.includes('API Error'))).toBe(true);
+      // 'API Error' echo removed — raw error string is no longer emitted as a hint
       expect(
         result.hints!.some(
           h => h.startsWith('Rate limit:') && h.includes('remaining')
@@ -648,13 +648,13 @@ describe('Tools Utils', () => {
         error,
         query,
         'Package search failed',
-        'packageSearch'
+        'npmSearch'
       );
 
       expect(result.status).toBe('error');
       expect(result.error).toBe('Package search failed: Tool execution failed');
       expect(logSessionError).toHaveBeenCalledWith(
-        'packageSearch',
+        'npmSearch',
         expect.any(String)
       );
     });

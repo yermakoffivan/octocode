@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { clearAllCache } from '../../src/utils/http/cache.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 import {
   resetCircuitBreaker,
   recordCircuitFailure,
   DEFAULT_CIRCUIT_FAILURE_THRESHOLD,
-} from '../../src/utils/http/circuitBreaker.js';
-import type { NpmPackageResult } from '../../src/utils/package/common.js';
+} from '../../../octocode-tools-core/src/utils/http/circuitBreaker.js';
+import type { NpmPackageResult } from '../../../octocode-tools-core/src/utils/package/common.js';
 
 const mockFetchWithRetries = vi.fn();
-vi.mock('../../src/utils/http/fetch.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/fetch.js', () => ({
   fetchWithRetries: (...args: unknown[]) => mockFetchWithRetries(...args),
 }));
 
 const mockExecuteNpmCommand = vi.fn();
-vi.mock('../../src/utils/exec/npm.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/exec/npm.js', () => ({
   executeNpmCommand: (...args: unknown[]) => mockExecuteNpmCommand(...args),
 }));
 
@@ -24,7 +24,7 @@ import {
   checkNpmRegistryReachable,
   _resetNpmRegistryUrlCache,
   _packageNameToSearchKeywords,
-} from '../../src/utils/package/npm.js';
+} from '../../../octocode-tools-core/src/utils/package/npm.js';
 
 function makeSearchResult(
   items: Array<{
@@ -353,9 +353,7 @@ describe('searchNpmPackage - network error fallback', () => {
       expect(hints.some(h => h.toLowerCase().includes('unreachable'))).toBe(
         true
       );
-      expect(hints.some(h => h.includes('githubSearchRepositories'))).toBe(
-        true
-      );
+      expect(hints.some(h => h.includes('ghSearchRepos'))).toBe(true);
     }
   });
 
@@ -367,9 +365,9 @@ describe('searchNpmPackage - network error fallback', () => {
     expect('error' in result).toBe(true);
     if ('error' in result) {
       expect(result.hints).toBeDefined();
-      expect(
-        (result.hints ?? []).some(h => h.includes('githubSearchRepositories'))
-      ).toBe(true);
+      expect((result.hints ?? []).some(h => h.includes('ghSearchRepos'))).toBe(
+        true
+      );
     }
   });
 
@@ -457,11 +455,11 @@ describe('source field attribution', () => {
   });
 
   it('result from web fallback has source=web', async () => {
-    mockFetchWithRetries
-      .mockRejectedValueOnce(new Error('fetch failed'))
-      .mockRejectedValueOnce(new Error('fetch failed'))
-      .mockRejectedValueOnce(new Error('fetch failed'))
-      .mockResolvedValueOnce({
+    mockFetchWithRetries.mockImplementation(async (url: string) => {
+      if (!url.includes('api.npms.io')) {
+        throw new Error('fetch failed');
+      }
+      return {
         results: [
           {
             package: {
@@ -476,7 +474,8 @@ describe('source field attribution', () => {
           },
         ],
         total: 1,
-      });
+      };
+    });
 
     const result = await searchNpmPackage('react-query', 5, false);
     expect('packages' in result).toBe(true);
@@ -685,6 +684,96 @@ describe('isExactPackageName', () => {
     );
   });
 
+  it('should use npm CDN package.json fallback for exact packages when registry is unreachable', async () => {
+    mockFetchWithRetries.mockImplementation(async (url: string) => {
+      if (url.includes('registry.npmjs.org')) {
+        throw new Error('fetch failed');
+      }
+      if (url.includes('cdn.jsdelivr.net/npm/zod/package.json')) {
+        return {
+          name: 'zod',
+          version: '4.4.3',
+          type: 'module',
+          repository: { url: 'https://github.com/colinhacks/zod' },
+          description: 'TypeScript-first schema validation',
+        };
+      }
+      return {};
+    });
+
+    const result = await searchNpmPackage('zod', 1, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const pkg = result.packages[0] as NpmPackageResult;
+      expect(pkg.name).toBe('zod');
+      expect(pkg.version).toBe('4.4.3');
+      expect(pkg.source).toBe('cdn');
+      expect(pkg.repoUrl).toBe('https://github.com/colinhacks/zod');
+    }
+  });
+
+  it('should treat npm command timeout as registry/network failure for CDN fallback', async () => {
+    mockExecuteNpmCommand.mockResolvedValue({
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      error: new Error('Command timeout after 8000ms'),
+    });
+    mockFetchWithRetries.mockImplementation(async (url: string) => {
+      if (url.includes('registry.npmjs.org')) {
+        throw new Error('fetch failed');
+      }
+      if (url.includes('cdn.jsdelivr.net/npm/zod/package.json')) {
+        return {
+          name: 'zod',
+          version: '4.4.3',
+        };
+      }
+      return {};
+    });
+
+    const result = await searchNpmPackage('zod', 1, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      expect((result.packages[0] as NpmPackageResult).source).toBe('cdn');
+    }
+  });
+
+  it('should preserve scoped package slash in CDN fallback URL', async () => {
+    mockFetchWithRetries.mockImplementation(async (url: string) => {
+      if (url.includes('registry.npmjs.org')) {
+        throw new Error('fetch failed');
+      }
+      if (
+        url.includes(
+          'cdn.jsdelivr.net/npm/@modelcontextprotocol/sdk/package.json'
+        )
+      ) {
+        return {
+          name: '@modelcontextprotocol/sdk',
+          version: '1.29.0',
+        };
+      }
+      return {};
+    });
+
+    const result = await searchNpmPackage(
+      '@modelcontextprotocol/sdk',
+      1,
+      false
+    );
+
+    expect('packages' in result).toBe(true);
+    expect(mockFetchWithRetries).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'cdn.jsdelivr.net/npm/@modelcontextprotocol/sdk/package.json'
+      ),
+      expect.any(Object)
+    );
+  });
+
   it('should encode scoped package name in URL', async () => {
     mockFetchWithRetries.mockResolvedValue({
       name: '@babel/core',
@@ -747,6 +836,47 @@ describe('mapToResult - extended metadata coverage', () => {
       expect((result.packages[0] as NpmPackageResult).peerDependencies).toEqual(
         { react: '^18.0.0', 'react-dom': '^18.0.0' }
       );
+    }
+  });
+
+  it('should extract repository directory and entrypoint research fields', async () => {
+    mockFetchWithRetries.mockResolvedValue({
+      name: '@scope/pkg',
+      version: '1.0.0',
+      repository: {
+        type: 'git',
+        url: 'git+https://github.com/owner/repo.git',
+        directory: 'packages/pkg',
+      },
+      main: 'dist/index.cjs',
+      module: 'dist/index.mjs',
+      types: 'dist/index.d.ts',
+      type: 'module',
+      exports: {
+        '.': {
+          import: './dist/index.mjs',
+          require: './dist/index.cjs',
+          types: './dist/index.d.ts',
+        },
+      },
+    });
+
+    const result = await searchNpmPackage('@scope/pkg', 1, false);
+
+    expect('packages' in result).toBe(true);
+    if ('packages' in result) {
+      const pkg = result.packages[0] as NpmPackageResult;
+      expect(pkg.repoUrl).toBe('https://github.com/owner/repo');
+      expect(pkg.repositoryDirectory).toBe('packages/pkg');
+      expect(pkg.mainEntry).toBe('dist/index.cjs');
+      expect(pkg.moduleEntry).toBe('dist/index.mjs');
+      expect(pkg.typeDefinitions).toBe('dist/index.d.ts');
+      expect(pkg.packageType).toBe('module');
+      expect(pkg.exports).toEqual([
+        '.:import:./dist/index.mjs',
+        '.:require:./dist/index.cjs',
+        '.:types:./dist/index.d.ts',
+      ]);
     }
   });
 
@@ -1594,7 +1724,7 @@ describe('circuit breaker bypass', () => {
       total: 1,
     });
 
-    const result = await searchNpmPackage('open-pkg', 5, false);
+    const result = await searchNpmPackage('open pkg', 5, false);
     expect('packages' in result).toBe(true);
     if ('packages' in result) {
       expect((result.packages[0] as NpmPackageResult).source).toBe('web');

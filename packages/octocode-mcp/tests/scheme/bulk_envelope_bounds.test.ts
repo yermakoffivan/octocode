@@ -1,31 +1,23 @@
 import { describe, it, expect } from 'vitest';
 
-import {
-  BulkRipgrepQuerySchema,
-  BulkFindFilesSchema,
-  BulkFetchContentQuerySchema,
-  BulkViewStructureSchema,
-} from '../../src/scheme/localSchemaOverlay.js';
-import {
-  FileContentBulkQueryLocalSchema,
-  GitHubCodeSearchBulkQueryLocalSchema,
-  GitHubViewRepoStructureBulkQueryLocalSchema,
-  GitHubReposSearchBulkQueryLocalSchema,
-  GitHubPullRequestSearchBulkQueryLocalSchema,
-  PackageSearchBulkQueryLocalSchema,
-  BulkCloneRepoLocalSchema,
-} from '../../src/scheme/remoteSchemaOverlay.js';
-import {
-  BulkLSPGotoDefinitionQuerySchema,
-  BulkLSPFindReferencesQuerySchema,
-  BulkLSPCallHierarchyQuerySchema,
-} from '../../src/scheme/lspSchemaOverlay.js';
+import { LocalRipgrepBulkQuerySchema } from '../../../octocode-tools-core/src/tools/local_ripgrep/scheme.js';
+import { LocalFindFilesBulkQuerySchema } from '../../../octocode-tools-core/src/tools/local_find_files/scheme.js';
+import { LocalFetchContentBulkQuerySchema } from '../../../octocode-tools-core/src/tools/local_fetch_content/scheme.js';
+import { LocalViewStructureBulkQuerySchema } from '../../../octocode-tools-core/src/tools/local_view_structure/scheme.js';
+import { FileContentBulkQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_fetch_content/scheme.js';
+import { GitHubCodeSearchBulkQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_search_code/scheme.js';
+import { GitHubViewRepoStructureBulkQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_view_repo_structure/scheme.js';
+import { GitHubReposSearchBulkQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_search_repos/scheme.js';
+import { GitHubPullRequestSearchBulkQueryLocalSchema } from '../../../octocode-tools-core/src/tools/github_search_pull_requests/scheme.js';
+import { NpmSearchBulkQueryLocalSchema } from '../../../octocode-tools-core/src/tools/package_search/scheme.js';
+import { BulkCloneRepoLocalSchema } from '../../../octocode-tools-core/src/tools/github_clone_repo/scheme.js';
+import { BulkLspGetSemanticsQuerySchema } from '../../../octocode-tools-core/src/tools/lsp/semantic_content/scheme.js';
 
 const ALL_BULK_SCHEMAS = [
-  ['BulkRipgrepQuerySchema', BulkRipgrepQuerySchema],
-  ['BulkFindFilesSchema', BulkFindFilesSchema],
-  ['BulkFetchContentQuerySchema', BulkFetchContentQuerySchema],
-  ['BulkViewStructureSchema', BulkViewStructureSchema],
+  ['LocalRipgrepBulkQuerySchema', LocalRipgrepBulkQuerySchema],
+  ['LocalFindFilesBulkQuerySchema', LocalFindFilesBulkQuerySchema],
+  ['LocalFetchContentBulkQuerySchema', LocalFetchContentBulkQuerySchema],
+  ['LocalViewStructureBulkQuerySchema', LocalViewStructureBulkQuerySchema],
   ['FileContentBulkQueryLocalSchema', FileContentBulkQueryLocalSchema],
   [
     'GitHubCodeSearchBulkQueryLocalSchema',
@@ -43,11 +35,9 @@ const ALL_BULK_SCHEMAS = [
     'GitHubPullRequestSearchBulkQueryLocalSchema',
     GitHubPullRequestSearchBulkQueryLocalSchema,
   ],
-  ['PackageSearchBulkQueryLocalSchema', PackageSearchBulkQueryLocalSchema],
+  ['NpmSearchBulkQueryLocalSchema', NpmSearchBulkQueryLocalSchema],
   ['BulkCloneRepoLocalSchema', BulkCloneRepoLocalSchema],
-  ['BulkLSPGotoDefinitionQuerySchema', BulkLSPGotoDefinitionQuerySchema],
-  ['BulkLSPFindReferencesQuerySchema', BulkLSPFindReferencesQuerySchema],
-  ['BulkLSPCallHierarchyQuerySchema', BulkLSPCallHierarchyQuerySchema],
+  ['BulkLspGetSemanticsQuerySchema', BulkLspGetSemanticsQuerySchema],
 ] as const;
 
 describe('bulk envelope numeric bounds', () => {

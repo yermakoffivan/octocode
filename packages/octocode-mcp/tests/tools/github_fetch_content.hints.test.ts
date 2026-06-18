@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createSuccessResult } from '../../src/tools/utils.js';
+import { createSuccessResult } from '../../../octocode-tools-core/src/tools/utils.js';
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
-describe('githubGetFileContent Tool Handler - Hints Fix', () => {
+describe('ghGetFileContent Tool Handler - Hints Fix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

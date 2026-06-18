@@ -1,28 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { RipgrepQuery } from '@octocodeai/octocode-core';
+import type { z } from 'zod';
+import type { RipgrepQuerySchema } from '@octocodeai/octocode-core/schemas';
+type RipgrepQuery = z.infer<typeof RipgrepQuerySchema>;
 
-vi.mock('../../src/utils/response/bulk.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/response/bulk.js', () => ({
   executeBulkOperation: vi.fn().mockResolvedValue({
     content: [{ type: 'text', text: 'mocked result' }],
   }),
 }));
 
-vi.mock('../../src/tools/local_fetch_content/fetchContent.js', () => ({
-  fetchContent: vi.fn().mockResolvedValue({ status: 'success' }),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_fetch_content/fetchContent.js',
+  () => ({
+    fetchContent: vi.fn().mockResolvedValue({ status: 'success' }),
+  })
+);
 
-vi.mock('../../src/tools/local_find_files/findFiles.js', () => ({
-  findFiles: vi.fn().mockResolvedValue({ status: 'success' }),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_find_files/findFiles.js',
+  () => ({
+    findFiles: vi.fn().mockResolvedValue({ status: 'success' }),
+  })
+);
 
-vi.mock('../../src/tools/local_ripgrep/searchContentRipgrep.js', () => ({
-  searchContentRipgrep: vi.fn().mockResolvedValue({ status: 'success' }),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_ripgrep/searchContentRipgrep.js',
+  () => ({
+    searchContentRipgrep: vi.fn().mockResolvedValue({ status: 'success' }),
+  })
+);
 
-vi.mock('../../src/tools/local_view_structure/local_view_structure.js', () => ({
-  viewStructure: vi.fn().mockResolvedValue({ status: 'success' }),
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_view_structure/local_view_structure.js',
+  () => ({
+    viewStructure: vi.fn().mockResolvedValue({ status: 'success' }),
+  })
+);
 
 const withParsedDefaults = <T extends object>(
   query: T
@@ -53,20 +67,65 @@ vi.mock('@octocodeai/octocode-core', async importOriginal => {
   };
 });
 
-vi.mock('../../src/scheme/localSchemaOverlay.js', () => ({
-  RipgrepQuerySchema: { safeParse: mockSafeParse },
-  FindFilesQuerySchema: { safeParse: mockSafeParse },
-  ViewStructureQuerySchema: { safeParse: mockSafeParse },
-  FetchContentQuerySchema: { safeParse: mockSafeParse },
-  BulkRipgrepQuerySchema: {},
-  BulkFindFilesSchema: {},
-  BulkViewStructureSchema: {},
-  BulkFetchContentQuerySchema: {},
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_ripgrep/scheme.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/tools/local_ripgrep/scheme.js')
+      >();
+    return {
+      ...actual,
+      LocalRipgrepQuerySchema: { safeParse: mockSafeParse },
+      LocalRipgrepBulkQuerySchema: {},
+    };
+  }
+);
 
-vi.mock('../../src/scheme/verbosity.js', () => ({
-  isVerbose: (q: { verbose?: boolean }) => q?.verbose === true,
-}));
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_find_files/scheme.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/tools/local_find_files/scheme.js')
+      >();
+    return {
+      ...actual,
+      LocalFindFilesQuerySchema: { safeParse: mockSafeParse },
+      LocalFindFilesBulkQuerySchema: {},
+    };
+  }
+);
+
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_view_structure/scheme.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/tools/local_view_structure/scheme.js')
+      >();
+    return {
+      ...actual,
+      LocalViewStructureQuerySchema: { safeParse: mockSafeParse },
+      LocalViewStructureBulkQuerySchema: {},
+    };
+  }
+);
+
+vi.mock(
+  '../../../octocode-tools-core/src/tools/local_fetch_content/scheme.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/tools/local_fetch_content/scheme.js')
+      >();
+    return {
+      ...actual,
+      LocalFetchContentQuerySchema: { safeParse: mockSafeParse },
+      LocalFetchContentBulkQuerySchema: {},
+    };
+  }
+);
 
 describe('Local Tools Execution', () => {
   beforeEach(() => {
@@ -76,9 +135,9 @@ describe('Local Tools Execution', () => {
   describe('executeFetchContent', () => {
     it('should call executeBulkOperation with queries', async () => {
       const { executeFetchContent } =
-        await import('../../src/tools/local_fetch_content/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_fetch_content/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       const queries = [
         {
@@ -93,17 +152,18 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         queries,
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localGetFileContent' })
+        expect.objectContaining({ toolName: 'localGetFileContent' }),
+        expect.any(Object)
       );
     });
 
     it('should pass fetchContent function as callback', async () => {
       const { executeFetchContent } =
-        await import('../../src/tools/local_fetch_content/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_fetch_content/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
       const { fetchContent } =
-        await import('../../src/tools/local_fetch_content/fetchContent.js');
+        await import('../../../octocode-tools-core/src/tools/local_fetch_content/fetchContent.js');
 
       const queries = [
         {
@@ -131,24 +191,25 @@ describe('Local Tools Execution', () => {
 
     it('should handle empty queries array', async () => {
       const { executeFetchContent } =
-        await import('../../src/tools/local_fetch_content/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_fetch_content/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       await executeFetchContent({ queries: [] });
 
       expect(executeBulkOperation).toHaveBeenCalledWith(
         [],
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localGetFileContent' })
+        expect.objectContaining({ toolName: 'localGetFileContent' }),
+        expect.any(Object)
       );
     });
 
     it('should handle undefined queries with fallback to empty array', async () => {
       const { executeFetchContent } =
-        await import('../../src/tools/local_fetch_content/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_fetch_content/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       await executeFetchContent({ queries: undefined } as unknown as Parameters<
         typeof executeFetchContent
@@ -157,17 +218,18 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         [],
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localGetFileContent' })
+        expect.objectContaining({ toolName: 'localGetFileContent' }),
+        expect.any(Object)
       );
     });
 
     it('should not cache callback responses', async () => {
       const { executeFetchContent } =
-        await import('../../src/tools/local_fetch_content/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_fetch_content/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
       const { fetchContent } =
-        await import('../../src/tools/local_fetch_content/fetchContent.js');
+        await import('../../../octocode-tools-core/src/tools/local_fetch_content/fetchContent.js');
       vi.mocked(fetchContent).mockResolvedValue({
         content: 'abc',
       } as any);
@@ -189,9 +251,9 @@ describe('Local Tools Execution', () => {
   describe('executeFindFiles', () => {
     it('should call executeBulkOperation with queries', async () => {
       const { executeFindFiles } =
-        await import('../../src/tools/local_find_files/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_find_files/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       const queries = [
         {
@@ -206,17 +268,18 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         queries,
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localFindFiles' })
+        expect.objectContaining({ toolName: 'localFindFiles' }),
+        expect.any(Object)
       );
     });
 
     it('should pass findFiles function as callback', async () => {
       const { executeFindFiles } =
-        await import('../../src/tools/local_find_files/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_find_files/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
       const { findFiles } =
-        await import('../../src/tools/local_find_files/findFiles.js');
+        await import('../../../octocode-tools-core/src/tools/local_find_files/findFiles.js');
 
       const queries = [
         {
@@ -244,9 +307,9 @@ describe('Local Tools Execution', () => {
 
     it('should handle undefined queries with fallback to empty array', async () => {
       const { executeFindFiles } =
-        await import('../../src/tools/local_find_files/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_find_files/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       await executeFindFiles({ queries: undefined } as unknown as Parameters<
         typeof executeFindFiles
@@ -255,17 +318,18 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         [],
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localFindFiles' })
+        expect.objectContaining({ toolName: 'localFindFiles' }),
+        expect.any(Object)
       );
     });
 
     it('should catch thrown errors via executeWithToolBoundary', async () => {
       const { executeFindFiles } =
-        await import('../../src/tools/local_find_files/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_find_files/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
       const { findFiles } =
-        await import('../../src/tools/local_find_files/findFiles.js');
+        await import('../../../octocode-tools-core/src/tools/local_find_files/findFiles.js');
 
       vi.mocked(findFiles).mockRejectedValueOnce(
         new Error('Unexpected failure')
@@ -284,50 +348,20 @@ describe('Local Tools Execution', () => {
       expect(result).toBeDefined();
       expect(result).toHaveProperty('status', 'error');
     });
-
-    it('marks capped find results as incomplete evidence', async () => {
-      const { executeFindFiles } =
-        await import('../../src/tools/local_find_files/execution.js');
-      const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
-      const { findFiles } =
-        await import('../../src/tools/local_find_files/findFiles.js');
-
-      vi.mocked(findFiles).mockResolvedValueOnce({
-        files: [{ path: '/test/a.ts' }],
-        hints: ['Results capped at 5 of 14. Narrow filters or increase limit.'],
-      } as any);
-
-      const query = {
-        id: 'test',
-        researchGoal: 'Test',
-        reasoning: 'capped evidence',
-        path: '/test',
-      };
-      await executeFindFiles({ queries: [query] as any });
-
-      const callback = vi.mocked(executeBulkOperation).mock.calls[0]![1];
-      const result = await callback(query, 0);
-      expect(result.evidence).toMatchObject({
-        complete: false,
-        confidence: 'medium',
-      });
-      expect(result.evidence?.reason).toContain('capped');
-    });
   });
 
   describe('executeRipgrepSearch', () => {
     it('should call executeBulkOperation with queries', async () => {
       const { executeRipgrepSearch } =
-        await import('../../src/tools/local_ripgrep/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_ripgrep/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       const queries = [
         {
           researchGoal: 'Test',
           reasoning: 'Schema validation',
-          pattern: 'test',
+          keywords: 'test',
           path: '/test',
         },
       ] as RipgrepQuery[];
@@ -336,23 +370,24 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         queries,
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localSearchCode' })
+        expect.objectContaining({ toolName: 'localSearchCode' }),
+        expect.any(Object)
       );
     });
 
     it('should pass searchContentRipgrep function as callback', async () => {
       const { executeRipgrepSearch } =
-        await import('../../src/tools/local_ripgrep/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_ripgrep/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
       const { searchContentRipgrep } =
-        await import('../../src/tools/local_ripgrep/searchContentRipgrep.js');
+        await import('../../../octocode-tools-core/src/tools/local_ripgrep/searchContentRipgrep.js');
 
       const queries = [
         {
           researchGoal: 'Test',
           reasoning: 'Schema validation',
-          pattern: 'test',
+          keywords: 'test',
           path: '/test',
         },
       ] as RipgrepQuery[];
@@ -365,7 +400,7 @@ describe('Local Tools Execution', () => {
       const query = {
         researchGoal: 'Test',
         reasoning: 'Schema validation',
-        pattern: 'test',
+        keywords: 'test',
         path: '/test',
       } as RipgrepQuery;
       await callback(query, 0);
@@ -377,9 +412,9 @@ describe('Local Tools Execution', () => {
 
     it('should handle undefined queries with fallback to empty array', async () => {
       const { executeRipgrepSearch } =
-        await import('../../src/tools/local_ripgrep/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_ripgrep/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       await executeRipgrepSearch({
         queries: undefined,
@@ -388,47 +423,18 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         [],
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localSearchCode' })
+        expect.objectContaining({ toolName: 'localSearchCode' }),
+        expect.any(Object)
       );
-    });
-
-    it('marks limited ripgrep results as incomplete evidence', async () => {
-      const { executeRipgrepSearch } =
-        await import('../../src/tools/local_ripgrep/execution.js');
-      const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
-      const { searchContentRipgrep } =
-        await import('../../src/tools/local_ripgrep/searchContentRipgrep.js');
-
-      vi.mocked(searchContentRipgrep).mockResolvedValueOnce({
-        files: [{ path: '/test/a.ts', matches: [] }],
-        hints: ['Results limited to 10 files (found 17 matching)'],
-      } as any);
-
-      const query = {
-        researchGoal: 'Test',
-        reasoning: 'limited evidence',
-        pattern: 'test',
-        path: '/test',
-      } as RipgrepQuery;
-      await executeRipgrepSearch({ queries: [query] });
-
-      const callback = vi.mocked(executeBulkOperation).mock.calls[0]![1];
-      const result = await callback(query, 0);
-      expect(result.evidence).toMatchObject({
-        complete: false,
-        confidence: 'medium',
-      });
-      expect(result.evidence?.reason).toContain('limited');
     });
   });
 
   describe('executeViewStructure', () => {
     it('should call executeBulkOperation with queries', async () => {
       const { executeViewStructure } =
-        await import('../../src/tools/local_view_structure/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_view_structure/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       const queries = [
         {
@@ -443,17 +449,18 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         queries,
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localViewStructure' })
+        expect.objectContaining({ toolName: 'localViewStructure' }),
+        expect.any(Object)
       );
     });
 
     it('should pass viewStructure function as callback', async () => {
       const { executeViewStructure } =
-        await import('../../src/tools/local_view_structure/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_view_structure/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
       const { viewStructure } =
-        await import('../../src/tools/local_view_structure/local_view_structure.js');
+        await import('../../../octocode-tools-core/src/tools/local_view_structure/local_view_structure.js');
 
       const queries = [
         {
@@ -481,9 +488,9 @@ describe('Local Tools Execution', () => {
 
     it('should handle undefined queries with fallback to empty array', async () => {
       const { executeViewStructure } =
-        await import('../../src/tools/local_view_structure/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_view_structure/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
 
       await executeViewStructure({
         queries: undefined,
@@ -492,17 +499,18 @@ describe('Local Tools Execution', () => {
       expect(executeBulkOperation).toHaveBeenCalledWith(
         [],
         expect.any(Function),
-        expect.objectContaining({ toolName: 'localViewStructure' })
+        expect.objectContaining({ toolName: 'localViewStructure' }),
+        expect.any(Object)
       );
     });
 
     it('should catch thrown errors via executeWithToolBoundary', async () => {
       const { executeViewStructure } =
-        await import('../../src/tools/local_view_structure/execution.js');
+        await import('../../../octocode-tools-core/src/tools/local_view_structure/execution.js');
       const { executeBulkOperation } =
-        await import('../../src/utils/response/bulk.js');
+        await import('../../../octocode-tools-core/src/utils/response/bulk.js');
       const { viewStructure } =
-        await import('../../src/tools/local_view_structure/local_view_structure.js');
+        await import('../../../octocode-tools-core/src/tools/local_view_structure/local_view_structure.js');
 
       vi.mocked(viewStructure).mockRejectedValueOnce(
         new Error('Unexpected failure')

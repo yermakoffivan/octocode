@@ -1,16 +1,14 @@
-import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
+  TOOL_NAMES,
   FileContentBulkQueryLocalSchema,
-  GitHubFetchContentOutputLocalSchema,
-} from '../../scheme/remoteSchemaOverlay.js';
-import { fetchMultipleGitHubFileContents } from './execution.js';
+  fetchMultipleGitHubFileContents,
+} from '@octocodeai/octocode-tools-core';
 import { createRemoteToolRegistration } from '../registerRemoteTool.js';
 
 export const registerFetchGitHubFileContentTool = createRemoteToolRegistration({
   name: TOOL_NAMES.GITHUB_FETCH_CONTENT,
   title: 'GitHub File Content Fetch',
   inputSchema: FileContentBulkQueryLocalSchema,
-  outputSchema: GitHubFetchContentOutputLocalSchema,
   executionFn: fetchMultipleGitHubFileContents,
   annotations: { readOnlyHint: false },
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_TOOLS } from '../../src/tools/toolConfig.js';
-import { STATIC_TOOL_NAMES } from '../../src/tools/toolNames.js';
+import { STATIC_TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolNames.js';
+import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from '../../../octocode-tools-core/src/tools/lsp/shared/semanticTypes.js';
 import {
   DIRECT_TOOL_CATEGORIES,
   DIRECT_TOOL_DEFINITIONS,
@@ -20,7 +21,7 @@ import {
   prepareDirectToolInput,
   prepareDirectToolInputFromJsonText,
   sortDirectToolNames,
-} from '../../src/tools/directToolCatalog.js';
+} from '@octocodeai/octocode-tools-core';
 import { z } from 'zod';
 
 describe('directToolCatalog', () => {
@@ -77,7 +78,7 @@ describe('directToolCatalog', () => {
       getDirectToolAutoFilledFields(STATIC_TOOL_NAMES.LOCAL_RIPGREP)
     ).toEqual(['id', 'researchGoal', 'reasoning']);
     expect(
-      getDirectToolAutoFilledFields(STATIC_TOOL_NAMES.LSP_GOTO_DEFINITION)
+      getDirectToolAutoFilledFields(LSP_GET_SEMANTIC_CONTENT_TOOL_NAME)
     ).toEqual(['id', 'researchGoal', 'reasoning']);
   });
 
@@ -90,7 +91,8 @@ describe('directToolCatalog', () => {
       { name: 'isError', type: 'boolean', optional: true },
     ]);
 
-    outputFields[0].name = 'mutated';
+    expect(outputFields[0]).toBeDefined();
+    outputFields[0]!.name = 'mutated';
 
     expect(getDirectToolOutputFields()[0]?.name).toBe('content');
     expect(JSON.parse(formatDirectToolOutputSchemaText())).toEqual({
@@ -107,7 +109,7 @@ describe('directToolCatalog', () => {
     expect(getDirectToolCategory(STATIC_TOOL_NAMES.LOCAL_RIPGREP)).toBe(
       'Local'
     );
-    expect(getDirectToolCategory(STATIC_TOOL_NAMES.LSP_GOTO_DEFINITION)).toBe(
+    expect(getDirectToolCategory(LSP_GET_SEMANTIC_CONTENT_TOOL_NAME)).toBe(
       'LSP'
     );
     expect(getDirectToolCategory(STATIC_TOOL_NAMES.PACKAGE_SEARCH)).toBe(
@@ -152,32 +154,29 @@ describe('directToolCatalog', () => {
     );
 
     expect(localByName['id']).toBeUndefined();
-    expect(localByName['pattern']?.required).toBe(true);
+    expect(localByName['keywords']?.required).toBe(true);
     expect(localByName['include']?.type).toBe('array<string>');
-    expect(localByName['verbose']?.type).toBe('boolean');
+    expect(localByName['matchContentLength']?.required).toBe(false);
+    expect(localByName['page']?.required).toBe(false);
     expect(getDirectToolDisplayFields('missingTool')).toEqual([]);
 
     expect(
       buildDirectToolExampleQuery(STATIC_TOOL_NAMES.LOCAL_RIPGREP)
-    ).toEqual(
-      expect.objectContaining({
-        pattern: 'pattern',
-        path: '.',
-        matchContentLength: 1,
-        page: 1,
-      })
-    );
+    ).toEqual({
+      keywords: 'keywords',
+      path: '.',
+    });
     expect(
       buildDirectToolExampleQuery(STATIC_TOOL_NAMES.GITHUB_CLONE_REPO)
-    ).toEqual({ owner: 'bgauryy', repo: 'octocode-mcp' });
+    ).toEqual({ owner: 'bgauryy', repo: 'octocode' });
     expect(
-      buildDirectToolExampleQuery(STATIC_TOOL_NAMES.LSP_CALL_HIERARCHY)
+      buildDirectToolExampleQuery(LSP_GET_SEMANTIC_CONTENT_TOOL_NAME)
     ).toEqual(
       expect.objectContaining({
         uri: 'uri',
+        type: 'definition',
         symbolName: 'symbolName',
         lineHint: 1,
-        direction: 'incoming',
       })
     );
     expect(buildDirectToolExampleQuery('missingTool')).toEqual({});
@@ -186,12 +185,12 @@ describe('directToolCatalog', () => {
   it('prepares direct tool input from every CLI-supported JSON payload shape', () => {
     const query = {
       path: '.',
-      pattern: 'DIRECT_TOOL_CATEGORIES',
-      fixed_string: true,
+      keywords: 'DIRECT_TOOL_CATEGORIES',
+      fixedString: true,
       matchContentLength: 200,
-      filesPerPage: 1,
-      filePageNumber: 1,
-      matchesPerPage: 1,
+      itemsPerPage: 1,
+      page: 1,
+      maxMatchesPerFile: 1,
     };
 
     expect(
@@ -246,7 +245,7 @@ describe('directToolCatalog', () => {
         mainResearchGoal: 'main',
         researchGoal: 'goal',
         reasoning: 'because',
-        keywordsToSearch: ['directToolCatalog'],
+        keywords: ['directToolCatalog'],
         limit: 1,
         page: 1,
       },
@@ -265,7 +264,7 @@ describe('directToolCatalog', () => {
     const defaulted = prepareDirectToolInput(
       STATIC_TOOL_NAMES.GITHUB_SEARCH_CODE,
       {
-        keywordsToSearch: ['directToolCatalog'],
+        keywords: ['directToolCatalog'],
         limit: 1,
         page: 1,
       },
@@ -279,14 +278,53 @@ describe('directToolCatalog', () => {
     );
   });
 
-  it('preserves schema-native snake_case fields for direct tool input', () => {
+  it('reports unknown fields instead of rewriting old keys', () => {
+    const warnings: Array<{ fields: string[]; index: number }> = [];
+
+    expect(() =>
+      prepareDirectToolInput(
+        STATIC_TOOL_NAMES.LOCAL_RIPGREP,
+        [
+          { keywords: 'a', path: '.', limit: 3, bogusKey: true },
+          { keywords: 'b', path: '.', fixed_string: true },
+        ],
+        {
+          sourceLabel: 'unit-test',
+          onUnknownFields: (fields, index) => warnings.push({ fields, index }),
+        }
+      )
+    ).toThrow();
+
+    expect(warnings).toEqual([
+      { fields: ['limit', 'bogusKey'], index: 0 },
+      { fields: ['fixed_string'], index: 1 },
+    ]);
+  });
+
+  it('preserves envelope-level fields alongside rebuilt queries', () => {
+    const prepared = prepareDirectToolInput(
+      STATIC_TOOL_NAMES.LOCAL_RIPGREP,
+      {
+        queries: [{ keywords: 'a', path: '.' }],
+        responseCharLength: 500,
+      },
+      { sourceLabel: 'unit-test' }
+    );
+
+    expect(
+      (prepared as { responseCharLength?: number }).responseCharLength
+    ).toBe(500);
+    expect(prepared.queries).toHaveLength(1);
+  });
+
+  it('preserves camelCase fields for direct tool input', () => {
     const prepared = prepareDirectToolInput(
       STATIC_TOOL_NAMES.GITHUB_CLONE_REPO,
       {
         owner: 'bgauryy',
         repo: 'octocode',
         branch: 'main',
-        sparse_path: 'packages/octocode-mcp/src/tools',
+        sparsePath: 'packages/octocode-mcp/src/tools',
       },
       { sourceLabel: 'unit-test' }
     );
@@ -296,7 +334,7 @@ describe('directToolCatalog', () => {
         owner: 'bgauryy',
         repo: 'octocode',
         branch: 'main',
-        sparse_path: 'packages/octocode-mcp/src/tools',
+        sparsePath: 'packages/octocode-mcp/src/tools',
       })
     );
   });
@@ -336,9 +374,9 @@ describe('directToolCatalog', () => {
         path: '.',
         pattern: 123,
         matchContentLength: 200,
-        filesPerPage: 1,
-        filePageNumber: 1,
-        matchesPerPage: 1,
+        itemsPerPage: 1,
+        page: 1,
+        maxMatchesPerFile: 1,
       })
     ).toThrow('Tool input does not match the expected schema.');
   });
@@ -346,12 +384,12 @@ describe('directToolCatalog', () => {
   it('returns an MCP result envelope from the direct execution pipeline', async () => {
     const input = prepareDirectToolInput(STATIC_TOOL_NAMES.LOCAL_RIPGREP, {
       path: 'src/tools/directToolCatalog.ts',
-      pattern: 'DIRECT_TOOL_CATEGORIES',
+      keywords: 'DIRECT_TOOL_CATEGORIES',
       fixedString: true,
       matchContentLength: 200,
-      filesPerPage: 1,
-      filePageNumber: 1,
-      matchesPerPage: 1,
+      itemsPerPage: 1,
+      page: 1,
+      maxMatchesPerFile: 1,
     });
 
     const result = await executeDirectTool(

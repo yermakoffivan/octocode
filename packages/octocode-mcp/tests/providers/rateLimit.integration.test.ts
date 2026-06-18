@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GitHubProvider } from '../../src/providers/github/GitHubProvider.js';
+import { GitHubProvider } from '../../../octocode-tools-core/src/providers/github/GitHubProvider.js';
 import { RequestError } from 'octokit';
 
-vi.mock('../../src/github/codeSearch.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/codeSearch.js', () => ({
   searchGitHubCodeAPI: vi.fn(),
 }));
 
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
 
 const mockSearchGitHubCodeAPI = searchGitHubCodeAPI as ReturnType<typeof vi.fn>;
 

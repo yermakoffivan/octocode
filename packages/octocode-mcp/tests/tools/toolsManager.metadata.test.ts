@@ -2,54 +2,57 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from '../../src/tools/toolsManager.js';
 
-vi.mock('../../src/tools/toolMetadata/proxies.js', async () => {
-  const actual = await vi.importActual<
-    typeof import('../../src/tools/toolMetadata/proxies.js')
-  >('../../src/tools/toolMetadata/proxies.js');
-  return {
-    ...actual,
-    isToolInMetadata: vi.fn(),
-    TOOL_NAMES: {
-      GITHUB_FETCH_CONTENT: 'githubGetFileContent',
-      GITHUB_SEARCH_CODE: 'githubSearchCode',
-      GITHUB_SEARCH_PULL_REQUESTS: 'githubSearchPullRequests',
-      GITHUB_SEARCH_REPOSITORIES: 'githubSearchRepositories',
-      GITHUB_VIEW_REPO_STRUCTURE: 'githubViewRepoStructure',
-    },
-    DESCRIPTIONS: new Proxy(
-      {},
-      {
-        get: (_target, prop: string) => {
-          return `Description for ${prop}`;
-        },
-      }
-    ),
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js',
+  async () => {
+    const actual = await vi.importActual<
+      typeof import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js')
+    >('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
+    return {
+      ...actual,
+      isToolInMetadata: vi.fn(),
+      TOOL_NAMES: {
+        GITHUB_FETCH_CONTENT: 'ghGetFileContent',
+        GITHUB_SEARCH_CODE: 'ghSearchCode',
+        GITHUB_SEARCH_PULL_REQUESTS: 'ghHistoryResearch',
+        GITHUB_SEARCH_REPOSITORIES: 'ghSearchRepos',
+        GITHUB_VIEW_REPO_STRUCTURE: 'ghViewRepoStructure',
+      },
+      DESCRIPTIONS: new Proxy(
+        {},
+        {
+          get: (_target, prop: string) => {
+            return `Description for ${prop}`;
+          },
+        }
+      ),
+    };
+  }
+);
 
 vi.mock('../../src/tools/toolConfig.js', () => {
   const mockGitHubTools = [
-    { name: 'githubSearchCode', isDefault: true, isLocal: false, fn: vi.fn() },
+    { name: 'ghSearchCode', isDefault: true, isLocal: false, fn: vi.fn() },
     {
-      name: 'githubGetFileContent',
+      name: 'ghGetFileContent',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
     },
     {
-      name: 'githubViewRepoStructure',
+      name: 'ghViewRepoStructure',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
     },
     {
-      name: 'githubSearchRepositories',
+      name: 'ghSearchRepos',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
     },
     {
-      name: 'githubSearchPullRequests',
+      name: 'ghHistoryResearch',
       isDefault: true,
       isLocal: false,
       fn: vi.fn(),
@@ -60,21 +63,21 @@ vi.mock('../../src/tools/toolConfig.js', () => {
   };
 });
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getServerConfig: vi.fn(),
   isLocalEnabled: vi.fn().mockReturnValue(false),
   isCloneEnabled: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(),
 }));
 
 import { ALL_TOOLS } from '../../src/tools/toolConfig.js';
-import { getServerConfig } from '../../src/serverConfig.js';
-import { isToolInMetadata } from '../../src/tools/toolMetadata/proxies.js';
-import { logSessionError } from '../../src/session.js';
-import { TOOL_METADATA_ERRORS } from '../../src/errors/domainErrors.js';
+import { getServerConfig } from '../../../octocode-tools-core/src/serverConfig.js';
+import { isToolInMetadata } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
+import { logSessionError } from '../../../octocode-tools-core/src/session.js';
+import { TOOL_METADATA_ERRORS } from '../../../octocode-tools-core/src/errors/domainErrors.js';
 
 const mockGetServerConfig = vi.mocked(getServerConfig);
 const mockIsToolAvailableSync = vi.mocked(isToolInMetadata);
@@ -132,9 +135,9 @@ describe('ToolsManager - Metadata Availability', () => {
   });
 
   describe('Single Tool Missing from Metadata', () => {
-    it('should skip githubSearchCode when not in metadata and log error', async () => {
+    it('should skip ghSearchCode when not in metadata and log error', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubSearchCode';
+        return toolName !== 'ghSearchCode';
       });
 
       const result = await registerTools(mockServer);
@@ -152,15 +155,15 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(process.stderr.write).not.toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchCode',
+        'ghSearchCode',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(1);
     });
 
-    it('should skip githubGetFileContent when not in metadata and log error', async () => {
+    it('should skip ghGetFileContent when not in metadata and log error', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubGetFileContent';
+        return toolName !== 'ghGetFileContent';
       });
 
       const result = await registerTools(mockServer);
@@ -177,15 +180,15 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(process.stderr.write).not.toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubGetFileContent',
+        'ghGetFileContent',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(1);
     });
 
-    it('should skip githubViewRepoStructure when not in metadata and log error', async () => {
+    it('should skip ghViewRepoStructure when not in metadata and log error', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubViewRepoStructure';
+        return toolName !== 'ghViewRepoStructure';
       });
 
       const result = await registerTools(mockServer);
@@ -202,15 +205,15 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(process.stderr.write).not.toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubViewRepoStructure',
+        'ghViewRepoStructure',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(1);
     });
 
-    it('should skip githubSearchRepositories when not in metadata and log error', async () => {
+    it('should skip ghSearchRepos when not in metadata and log error', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubSearchRepositories';
+        return toolName !== 'ghSearchRepos';
       });
 
       const result = await registerTools(mockServer);
@@ -227,15 +230,15 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(process.stderr.write).not.toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchRepositories',
+        'ghSearchRepos',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(1);
     });
 
-    it('should skip githubSearchPullRequests when not in metadata and log error', async () => {
+    it('should skip ghHistoryResearch when not in metadata and log error', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubSearchPullRequests';
+        return toolName !== 'ghHistoryResearch';
       });
 
       const result = await registerTools(mockServer);
@@ -252,7 +255,7 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(process.stderr.write).not.toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchPullRequests',
+        'ghHistoryResearch',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(1);
@@ -262,10 +265,7 @@ describe('ToolsManager - Metadata Availability', () => {
   describe('Multiple Tools Missing from Metadata', () => {
     it('should skip multiple tools when not in metadata and log errors', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return (
-          toolName !== 'githubSearchCode' &&
-          toolName !== 'githubSearchPullRequests'
-        );
+        return toolName !== 'ghSearchCode' && toolName !== 'ghHistoryResearch';
       });
 
       const result = await registerTools(mockServer);
@@ -283,11 +283,11 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(process.stderr.write).not.toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchCode',
+        'ghSearchCode',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchPullRequests',
+        'ghHistoryResearch',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(2);
@@ -295,7 +295,7 @@ describe('ToolsManager - Metadata Availability', () => {
 
     it('should skip all but one tool when most are missing from metadata and log errors', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName === 'githubSearchCode';
+        return toolName === 'ghSearchCode';
       });
 
       const result = await registerTools(mockServer);
@@ -340,7 +340,7 @@ describe('ToolsManager - Metadata Availability', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        toolsToRun: ['githubSearchCode', 'githubGetFileContent'],
+        toolsToRun: ['ghSearchCode', 'ghGetFileContent'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -351,7 +351,7 @@ describe('ToolsManager - Metadata Availability', () => {
       });
 
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubSearchCode';
+        return toolName !== 'ghSearchCode';
       });
 
       const result = await registerTools(mockServer);
@@ -363,7 +363,7 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(ALL_TOOLS[1]?.fn).toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchCode',
+        'ghSearchCode',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(1);
@@ -373,7 +373,7 @@ describe('ToolsManager - Metadata Availability', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        toolsToRun: ['githubSearchCode', 'githubGetFileContent'],
+        toolsToRun: ['ghSearchCode', 'ghGetFileContent'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -395,11 +395,11 @@ describe('ToolsManager - Metadata Availability', () => {
       });
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchCode',
+        'ghSearchCode',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubGetFileContent',
+        'ghGetFileContent',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(2);
@@ -411,7 +411,7 @@ describe('ToolsManager - Metadata Availability', () => {
       mockGetServerConfig.mockReturnValue({
         version: '1.0.0',
         githubApiUrl: 'https://api.github.com',
-        disableTools: ['githubGetFileContent'],
+        disableTools: ['ghGetFileContent'],
         timeout: 30000,
         maxRetries: 3,
         loggingEnabled: true,
@@ -422,7 +422,7 @@ describe('ToolsManager - Metadata Availability', () => {
       });
 
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubSearchCode';
+        return toolName !== 'ghSearchCode';
       });
 
       const result = await registerTools(mockServer);
@@ -438,7 +438,7 @@ describe('ToolsManager - Metadata Availability', () => {
       expect(ALL_TOOLS[4]?.fn).toHaveBeenCalled();
 
       expect(mockLogSessionError).toHaveBeenCalledWith(
-        'githubSearchCode',
+        'ghSearchCode',
         TOOL_METADATA_ERRORS.INVALID_FORMAT.code
       );
       expect(mockLogSessionError).toHaveBeenCalledTimes(1);
@@ -456,7 +456,7 @@ describe('ToolsManager - Metadata Availability', () => {
       const result = await registerTools(mockServer);
 
       expect(result.successCount).toBe(4);
-      expect(result.failedTools).toEqual(['githubSearchCode']);
+      expect(result.failedTools).toEqual(['ghSearchCode']);
 
       expect(ALL_TOOLS[1]?.fn).toHaveBeenCalled();
       expect(ALL_TOOLS[2]?.fn).toHaveBeenCalled();
@@ -466,7 +466,7 @@ describe('ToolsManager - Metadata Availability', () => {
 
     it('should not add missing metadata tools to failedTools', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubSearchCode';
+        return toolName !== 'ghSearchCode';
       });
 
       vi.mocked(ALL_TOOLS[1]!.fn).mockImplementation(() => {
@@ -476,7 +476,7 @@ describe('ToolsManager - Metadata Availability', () => {
       const result = await registerTools(mockServer);
 
       expect(result.successCount).toBe(3);
-      expect(result.failedTools).toEqual(['githubGetFileContent']);
+      expect(result.failedTools).toEqual(['ghGetFileContent']);
 
       expect(ALL_TOOLS[0]?.fn).not.toHaveBeenCalled();
       expect(ALL_TOOLS[2]?.fn).toHaveBeenCalled();
@@ -524,7 +524,7 @@ describe('ToolsManager - Metadata Availability', () => {
 
     it('should not abort registration when metadata logging rejects', async () => {
       mockIsToolAvailableSync.mockImplementation((toolName: string) => {
-        return toolName !== 'githubSearchCode';
+        return toolName !== 'ghSearchCode';
       });
       mockLogSessionError.mockRejectedValue(
         new Error('session logging unavailable')

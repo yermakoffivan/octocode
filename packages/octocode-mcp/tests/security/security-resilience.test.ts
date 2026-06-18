@@ -1,13 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-  writeFileSync,
-  mkdirSync,
-  rmSync,
-  existsSync,
-  symlinkSync,
-} from 'node:fs';
+import { mkdirSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
@@ -19,7 +13,7 @@ import {
   TOOLING_ALLOWED_ENV_VARS,
   SENSITIVE_ENV_VARS,
   validateArgs,
-} from '../../src/utils/exec/spawn.js';
+} from '../../../octocode-tools-core/src/utils/exec/spawn.js';
 
 function createMockProcess() {
   const proc = new EventEmitter() as EventEmitter & {
@@ -138,250 +132,6 @@ describe('[SECURITY] spawnCollectStdout OOM protection', () => {
   });
 });
 
-import { LSPOperations } from '../../src/lsp/lspOperations.js';
-import { LSPDocumentManager } from '../../src/lsp/lspDocumentManager.js';
-
-describe('[SECURITY] LSP locationsToSnippets path validation', () => {
-  const testTmpDir = join(tmpdir(), `octocode-lsp-security-${Date.now()}`);
-
-  beforeEach(() => {
-    mkdirSync(testTmpDir, { recursive: true });
-  });
-
-  afterEach(() => {
-    if (existsSync(testTmpDir)) {
-      rmSync(testTmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it('LSPOperations constructor should accept workspaceRoot for path validation', () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: testTmpDir,
-    };
-    const docManager = new LSPDocumentManager(mockConfig);
-    expect(() => new LSPOperations(docManager, testTmpDir)).not.toThrow();
-  });
-
-  it('gotoDefinition should skip out-of-workspace paths from LSP response', async () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: testTmpDir,
-    };
-
-    const testFile = join(testTmpDir, 'test.ts');
-    writeFileSync(testFile, 'const x = 1;');
-
-    const docManager = new LSPDocumentManager(mockConfig);
-    const operations = new LSPOperations(docManager, testTmpDir);
-
-    const mockConnection = {
-      sendRequest: vi.fn().mockResolvedValue({
-        uri: 'file:///etc/passwd',
-        range: {
-          start: { line: 0, character: 0 },
-          end: { line: 5, character: 0 },
-        },
-      }),
-      sendNotification: vi.fn().mockResolvedValue(undefined),
-    };
-
-    operations.setConnection(mockConnection as any, true);
-    docManager.setConnection(mockConnection as any, true);
-
-    const snippets = await operations.gotoDefinition(testFile, {
-      line: 0,
-      character: 0,
-    });
-
-    expect(snippets).toHaveLength(0);
-  });
-
-  it('gotoDefinition should include in-workspace paths from LSP response', async () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: process.cwd(),
-    };
-
-    const targetFile = join(process.cwd(), 'package.json');
-
-    const docManager = new LSPDocumentManager(mockConfig);
-    const operations = new LSPOperations(docManager, process.cwd());
-
-    const mockConnection = {
-      sendRequest: vi.fn().mockResolvedValue({
-        uri: `file://${targetFile}`,
-        range: {
-          start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
-        },
-      }),
-      sendNotification: vi.fn().mockResolvedValue(undefined),
-    };
-
-    operations.setConnection(mockConnection as any, true);
-    docManager.setConnection(mockConnection as any, true);
-
-    vi.spyOn(docManager, 'openDocument').mockResolvedValue(undefined);
-    vi.spyOn(docManager, 'closeDocument').mockResolvedValue(undefined);
-
-    const snippets = await operations.gotoDefinition(targetFile, {
-      line: 0,
-      character: 0,
-    });
-
-    expect(snippets).toHaveLength(1);
-    expect(snippets[0]!.content).toBeTruthy();
-  });
-});
-
-describe('[SECURITY] convertCallHierarchyItem malformed response handling', () => {
-  it('prepareCallHierarchy should handle null result from LSP', async () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: process.cwd(),
-    };
-
-    const docManager = new LSPDocumentManager(mockConfig);
-    const operations = new LSPOperations(docManager, process.cwd());
-
-    const mockConnection = {
-      sendRequest: vi.fn().mockResolvedValue(null),
-      sendNotification: vi.fn().mockResolvedValue(undefined),
-    };
-
-    operations.setConnection(mockConnection as any, true);
-    docManager.setConnection(mockConnection as any, true);
-
-    vi.spyOn(docManager, 'openDocument').mockResolvedValue(undefined);
-    vi.spyOn(docManager, 'closeDocument').mockResolvedValue(undefined);
-
-    const result = await operations.prepareCallHierarchy(
-      join(process.cwd(), 'package.json'),
-      { line: 0, character: 0 }
-    );
-
-    expect(result).toEqual([]);
-  });
-
-  it('prepareCallHierarchy should handle items with missing range', async () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: process.cwd(),
-    };
-
-    const docManager = new LSPDocumentManager(mockConfig);
-    const operations = new LSPOperations(docManager, process.cwd());
-
-    const mockConnection = {
-      sendRequest: vi.fn().mockResolvedValue([
-        {
-          name: 'brokenFunction',
-          kind: 12,
-          uri: `file://${join(process.cwd(), 'package.json')}`,
-          range: undefined,
-          selectionRange: undefined,
-        },
-      ]),
-      sendNotification: vi.fn().mockResolvedValue(undefined),
-    };
-
-    operations.setConnection(mockConnection as any, true);
-    docManager.setConnection(mockConnection as any, true);
-
-    vi.spyOn(docManager, 'openDocument').mockResolvedValue(undefined);
-    vi.spyOn(docManager, 'closeDocument').mockResolvedValue(undefined);
-
-    const result = await operations.prepareCallHierarchy(
-      join(process.cwd(), 'package.json'),
-      { line: 0, character: 0 }
-    );
-
-    expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe('brokenFunction');
-    expect(result[0]!.range.start.line).toBe(0);
-    expect(result[0]!.range.start.character).toBe(0);
-  });
-
-  it('getIncomingCalls should handle malformed fromRanges', async () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: process.cwd(),
-    };
-
-    const docManager = new LSPDocumentManager(mockConfig);
-    const operations = new LSPOperations(docManager, process.cwd());
-
-    const mockConnection = {
-      sendRequest: vi.fn().mockResolvedValue([
-        {
-          from: {
-            name: 'caller',
-            kind: 12,
-            uri: `file://${join(process.cwd(), 'package.json')}`,
-            range: {
-              start: { line: 0, character: 0 },
-              end: { line: 0, character: 10 },
-            },
-            selectionRange: {
-              start: { line: 0, character: 0 },
-              end: { line: 0, character: 5 },
-            },
-          },
-          fromRanges: [null, undefined],
-        },
-      ]),
-      sendNotification: vi.fn().mockResolvedValue(undefined),
-    };
-
-    operations.setConnection(mockConnection as any, true);
-    docManager.setConnection(mockConnection as any, true);
-
-    const item = {
-      name: 'target',
-      kind: 'function' as const,
-      uri: join(process.cwd(), 'package.json'),
-      range: {
-        start: { line: 0, character: 0 },
-        end: { line: 0, character: 10 },
-      },
-      selectionRange: {
-        start: { line: 0, character: 0 },
-        end: { line: 0, character: 5 },
-      },
-      displayRange: { startLine: 1, endLine: 1 },
-    };
-
-    const result = await operations.getIncomingCalls(item);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.from.name).toBe('caller');
-  });
-});
-
 describe('[SECURITY] Environment variable leakage prevention', () => {
   const originalEnv = { ...process.env };
 
@@ -453,7 +203,7 @@ describe('[SECURITY] Environment variable leakage prevention', () => {
   });
 });
 
-import { validateCommand } from 'octocode-security-utils/commandValidator';
+import { validateCommand } from 'octocode-security/commandValidator';
 
 describe('[SECURITY] Command injection via rg flags', () => {
   it('rg --pre should be blocked (arbitrary command execution)', () => {
@@ -622,7 +372,7 @@ describe('[RESILIENCE] validateArgs edge cases', () => {
   });
 });
 
-import { ContentSanitizer } from 'octocode-security-utils/contentSanitizer';
+import { ContentSanitizer } from 'octocode-security/contentSanitizer';
 
 describe('[RESILIENCE] ContentSanitizer edge cases', () => {
   it('sanitizeContent with null input should not crash', () => {
@@ -719,7 +469,7 @@ describe('[RESILIENCE] ContentSanitizer edge cases', () => {
   });
 });
 
-import { generateCacheKey } from '../../src/utils/http/cache.js';
+import { generateCacheKey } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
 describe('[RESILIENCE] Cache key generation edge cases', () => {
   it('should handle null params', () => {
@@ -813,73 +563,7 @@ describe('[SECURITY] grep/rg pattern detection regression', () => {
   });
 });
 
-describe('[RESILIENCE] LSPDocumentManager state management', () => {
-  const testTmpDir = join(tmpdir(), `octocode-lsp-state-${Date.now()}`);
-
-  afterEach(() => {
-    if (existsSync(testTmpDir)) {
-      rmSync(testTmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it('setConnection(null) should clear all tracked documents', async () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: testTmpDir,
-    };
-
-    mkdirSync(testTmpDir, { recursive: true });
-    writeFileSync(join(testTmpDir, 'a.ts'), 'const a = 1;');
-
-    const manager = new LSPDocumentManager(mockConfig);
-    const mockConnection = {
-      sendNotification: vi.fn().mockResolvedValue(undefined),
-    };
-
-    manager.setConnection(mockConnection as any, true);
-    await manager.openDocument(join(testTmpDir, 'a.ts'));
-    expect(manager.isDocumentOpen(join(testTmpDir, 'a.ts'))).toBe(true);
-
-    manager.setConnection(null as any, false);
-    expect(manager.getOpenDocumentUris()).toHaveLength(0);
-  });
-
-  it('closeAllDocuments should clean up even when close throws', async () => {
-    const mockConfig = {
-      name: 'test-server',
-      command: 'test',
-      args: [] as string[],
-      filetypes: ['.ts'],
-      languageId: 'typescript',
-      workspaceRoot: testTmpDir,
-    };
-
-    mkdirSync(testTmpDir, { recursive: true });
-    writeFileSync(join(testTmpDir, 'b.ts'), 'const b = 1;');
-
-    const manager = new LSPDocumentManager(mockConfig);
-    const mockConnection = {
-      sendNotification: vi.fn().mockImplementation((method: string) => {
-        if (method === 'textDocument/didOpen') return Promise.resolve();
-        if (method === 'textDocument/didClose')
-          throw new Error('Connection lost');
-        return Promise.resolve();
-      }),
-    };
-
-    manager.setConnection(mockConnection as any, true);
-    await manager.openDocument(join(testTmpDir, 'b.ts'));
-    await manager.closeAllDocuments();
-
-    expect(manager.getOpenDocumentUris()).toHaveLength(0);
-  });
-});
-
-import { PathValidator } from 'octocode-security-utils/pathValidator';
+import { PathValidator } from 'octocode-security/pathValidator';
 
 describe('[SECURITY] PathValidator edge cases', () => {
   const testTmpDir = join(tmpdir(), `octocode-path-sec-${Date.now()}`);

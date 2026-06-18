@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { viewGitHubRepositoryStructureAPI } from '../../src/github/repoStructure.js';
-import { fetchDirectoryContentsRecursivelyAPI } from '../../src/github/repoStructureRecursive.js';
-import { getOctokit } from '../../src/github/client.js';
-import { clearAllCache } from '../../src/utils/http/cache.js';
-import { countSerializedChars } from '../../src/utils/response/charSavings.js';
+import { viewGitHubRepositoryStructureAPI } from '../../../octocode-tools-core/src/github/repoStructure.js';
+import { fetchDirectoryContentsRecursivelyAPI } from '../../../octocode-tools-core/src/github/repoStructureRecursive.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
+import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
+import { countSerializedChars } from '../../../octocode-tools-core/src/utils/response/charSavings.js';
 
-vi.mock('../../src/github/client.js');
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
@@ -168,14 +168,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);
@@ -190,8 +190,10 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
             call => call.value
           );
         const [rootData, recursiveData] = await Promise.all([
-          rootResponse.then(response => response.data),
-          recursiveResponse.then(response => response.data),
+          rootResponse.then((response: { data: unknown }) => response.data),
+          recursiveResponse.then(
+            (response: { data: unknown }) => response.data
+          ),
         ]);
         expect(result.rawResponseChars).toBe(
           countSerializedChars(rootData) + countSerializedChars(recursiveData)
@@ -246,14 +248,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);
@@ -320,14 +322,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);
@@ -397,14 +399,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);
@@ -498,14 +500,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);
@@ -585,14 +587,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);
@@ -632,14 +634,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 1,
+        maxDepth: 1,
       });
 
       expect('structure' in result).toBe(true);
@@ -715,14 +717,14 @@ describe('GitHub File Operations - Recursive Directory Structure', () => {
       };
 
       vi.mocked(getOctokit).mockResolvedValue(
-        mockOctokit as unknown as ReturnType<typeof getOctokit>
+        mockOctokit as unknown as Awaited<ReturnType<typeof getOctokit>>
       );
 
       const result = await viewGitHubRepositoryStructureAPI({
         owner: 'test',
         repo: 'repo',
         branch: 'main',
-        depth: 2,
+        maxDepth: 2,
       });
 
       expect('structure' in result).toBe(true);

@@ -6,7 +6,7 @@ import {
   type GitHubAPIError,
   type GitHubAPISuccess,
   type Repository,
-} from '../../src/github/githubAPI';
+} from '../../../octocode-tools-core/src/github/githubAPI';
 
 function createUser(login: string, id: number) {
   return {

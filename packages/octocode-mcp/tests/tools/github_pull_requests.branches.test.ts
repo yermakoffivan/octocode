@@ -4,35 +4,35 @@ import {
   MockMcpServer,
 } from '../fixtures/mcp-fixtures.js';
 import { getTextContent } from '../utils/testHelpers.js';
-import { getOctokit } from '../../src/github/client.js';
+import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
 
 const mockGetProvider = vi.hoisted(() => vi.fn());
 const mockGetGitHubToken = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/providers/factory.js', () => ({
+vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
 const mockWithCache = vi.hoisted(() => vi.fn());
 const mockGenerateCacheKey = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: mockGenerateCacheKey,
   withCache: mockWithCache,
   clearAllCache: vi.fn(),
 }));
 
-vi.mock('../../src/tools/utils/tokenManager.js', () => ({
+vi.mock('../../../octocode-tools-core/src/tools/utils/tokenManager.js', () => ({
   getGitHubToken: mockGetGitHubToken,
 }));
 
-vi.mock('../../src/github/client.js');
+vi.mock('../../../octocode-tools-core/src/github/client.js');
 
-vi.mock('../../src/session.js', () => ({
+vi.mock('../../../octocode-tools-core/src/session.js', () => ({
   logSessionError: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   isLoggingEnabled: vi.fn(() => false),
   getGitHubToken: mockGetGitHubToken,
   getActiveProviderConfig: vi.fn(() => ({
@@ -49,7 +49,7 @@ vi.mock('../../src/serverConfig.js', () => ({
 }));
 
 import { registerSearchGitHubPullRequestsTool } from '../../src/tools/github_search_pull_requests/github_search_pull_requests.js';
-import { TOOL_NAMES } from '../../src/tools/toolMetadata/proxies.js';
+import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 
 describe('GitHub Pull Requests Tool - Branch Coverage', () => {
   let mockServer: MockMcpServer;
@@ -85,26 +85,6 @@ describe('GitHub Pull Requests Tool - Branch Coverage', () => {
   });
 
   describe('Per-query validation in execution', () => {
-    it('should return error for query exceeding 256 characters', async () => {
-      const result = await mockServer.callTool(
-        TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
-        {
-          queries: [
-            {
-              owner: 'test',
-              repo: 'repo',
-              query: 'a'.repeat(257),
-            },
-          ],
-        }
-      );
-
-      expect(result.isError).toBe(true);
-      const responseText = getTextContent(result.content);
-      expect(responseText).toContain('Query too long');
-      expect(mockProvider.searchPullRequests).not.toHaveBeenCalled();
-    });
-
     it('should return error when no valid search params provided', async () => {
       const result = await mockServer.callTool(
         TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
@@ -138,15 +118,15 @@ describe('GitHub Pull Requests Tool - Branch Coverage', () => {
         TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
         {
           queries: [
-            { owner: 'test', repo: 'repo', query: 'valid' },
-            { owner: 'test', repo: 'repo', query: 'x'.repeat(300) },
+            { owner: 'test', repo: 'repo', keywordsToSearch: ['valid'] },
+            { state: 'open' },
           ],
         }
       );
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('Query too long');
+      expect(responseText).toContain('At least one valid search parameter');
       expect(mockProvider.searchPullRequests).toHaveBeenCalledTimes(1);
     });
   });
@@ -205,7 +185,7 @@ describe('GitHub Pull Requests Tool - Branch Coverage', () => {
     describe('fetchCommitFilesAPI catch block (line 234)', () => {
       it('should handle getCommit errors gracefully by returning null', async () => {
         const { transformPullRequestItemFromREST } =
-          await import('../../src/github/prContentFetcher.js');
+          await import('../../../octocode-tools-core/src/github/prContentFetcher.js');
 
         const getCommitMock = vi
           .fn()
@@ -262,7 +242,7 @@ describe('GitHub Pull Requests Tool - Branch Coverage', () => {
           {
             owner: 'test',
             repo: 'repo',
-            withCommits: true,
+            content: { commits: { list: true, includeFiles: true } },
           },
           mockOctokit as any,
           undefined

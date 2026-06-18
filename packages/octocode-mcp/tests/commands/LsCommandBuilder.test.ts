@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { LsCommandBuilder } from '../../src/commands/LsCommandBuilder.js';
+import { LsCommandBuilder } from '../../../octocode-tools-core/src/commands/LsCommandBuilder.js';
 
 describe('LsCommandBuilder', () => {
   const originalPlatform = process.platform;
@@ -86,16 +86,14 @@ describe('LsCommandBuilder', () => {
         .fromQuery({ path: '/test', hidden: true })
         .build();
 
-      expect(args).toContain('-a');
+      expect(args).toContain('-A');
     });
 
-    it('should handle humanReadable flag', () => {
+    it('fromQuery does not add -h (humanReadable removed from schema)', () => {
       const builder = new LsCommandBuilder();
-      const { args } = builder
-        .fromQuery({ path: '/test', humanReadable: true })
-        .build();
+      const { args } = builder.fromQuery({ path: '/test' }).build();
 
-      expect(args).toContain('-h');
+      expect(args).not.toContain('-h');
     });
 
     it('should handle recursive flag', () => {
@@ -230,7 +228,7 @@ describe('LsCommandBuilder', () => {
       const builder = new LsCommandBuilder();
       const { args } = builder.all().build();
 
-      expect(args).toContain('-a');
+      expect(args).toContain('-A');
     });
 
     it('should chain humanReadable method', () => {
@@ -287,7 +285,7 @@ describe('LsCommandBuilder', () => {
         .build();
 
       expect(args).toContain('-l');
-      expect(args).toContain('-a');
+      expect(args).toContain('-A');
       expect(args).toContain('-h');
       expect(args).toContain('-t');
       expect(args).toContain('-r');
@@ -305,7 +303,6 @@ describe('LsCommandBuilder', () => {
           path: '/home/user/project',
           details: true,
           hidden: true,
-          humanReadable: true,
           recursive: true,
           reverse: true,
           sortBy: 'time',
@@ -317,8 +314,7 @@ describe('LsCommandBuilder', () => {
       expect(args).toContain('--quoting-style=literal');
       expect(args).toContain('-l');
       expect(args).toContain('--time-style=long-iso');
-      expect(args).toContain('-a');
-      expect(args).toContain('-h');
+      expect(args).toContain('-A');
       expect(args).toContain('-R');
       expect(args).toContain('-r');
       expect(args).toContain('-t');

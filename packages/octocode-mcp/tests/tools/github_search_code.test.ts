@@ -8,23 +8,23 @@ const mockOctokit = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/github/client.js', () => ({
+vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
   getOctokit: vi.fn(() => mockOctokit),
 }));
 
-vi.mock('../../src/utils/http/cache.js', () => ({
+vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(() => 'test-cache-key'),
   withDataCache: vi.fn(async (_key: string, fn: () => unknown) => {
     return await fn();
   }),
 }));
 
-vi.mock('../../src/serverConfig.js', () => ({
+vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getGitHubToken: vi.fn(() => Promise.resolve('test-token')),
   isLoggingEnabled: vi.fn(() => false),
 }));
 
-import { searchGitHubCodeAPI } from '../../src/github/codeSearch.js';
+import { searchGitHubCodeAPI } from '../../../octocode-tools-core/src/github/codeSearch.js';
 
 describe('Quality Boosting and Research Goals', () => {
   beforeEach(() => {
@@ -76,7 +76,7 @@ describe('Quality Boosting and Research Goals', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['useMemo', 'React'],
+      keywords: ['useMemo', 'React'],
       owner: 'test',
       repo: 'repo',
       limit: 5,
@@ -99,7 +99,7 @@ describe('Quality Boosting and Research Goals', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['useMemo', 'React'],
+      keywords: ['useMemo', 'React'],
       owner: 'test',
       repo: 'repo',
       limit: 5,
@@ -122,7 +122,7 @@ describe('Quality Boosting and Research Goals', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['useMemo', 'React'],
+      keywords: ['useMemo', 'React'],
       owner: 'test',
       repo: 'repo',
       limit: 5,
@@ -145,7 +145,7 @@ describe('Quality Boosting and Research Goals', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['useMemo', 'React'],
+      keywords: ['useMemo', 'React'],
       owner: 'facebook',
       repo: 'react',
       limit: 5,
@@ -169,7 +169,7 @@ describe('Quality Boosting and Research Goals', () => {
     mockOctokit.rest.search.code.mockResolvedValue(mockResponse);
 
     const result = await searchGitHubCodeAPI({
-      keywordsToSearch: ['useMemo', 'React'],
+      keywords: ['useMemo', 'React'],
       owner: 'test',
       repo: 'repo',
       extension: 'tsx',

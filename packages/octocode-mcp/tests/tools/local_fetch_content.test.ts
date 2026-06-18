@@ -1,18 +1,35 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { LOCAL_TOOL_ERROR_CODES } from '../../src/errors/localToolErrors.js';
-import { fetchContent } from '../../src/tools/local_fetch_content/fetchContent.js';
-import * as pathValidator from 'octocode-security-utils/pathValidator';
+import { LOCAL_TOOL_ERROR_CODES } from '../../../octocode-tools-core/src/errors/localToolErrors.js';
+import { fetchContent as fetchContentImpl } from '../../../octocode-tools-core/src/tools/local_fetch_content/fetchContent.js';
+import {
+  extractSignatures,
+  applyContentViewMinification,
+} from '@octocodeai/octocode-context-utils';
+import { SIGNATURE_SOURCE } from '../fixtures/signatureSource.js';
+import * as pathValidator from 'octocode-security/pathValidator';
 import * as fs from 'fs/promises';
+import type { CharPagination } from '@octocodeai/octocode-core/types';
 
-// Mock fs/promises
+type FetchContentInput = Omit<
+  Parameters<typeof fetchContentImpl>[0],
+  'contextLines'
+> & { contextLines?: number };
+
+const fetchContent = (query: FetchContentInput) =>
+  fetchContentImpl({ ...query, contextLines: query.contextLines ?? 5 });
+
+const charPagination = (
+  pagination: Awaited<ReturnType<typeof fetchContentImpl>>['pagination']
+): CharPagination | undefined =>
+  pagination && 'charOffset' in pagination ? pagination : undefined;
+
 vi.mock('fs/promises', () => ({
   open: vi.fn(),
   readFile: vi.fn(),
   stat: vi.fn(),
 }));
 
-// Mock pathValidator
-vi.mock('octocode-security-utils/pathValidator', () => ({
+vi.mock('octocode-security/pathValidator', () => ({
   pathValidator: {
     validate: vi.fn(),
   },
@@ -27,7 +44,6 @@ describe('localGetFileContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockValidate.mockReturnValue({ isValid: true });
-    // Default: small file size (< 100KB)
     mockStat.mockResolvedValue({ size: 1024 } as unknown as Awaited<
       ReturnType<typeof fs.stat>
     >);
@@ -49,12 +65,14 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.content).toBe(testContent);
-      expect(result.isPartial).toBe(false);
+      expect(result.isPartial).toBeUndefined();
       expect(result.totalLines).toBe(3);
+      expect(result.hints?.join('\n')).toContain('lspGetSemantics');
     });
 
-    it('should apply minification by default', async () => {
-      const testContent = 'function test() {\n  return true;\n}';
+    it('returns raw content by default (minify omitted → no comment stripping)', async () => {
+      const testContent =
+        'function test() {\n  // explain the return\n  return true;\n}';
       mockReadFile.mockResolvedValue(testContent);
 
       const result = await fetchContent({
@@ -63,7 +81,24 @@ describe('localGetFileContent', () => {
       });
 
       expect(result.status).toBeUndefined();
-      // Minification is always applied for token efficiency
+      expect(result.content).toContain('// explain the return');
+      expect(result.content).toContain('return');
+    });
+
+    it('strips comments and whitespace with minify:"standard"', async () => {
+      const testContent =
+        'function test() {\n  // explain the return\n  return true;\n}';
+      mockReadFile.mockResolvedValue(testContent);
+
+      const result = await fetchContent({
+        path: 'test.js',
+        fullContent: true,
+        minify: 'standard',
+      });
+
+      expect(result.status).toBeUndefined();
+      expect(result.content).not.toContain('// explain the return');
+      expect(result.content).toContain('return');
     });
   });
 
@@ -75,7 +110,7 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'test.txt',
         matchString: 'MATCH',
-        matchStringContextLines: 1,
+        contextLines: 1,
       });
 
       expect(result.status).toBeUndefined();
@@ -83,11 +118,10 @@ describe('localGetFileContent', () => {
       expect(result.content).toContain('MATCH');
       expect(result.content).toContain('line 4');
       expect(result.isPartial).toBe(true);
+      expect(result.hints?.join('\n')).toContain('lspGetSemantics');
     });
 
-    // Contract: verbose:false (default) returns verbatim content. The
-    // matchString slice path must NOT minify; content is always returned as-is.
-    it('does NOT minify the matchString slice (verbose:false default)', async () => {
+    it('strips inline comments from JS files in the matchString slice with minify:"standard"', async () => {
       const testContent =
         'before\nconst x = 1; // keep this comment\nTARGET\nafter';
       mockReadFile.mockResolvedValue(testContent);
@@ -95,17 +129,17 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'test.js',
         matchString: 'TARGET',
-        matchStringContextLines: 1,
+        contextLines: 1,
+        minify: 'standard',
       });
 
       expect(result.status).toBeUndefined();
-      // Verbatim slice — the line comment survives (would be stripped if minified).
-      expect(result.content).toBe(
-        'const x = 1; // keep this comment\nTARGET\nafter'
-      );
+      expect(result.content).not.toContain('// keep this comment');
+      expect(result.content).toContain('x');
+      expect(result.content).toContain('TARGET');
     });
 
-    it('verbose=false (default) — matchString slice preserves content verbatim', async () => {
+    it('matchString slice — two calls return identical content', async () => {
       const testContent =
         'before\nconst x = 1; // keep this comment\nTARGET\nafter';
       mockReadFile.mockResolvedValue(testContent);
@@ -113,19 +147,167 @@ describe('localGetFileContent', () => {
       const def = await fetchContent({
         path: 'test.js',
         matchString: 'TARGET',
-        matchStringContextLines: 1,
+        contextLines: 1,
+        minify: 'standard',
       });
       const result = await fetchContent({
         path: 'test.js',
         matchString: 'TARGET',
-        matchStringContextLines: 1,
-        verbose: false,
+        contextLines: 1,
+        minify: 'standard',
       });
 
       expect(result.status).toBeUndefined();
-      // Verbosity is a no-op for content: content preserved verbatim (no minification)
       expect(result.content).toBe(def.content);
-      expect(result.content).toContain('// keep this comment');
+      expect(result.content).not.toContain('// keep this comment');
+      expect(result.content).toContain('x');
+    });
+
+    it('minify:"symbols" returns the extracted skeleton, aligned with the GitHub path', async () => {
+      const SOURCE = SIGNATURE_SOURCE;
+      mockReadFile.mockResolvedValue(SOURCE);
+
+      const result = await fetchContent({
+        path: 'sample.ts',
+        minify: 'symbols',
+      } as Parameters<typeof fetchContent>[0]);
+
+      expect(result.status).toBeUndefined();
+      const rawSigs = extractSignatures(SOURCE, 'sample.ts')!;
+      expect(result.content).toBe(
+        applyContentViewMinification(rawSigs, 'sample.ts')
+      );
+      expect(result.content).toMatch(/\d+\| .*interface Foo/);
+      expect(result.content).toContain('a: string,');
+      expect(result.content).toContain('Promise<void>');
+      expect(result.content).not.toContain('secretLocal');
+      expect(result.contentView).toBe('symbols');
+      expect(result.isSkeleton).toBe(true);
+      const sourceSize = result as {
+        sourceChars?: number;
+        sourceBytes?: number;
+      };
+      expect(sourceSize.sourceChars).toBe(SOURCE.length);
+      expect(sourceSize.sourceBytes).toBeUndefined();
+    });
+
+    it('returns a large minify:"symbols" skeleton WHOLE — never paginated', async () => {
+      let src = '';
+      for (let i = 0; i < 800; i++) {
+        src += `export function fn${i}(argumentOne: string, argumentTwo: number): Promise<void> {\n  return doStuff(${i});\n}\n`;
+      }
+      mockReadFile.mockResolvedValue(src);
+
+      const result = await fetchContent({
+        path: 'big.ts',
+        minify: 'symbols',
+      } as Parameters<typeof fetchContent>[0]);
+
+      expect(result.status).toBeUndefined();
+      expect(result.pagination).toBeUndefined();
+      expect(result.content).toBeDefined();
+      expect(result.content).toContain('fn0(');
+      expect(result.content).toContain('fn799(');
+      expect(result.content).not.toContain('doStuff');
+      expect(result.isPartial).toBeUndefined();
+      expect(result.contentView).toBe('symbols');
+      expect(result.isSkeleton).toBe(true);
+      expect(result.totalLines).toBe(src.split('\n').length);
+      expect((result as { sourceChars?: number }).sourceChars).toBe(src.length);
+    });
+
+    it('paginates the returned standard content view, not the pre-minified source', async () => {
+      const src = Array.from(
+        { length: 100 },
+        (_, i) => `// ${'comment '.repeat(12)}\nconst a${i}=${i};`
+      ).join('\n');
+      const minified = applyContentViewMinification(src, 'sample.ts');
+      expect(src.length).toBeGreaterThan(2000);
+      expect(minified.length).toBeLessThan(2000);
+      mockReadFile.mockResolvedValue(src);
+
+      const result = await fetchContent({
+        path: 'sample.ts',
+        minify: 'standard',
+      } as Parameters<typeof fetchContent>[0]);
+
+      expect(result.status).toBeUndefined();
+      expect(result.content).toBe(minified);
+      expect(result.pagination).toBeUndefined();
+      expect((result as { sourceChars?: number }).sourceChars).toBe(src.length);
+    });
+
+    it('unsupported minify:"symbols" warns and falls back to standard content view', async () => {
+      mockReadFile.mockResolvedValue(
+        'name=octocode\n\n\n; token-saving comment\nkeep=true\n'
+      );
+
+      const result = await fetchContent({
+        path: 'settings.ini',
+        minify: 'symbols',
+      } as Parameters<typeof fetchContentImpl>[0]);
+
+      expect(result.status).toBeUndefined();
+      expect(result.contentView).toBeUndefined();
+      expect(result.isSkeleton).toBeUndefined();
+      expect(result.content).toContain('name=octocode');
+      expect(result.content).toContain('keep=true');
+      expect(result.content).not.toContain('; token-saving comment');
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('falling back to standard content view'),
+        ])
+      );
+      expect(result.warnings?.join('\n')).not.toContain(
+        'returning full content'
+      );
+    });
+
+    it('ignores charOffset/charLength for minify:"symbols" (skeleton is whole)', async () => {
+      let src = '';
+      for (let i = 0; i < 800; i++) {
+        src += `export function fn${i}(argumentOne: string, argumentTwo: number): Promise<void> {\n  return doStuff(${i});\n}\n`;
+      }
+      mockReadFile.mockResolvedValue(src);
+
+      const result = await fetchContent({
+        path: 'big.ts',
+        minify: 'symbols',
+        charOffset: 5000,
+        charLength: 100,
+      } as Parameters<typeof fetchContent>[0]);
+
+      expect(result.status).toBeUndefined();
+      expect(result.pagination).toBeUndefined();
+      expect(result.content).toContain('fn0(');
+      expect(result.content).toContain('fn799(');
+    });
+
+    it('redacts secrets in normal content (aligned with GitHub ContentSanitizer)', async () => {
+      mockReadFile.mockResolvedValue('const a = "AKIAIOSFODNN7EXAMPLE";\n');
+
+      const result = await fetchContent({
+        path: 'cfg.ts',
+        fullContent: true,
+      } as Parameters<typeof fetchContent>[0]);
+
+      expect(result.content).toContain('[REDACTED-AWSACCESSKEYID]');
+      expect(result.content).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    });
+
+    it('redacts secrets inside minify:"symbols" output', async () => {
+      mockReadFile.mockResolvedValue(
+        'export function connect(token = "AKIAIOSFODNN7EXAMPLE"): void {\n  doThing();\n}\n'
+      );
+
+      const result = await fetchContent({
+        path: 'svc.ts',
+        minify: 'symbols',
+      } as Parameters<typeof fetchContent>[0]);
+
+      expect(result.content).toContain('connect(');
+      expect(result.content).toContain('[REDACTED');
+      expect(result.content).not.toContain('AKIAIOSFODNN7EXAMPLE');
     });
 
     it('should return empty when pattern not found', async () => {
@@ -208,7 +390,6 @@ describe('localGetFileContent', () => {
       expect(result.content).toContain('export function');
     });
 
-    // Issue verification: export.*const patterns
     describe('regex .* pattern behavior', () => {
       it('should match export.*const when content has "export const" on same line', async () => {
         const testContent = 'line 1\nexport const foo = 1;\nline 3';
@@ -225,7 +406,6 @@ describe('localGetFileContent', () => {
       });
 
       it('should NOT match export.*const when file has export function only', async () => {
-        // This is the scenario from the issue - file has export function but not export const
         const testContent =
           'line 1\nexport function test() {}\nexport async function foo() {}\nline 4';
         mockReadFile.mockResolvedValue(testContent);
@@ -236,13 +416,11 @@ describe('localGetFileContent', () => {
           matchStringIsRegex: true,
         });
 
-        // Expected: no matches because file doesn't contain "export const"
         expect(result.status).toBe('empty');
         expect(result.errorCode).toBe(LOCAL_TOOL_ERROR_CODES.NO_MATCHES);
       });
 
       it('should match patterns line-by-line (not multiline)', async () => {
-        // Pattern won't match across lines even if keywords exist
         const testContent = 'export\nconst foo = 1;';
         mockReadFile.mockResolvedValue(testContent);
 
@@ -252,7 +430,6 @@ describe('localGetFileContent', () => {
           matchStringIsRegex: true,
         });
 
-        // export and const are on different lines - regex matches per line
         expect(result.status).toBe('empty');
       });
 
@@ -266,7 +443,6 @@ describe('localGetFileContent', () => {
           matchStringIsRegex: true,
         });
 
-        // "export" ... "const" on same line matches
         expect(result.status).toBeUndefined();
       });
     });
@@ -299,7 +475,6 @@ describe('localGetFileContent', () => {
     });
 
     it('should merge adjacent ranges and show omitted lines', async () => {
-      // Create content with widely spaced matches
       const lines = [];
       for (let i = 0; i < 100; i++) {
         if (i === 10 || i === 50 || i === 90) {
@@ -314,11 +489,10 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'test.txt',
         matchString: 'MATCH_LINE',
-        matchStringContextLines: 2,
+        contextLines: 2,
       });
 
       expect(result.status).toBeUndefined();
-      // Should contain omitted lines indicator
       expect(result.content).toContain('lines omitted');
     });
   });
@@ -350,7 +524,7 @@ describe('localGetFileContent', () => {
         path: 'test.txt',
         fullContent: true,
         matchString: 'MATCH',
-        matchStringContextLines: 3,
+        contextLines: 3,
       });
 
       expect(result.status).toBe('error');
@@ -413,6 +587,27 @@ describe('localGetFileContent', () => {
       expect(result.errorCode).toBe(LOCAL_TOOL_ERROR_CODES.FILE_READ_FAILED);
     });
 
+    it('reports a directory-specific error (EISDIR) with a localViewStructure hint', async () => {
+      const eisdir = Object.assign(
+        new Error("EISDIR: illegal operation on a directory, read 'utils'"),
+        { code: 'EISDIR' }
+      );
+      mockReadFile.mockRejectedValue(eisdir);
+
+      const result = await fetchContent({
+        path: 'src/utils',
+      });
+
+      expect(result.status).toBe('error');
+      expect(result.errorCode).toBe(LOCAL_TOOL_ERROR_CODES.FILE_ACCESS_FAILED);
+      expect(String(result.error)).toContain('directory');
+      expect(String(result.error)).toContain('localViewStructure');
+      const hints = ((result.hints as string[] | undefined) ?? []).join(' ');
+      expect(hints).toContain('localViewStructure');
+      expect(hints).not.toContain('not found');
+      expect(hints).not.toContain('localFindFiles');
+    });
+
     it('should handle file read errors when error is not Error instance', async () => {
       mockReadFile.mockRejectedValue('String error message');
 
@@ -447,7 +642,6 @@ describe('localGetFileContent', () => {
     });
 
     it('should handle unexpected errors in main try-catch', async () => {
-      // Force an error by mocking validate to throw
       mockValidate.mockImplementation(() => {
         throw new Error('Unexpected validation error');
       });
@@ -512,14 +706,12 @@ describe('localGetFileContent', () => {
 
   describe('Large file handling', () => {
     it('should warn about large file without pagination options', async () => {
-      // Mock large file (150KB)
       mockStat.mockResolvedValue({ size: 150 * 1024 } as unknown as Awaited<
         ReturnType<typeof fs.stat>
       >);
 
       const result = await fetchContent({
         path: 'large-file.txt',
-        // No charLength or matchString
       });
 
       expect(result.status).toBe('error');
@@ -529,7 +721,6 @@ describe('localGetFileContent', () => {
     });
 
     it('should auto-paginate content exceeding MAX_OUTPUT_CHARS', async () => {
-      // Create content larger than MAX_OUTPUT_CHARS (10000)
       const largeContent = 'x'.repeat(15000);
       mockStat.mockResolvedValue({ size: 15000 } as unknown as Awaited<
         ReturnType<typeof fs.stat>
@@ -538,10 +729,8 @@ describe('localGetFileContent', () => {
 
       const result = await fetchContent({
         path: 'medium-file.txt',
-        // No charLength - should auto-paginate instead of error
       });
 
-      // Now auto-paginates instead of returning error
       expect(result.status).toBeUndefined();
       expect(result.pagination).toBeDefined();
       expect(result.pagination?.hasMore).toBe(true);
@@ -587,7 +776,6 @@ describe('localGetFileContent', () => {
 
       const result = await fetchContent({
         path: 'small-file.txt',
-        // No pagination options
       });
 
       expect(result.status).toBeUndefined();
@@ -625,7 +813,6 @@ describe('localGetFileContent', () => {
       });
 
       expect(result.status).toBeUndefined();
-      // Auto-pagination kicks in for large content
       if (result.pagination) {
         expect(result.pagination.hasMore).toBe(true);
         expect(result.isPartial).toBe(true);
@@ -681,7 +868,6 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.content).toBeDefined();
-      // Should not have replacement character
       expect(result.content).not.toMatch(/\uFFFD/);
     });
 
@@ -695,7 +881,6 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.content).toBeDefined();
-      // Should not split UTF-8 characters
       expect(result.content).not.toMatch(/\uFFFD/);
     });
 
@@ -709,7 +894,6 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.content).toBeDefined();
-      // Should not split emoji
       expect(result.content).not.toMatch(/\uFFFD/);
     });
 
@@ -756,7 +940,6 @@ describe('localGetFileContent', () => {
     });
 
     it('should not split multi-byte chars at charOffset boundary', async () => {
-      // Position boundary right before a multi-byte char
       const content = 'aaaa' + 'é' + 'bbbb';
       mockReadFile.mockResolvedValue(content);
 
@@ -766,7 +949,6 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.content).toBeDefined();
-      // Should include the 'é' without splitting
       expect(result.content).not.toMatch(/\uFFFD/);
     });
 
@@ -780,12 +962,10 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.content).toBeDefined();
-      // Should not have replacement character indicating split
       expect(result.content).not.toMatch(/\uFFFD/);
     });
 
     it('should handle CJK content without corruption', async () => {
-      // In UTF-8, byte offset != character offset for multi-byte chars
       const content = '中文test'; // 中文 = 6 bytes, test = 4 bytes
       mockReadFile.mockResolvedValue(content);
 
@@ -822,7 +1002,7 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'test.txt',
         matchString: 'MATCH',
-        matchStringContextLines: 5,
+        contextLines: 5,
       });
 
       expect(result.status).toBeUndefined();
@@ -838,22 +1018,19 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'huge.txt',
         matchString: 'MATCH',
-        // No charLength specified -> auto-paginates with a cursor (no match cap)
       });
 
       expect(result.status).toBeUndefined();
       expect(result.isPartial).toBe(true);
-      // Lossless: a pagination cursor reaches the rest — nothing is dropped.
       expect(result.pagination).toBeDefined();
       expect(result.warnings).toBeDefined();
-      expect(result.warnings?.[0]).toContain('2000');
-      expect(result.warnings?.[0]).toContain('Auto-paginated');
-      // The old hard "first 50 matches" cap must be gone.
-      expect(result.warnings?.[0]).not.toContain('Truncated to first 50');
+      const joinedWarnings = (result.warnings ?? []).join(' | ');
+      expect(result.warnings?.[0]).toContain('Found 2000 occurrences');
+      expect(joinedWarnings).toContain('Auto-paginated');
+      expect(joinedWarnings).not.toContain('Truncated to first 50');
     });
 
     it('should auto-paginate when matchString result exceeds MAX_OUTPUT_CHARS without charLength (lines 206-212)', async () => {
-      // Build enough extracted context to exceed the shared 8000-char budget.
       const lineContent = 'x'.repeat(500);
       const lines = Array.from({ length: 50 }, (_, i) =>
         i % 2 === 0 ? lineContent : 'MATCH'
@@ -867,8 +1044,7 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'large-matches.txt',
         matchString: 'MATCH',
-        matchStringContextLines: 2,
-        // No charLength - triggers auto-pagination when content > 8000
+        contextLines: 2,
       });
 
       expect(result.status).toBeUndefined();
@@ -887,18 +1063,16 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'test.txt',
         matchString: 'MATCH',
-        matchStringContextLines: 1,
+        contextLines: 1,
       });
 
       expect(result.status).toBeUndefined();
-      // MATCH is on line 3, with contextLines=1, should return lines 2-4
       expect(result.startLine).toBe(2);
       expect(result.endLine).toBe(4);
-      expect(result.matchRanges).toEqual([{ start: 2, end: 4 }]);
+      expect(result.matchRanges).toBeUndefined();
     });
 
     it('should return line numbers for multiple match ranges', async () => {
-      // Lines: 1=line1, 2=MATCH_A, 3=line3, 4=line4, 5=line5, 6=line6, 7=MATCH_B, 8=line8
       const testContent =
         'line1\nMATCH_A\nline3\nline4\nline5\nline6\nMATCH_B\nline8';
       mockReadFile.mockResolvedValue(testContent);
@@ -906,12 +1080,10 @@ describe('localGetFileContent', () => {
       const result = await fetchContent({
         path: 'test.txt',
         matchString: 'MATCH',
-        matchStringContextLines: 1,
+        contextLines: 1,
       });
 
       expect(result.status).toBeUndefined();
-      // First match at line 2 with context 1: range [1,3]
-      // Second match at line 7 with context 1: range [6,8]
       expect(result.startLine).toBe(1); // First range start
       expect(result.endLine).toBe(8); // Last range end
       expect(result.matchRanges).toEqual([
@@ -985,8 +1157,7 @@ describe('localGetFileContent', () => {
       }
     });
 
-    it('should navigate to page 2 via the page field (full-file read)', async () => {
-      // Content where each line is unique so pages are distinguishable
+    it('should navigate content via the charOffset cursor (full-file read)', async () => {
       const largeContent = Array.from(
         { length: 500 },
         (_, i) => `line-${String(i).padStart(4, '0')}:${'x'.repeat(30)}`
@@ -997,19 +1168,21 @@ describe('localGetFileContent', () => {
       mockReadFile.mockResolvedValue(largeContent);
 
       const page1 = await fetchContent({ path: 'large.txt' });
+      const nextOffset =
+        (charPagination(page1.pagination)?.charOffset ?? 0) +
+        (charPagination(page1.pagination)?.charLength ?? 0);
       const page2 = await fetchContent({
         path: 'large.txt',
-        page: 2,
-      } as Parameters<typeof fetchContent>[0] & { page: number });
+        charOffset: nextOffset,
+      } as Parameters<typeof fetchContent>[0] & { charOffset: number });
 
       expect(page1.pagination?.hasMore).toBe(true);
       expect(page1.pagination?.currentPage).toBe(1);
-      // page 2 starts at a different offset so content is genuinely different
       expect(page2.content).not.toBe(page1.content);
       expect(page2.pagination?.currentPage).toBe(2);
     });
 
-    it('should navigate matchString pages via the page field', async () => {
+    it('should navigate matchString results via the charOffset cursor', async () => {
       const manyMatches = Array.from(
         { length: 2000 },
         () => 'MATCH\n' + 'x'.repeat(20)
@@ -1023,11 +1196,14 @@ describe('localGetFileContent', () => {
         path: 'huge.txt',
         matchString: 'MATCH',
       });
+      const nextOffset =
+        (charPagination(page1.pagination)?.charOffset ?? 0) +
+        (charPagination(page1.pagination)?.charLength ?? 0);
       const page2 = await fetchContent({
         path: 'huge.txt',
         matchString: 'MATCH',
-        page: 2,
-      } as Parameters<typeof fetchContent>[0] & { page: number });
+        charOffset: nextOffset,
+      } as Parameters<typeof fetchContent>[0] & { charOffset: number });
 
       expect(page1.pagination?.hasMore).toBe(true);
       expect(page2.content).not.toBe(page1.content);
@@ -1130,7 +1306,7 @@ describe('localGetFileContent', () => {
       ).toBe(true);
     });
 
-    it('preserves the line-range continuation hint when verbose=false', async () => {
+    it('preserves the line-range continuation hint', async () => {
       const lines = [];
       for (let i = 1; i <= 100; i++) {
         lines.push(`const x${i} = ${i};`);
@@ -1141,10 +1317,8 @@ describe('localGetFileContent', () => {
         path: 'test.ts',
         startLine: 1,
         endLine: 40,
-        verbose: false,
       });
 
-      // Pagination is orthogonal to verbosity — the continuation cursor must survive.
       expect(
         result.hints?.some(h =>
           h.includes('More content: use startLine=41 to continue')
@@ -1177,7 +1351,6 @@ describe('localGetFileContent', () => {
       });
 
       expect(result.status).toBeUndefined();
-      // Minification is always applied for token efficiency
     });
 
     it('should return extracted lines within a range', async () => {
@@ -1261,10 +1434,9 @@ describe('localGetFileContent', () => {
       });
 
       expect(result.status).toBeUndefined();
-      // Large content triggers auto-pagination
       if (result.pagination) {
         expect(result.pagination.hasMore).toBe(true);
-        expect(result.pagination.totalChars).toBeDefined();
+        expect(charPagination(result.pagination)?.totalChars).toBeDefined();
       }
     });
 
@@ -1318,7 +1490,6 @@ describe('localGetFileContent', () => {
 
   describe('Smart auto-pagination (no charLength specified)', () => {
     it('should auto-paginate when extracted content exceeds MAX_OUTPUT_CHARS', async () => {
-      // Create content larger than MAX_OUTPUT_CHARS (10000)
       const largeContent = 'x'.repeat(15000);
       mockStat.mockResolvedValue({ size: 15000 } as unknown as Awaited<
         ReturnType<typeof fs.stat>
@@ -1327,10 +1498,8 @@ describe('localGetFileContent', () => {
 
       const result = await fetchContent({
         path: 'large-file.txt',
-        // NO charLength specified - should auto-paginate instead of error
       });
 
-      // Should NOT return error, should auto-paginate
       expect(result.status).toBeUndefined();
       expect(result.pagination).toBeDefined();
       expect(result.pagination?.hasMore).toBe(true);
@@ -1342,7 +1511,6 @@ describe('localGetFileContent', () => {
     });
 
     it('should auto-paginate line extraction when extracted lines exceed limit', async () => {
-      // Create content with many lines that exceeds limit
       const lines = Array.from(
         { length: 500 },
         (_, i) => `line ${i}: ${'x'.repeat(50)}`
@@ -1357,7 +1525,6 @@ describe('localGetFileContent', () => {
         path: 'test.txt',
         startLine: 1,
         endLine: 500,
-        // NO charLength - should auto-paginate extracted lines
       });
 
       expect(result.status).toBeUndefined();
@@ -1380,7 +1547,6 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.hints).toBeDefined();
-      // Should have navigation hints
       expect(
         result.hints?.some(h => h.includes('charOffset') || h.includes('Next'))
       ).toBe(true);
@@ -1395,7 +1561,6 @@ describe('localGetFileContent', () => {
       });
 
       expect(result.status).toBeUndefined();
-      // Should NOT have pagination when content is small
       expect(result.pagination).toBeUndefined();
       expect(result.warnings).toBeUndefined();
     });
@@ -1408,7 +1573,6 @@ describe('localGetFileContent', () => {
       >);
       mockReadFile.mockResolvedValue(content);
 
-      // Content is ~1600 chars, under 10K - but let's test with larger
       const largeLines = Array.from(
         { length: 500 },
         (_, i) => `line ${i}: ${'data'.repeat(20)}`
@@ -1425,7 +1589,7 @@ describe('localGetFileContent', () => {
 
       expect(result.status).toBeUndefined();
       expect(result.totalLines).toBe(500);
-      expect(result.pagination?.totalChars).toBeDefined();
+      expect(charPagination(result.pagination)?.totalChars).toBeDefined();
     });
   });
 });

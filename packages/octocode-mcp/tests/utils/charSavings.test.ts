@@ -3,7 +3,7 @@ import {
   countSerializedChars,
   attachRawResponseChars,
   getRawResponseChars,
-} from '../../src/utils/response/charSavings.js';
+} from '../../../octocode-tools-core/src/utils/response/charSavings.js';
 
 describe('countSerializedChars', () => {
   it('returns length for string values', () => {
@@ -82,5 +82,17 @@ describe('getRawResponseChars', () => {
 
   it('returns undefined for objects without the symbol', () => {
     expect(getRawResponseChars({ status: 'ok' })).toBeUndefined();
+  });
+});
+
+describe('attachRawResponseChars — catch branch (line 36)', () => {
+  it('handles frozen result object gracefully (catch branch)', () => {
+    const frozen = Object.freeze({ status: 'ok' });
+    const result = attachRawResponseChars(
+      frozen as Record<string, unknown>,
+      42
+    );
+    expect(result).toBe(frozen);
+    expect(getRawResponseChars(result)).toBeUndefined();
   });
 });
