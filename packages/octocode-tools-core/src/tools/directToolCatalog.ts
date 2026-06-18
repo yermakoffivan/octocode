@@ -528,14 +528,17 @@ function normalizeQueryObject(
   return exactQuery;
 }
 
-function describeSchemaConstraints(schema: JsonSchemaObject): string | undefined {
+function describeSchemaConstraints(
+  schema: JsonSchemaObject
+): string | undefined {
   const parts: string[] = [];
   const min = typeof schema.minimum === 'number' ? schema.minimum : undefined;
   const max = typeof schema.maximum === 'number' ? schema.maximum : undefined;
   if (min !== undefined && max !== undefined) parts.push(`${min}-${max}`);
   else if (min !== undefined) parts.push(`>=${min}`);
   else if (max !== undefined) parts.push(`<=${max}`);
-  if ('default' in schema) parts.push(`default ${JSON.stringify(schema.default)}`);
+  if ('default' in schema)
+    parts.push(`default ${JSON.stringify(schema.default)}`);
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 

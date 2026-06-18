@@ -198,9 +198,7 @@ describe('cli/commands/shared', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('To login')
       );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('login')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('login'));
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('or'));
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('gh auth login')
@@ -245,9 +243,7 @@ describe('cli/commands/shared', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Not authenticated')
       );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('login')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('login'));
     });
   });
 

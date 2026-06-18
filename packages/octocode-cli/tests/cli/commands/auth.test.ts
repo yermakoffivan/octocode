@@ -883,9 +883,7 @@ describe('cli/commands/auth', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Not authenticated')
       );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('login')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('login'));
       expect(process.exitCode).toBe(1);
     });
 
@@ -1044,9 +1042,7 @@ describe('cli/commands/auth', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Not authenticated')
       );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('login')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('login'));
     });
 
     it('status --json sets exitCode 1 when unauthenticated', async () => {

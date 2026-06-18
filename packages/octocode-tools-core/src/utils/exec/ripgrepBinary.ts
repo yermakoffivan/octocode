@@ -135,7 +135,11 @@ function resolveVscodeRipgrep(): string | null {
   //    is available (Node >=20.19 / >=22.12); older Node throws ERR_REQUIRE_ESM.
   try {
     const mod = require('@vscode/ripgrep') as { rgPath?: string };
-    if (mod.rgPath && typeof mod.rgPath === 'string' && existsSync(mod.rgPath)) {
+    if (
+      mod.rgPath &&
+      typeof mod.rgPath === 'string' &&
+      existsSync(mod.rgPath)
+    ) {
       return mod.rgPath;
     }
   } catch {
