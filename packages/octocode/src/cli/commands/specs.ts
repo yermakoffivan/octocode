@@ -1131,6 +1131,11 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'runtime: checks auth, installation/cache health, and optional MCP sync state.',
       'output: health summary; --json returns structured status.',
     ],
+    whenToUse: [
+      'Quick health check: GitHub auth, install/cache state, and (with --sync) MCP sync analysis.',
+      'Run before research to confirm auth is set, or to diagnose why local/GitHub tools fail.',
+    ],
+    examples: ['status', 'status --sync'],
     options: [
       {
         name: 'hostname',

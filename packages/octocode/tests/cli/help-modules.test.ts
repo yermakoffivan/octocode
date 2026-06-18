@@ -97,6 +97,11 @@ describe('command-help-specs', () => {
       'lsp',
       'clone',
       'history',
+      // management commands now carry agent guidance too
+      'install',
+      'auth',
+      'skills',
+      'status',
     ]);
 
     for (const command of COMMAND_SPECS) {
