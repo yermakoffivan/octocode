@@ -171,10 +171,21 @@ grep <keywords> <path|owner/repo>
     --concise          paths only, no snippets — cheapest orientation
     --include <glob>   include globs (local only)
     --exclude <glob>   exclude globs (local only)
-    --context-lines <n>   context around each match (local only)
-    --max-matches <n>  max matches per file (local only)
-    --branch <ref>     branch for GitHub paths
-    --limit <n>        max files in output
+    --context-lines <n> / --context <n>   context around each match (local only)
+    --fixed / --fixed-string              literal string search (local only)
+    --perl-regex                          advanced regex features (local only)
+    --case-insensitive / --case-sensitive
+    --whole-word / --invert-match
+    --hidden / --no-ignore
+    --files-only / --files-without-match
+    --count-lines / --count-matches
+    --multiline / --multiline-dotall
+    --match-length <n>  characters kept per match snippet (local only)
+    --max-matches <n>   max matches per file (local only)
+    --max-files <n>     max matched files returned (local only)
+    --match-page <n>    page within one file's matches (local only)
+    --branch <ref>      branch for GitHub paths
+    --limit <n>         max files in output
     --page <n>
     --page-size <n>
     --json
@@ -187,6 +198,7 @@ Examples:
 ```bash
 octocode grep runCLI src
 octocode grep executeDirectTool src --type ts --mode discovery
+octocode grep 'runCLI\s*\(' packages/octocode/src --perl-regex --context 1 --max-files 2
 octocode grep "useState" facebook/react --type ts
 octocode grep "executeCloneRepo" bgauryy/octocode-mcp --concise
 ```
@@ -461,17 +473,17 @@ lsp <file> --type <type> --symbol <name> --line <n>
     --json
 ```
 
-Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`.
+Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`. Semantic misses such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls` exit with code `3` so shell scripts can fail fast without parsing JSON.
 
-All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode symbols <file|path>` for `documentSymbols`.
+All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode symbols <file|path>` for `documentSymbols`. For TypeScript/JavaScript import aliases, `definition` follows local imports to the exported declaration when the language server first returns the import binding.
 
 Examples:
 
 ```bash
-octocode symbols src/index.ts
-octocode lsp src/index.ts --type references --symbol runCLI --line 42
-octocode lsp src/index.ts --type callers --symbol executeDirectTool --line 18
-octocode lsp src/index.ts --type hover --symbol runCLI --line 42
+octocode symbols packages/octocode/src/cli/index.ts
+octocode lsp packages/octocode/src/cli/index.ts --type references --symbol runCLI --line 73
+octocode lsp packages/octocode/src/index.ts --type definition --symbol runCLI --line 10 --format compact
+octocode lsp packages/octocode/src/cli/index.ts --type hover --symbol runCLI --line 73
 ```
 
 ### binary
@@ -639,7 +651,7 @@ octocode tools ghCloneRepo --queries '{"owner":"facebook","repo":"react","sparse
 | `0` | Success. |
 | `1` | General error. |
 | `2` | Invalid input or unsupported flags. |
-| `3` | Unknown tool or command. |
+| `3` | Not found: unknown tool/command, missing symbol, or empty semantic result. |
 | `4` | Authentication failure. |
 | `5` | Tool/API execution error. |
 | `7` | Rate limited. |

@@ -112,7 +112,7 @@ describe('runCLI', () => {
       'tools',
       'ghSearchCode',
       '--queries',
-      '{"owner":"bgauryy","repo":"octocode-mcp","keywordsToSearch":["tool"]}',
+      '{"owner":"bgauryy","repo":"octocode-mcp","keywords":["tool"]}',
       '--output',
       'json',
     ]);
@@ -124,7 +124,7 @@ describe('runCLI', () => {
       args: ['ghSearchCode'],
       options: {
         queries:
-          '{"owner":"bgauryy","repo":"octocode-mcp","keywordsToSearch":["tool"]}',
+          '{"owner":"bgauryy","repo":"octocode-mcp","keywords":["tool"]}',
         output: 'json',
       },
     });
@@ -302,7 +302,7 @@ describe('runCLI', () => {
       'tools',
       'ghSearchCode',
       '--queries',
-      '{"owner":"x","repo":"y","keywordsToSearch":["a"]}',
+      '{"owner":"x","repo":"y","keywords":["a"]}',
     ]);
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();

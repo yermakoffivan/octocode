@@ -212,7 +212,9 @@ describe('localGetFileContent', () => {
       expect(result.isPartial).toBeUndefined();
       expect(result.contentView).toBe('symbols');
       expect(result.isSkeleton).toBe(true);
-      expect(result.totalLines).toBe(src.split('\n').length);
+      // totalLines is newline-safe: a single trailing newline terminates the
+      // last line, it does not add a phantom empty one (src.split('\n') would).
+      expect(result.totalLines).toBe(src.replace(/\n$/, '').split('\n').length);
       expect((result as { sourceChars?: number }).sourceChars).toBe(src.length);
     });
 

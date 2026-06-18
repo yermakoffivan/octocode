@@ -7,12 +7,18 @@ interface PRLabel {
   name?: string;
 }
 
+interface DiffPreview {
+  lines: string[];
+  moreCount: number;
+}
+
 interface PRFileChange {
   path?: string;
   filename?: string; // fallback field name
   additions?: number;
   deletions?: number;
   patch?: string;
+  diff?: DiffPreview; // render-ready diff lines + truncated count (built in core)
   status?: string;
 }
 
@@ -331,19 +337,15 @@ function renderDetail(sc: PRSearchResult): string {
         `    ${c('cyan', fileChangePath(f))}  ${add}  ${del}${status}`
       );
 
-      if (f.patch) {
-        const patchLines = f.patch.split('\n');
-        const MAX_DIFF = 15;
-        patchLines.slice(0, MAX_DIFF).forEach(pl => {
+      if (f.diff) {
+        f.diff.lines.forEach(pl => {
           if (pl.startsWith('+')) lines.push(`      ${c('green', pl)}`);
           else if (pl.startsWith('-')) lines.push(`      ${c('red', pl)}`);
           else if (pl.startsWith('@@')) lines.push(`      ${c('cyan', pl)}`);
           else lines.push(`      ${dim(pl)}`);
         });
-        if (patchLines.length > MAX_DIFF) {
-          lines.push(
-            `      ${dim(`… (${patchLines.length - MAX_DIFF} more diff lines)`)}`
-          );
+        if (f.diff.moreCount > 0) {
+          lines.push(`      ${dim(`… (${f.diff.moreCount} more diff lines)`)}`);
         }
       }
     }

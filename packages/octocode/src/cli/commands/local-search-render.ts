@@ -14,7 +14,13 @@ export interface LocalPagination {
 
 export interface LocalSearchResult {
   results?: Array<{
-    data?: { files?: LocalMatch[]; pagination?: LocalPagination };
+    data?: {
+      files?: LocalMatch[];
+      pagination?: LocalPagination;
+      // Common per-file scalars are hoisted here when identical across files
+      // (e.g. structural/AST results share one matchCount). Must be merged back.
+      shared?: { matchCount?: number };
+    };
   }>;
 }
 
@@ -27,14 +33,19 @@ export function renderLocalResults(
   sc: LocalSearchResult,
   limit: number
 ): string {
-  const pagination = sc?.results?.[0]?.data?.pagination;
-  const files = sc?.results?.[0]?.data?.files ?? [];
+  const data = sc?.results?.[0]?.data;
+  const pagination = data?.pagination;
+  const files = data?.files ?? [];
+  const sharedCount = data?.shared?.matchCount;
   const total = pagination?.totalFiles ?? files.length;
   const lines: string[] = [];
   const shown = files.slice(0, limit);
   for (const f of shown) {
+    // Prefer the per-file count; fall back to a hoisted shared count, then to
+    // the number of returned matches so the header is never wrongly "0".
+    const count = f.matchCount ?? sharedCount ?? f.matches?.length ?? 0;
     lines.push(
-      `  ${c('cyan', bold(f.path ?? ''))}  ${dim(`(${f.matchCount ?? 0} matches)`)}`
+      `  ${c('cyan', bold(f.path ?? ''))}  ${dim(`(${count} matches)`)}`
     );
     (f.matches ?? []).slice(0, 5).forEach(m => {
       const lineNum = m.line != null ? m.line : '?';

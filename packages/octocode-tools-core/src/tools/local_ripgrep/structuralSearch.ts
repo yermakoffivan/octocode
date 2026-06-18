@@ -59,6 +59,7 @@ const DEFAULT_MAX_STRUCTURAL_FILES = 2000;
 // Skip files larger than this from a parse — they are almost never the target
 // of a structural query and dominate latency. Matches the engine's own guard.
 const MAX_STRUCTURAL_FILE_BYTES = 1_000_000;
+const STRUCTURAL_FILE_CONCURRENCY = 4;
 
 /**
  * Derive a literal text anchor from a pattern so ripgrep-style pre-filtering
@@ -141,54 +142,88 @@ export async function searchContentStructural(
   let totalMatches = 0;
   let parsedFiles = 0;
   let skippedByPreFilter = 0;
+  let skippedUnreadable = 0;
   let fatalError: string | undefined;
 
-  for (const filePath of candidateFiles) {
-    if (fatalError) break;
+  for (
+    let start = 0;
+    start < candidateFiles.length && !fatalError;
+    start += STRUCTURAL_FILE_CONCURRENCY
+  ) {
+    const chunk = candidateFiles.slice(
+      start,
+      start + STRUCTURAL_FILE_CONCURRENCY
+    );
+    const chunkResults = await Promise.all(
+      chunk.map(async filePath => {
+        let content: string;
+        try {
+          const fileStat = await stat(filePath);
+          if (fileStat.size > MAX_STRUCTURAL_FILE_BYTES) {
+            return { type: 'skip-large' as const };
+          }
+          content = await readFile(filePath, 'utf8');
+        } catch {
+          return { type: 'skip-unreadable' as const };
+        }
 
-    let content: string;
-    try {
-      const fileStat = await stat(filePath);
-      if (fileStat.size > MAX_STRUCTURAL_FILE_BYTES) continue;
-      content = await readFile(filePath, 'utf8');
-    } catch {
-      // Unreadable / vanished file — skip, do not abort the whole search.
-      continue;
+        // Sound pre-filter: a file lacking the pattern's literal anchor cannot
+        // contain a match, so skip the parse entirely (KPI #8).
+        if (anchor && !content.includes(anchor)) {
+          return { type: 'skip-prefilter' as const };
+        }
+
+        try {
+          const matches = contextUtils.structuralSearch(
+            content,
+            filePath,
+            pattern,
+            rule
+          );
+          return { type: 'parsed' as const, filePath, matches };
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          // The engine rejects extensions it has no grammar for — skip those files.
+          // Any other error is a bad pattern/rule and applies to every file, so
+          // surface it once instead of repeating it per file.
+          if (message.includes('does not support')) {
+            return { type: 'skip-unsupported' as const };
+          }
+          return { type: 'fatal' as const, message };
+        }
+      })
+    );
+
+    for (const result of chunkResults) {
+      if (result.type === 'skip-unreadable') {
+        skippedUnreadable++;
+        continue;
+      }
+      if (result.type === 'skip-prefilter') {
+        skippedByPreFilter++;
+        continue;
+      }
+      if (result.type === 'fatal') {
+        fatalError = result.message;
+        break;
+      }
+      if (result.type !== 'parsed') continue;
+
+      parsedFiles++;
+      if (result.matches.length === 0) continue;
+
+      totalMatches += result.matches.length;
+      files.push({
+        path: result.filePath,
+        matchCount: result.matches.length,
+        matches: result.matches.map(match => ({
+          line: match.startLine,
+          value: match.text.split('\n', 1)[0],
+          column: match.startCol,
+        })),
+      });
     }
-
-    // Sound pre-filter: a file lacking the pattern's literal anchor cannot
-    // contain a match, so skip the parse entirely (KPI #8).
-    if (anchor && !content.includes(anchor)) {
-      skippedByPreFilter++;
-      continue;
-    }
-
-    let matches: ReturnType<typeof contextUtils.structuralSearch>;
-    try {
-      matches = contextUtils.structuralSearch(content, filePath, pattern, rule);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // The engine rejects extensions it has no grammar for — skip those files.
-      // Any other error is a bad pattern/rule and applies to every file, so
-      // surface it once instead of repeating it per file.
-      if (message.includes('does not support')) continue;
-      fatalError = message;
-      break;
-    }
-
-    parsedFiles++;
-    if (matches.length === 0) continue;
-
-    totalMatches += matches.length;
-    files.push({
-      path: filePath,
-      matchCount: matches.length,
-      matches: matches.map(match => ({
-        line: match.startLine,
-        value: match.text.split('\n', 1)[0],
-        column: match.startCol,
-      })),
-    });
   }
 
   if (fatalError) {
@@ -208,6 +243,12 @@ export async function searchContentStructural(
     ) as LocalSearchCodeToolResult;
   }
 
+  if (skippedUnreadable > 0) {
+    warnings.push(
+      `Skipped ${skippedUnreadable} unreadable or vanished candidate file(s).`
+    );
+  }
+
   if (!anchor) {
     warnings.push(
       `No literal anchor in the ${rule ? 'rule' : 'pattern'} — parsed all ${parsedFiles} candidate file(s) with no text pre-filter.`
@@ -219,7 +260,13 @@ export async function searchContentStructural(
   }
 
   const stats: SearchStats = { matchCount: totalMatches };
-  const result = await buildSearchResult(files, query, 'rg', warnings, stats);
+  const result = await buildSearchResult(
+    files,
+    query,
+    'structural',
+    warnings,
+    stats
+  );
 
   if (totalMatches > 0) {
     const hints = Array.isArray(result.hints) ? [...result.hints] : [];

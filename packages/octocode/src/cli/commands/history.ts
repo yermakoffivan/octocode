@@ -10,6 +10,11 @@ interface CommitAuthor {
   name?: string;
 }
 
+interface DiffPreview {
+  lines: string[];
+  moreCount: number;
+}
+
 interface Commit {
   sha?: string;
   message?: string;
@@ -20,6 +25,7 @@ interface Commit {
   additions?: number;
   deletions?: number;
   patch?: string;
+  diff?: DiffPreview; // render-ready diff lines + truncated count (built in core)
 }
 
 interface CommitsResult {
@@ -127,17 +133,15 @@ function renderCommits(
       const add = cm.additions != null ? c('green', `+${cm.additions}`) : '';
       const del = cm.deletions != null ? c('red', `-${cm.deletions}`) : '';
       if (add || del) lines.push(`      ${add} ${del}`);
-      if (cm.patch) {
-        const MAX = 12;
-        const pl = cm.patch.split('\n');
-        pl.slice(0, MAX).forEach(l => {
+      if (cm.diff) {
+        cm.diff.lines.forEach(l => {
           if (l.startsWith('+')) lines.push(`      ${c('green', l)}`);
           else if (l.startsWith('-')) lines.push(`      ${c('red', l)}`);
           else if (l.startsWith('@@')) lines.push(`      ${c('cyan', l)}`);
           else lines.push(`      ${dim(l)}`);
         });
-        if (pl.length > MAX)
-          lines.push(`      ${dim(`… ${pl.length - MAX} more diff lines`)}`);
+        if (cm.diff.moreCount > 0)
+          lines.push(`      ${dim(`… ${cm.diff.moreCount} more diff lines`)}`);
       }
     }
   }

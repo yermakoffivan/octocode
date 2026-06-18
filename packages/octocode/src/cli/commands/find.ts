@@ -403,7 +403,7 @@ function buildGithubQueries(
 ): Record<string, unknown>[] {
   const extList = listOption(getString(options, 'ext')) ?? [undefined];
   return extList.map(extension => ({
-    keywordsToSearch: [query],
+    keywords: [query],
     owner: target.owner,
     repo: target.repo,
     extension,

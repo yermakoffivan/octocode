@@ -134,7 +134,7 @@ All tools support bulk operations (1–5 queries).
 |------|---------|----------|
 | `ghSearchRepos` | **DISCOVER**: Find repos | `stars`, `topicsToSearch` |
 | `ghViewRepoStructure` | **EXPLORE**: Map layout | `depth`, `path` |
-| `ghSearchCode` | **SEARCH**: Find patterns | `keywordsToSearch`, `match="path"\|"file"` |
+| `ghSearchCode` | **SEARCH**: Find patterns | `keywords`, `match="path"\|"file"` |
 | `ghGetFileContent` | **ANALYZE**: Read logic | `matchString`, `startLine` |
 | `ghSearchPRs` | **HISTORY**: PR context | `prNumber`, `state`, `diff` |
 | `npmSearch` | **DEPS**: Library meta | `query` |

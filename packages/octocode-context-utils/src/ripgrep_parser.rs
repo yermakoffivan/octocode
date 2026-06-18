@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::types::{
     RipgrepFile, RipgrepMatch, RipgrepParseOptions, RipgrepParseResult, RipgrepStats,
 };
+use crate::utf8_offsets::byte_to_char_offset_inner;
 
 // ── ripgrep --json wire types ─────────────────────────────────────────────────
 
@@ -74,8 +75,11 @@ enum RgMessage {
     Match(RgMatchData),
     Context(RgContextData),
     Summary(RgSummaryData),
-    Begin(()),
-    End(()),
+    // rg emits an object for begin/end `data`; accept and ignore it so these
+    // lines parse cleanly. That keeps the `Err` arm below meaning genuine
+    // corruption rather than swallowing every begin/end line.
+    Begin(serde::de::IgnoredAny),
+    End(serde::de::IgnoredAny),
 }
 
 // ── intermediate state ────────────────────────────────────────────────────────
@@ -189,7 +193,11 @@ pub(crate) fn parse_ripgrep_json_inner(
             RgMessage::Match(m) => {
                 let path = m.path.text;
                 let line_text = strip_trailing_newline(&m.lines.text).to_owned();
-                let column = m.submatches.first().map(|s| s.start as u32).unwrap_or(0);
+                // rg reports submatch start as a BYTE offset; convert to a 0-based
+                // UTF-16 char column so multibyte lines align with JS string indices
+                // (and match the structural-search engine's column convention).
+                let byte_col = m.submatches.first().map(|s| s.start).unwrap_or(0);
+                let column = byte_to_char_offset_inner(&line_text, byte_col) as u32;
 
                 let entry = entry_for_path(&mut file_map, &mut file_order, path);
                 entry.raw_matches.push(RawMatch {
@@ -331,6 +339,33 @@ mod tests {
         assert_eq!(f.matches[0].line, 10);
         assert_eq!(f.matches[0].column, 8);
         assert_eq!(f.matches[0].value, "  const x = 1;");
+    }
+
+    #[test]
+    fn match_column_is_utf16_char_offset_not_byte() {
+        // "café = bar": 'b' is at BYTE 8 but UTF-16 char index 7 (é is 2 bytes).
+        // rg reports the byte start; we must surface the char column.
+        let stdout = make_match_line("f.ts", "café = bar\n", 1, 8);
+        let r = parse_ripgrep_json_inner(&stdout, None);
+        assert_eq!(r.files[0].matches[0].column, 7);
+    }
+
+    #[test]
+    fn parses_begin_and_end_events_without_dropping_matches() {
+        // Regression: begin/end `data` is an object; with the old `Begin(())`
+        // these lines failed to deserialize. They must now parse and be ignored.
+        let begin = serde_json::json!({
+            "type": "begin", "data": { "path": { "text": "f.ts" } }
+        })
+        .to_string();
+        let end = serde_json::json!({
+            "type": "end", "data": { "path": { "text": "f.ts" }, "stats": {} }
+        })
+        .to_string();
+        let stdout = [begin, make_match_line("f.ts", "x\n", 1, 0), end].join("\n");
+        let r = parse_ripgrep_json_inner(&stdout, None);
+        assert_eq!(r.files.len(), 1);
+        assert_eq!(r.files[0].matches[0].line, 1);
     }
 
     #[test]

@@ -45,7 +45,7 @@ Semantic types:
 
 | `type` | Best for | Output |
 |--------|----------|--------|
-| `definition` | Jumping from usage/import to declaration. | `payload.kind="definition"`, `locations[]`. |
+| `definition` | Jumping from usage/import to declaration. For local TypeScript/JavaScript import aliases, definitions follow the import to the exported declaration when the language server first returns the import binding. | `payload.kind="definition"`, `locations[]`. |
 | `references` | Blast radius for functions, types, variables, constants, classes. | `locations[]`, `totalReferences`, `totalFiles`, optional `byFile`. |
 | `callers` | Static incoming calls to a callable symbol. | Compact `calls[]`, `summary.incomingCalls`, pagination. |
 | `callees` | Static outgoing calls made by a callable symbol. | Compact `calls[]`, `summary.outgoingCalls`, pagination. |
@@ -69,6 +69,8 @@ All semantic responses use this envelope:
 | `pagination` | Native semantic pagination for symbol and call-flow requests. |
 | `warnings` | Incomplete or unavailable evidence reasons. |
 | `hints` | Suggested next steps. |
+
+Empty semantic payloads use `payload.kind="empty"` with a machine-readable `category`, such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls`. The CLI maps these semantic misses to exit code `3` (`not found`) so scripts can fail without parsing the JSON envelope.
 
 Call-flow payloads are compact by default. Each call includes the target item, sampled call ranges, `rangeCount`, and `rangeSampleCount`. Use `contextLines>0` only when source previews are useful.
 

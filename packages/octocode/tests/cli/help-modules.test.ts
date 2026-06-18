@@ -196,7 +196,9 @@ describe('command-help-specs', () => {
     );
     expect(output).toContain('runtime: lspGetSemantics');
     expect(output).toContain('after grep or symbols');
-    expect(output).toContain('lsp src/index.ts --type references');
+    expect(output).toContain(
+      'lsp packages/octocode/src/cli/index.ts --type references'
+    );
 
     stdoutSpy.mockRestore();
   });

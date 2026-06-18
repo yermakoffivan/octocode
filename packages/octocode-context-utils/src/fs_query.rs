@@ -8,6 +8,11 @@ use crate::file_extension::get_extension_internal;
 use crate::types::{FileSystemEntry, FileSystemQueryOptions, FileSystemQueryResult};
 
 const DEFAULT_LIMIT: usize = 10_000;
+/// Hard ceiling on directory-recursion depth. Symlink cycles are already
+/// avoided (symlink_metadata never reports a symlink as a dir), so this only
+/// guards against pathologically deep real trees overflowing the stack when no
+/// `max_depth` was supplied. Far deeper than any realistic project layout.
+const MAX_RECURSION_DEPTH: u32 = 100;
 
 struct CompiledQuery {
     root: PathBuf,
@@ -139,6 +144,10 @@ impl CompiledQuery {
 }
 
 fn walk_children(base: &Path, depth: u32, query: &CompiledQuery, state: &mut QueryState) {
+    if depth > MAX_RECURSION_DEPTH {
+        state.skipped += 1;
+        return;
+    }
     if query.max_depth.is_some_and(|max_depth| depth > max_depth) {
         return;
     }
@@ -425,7 +434,11 @@ fn parse_duration_option(
 }
 
 fn parse_duration(raw: &str) -> Option<u64> {
-    let (number, unit) = raw.split_at(raw.len().saturating_sub(1));
+    // Split on the first non-digit at a char boundary. `split_at(len - 1)` would
+    // panic on a multibyte trailing char (e.g. "7€") and only ever read a
+    // single-byte unit.
+    let unit_start = raw.char_indices().find(|(_, c)| !c.is_ascii_digit())?.0;
+    let (number, unit) = raw.split_at(unit_start);
     let value = number.parse::<u64>().ok()?;
     match unit {
         "m" => Some(value * 60),
@@ -528,6 +541,46 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("create temp root");
         root
+    }
+
+    #[test]
+    fn deep_recursion_terminates_and_finds_leaf() {
+        // Recursion past several levels must complete (and stay bounded by the
+        // depth ceiling) rather than risk a stack overflow.
+        let root = temp_root("deep");
+        let mut p = root.clone();
+        for i in 0..12 {
+            p = p.join(format!("d{i}"));
+        }
+        fs::create_dir_all(&p).expect("deep dirs");
+        File::create(p.join("leaf.ts")).expect("leaf");
+
+        let result = query_file_system_inner(FileSystemQueryOptions {
+            path: root.to_string_lossy().to_string(),
+            names: Some(vec!["leaf.ts".to_owned()]),
+            recursive: Some(true),
+            ..Default::default()
+        })
+        .expect("query");
+
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(result.entries[0].name, "leaf.ts");
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn parse_duration_handles_units_and_rejects_garbage() {
+        assert_eq!(parse_duration("7d"), Some(7 * 24 * 60 * 60));
+        assert_eq!(parse_duration("30m"), Some(30 * 60));
+        assert_eq!(parse_duration("2h"), Some(2 * 60 * 60));
+        assert_eq!(parse_duration("1w"), Some(7 * 24 * 60 * 60));
+        assert_eq!(parse_duration("7"), None); // no unit
+        assert_eq!(parse_duration("d"), None); // no number
+        assert_eq!(parse_duration("30min"), None); // multi-char unit unsupported
+        assert_eq!(parse_duration(""), None);
+        // Regression: a multibyte unit must return None, not panic on a non-char
+        // boundary split.
+        assert_eq!(parse_duration("7€"), None);
     }
 
     #[test]

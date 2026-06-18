@@ -119,6 +119,7 @@ export * from './types/toolResults.js';
 export * from './utils/core/bestEffort.js';
 export * from './utils/core/compare.js';
 export * from './utils/core/constants.js';
+export * from './utils/core/lines.js';
 export * from './utils/core/promise.js';
 export * from './utils/core/safeRegex.js';
 export * from './utils/environment/environmentDetection.js';

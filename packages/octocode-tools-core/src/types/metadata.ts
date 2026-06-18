@@ -34,7 +34,7 @@ export interface HintContext {
   path?: string;
   hasOwnerRepo?: boolean;
   match?: 'file' | 'path';
-  searchEngine?: 'rg' | 'grep';
+  searchEngine?: 'rg' | 'grep' | 'structural';
   wasFilteredToEmpty?: boolean;
 
   hasConfigFiles?: boolean;

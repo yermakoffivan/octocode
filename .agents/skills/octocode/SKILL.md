@@ -208,42 +208,60 @@ yarn          # re-links the file: dep
 yarn build    # compiles tools-core with local octocode-core
 ```
 
-### 3. Propagate to MCP or CLI
+### 3. Internal deps resolve from the workspace (not npm)
 
-After rebuilding `octocode-tools-core`, rebuild whichever interface you are testing:
+Every internal **source** package depends on the others via the **`workspace:*`** protocol, so a local edit anywhere is what every dependent actually runs — no version-range drift, no accidental fall-back to a published npm version:
+
+| Package | Internal deps (all `workspace:*`) |
+|---------|-----------------------------------|
+| `octocode` (CLI) | `@octocodeai/octocode-tools-core`, `octocode-shared` |
+| `octocode-mcp` | `@octocodeai/octocode-tools-core` |
+| `octocode-tools-core` | `@octocodeai/octocode-context-utils`, `octocode-lsp`, `octocode-security`, `octocode-shared` |
+
+Yarn 4 replaces `workspace:*` with the real version automatically at publish time, so this is safe to commit. **Exceptions (intentionally NOT `workspace:*`):** the napi platform sub-packages (`*-darwin-arm64`, `*-linux-x64-gnu`, …) keep exact versions — local dev loads the root `.node` artifact directly — and `@octocodeai/octocode-core` is a `file:` dep from the **separate** `octocode-mcp-host` repo.
+
+Verify the links are live (each should be a symlink into `packages/`):
 
 ```bash
-# MCP
-cd /Users/guybary/Documents/octocode-mcp/packages/octocode-mcp
-yarn build
+ls -l node_modules/@octocodeai/octocode-tools-core node_modules/octocode-shared
+# → ../../packages/octocode-tools-core, ../packages/octocode-shared
+```
 
-# CLI
-cd /Users/guybary/Documents/octocode-mcp/packages/octocode
+If a link is missing or you add/change an internal dep, re-run `yarn install` from the root.
+
+### 4. Build all, then check from real results
+
+`workspace:*` means **one build from root propagates every local fix** through the whole chain in dependency order (native Rust → shared → tools-core → CLI/MCP):
+
+```bash
+# From monorepo root — builds context-utils, lsp, security (Rust/napi),
+# then shared, tools-core, octocode (CLI), octocode-mcp, vscode, skills.
 yarn build
 ```
 
-### 4. Test tools via CLI (fastest loop)
+> **Native (Rust) packages:** `yarn build` runs the release napi build. For a faster local loop on just one native crate, `cd packages/octocode-context-utils && yarn build:dev` (debug, current platform) — it retains the root `.node` so `octocode-tools-core` loads your changes immediately. Always finish with a root `yarn build` before trusting end-to-end results.
 
-For workspace-internal testing, set all internal deps to `workspace:^` first (so they resolve from the monorepo, not npm), build all, then invoke directly:
+Then **check from the real built CLI** (`packages/octocode/out/octocode.js`) — this exercises the exact code path users hit, through the workspace links:
 
 ```bash
-# From monorepo root
-yarn build   # builds all packages in dependency order
-
-# Call a tool directly (no MCP client needed)
 node /Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js \
   tools <tool-name> \
   --queries '[{"mainResearchGoal":"...","researchGoal":"...","reasoning":"...","<field>":"<value>"}]'
 ```
 
-Example — test `localSearchCode`:
+Example — confirm a `localSearchCode` change live:
 
 ```bash
 node packages/octocode/out/octocode.js tools localSearchCode \
   --queries '[{"mainResearchGoal":"find tool config","researchGoal":"locate toolConfig.ts","reasoning":"need entrypoint","keywords":"toolConfig","path":"/Users/guybary/Documents/octocode-mcp/packages"}]'
 ```
 
-Note: the CLI command is `octocode tools <name>` (not `octocode <name>` directly). The `keywords` field for `localSearchCode` is a **string**, not an array — multi-word terms go in a single string.
+Quick-command form (auto-routes local vs GitHub) also hits the same workspace build, e.g. `node packages/octocode/out/octocode.js grep <term> <path>`, `ast '<pattern>' <path>`, `cat <file> --mode symbols`.
+
+Notes:
+- The raw-tool form is `octocode tools <name>` (not `octocode <name>` directly).
+- `localSearchCode`'s `keywords` is a **string**, not an array — multi-word terms go in one string.
+- Local-fix checklist: **edit → (root) `yarn build` → run `out/octocode.js`** and read the real output; for unit coverage, `yarn vitest run` in the package (TS) or `cargo test --lib` (Rust).
 
 ---
 

@@ -3,9 +3,10 @@
 <div align="center">
   <img src="https://github.com/bgauryy/octocode/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
 
-  <h3>The context research Swiss knife for AI agents.<br/>Local and external evidence, in seconds.</h3>
-  <p><strong>Stop guessing.</strong> Octocode is a platform for <strong>agentic context research across local and external code and content</strong> - one evidence-first engine combining local workspace analysis, GitHub repositories, pull requests, npm packages, binaries, and LSP semantic navigation.</p>
-  <p>Use it <strong>three ways</strong>: an <strong>MCP server</strong> for AI assistants, a <strong>CLI</strong> for terminals, scripts, and CI, and a library of <strong>Agent Skills</strong> that turn the tools into ready-made research and review workflows.</p>
+  <h3>The context research Swiss Army knife for AI agents and developers.</h3>
+  <p><strong>Stop guessing.</strong> Octocode is an evidence-first research platform for understanding code across <strong>external sources and local workspaces</strong>. Search GitHub repositories, pull requests, and npm packages alongside your local codebase with ripgrep, AST structural search, repository structure browsing, smart content fetching, binary inspection, and LSP semantic navigation.</p>
+  <p>Use it as a <strong>CLI</strong> or <strong>MCP server</strong> to combine agent-friendly TypeScript workflows with <strong>Rust-backed performance</strong> for fast, evidence-based research across cross-repo systems and mega-repos.</p>
+  <p>Use it <strong>three ways</strong>: an <strong>MCP server</strong> for AI assistants, a <strong>CLI</strong> for terminals, scripts, and CI, and a library of <strong>Agent Skills</strong> that turn the tools into ready-made research, review, planning, and quality workflows.</p>
 
   <p>
     <a href="https://octocode.ai"><strong>octocode.ai</strong></a>
@@ -343,10 +344,21 @@ grep <keywords> <path|owner/repo>
     --concise             paths only - cheapest orientation
     --include <glob>      include globs (local only)
     --exclude <glob>      exclude globs (local only)
-    --context-lines <n>   context around each match (local only)
-    --max-matches <n>     max matches per file (local only)
-    --branch <ref>        branch for GitHub paths
-    --limit <n>           max files in output
+    --context-lines <n> / --context <n>   context around each match (local only)
+    --fixed / --fixed-string              literal string search (local only)
+    --perl-regex                          advanced regex features (local only)
+    --case-insensitive / --case-sensitive
+    --whole-word / --invert-match
+    --hidden / --no-ignore
+    --files-only / --files-without-match
+    --count-lines / --count-matches
+    --multiline / --multiline-dotall
+    --match-length <n>  characters kept per match snippet (local only)
+    --max-matches <n>   max matches per file (local only)
+    --max-files <n>     max matched files returned (local only)
+    --match-page <n>    page within one file's matches (local only)
+    --branch <ref>      branch for GitHub paths
+    --limit <n>         max files in output
     --page <n>
     --page-size <n>
     --json
@@ -533,9 +545,9 @@ lsp <file> --type <type> --symbol <name> --line <n>
     --json
 ```
 
-Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`.
+Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`. Semantic misses such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls` exit with code `3` so shell scripts can fail fast without parsing JSON.
 
-All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode symbols <file|path>` for `documentSymbols`.
+All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode symbols <file|path>` for `documentSymbols`. For TypeScript/JavaScript import aliases, `definition` follows local imports to the exported declaration when the language server first returns the import binding.
 
 **Supported languages** (Rust-native, no server install required for symbol detection; LSP ops need the listed server on PATH):
 
@@ -742,7 +754,7 @@ Unknown command flags are rejected with command-specific valid flags and near-mi
 Exit codes:
     0   ok
     2   bad input
-    3   not found
+    3   not found (including missing LSP symbols / empty semantic results)
     4   auth error
     5   tool error
     7   rate limited

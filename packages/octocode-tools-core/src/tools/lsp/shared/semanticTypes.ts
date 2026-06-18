@@ -89,13 +89,25 @@ export type CompactLocation = {
 export function compactLocation(snippet: {
   uri: string;
   content?: string;
+  range?: LSPRange;
   displayRange?: { startLine: number; endLine: number };
   isDefinition?: boolean;
 }): CompactLocation {
+  // References/definitions carry a 0-based LSP `range` but no `displayRange`;
+  // derive a 1-based displayRange so consumers can report the line instead of
+  // falling back to "?". An explicit displayRange always wins.
+  const displayRange =
+    snippet.displayRange ??
+    (snippet.range
+      ? {
+          startLine: snippet.range.start.line + 1,
+          endLine: snippet.range.end.line + 1,
+        }
+      : undefined);
   return {
     uri: snippet.uri,
     ...(snippet.content !== undefined && { content: snippet.content }),
-    ...(snippet.displayRange && { displayRange: snippet.displayRange }),
+    ...(displayRange && { displayRange }),
     ...(snippet.isDefinition && { isDefinition: true }),
   };
 }

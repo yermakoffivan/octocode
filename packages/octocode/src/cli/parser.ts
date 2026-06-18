@@ -43,6 +43,7 @@ const OPTIONS_WITH_VALUES = new Set([
   'line',
   'workspace-root',
   'context-lines',
+  'context',
   'ext',
   'kind',
   'entry',

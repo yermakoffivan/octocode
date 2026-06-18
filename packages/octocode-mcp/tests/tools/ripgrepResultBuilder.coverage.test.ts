@@ -74,6 +74,20 @@ describe('buildSearchResult - exact localSearchCode output fields', () => {
     expect(hints).toContain('localGetFileContent');
     expect(hints).toContain('lspGetSemantics');
   });
+
+  it('preserves the actual search engine in the result', async () => {
+    const files = [makeFile('/test/a.ts', 1)];
+
+    await expect(
+      buildSearchResult(files, baseQuery(), 'rg', [])
+    ).resolves.toMatchObject({ searchEngine: 'rg' });
+    await expect(
+      buildSearchResult(files, baseQuery(), 'grep', [])
+    ).resolves.toMatchObject({ searchEngine: 'grep' });
+    await expect(
+      buildSearchResult(files, baseQuery(), 'structural', [])
+    ).resolves.toMatchObject({ searchEngine: 'structural' });
+  });
 });
 
 describe('buildSearchResult - maxFiles limiting (lines 57-58, 136)', () => {

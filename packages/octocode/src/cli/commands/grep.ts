@@ -23,6 +23,10 @@ interface GithubFile {
   matches?: Array<{ value?: string; line?: number }>;
 }
 
+// localSearchCode also accepts "structural", but that is the `ast` command's
+// domain (it needs pattern/rule, not keywords) — grep is text search only.
+const GREP_MODES = new Set(['paginated', 'discovery', 'detailed']);
+
 interface GithubCodeResult {
   // ghSearchCode nests hits under results[].data.files[] (same shape as the
   // local renderer), not results[].matches — render off that. With concise:true
@@ -46,6 +50,23 @@ interface LocalSearchOpts {
   maxMatchesPerFile?: number;
   page?: number;
   pageSize?: number;
+  fixedString?: boolean;
+  perlRegex?: boolean;
+  caseInsensitive?: boolean;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  invertMatch?: boolean;
+  hidden?: boolean;
+  noIgnore?: boolean;
+  filesOnly?: boolean;
+  filesWithoutMatch?: boolean;
+  countLinesPerFile?: boolean;
+  countMatchesPerFile?: boolean;
+  multiline?: boolean;
+  multilineDotall?: boolean;
+  matchContentLength?: number;
+  maxFiles?: number;
+  matchPage?: number;
 }
 
 async function searchLocal(
@@ -64,6 +85,23 @@ async function searchLocal(
         exclude: opts.exclude,
         contextLines: opts.contextLines,
         maxMatchesPerFile: opts.maxMatchesPerFile,
+        fixedString: opts.fixedString,
+        perlRegex: opts.perlRegex,
+        caseInsensitive: opts.caseInsensitive,
+        caseSensitive: opts.caseSensitive,
+        wholeWord: opts.wholeWord,
+        invertMatch: opts.invertMatch,
+        hidden: opts.hidden,
+        noIgnore: opts.noIgnore,
+        filesOnly: opts.filesOnly,
+        filesWithoutMatch: opts.filesWithoutMatch,
+        countLinesPerFile: opts.countLinesPerFile,
+        countMatchesPerFile: opts.countMatchesPerFile,
+        multiline: opts.multiline,
+        multilineDotall: opts.multilineDotall,
+        matchContentLength: opts.matchContentLength,
+        maxFiles: opts.maxFiles,
+        matchPage: opts.matchPage,
         page: opts.page,
         itemsPerPage: opts.pageSize,
         mainResearchGoal: 'Search local codebase',
@@ -95,7 +133,7 @@ async function searchGithub(
   const result = await executeDirectTool('ghSearchCode', {
     queries: [
       {
-        keywordsToSearch: [pattern],
+        keywords: [pattern],
         owner,
         repo,
         extension: typeFilter,
@@ -195,7 +233,7 @@ export const grepCommand: CLICommand = {
   description:
     'Search code by text or regex (ripgrep) across local paths and GitHub repositories. For AST shape queries use the `ast` command.',
   usage:
-    'grep <keywords> <path|github-ref> [--type <ext>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+    'grep <keywords> <path|github-ref> [--type <ext>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'type',
@@ -230,6 +268,87 @@ export const grepCommand: CLICommand = {
       hasValue: true,
       description:
         'Lines of context around each match (local only, default: 0)',
+    },
+    {
+      name: 'context',
+      hasValue: true,
+      description: 'Alias for --context-lines (local only)',
+    },
+    {
+      name: 'fixed',
+      description:
+        'Literal string search alias for --fixed-string (local only)',
+    },
+    {
+      name: 'fixed-string',
+      description: 'Literal string search (local only)',
+    },
+    {
+      name: 'perl-regex',
+      description: 'Advanced regex features such as lookaheads (local only)',
+    },
+    {
+      name: 'case-insensitive',
+      description: 'Case-insensitive search (local only)',
+    },
+    {
+      name: 'case-sensitive',
+      description: 'Case-sensitive search (local only)',
+    },
+    {
+      name: 'whole-word',
+      description: 'Match whole words only (local only)',
+    },
+    {
+      name: 'invert-match',
+      description: 'Return non-matching lines (local only)',
+    },
+    {
+      name: 'hidden',
+      description: 'Search hidden files (local only)',
+    },
+    {
+      name: 'no-ignore',
+      description: 'Search files normally hidden by ignore files (local only)',
+    },
+    {
+      name: 'files-only',
+      description: 'Return matching file paths only (local only)',
+    },
+    {
+      name: 'files-without-match',
+      description: 'Return files that do not contain the pattern (local only)',
+    },
+    {
+      name: 'count-lines',
+      description: 'Return matching line counts per file (local only)',
+    },
+    {
+      name: 'count-matches',
+      description: 'Return total match counts per file (local only)',
+    },
+    {
+      name: 'multiline',
+      description: 'Allow matches to span lines (local only)',
+    },
+    {
+      name: 'multiline-dotall',
+      description: 'Allow dot to match newlines with --multiline (local only)',
+    },
+    {
+      name: 'match-length',
+      hasValue: true,
+      description: 'Characters kept per match snippet (local only)',
+    },
+    {
+      name: 'max-files',
+      hasValue: true,
+      description: 'Maximum matched files returned (local only)',
+    },
+    {
+      name: 'match-page',
+      hasValue: true,
+      description: 'Page within matches for a noisy file (local only)',
     },
     {
       name: 'max-matches',
@@ -271,8 +390,11 @@ export const grepCommand: CLICommand = {
     const limit = rawLimit ? parseInt(rawLimit, 10) : 10;
     const rawPage = getString(options, 'page');
     const rawPageSize = getString(options, 'page-size');
-    const rawContextLines = getString(options, 'context-lines');
+    const rawContextLines = getString(options, 'context-lines', 'context');
     const rawMaxMatches = getString(options, 'max-matches');
+    const rawMatchLength = getString(options, 'match-length');
+    const rawMaxFiles = getString(options, 'max-files');
+    const rawMatchPage = getString(options, 'match-page');
     const page = rawPage ? parseInt(rawPage, 10) : undefined;
     const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : undefined;
     const contextLines = rawContextLines
@@ -281,7 +403,13 @@ export const grepCommand: CLICommand = {
     const maxMatchesPerFile = rawMaxMatches
       ? parseInt(rawMaxMatches, 10)
       : undefined;
+    const matchContentLength = rawMatchLength
+      ? parseInt(rawMatchLength, 10)
+      : undefined;
+    const maxFiles = rawMaxFiles ? parseInt(rawMaxFiles, 10) : undefined;
+    const matchPage = rawMatchPage ? parseInt(rawMatchPage, 10) : undefined;
     const concise = getBool(options, 'concise');
+    const fixedString = getBool(options, 'fixed', 'fixed-string');
     // Local has no `concise`; discovery mode is the paths-only equivalent.
     const modeOpt =
       getString(options, 'mode') || (concise ? 'discovery' : undefined);
@@ -309,6 +437,19 @@ export const grepCommand: CLICommand = {
             `    ${dim('# for AST shape queries (local), use the ast command:')}\n` +
             `    ast "eval($X)" src\n`
         );
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    const modeArg = getString(options, 'mode');
+    if (modeArg && !GREP_MODES.has(modeArg)) {
+      const err =
+        'Invalid --mode. Use paginated, discovery, or detailed. For AST shape queries, use the ast command.';
+      if (jsonOutput) {
+        console.log(JSON.stringify({ success: false, error: err }));
+      } else {
+        console.error(`\n  ${c('red', '✗')} ${err}\n`);
       }
       process.exitCode = 1;
       return;
@@ -350,6 +491,23 @@ export const grepCommand: CLICommand = {
           exclude,
           contextLines,
           maxMatchesPerFile,
+          fixedString,
+          perlRegex: getBool(options, 'perl-regex'),
+          caseInsensitive: getBool(options, 'case-insensitive'),
+          caseSensitive: getBool(options, 'case-sensitive'),
+          wholeWord: getBool(options, 'whole-word'),
+          invertMatch: getBool(options, 'invert-match'),
+          hidden: getBool(options, 'hidden'),
+          noIgnore: getBool(options, 'no-ignore'),
+          filesOnly: getBool(options, 'files-only'),
+          filesWithoutMatch: getBool(options, 'files-without-match'),
+          countLinesPerFile: getBool(options, 'count-lines'),
+          countMatchesPerFile: getBool(options, 'count-matches'),
+          multiline: getBool(options, 'multiline'),
+          multilineDotall: getBool(options, 'multiline-dotall'),
+          matchContentLength,
+          maxFiles,
+          matchPage,
           page,
           pageSize,
         });

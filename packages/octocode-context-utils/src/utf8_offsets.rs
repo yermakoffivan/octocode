@@ -133,33 +133,27 @@ pub(crate) fn slice_content_inner(
 /// Snap `(start_char, end_char)` to line boundaries: push start back to line
 /// start, extend end to line end (or next line start).
 fn snap_to_lines(content: &str, start_char: usize, end_char: usize) -> (usize, usize) {
-    // Build newline positions as JavaScript UTF-16 offsets (0-indexed line starts)
-    let mut line_starts: Vec<usize> = vec![0];
+    // Single pass over the content (no allocated line table, no second utf16_len
+    // walk): track the last line start at or before start_char, and the first
+    // line start after end_char. Offsets are JavaScript UTF-16 code units.
     let mut char_idx = 0usize;
+    let mut actual_start = 0usize;
+    let mut actual_end: Option<usize> = None;
     for ch in content.chars() {
-        if ch == '\n' {
-            line_starts.push(char_idx + 1);
-        }
         char_idx += ch.len_utf16();
+        if ch == '\n' {
+            let line_start = char_idx; // start of the next line
+            if line_start <= start_char {
+                actual_start = line_start;
+            }
+            if actual_end.is_none() && line_start > end_char {
+                actual_end = Some(line_start);
+            }
+        }
     }
-
-    // Find the line that contains start_char
-    let actual_start = line_starts
-        .iter()
-        .rev()
-        .find(|&&ls| ls <= start_char)
-        .copied()
-        .unwrap_or(0);
-
-    // Find the line boundary at or after end_char
-    let total_chars = utf16_len(content);
-    let actual_end = line_starts
-        .iter()
-        .find(|&&ls| ls > end_char)
-        .copied()
-        .unwrap_or(total_chars);
-
-    (actual_start, actual_end)
+    // char_idx is now the total UTF-16 length: the fallback when end_char sits in
+    // the final line (no newline after it).
+    (actual_start, actual_end.unwrap_or(char_idx))
 }
 
 // ── unit tests ────────────────────────────────────────────────────────────────
@@ -169,6 +163,23 @@ mod tests {
     use super::*;
 
     // ── char_to_byte_offset_inner ─────────────────────────────────────────────
+
+    #[test]
+    fn snap_to_lines_snaps_start_back_and_end_forward() {
+        let content = "aa\nbbb\ncccc"; // line starts at UTF-16 offsets 0, 3, 7
+        assert_eq!(snap_to_lines(content, 4, 4), (3, 7));
+        // end_char in the final line → snap end to total length (11)
+        assert_eq!(snap_to_lines(content, 8, 8), (7, 11));
+        // start at offset 0 stays at 0
+        assert_eq!(snap_to_lines(content, 0, 1), (0, 3));
+    }
+
+    #[test]
+    fn snap_to_lines_handles_multibyte() {
+        // "é\nb": é is 1 UTF-16 unit, '\n' at offset 1, line 2 starts at 2.
+        let content = "é\nbb";
+        assert_eq!(snap_to_lines(content, 2, 2), (2, 4));
+    }
 
     #[test]
     fn char_to_byte_ascii_identity() {

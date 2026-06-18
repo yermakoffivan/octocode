@@ -5,10 +5,12 @@ import type { SearchStats } from '../../utils/core/types.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
 import type { RipgrepQuery } from './scheme.js';
 
+export type LocalSearchEngine = 'rg' | 'grep' | 'structural';
+
 export async function buildSearchResult(
   parsedFiles: LocalSearchCodeFile[],
   configuredQuery: RipgrepQuery,
-  _searchEngine: 'rg' | 'grep',
+  searchEngine: LocalSearchEngine,
   warnings: string[],
   stats?: SearchStats
 ): Promise<LocalSearchCodeToolResult> {
@@ -152,6 +154,7 @@ export async function buildSearchResult(
   }
 
   const fullResult: LocalSearchCodeToolResult = {
+    searchEngine,
     files: finalFiles,
     pagination: {
       currentPage,

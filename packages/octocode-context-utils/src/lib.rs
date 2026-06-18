@@ -243,8 +243,16 @@ pub fn structural_search(
     rule: Option<String>,
 ) -> Result<Vec<structural::StructuralMatch>> {
     let ext = file_extension::get_extension_internal(&file_path, true, "txt");
-    structural::search(&content, &ext, pattern.as_deref(), rule.as_deref())
-        .map_err(|message| Error::new(Status::InvalidArg, message))
+    // Contain tree-sitter / ast-grep panics on pathological input: an unwind
+    // across the napi FFI boundary would abort the Node process. Mirror the
+    // panic guards used in `apply.rs` / signature extraction.
+    let outcome = std::panic::catch_unwind(|| {
+        structural::search(&content, &ext, pattern.as_deref(), rule.as_deref())
+    })
+    .unwrap_or_else(|_| {
+        Err("structural search failed on pathological input".to_string())
+    });
+    outcome.map_err(|message| Error::new(Status::InvalidArg, message))
 }
 
 /// Returns a sorted list of JS char offsets (UTF-16 code units) where

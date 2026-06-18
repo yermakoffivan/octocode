@@ -58,6 +58,12 @@ describe('findInvalidNumericOptions', () => {
     ]);
   });
 
+  it('validates the grep --context alias as numeric', () => {
+    expect(findInvalidNumericOptions(args({ context: 'abc' }))).toEqual([
+      '--context=abc',
+    ]);
+  });
+
   it('flags a negative numeric value', () => {
     expect(findInvalidNumericOptions(args({ page: '-1' }))).toEqual([
       '--page=-1',

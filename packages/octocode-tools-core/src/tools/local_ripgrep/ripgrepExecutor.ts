@@ -20,6 +20,9 @@ export async function executeRipgrepSearchInternal(
   configuredQuery: RipgrepQuery
 ): Promise<LocalSearchCodeToolResult> {
   const validationWarnings: string[] = [];
+  // Keep this validation even when callers already parsed the query: this
+  // internal executor is exported and tested directly, so it is its own trust
+  // boundary for command/path construction.
   const runtimeValidation = validateRipgrepQuery(configuredQuery);
   if (!runtimeValidation.isValid) {
     return createErrorResult(

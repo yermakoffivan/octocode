@@ -1,5 +1,6 @@
 import type { components } from '@octokit/openapi-types';
 import type { RestEndpointMethodTypes } from '@octokit/plugin-rest-endpoint-methods';
+import type { DiffPreview } from '../utils/parsers/diff.js';
 
 export type Repository = components['schemas']['full-repository'];
 
@@ -55,6 +56,7 @@ export interface HistoryCommitFile {
   additions: number;
   deletions: number;
   patch?: string;
+  diff?: DiffPreview;
   previousFilename?: string;
 }
 
@@ -79,6 +81,7 @@ export interface HistoryCommit {
   deletions?: number;
   status?: string;
   patch?: string;
+  diff?: DiffPreview;
   previousFilename?: string;
   // type:"repo" fields (present when includeDiff:true)
   files?: HistoryCommitFile[];

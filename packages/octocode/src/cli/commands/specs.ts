@@ -156,11 +156,11 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     description:
       'Text/regex code search (ripgrep) across local paths and GitHub repositories. For AST shape queries use the ast command.',
     usage:
-      'grep <keywords> <path|github-ref> [--type <ext>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+      'grep <keywords> <path|github-ref> [--type <ext>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
     scheme: [
       'arg[0] keywords: text or regex (ripgrep). Required.',
       'arg[1] target: local path OR owner/repo[/path] GitHub ref. Defaults to "." for local.',
-      'options: --type extension/language string, --mode enum(paginated|discovery|detailed, local only), --concise (paths only — GitHub flat "owner/repo:path", local = mode discovery), --include/--exclude globs (local), --context-lines int, --max-matches int, --branch string, --limit int, --page int, --page-size int, --json boolean.',
+      'options: --type extension/language string, --mode enum(paginated|discovery|detailed, local only), --concise (paths only — GitHub flat "owner/repo:path", local = mode discovery), --include/--exclude globs (local), --context-lines/--context int, --fixed/--fixed-string literal search, --perl-regex, case flags, word/count/file/multiline filters, --max-matches int, --branch string, --limit int, --page int, --page-size int, --json boolean.',
       'runtime: local -> localSearchCode; GitHub -> ghSearchCode.',
       'output: YAML search hits by default; snippets are discovery, then use cat for evidence.',
     ],
@@ -205,6 +205,86 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
         name: 'context-lines',
         hasValue: true,
         description: 'Lines of context around each match (local only)',
+      },
+      {
+        name: 'context',
+        hasValue: true,
+        description: 'Alias for --context-lines (local only)',
+      },
+      {
+        name: 'fixed',
+        description:
+          'Literal string search alias for --fixed-string (local only)',
+      },
+      {
+        name: 'fixed-string',
+        description: 'Literal string search (local only)',
+      },
+      {
+        name: 'perl-regex',
+        description: 'Advanced regex features such as lookaheads (local only)',
+      },
+      {
+        name: 'case-insensitive',
+        description: 'Case-insensitive search (local only)',
+      },
+      {
+        name: 'case-sensitive',
+        description: 'Case-sensitive search (local only)',
+      },
+      {
+        name: 'whole-word',
+        description: 'Match whole words only (local only)',
+      },
+      {
+        name: 'invert-match',
+        description: 'Return non-matching lines (local only)',
+      },
+      { name: 'hidden', description: 'Search hidden files (local only)' },
+      {
+        name: 'no-ignore',
+        description:
+          'Search files normally hidden by ignore files (local only)',
+      },
+      {
+        name: 'files-only',
+        description: 'Return matching file paths only (local only)',
+      },
+      {
+        name: 'files-without-match',
+        description: 'Return files without the pattern (local only)',
+      },
+      {
+        name: 'count-lines',
+        description: 'Return matching line counts per file (local only)',
+      },
+      {
+        name: 'count-matches',
+        description: 'Return total match counts per file (local only)',
+      },
+      {
+        name: 'multiline',
+        description: 'Allow matches to span lines (local only)',
+      },
+      {
+        name: 'multiline-dotall',
+        description:
+          'Allow dot to match newlines with --multiline (local only)',
+      },
+      {
+        name: 'match-length',
+        hasValue: true,
+        description: 'Characters kept per match snippet (local only)',
+      },
+      {
+        name: 'max-files',
+        hasValue: true,
+        description: 'Maximum matched files returned (local only)',
+      },
+      {
+        name: 'match-page',
+        hasValue: true,
+        description: 'Page within matches for a noisy file (local only)',
       },
       {
         name: 'max-matches',
@@ -728,9 +808,9 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'references scope depends on which files the language server has open/indexed, so it can look narrower than reality — for cross-file incoming-call flow prefer --type callers; pass --workspace-root to widen.',
     ],
     examples: [
-      'lsp src/index.ts --type references --symbol runCLI --line 42',
-      'lsp src/index.ts --type definition --symbol runCLI --line 42 --format compact',
-      'lsp src/index.ts --type hover --symbol runCLI --line 42',
+      'lsp packages/octocode/src/cli/index.ts --type references --symbol runCLI --line 73',
+      'lsp packages/octocode/src/index.ts --type definition --symbol runCLI --line 10 --format compact',
+      'lsp packages/octocode/src/cli/index.ts --type hover --symbol runCLI --line 73',
     ],
     options: [
       {
@@ -852,6 +932,15 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'runtime: writes or validates MCP client configuration for the selected IDE.',
       'output: install/check/rollback status; --json returns structured result.',
     ],
+    whenToUse: [
+      'Register octocode-mcp with an MCP client (Cursor, Claude Code, VS Code, …) by writing its config.',
+      'Use --check to preview without writing; --rollback to restore the last backup.',
+    ],
+    examples: [
+      'install --ide cursor',
+      'install --ide claude-code --check',
+      'install --ide claude-desktop --force',
+    ],
     options: [
       { name: 'ide', hasValue: true, description: 'IDE to configure' },
       {
@@ -882,6 +971,11 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'runtime: delegates to auth storage, GitHub OAuth, token refresh, or status lookup.',
       'output: auth action result; --json returns structured status/result.',
     ],
+    whenToUse: [
+      'Humans: run login once to store a GitHub token. Agents: pass GITHUB_TOKEN / OCTOCODE_TOKEN / GH_TOKEN via env instead.',
+      'Use status to check current auth, token to print the active token, logout to clear stored credentials.',
+    ],
+    examples: ['auth status', 'auth login', 'auth token'],
     options: [
       {
         name: 'hostname',
@@ -953,6 +1047,15 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'search/read options: --limit int, --full boolean, --direct boolean, --install boolean.',
       'runtime: skills marketplace plus local skill target installation/removal/sync.',
       'output: skill search/list/read/install status; --json returns structured result.',
+    ],
+    whenToUse: [
+      'Discover, install, or manage Agent Skills (research, planning, review) across AI clients.',
+      'Use list to see installed/available, search to find one, install/remove to manage, sync to refresh.',
+    ],
+    examples: [
+      'skills list',
+      'skills search code review --limit 5',
+      'skills install --skill octocode-research --targets claude-code,cursor',
     ],
     options: [
       { name: 'force', description: 'Overwrite existing skills' },

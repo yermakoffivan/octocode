@@ -79,12 +79,69 @@ describe('grep command', () => {
     await run(['useState', 'facebook/react']);
     const [tool] = executeDirectTool.mock.calls[0];
     expect(tool).toBe('ghSearchCode');
+    // ghSearchCode's field is `keywords` (not the removed `keywordsToSearch`,
+    // which is silently stripped → keyword-less search → wrong results).
+    const q = lastQuery();
+    expect(q.keywords).toEqual(['useState']);
+    expect(q.keywordsToSearch).toBeUndefined();
   });
 
   it('requires keywords', async () => {
     await run([]);
     expect(executeDirectTool).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects an invalid --mode with a friendly error (no raw Zod leak)', async () => {
+    await run(['needle', 'src'], { mode: 'bogus' });
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('accepts valid --mode values', async () => {
+    await run(['needle', 'src'], { mode: 'discovery' });
+    expect(executeDirectTool).toHaveBeenCalledTimes(1);
+    expect(lastQuery().mode).toBe('discovery');
+  });
+
+  it('passes familiar grep aliases through to localSearchCode', async () => {
+    await run(['needle', 'src'], { context: '2', fixed: true });
+    const q = lastQuery();
+    expect(q.contextLines).toBe(2);
+    expect(q.fixedString).toBe(true);
+  });
+
+  it('supports the explicit fixed-string flag', async () => {
+    await run(['needle', 'src'], { 'fixed-string': true });
+    expect(lastQuery().fixedString).toBe(true);
+  });
+
+  it('passes advanced localSearchCode flags through', async () => {
+    await run(['needle', 'src'], {
+      'perl-regex': true,
+      'case-insensitive': true,
+      'whole-word': true,
+      'files-only': true,
+      'count-matches': true,
+      multiline: true,
+      'multiline-dotall': true,
+      'match-length': '200',
+      'max-files': '5',
+      'match-page': '2',
+    });
+
+    expect(lastQuery()).toMatchObject({
+      perlRegex: true,
+      caseInsensitive: true,
+      wholeWord: true,
+      filesOnly: true,
+      countMatchesPerFile: true,
+      multiline: true,
+      multilineDotall: true,
+      matchContentLength: 200,
+      maxFiles: 5,
+      matchPage: 2,
+    });
   });
 
   it('does not accept AST flags (moved to the ast command)', async () => {

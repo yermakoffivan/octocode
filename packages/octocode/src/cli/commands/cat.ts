@@ -283,7 +283,7 @@ export const catCommand: CLICommand = {
               repo: ref.repo,
               path: ref.subpath || '',
               branch: ref.branch,
-              depth: 2,
+              maxDepth: 2,
               mainResearchGoal: 'View directory structure',
               researchGoal: `Get GitHub directory tree for ${refLabel(ref)}`,
               reasoning: 'Auto-rerouted from get command (path is a directory)',

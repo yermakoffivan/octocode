@@ -44,11 +44,168 @@ function printUsageError(message: string, jsonOutput: boolean): void {
   console.error(`\n  ${c('red', 'x')} ${message}`);
   console.error(
     `\n  ${dim('Examples:')}\n` +
-      `    lsp src/index.ts --type references --symbol runCLI --line 42\n` +
-      `    lsp src/index.ts --type definition --symbol runCLI --line 42\n` +
-      `    lsp src/index.ts --type hover --symbol runCLI --line 42\n` +
-      `    ${dim('# for a file/dir outline, use: symbols src/index.ts')}\n`
+      `    grep "runCLI" packages/octocode/src --type ts\n` +
+      `    lsp packages/octocode/src/index.ts --type definition --symbol runCLI --line 10\n` +
+      `    lsp packages/octocode/src/cli/index.ts --type hover --symbol runCLI --line 73\n` +
+      `    ${dim('# for a file/dir outline, use: symbols packages/octocode/src/cli/index.ts')}\n`
   );
+}
+
+type LspToolResult = {
+  readonly isError?: boolean;
+  readonly structuredContent?: {
+    readonly results?: readonly LspQueryResult[];
+    readonly hints?: readonly string[];
+  };
+};
+
+type LspQueryResult = {
+  readonly status?: string;
+  readonly data?: {
+    readonly type?: string;
+    readonly resolvedSymbol?: {
+      readonly name?: string;
+      readonly foundAtLine?: number;
+    };
+    readonly payload?: LspPayload;
+    readonly pagination?: {
+      readonly hasMore?: boolean;
+      readonly nextPage?: number;
+    };
+  };
+};
+
+type LspPayload = {
+  readonly kind?: string;
+  readonly category?: string;
+  readonly reason?: string;
+  readonly locations?: readonly LspLocation[];
+  readonly markdown?: string;
+  readonly text?: string;
+  readonly calls?: readonly unknown[];
+  readonly symbols?: readonly unknown[];
+  readonly empty?: { readonly category?: string; readonly reason?: string };
+};
+
+type LspLocation =
+  | string
+  | {
+      readonly uri?: string;
+      readonly content?: string;
+      readonly displayRange?: {
+        readonly startLine?: number;
+        readonly endLine?: number;
+      };
+      readonly isDefinition?: boolean;
+    };
+
+function semanticExitCode(category: string | undefined): number | undefined {
+  switch (category) {
+    case 'symbolNotFound':
+    case 'anchorFailed':
+    case 'noLocations':
+    case 'noReferences':
+    case 'noHover':
+    case 'noCalls':
+      return EXIT.NOT_FOUND;
+    case 'serverUnavailable':
+    case 'unsupportedOperation':
+      return EXIT.TOOL;
+    default:
+      return undefined;
+  }
+}
+
+function markLspSemanticFailure(result: LspToolResult): void {
+  const results = result.structuredContent?.results ?? [];
+  for (const item of results) {
+    const payload = item.data?.payload;
+    const category =
+      payload?.kind === 'empty' ? payload.category : payload?.empty?.category;
+    const exitCode = semanticExitCode(category);
+    if (exitCode !== undefined) {
+      process.exitCode = exitCode;
+      return;
+    }
+  }
+}
+
+function formatLocation(location: LspLocation): string {
+  if (typeof location === 'string') return location;
+  const range = location.displayRange
+    ? `${location.displayRange.startLine ?? '?'}-${location.displayRange.endLine ?? '?'}`
+    : '?';
+  const uri = location.uri ?? '<unknown>';
+  const marker = location.isDefinition ? ' definition' : '';
+  const content = location.content ? ` | ${location.content.trim()}` : '';
+  return `${uri}:${range}${marker}${content}`;
+}
+
+function renderLspResult(result: LspToolResult): string {
+  const lines: string[] = [];
+  for (const item of result.structuredContent?.results ?? []) {
+    const data = item.data;
+    const payload = data?.payload;
+    if (!data || !payload) continue;
+
+    const symbol = data.resolvedSymbol?.name;
+    const foundAtLine = data.resolvedSymbol?.foundAtLine;
+    lines.push(
+      `  ${c('cyan', data.type ?? 'lsp')}${symbol ? ` ${dim(symbol)}` : ''}${foundAtLine ? ` ${dim(`line ${foundAtLine}`)}` : ''}`
+    );
+
+    if (payload.kind === 'empty') {
+      lines.push(
+        `    ${c('red', payload.category ?? 'empty')}: ${payload.reason ?? 'No result'}`
+      );
+      continue;
+    }
+
+    if (payload.locations) {
+      for (const location of payload.locations) {
+        lines.push(`    ${formatLocation(location)}`);
+      }
+      continue;
+    }
+
+    if (payload.kind === 'hover') {
+      lines.push(`    ${(payload.markdown ?? payload.text ?? '').trim()}`);
+      continue;
+    }
+
+    if (payload.calls) {
+      for (const call of payload.calls.slice(0, 20))
+        lines.push(`    ${String(call)}`);
+      continue;
+    }
+
+    if (payload.symbols) {
+      for (const symbolRow of payload.symbols.slice(0, 40))
+        lines.push(`    ${String(symbolRow)}`);
+    }
+  }
+
+  const hints = result.structuredContent?.hints ?? [];
+  if (hints.length > 0) lines.push('', ...hints.map(hint => `  ${dim(hint)}`));
+  return lines.length > 0
+    ? lines.join('\n')
+    : JSON.stringify(result.structuredContent ?? result, null, 2);
+}
+
+function printLspToolResult(result: LspToolResult, jsonOutput: boolean): void {
+  if (jsonOutput) {
+    printDirectToolResult(result, true);
+    return;
+  }
+
+  if (result.isError) {
+    printDirectToolResult(result, false);
+    return;
+  }
+
+  console.log();
+  console.log(renderLspResult(result));
+  console.log();
 }
 
 export const lspCommand: CLICommand = {
@@ -204,7 +361,8 @@ export const lspCommand: CLICommand = {
         ],
       });
 
-      printDirectToolResult(result, jsonOutput);
+      printLspToolResult(result, jsonOutput);
+      markLspSemanticFailure(result);
       markDirectToolFailure(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
