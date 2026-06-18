@@ -9,7 +9,7 @@ Skills are markdown instruction sets that teach AI coding clients how to perform
 | Skill | When to use |
 |-------|-------------|
 | `octocode-install` | Guided Octocode setup: CLI/MCP, auth, IDE config, skills |
-| `octocode-cli` | Run Octocode tools directly from the shell |
+| `octocode` | Run Octocode tools directly from the shell |
 | `octocode-researcher` | Everyday direct MCP code exploration — find, trace, definitions |
 | `octocode-research` | Deep research via HTTP research server (sessions, checkpoints) |
 | `octocode-brainstorming` | Validate ideas with prior art and market evidence |
@@ -37,14 +37,14 @@ Skills are markdown instruction sets that teach AI coding clients how to perform
 Skills install into one or more client skill directories and are picked up automatically.
 
 ```bash
-npx octocode-cli skills list                                         # check install status
-npx octocode-cli skills install --skill octocode-researcher          # install one
-npx octocode-cli skills install -k octocode-plan                     # short flag
-npx octocode-cli skills install --skill octocode-researcher --force  # update
-npx octocode-cli skills install                                      # prompt for targets/mode, then install all
-npx octocode-cli skills install --targets claude-code,cursor,codex   # multi-target install
-npx octocode-cli skills install --targets claude-code,cursor --mode symlink # symlink mode
-npx octocode-cli skills remove --skill octocode-researcher --targets claude-code,cursor # remove from targets
+npx octocode skills list                                         # check install status
+npx octocode skills install --skill octocode-researcher          # install one
+npx octocode skills install -k octocode-plan                     # short flag
+npx octocode skills install --skill octocode-researcher --force  # update
+npx octocode skills install                                      # prompt for targets/mode, then install all
+npx octocode skills install --targets claude-code,cursor,codex   # multi-target install
+npx octocode skills install --targets claude-code,cursor --mode symlink # symlink mode
+npx octocode skills remove --skill octocode-researcher --targets claude-code,cursor # remove from targets
 ```
 
 `skills install` without `--targets`/`--mode` opens prompts to choose platforms and install strategy. Non-interactive runs default to `claude-code` with `copy` mode.
@@ -73,7 +73,7 @@ Commit `.claude/skills/` (or your chosen target directory) to share skills with 
 
 ## Skills Marketplace
 
-Access via the interactive menu: `npx octocode-cli install` → Manage System Skills → Browse Marketplace.
+Access via the interactive menu: `npx octocode install` → Manage System Skills → Browse Marketplace.
 
 | Source | Description |
 |--------|-------------|

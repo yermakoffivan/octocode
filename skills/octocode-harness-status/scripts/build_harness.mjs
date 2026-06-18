@@ -48,7 +48,7 @@ const VENDORS = VENDOR_DEFS;
 // ─── CLI tools ───────────────────────────────────────────────────────────────
 
 const CLI_TOOLS = [
-  { id: 'octocode-cli', name: 'octocode-cli',    emoji: '🐙', versionCmd: ['npx', 'octocode-cli', '--version'], authCmd: ['npx', 'octocode-cli', 'status'], authPattern: /Authenticated as ([^\s\n]+)/, authNegPattern: /not authenticated|not logged/i },
+  { id: 'octocode', name: 'octocode',    emoji: '🐙', versionCmd: ['npx', 'octocode', '--version'], authCmd: ['npx', 'octocode', 'status'], authPattern: /Authenticated as ([^\s\n]+)/, authNegPattern: /not authenticated|not logged/i },
   { id: 'gh',           name: 'gh (GitHub CLI)', emoji: '🐱', versionCmd: ['gh', '--version'],                  authCmd: ['gh', 'auth', 'status'],          authPattern: /Logged in to github\.com account ([^\s(]+)/, authNegPattern: /not logged in/i },
   { id: 'claude',       name: 'Claude Code CLI', emoji: '🔶', versionCmd: ['claude', '--version'],              authCmd: null, authPattern: null, authNegPattern: null },
   { id: 'cursor',       name: 'Cursor CLI',      emoji: '⬛', versionCmd: ['cursor', '--version'],              authCmd: null, authPattern: null, authNegPattern: null },

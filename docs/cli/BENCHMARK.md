@@ -1,9 +1,9 @@
 # CLI + Skill vs MCP — Agent Benchmark
 
-Real-agent harness (via `claude -p`) that measures end-to-end performance when an autonomous agent answers research tasks using **either** `octocode-cli` + skill, **or** the Octocode MCP server. Used to validate CLI+skill as a viable alternative access path (terminal, pipelines, CI) and track regressions.
+Real-agent harness (via `claude -p`) that measures end-to-end performance when an autonomous agent answers research tasks using **either** `octocode` + skill, **or** the Octocode MCP server. Used to validate CLI+skill as a viable alternative access path (terminal, pipelines, CI) and track regressions.
 
 - **Variant A** — MCP: agent has `mcp__octocode__*` tools, no shell access.
-- **Variant B** — CLI+skill: agent has `Bash(bench-cli:*)` only, MCP disabled, with `skills/octocode-cli/SKILL.md` injected via `--append-system-prompt`.
+- **Variant B** — CLI+skill: agent has `Bash(bench-cli:*)` only, MCP disabled, with `skills/octocode/SKILL.md` injected via `--append-system-prompt`.
 
 Symmetric, n=10 per task per variant, 5 tasks, trials interleaved.
 
@@ -19,7 +19,7 @@ Tool coverage across the primary catalog:
 | `ghSearchCode` | | ✓ | | | ✓ |
 | `ghGetFileContent` | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `ghViewRepoStructure` | ✓ | | ✓ | | ✓ |
-| `ghSearchPRs` | | | | ✓ | |
+| `ghHistoryResearch` | | | | ✓ | |
 | `ghSearchRepos` | | | | | ✓ |
 
 ## Prerequisites
@@ -27,21 +27,21 @@ Tool coverage across the primary catalog:
 - `claude` CLI (Claude Code) with MCP server `octocode` configured (for variant A).
 - Node 22+, yarn, working copy of `octocode-mcp` monorepo.
 - `jq`, `gtime`/`/usr/bin/time -p`, `gh` CLI (for ground-truth pinning).
-- A CLI build of `octocode-cli` you want to benchmark.
+- A CLI build of `octocode` you want to benchmark.
 
 ## Setup
 
 ### 1. Build the CLI you want to measure
 
 ```bash
-YARN_ENABLE_SCRIPTS=0 yarn --cwd packages/octocode-cli build:dev
+YARN_ENABLE_SCRIPTS=0 yarn --cwd packages/octocode build:dev
 ```
 
-This emits `packages/octocode-cli/out/octocode-cli.js`. If you're benchmarking a branch in a separate worktree, build there and symlink `node_modules` if needed:
+This emits `packages/octocode/out/octocode.js`. If you're benchmarking a branch in a separate worktree, build there and symlink `node_modules` if needed:
 
 ```bash
 ln -sf ../octocode-mcp/node_modules node_modules
-YARN_ENABLE_SCRIPTS=0 yarn --cwd packages/octocode-cli build:dev
+YARN_ENABLE_SCRIPTS=0 yarn --cwd packages/octocode build:dev
 ```
 
 ### 2. Create the CLI wrapper the agent will invoke
@@ -49,13 +49,13 @@ YARN_ENABLE_SCRIPTS=0 yarn --cwd packages/octocode-cli build:dev
 ```bash
 cat > /tmp/bench-cli <<'EOF'
 #!/usr/bin/env bash
-exec node /ABSOLUTE/PATH/TO/packages/octocode-cli/out/octocode-cli.js "$@"
+exec node /ABSOLUTE/PATH/TO/packages/octocode/out/octocode.js "$@"
 EOF
 chmod +x /tmp/bench-cli
 /tmp/bench-cli --version   # confirm it runs
 ```
 
-Use the wrapper name `bench-cli` (not `octocode-cli`). That keeps `--allowedTools "Bash(bench-cli:*)"` scoped tight and lets you benchmark arbitrary builds without touching `$PATH` globally.
+Use the wrapper name `bench-cli` (not `octocode`). That keeps `--allowedTools "Bash(bench-cli:*)"` scoped tight and lets you benchmark arbitrary builds without touching `$PATH` globally.
 
 ### 3. Verify MCP variant still works
 
@@ -135,7 +135,7 @@ Save the output into `/tmp/bench-ground-truth-YYYYMMDD.txt` and reference it dur
 
 > In `microsoft/TypeScript`, find the most recent merged pull request that modifies at least one file under the `src/compiler/` directory. Respond with compact JSON only: `{"prNumber":N,"title":"<exact title>","mergedAt":"<ISO-8601 date>","changedFile":"<one file path under src/compiler/ changed by the PR>"}`. Do not include any other text.
 
-**Expected tool shape:** `ghSearchPRs` with path filter → optional `ghGetFileContent` to confirm one changed file.
+**Expected tool shape:** `ghHistoryResearch` with path filter → optional `ghGetFileContent` to confirm one changed file.
 
 **Scoring:**
 - `prNumber` must match the top result of `gh pr list --repo microsoft/TypeScript --state merged --search 'path:src/compiler' --limit 1` at batch pin time. Accept the top 3 results to tolerate race with merges during the batch.
@@ -176,7 +176,7 @@ LOG=/tmp/bench-<variant>-${TASK}-${TRIAL}
     "mcp__octocode__ghGetFileContent" \
     "mcp__octocode__ghViewRepoStructure" \
     "mcp__octocode__ghSearchRepos" \
-    "mcp__octocode__ghSearchPRs" \
+    "mcp__octocode__ghHistoryResearch" \
     "mcp__octocode__npmSearch" \
   --output-format stream-json --verbose \
   --include-partial-messages \
@@ -187,7 +187,7 @@ LOG=/tmp/bench-<variant>-${TASK}-${TRIAL}
 ### Variant B — CLI + skill
 
 ```bash
-SKILL=$(cat /ABSOLUTE/PATH/TO/skills/octocode-cli/SKILL.md)
+SKILL=$(cat /ABSOLUTE/PATH/TO/skills/octocode/SKILL.md)
 PATH="/tmp:$PATH" /usr/bin/time -p claude -p \
   --permission-mode acceptEdits \
   --allowedTools "Bash(bench-cli:*)" \
@@ -254,7 +254,7 @@ Write one summary JSON per variant, `/tmp/bench-<variant>-multi-summary.json`:
 {
   "variant": "mcp" | "cli-skill-v2" | ...,
   "cli_binary": "<branch @ short-sha>",
-  "skill_sha": "<sha of skills/octocode-cli/SKILL.md>",
+  "skill_sha": "<sha of skills/octocode/SKILL.md>",
   "ground_truth_pinned_at": "<ISO-8601>",
   "runs": [
     {"task":"R1","trial":1,"time":42.1,"input":12,"output":432,
@@ -290,7 +290,7 @@ Historical comparison tables (old T1–T4 synthetic benchmark) preserved in [PR 
 
 - [ ] CLI built, `/tmp/bench-cli --version` works
 - [ ] `claude` CLI can reach MCP server (variant A)
-- [ ] `SKILL.md` present at `skills/octocode-cli/SKILL.md`
+- [ ] `SKILL.md` present at `skills/octocode/SKILL.md`
 - [ ] Task prompts copied verbatim (no paraphrasing)
 - [ ] Ground truth pinned for this batch against live public repos (zod, python-sdk, TypeScript, vite, webpack)
 - [ ] n=10 each, trials interleaved across R1–R5

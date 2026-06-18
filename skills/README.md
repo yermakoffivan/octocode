@@ -9,7 +9,7 @@ Specialized AI agent skills extending OctoCode. 19 skills live under `skills/`.
 | Skill | Directory | Use For |
 |-------|-----------|---------|
 | **Install** | `octocode-install/` | Set up OctoCode, auth, IDE MCP, and skills. |
-| **CLI** | `octocode-cli/` | Run Octocode tools from the shell. |
+| **CLI** | `octocode/` | Run Octocode tools from the shell. |
 | **Researcher** | `octocode-researcher/` | Fast code search, symbol lookup, and file discovery. |
 | **Research** | `octocode-research/` | Multi-phase investigations with checkpoints. |
 | **Brainstorming** | `octocode-brainstorming/` | Validate ideas with prior art and market evidence. |

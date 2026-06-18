@@ -6,7 +6,7 @@ GitHub is the only supported Octocode provider. This page covers login, token pr
 
 ```bash
 # Recommended OAuth login
-npx octocode-cli login
+npx octocode login
 
 # Or use GitHub CLI credentials
 gh auth login
@@ -25,7 +25,7 @@ npx octocode-mcp
 
 | Method | Use when | Command or setting |
 |--------|----------|--------------------|
-| Octocode CLI OAuth | You want the simplest setup | `npx octocode-cli login` |
+| Octocode CLI OAuth | You want the simplest setup | `npx octocode login` |
 | GitHub CLI | You already use `gh` locally | `gh auth login` |
 | Environment token | You are configuring an MCP client, CI, or Enterprise host | `OCTOCODE_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` |
 
@@ -89,11 +89,11 @@ This enables `ghCloneRepo` and `ghGetFileContent` with `type: "directory"`.
 
 | Symptom | Check |
 |---------|-------|
-| No token found | Run `npx octocode-cli status`, then `npx octocode-cli login`, or set an environment token. |
+| No token found | Run `npx octocode status`, then `npx octocode login`, or set an environment token. |
 | 401 Unauthorized | Check token validity, scopes, and the selected GitHub host. |
 | Enterprise requests hit github.com | Set `GITHUB_API_URL` to the Enterprise API URL. |
 | Clone tools unavailable | Set both `ENABLE_LOCAL=true` and `ENABLE_CLONE=true`. |
-| Wrong account | Run `npx octocode-cli auth` or update the active `gh` account. |
+| Wrong account | Run `npx octocode auth` or update the active `gh` account. |
 
 ## See Also
 

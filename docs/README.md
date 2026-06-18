@@ -19,8 +19,8 @@ Install, configure, and use the Octocode MCP server.
 
 | Doc | When to read |
 |-----|--------------|
-| [GitHub Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) | `ghSearchCode`, `ghGetFileContent`, `ghViewRepoStructure`, `ghSearchRepos`, `ghSearchPRs`, `ghCloneRepo`, `npmSearch` |
-| [Local Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) | `localSearchCode` (+ AST structural), `localViewStructure`, `localFindFiles`, `localGetFileContent` |
+| [GitHub Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) | `ghSearchCode`, `ghGetFileContent`, `ghViewRepoStructure`, `ghSearchRepos`, `ghHistoryResearch`, `ghCloneRepo` |
+| [Local Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) | `localSearchCode` (+ AST structural), `localViewStructure`, `localFindFiles`, `localGetFileContent`, `localBinaryInspect` |
 | [Binary Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/BINARY_TOOLS.md) | `localBinaryInspect` — archives, compressed streams, native binaries |
 | [LSP Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md) | `lspGetSemantics` — definitions, references, callers, callees, hover |
 | [Tool Behavior Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/TOOL_BEHAVIOR.md) | Known behaviors, tradeoffs, and control patterns per tool |

@@ -5,7 +5,7 @@
 Octocode is a code-research platform with **two interfaces** over the same tool implementations:
 
 - **MCP server** (`packages/octocode-mcp`) — served via `StdioServerTransport`, registered in MCP clients (Claude, VS Code, etc.)
-- **CLI** (`packages/octocode-cli`) — direct tool invocation from the terminal without an MCP client
+- **CLI** (`packages/octocode`) — direct tool invocation from the terminal without an MCP client
 
 Both interfaces call into **`packages/octocode-tools-core`** for all tool logic.
 
@@ -18,7 +18,7 @@ octocode-mcp/ (monorepo root)
 ├── packages/
 │   ├── octocode-tools-core/    # All 13 tool implementations + execution (TypeScript)
 │   ├── octocode-mcp/           # MCP server (thin wrapper over tools-core)
-│   ├── octocode-cli/           # CLI wrapper (thin wrapper over tools-core)
+│   ├── octocode/           # CLI wrapper (thin wrapper over tools-core)
 │   ├── octocode-lsp/           # LSP client/server lifecycle (Rust + napi)
 │   ├── octocode-context-utils/ # FS queries, ripgrep parsing, YAML (Rust + napi)
 │   ├── octocode-security/      # Path validation, command allowlist, secrets (Rust + napi)
@@ -218,7 +218,7 @@ cd /Users/guybary/Documents/octocode-mcp/packages/octocode-mcp
 yarn build
 
 # CLI
-cd /Users/guybary/Documents/octocode-mcp/packages/octocode-cli
+cd /Users/guybary/Documents/octocode-mcp/packages/octocode
 yarn build
 ```
 
@@ -231,7 +231,7 @@ For workspace-internal testing, set all internal deps to `workspace:^` first (so
 yarn build   # builds all packages in dependency order
 
 # Call a tool directly (no MCP client needed)
-node /Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js \
+node /Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js \
   tools <tool-name> \
   --queries '[{"mainResearchGoal":"...","researchGoal":"...","reasoning":"...","<field>":"<value>"}]'
 ```
@@ -239,7 +239,7 @@ node /Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cl
 Example — test `localSearchCode`:
 
 ```bash
-node packages/octocode-cli/out/octocode-cli.js tools localSearchCode \
+node packages/octocode/out/octocode.js tools localSearchCode \
   --queries '[{"mainResearchGoal":"find tool config","researchGoal":"locate toolConfig.ts","reasoning":"need entrypoint","keywords":"toolConfig","path":"/Users/guybary/Documents/octocode-mcp/packages"}]'
 ```
 

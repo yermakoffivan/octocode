@@ -1,14 +1,14 @@
 # CLI Docs
 
-The Octocode CLI (`octocode`) installs and manages Octocode, and runs all 12 MCP tools directly from the terminal.
+The Octocode CLI (`octocode`) installs and manages Octocode, and runs all Octocode MCP tools directly from the terminal.
 
 ## Quick Start
 
 ```bash
-npx octocode-cli --help            # all commands
-npx octocode-cli tools             # list tools
-npx octocode-cli tools <name>      # schema for one tool
-npx octocode-cli install --ide cursor  # install MCP for an IDE
+npx octocode --help            # all commands
+npx octocode tools             # list tools
+npx octocode tools <name>      # schema for one tool
+npx octocode install --ide cursor  # install MCP for an IDE
 ```
 
 ## Docs

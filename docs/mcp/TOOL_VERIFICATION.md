@@ -102,7 +102,7 @@ Primary code: [src/tools/github_search_repos/](https://github.com/bgauryy/octoco
 | Empty | Empty results name active filters so the agent can broaden language, topics, or pushed-date constraints. |
 | Research quality | Results must include repository identity, description, URL, default branch, pushed date, language, stars, topics, and enough metadata to choose follow-up search or structure calls. |
 
-### `ghSearchPRs`
+### `ghHistoryResearch`
 
 Primary code: [src/tools/github_search_pull_requests/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_search_pull_requests). Schema: `GitHubPullRequestSearchQueryLocalSchema`.
 
@@ -213,7 +213,7 @@ These suites verify that tools compose into reliable research workflows.
 | Remote to local deep dive | `ghSearchCode` or `ghSearchRepos`, then `ghCloneRepo`, then local search and LSP tools on `localPath`. | Remote identity, branch, clone path, and local path all line up. No result requires guessing a path or branch. |
 | Structure to content | `ghViewRepoStructure` or `localViewStructure`, then content fetch on selected entries. | Paths emitted by structure tools are directly accepted by content tools. Empty directories and missing files are differentiated. |
 | Package provenance | `npmSearch`, then `ghViewRepoStructure` or `ghSearchCode` on parsed repo owner/name. | Package repo metadata is normalized enough to drive GitHub tools, and missing/ambiguous repo URLs are represented as missing evidence. |
-| PR archaeology | `ghSearchPRs` with title search, then PR number fetch and file-content or code search follow-up. | Approximate search finds candidates; PR-number path returns full body/diff data requested; large diffs guide targeted follow-up. |
+| PR archaeology | `ghHistoryResearch` with title search, then PR number fetch and file-content or code search follow-up. | Approximate search finds candidates; PR-number path returns full body/diff data requested; large diffs guide targeted follow-up. |
 | Empty-result recovery | Run over-constrained queries across GitHub, local, and LSP tools. | Each tool either stays silent when no concrete advice exists or names exactly which filter to relax. |
 | Pagination chain | Force small `limit`, `entriesPerPage`, `filesPerPage`, `matchesPerPage`, `referencesPerPage`, `callsPerPage`, `charLength`, and `responseCharLength`. | Every next cursor continues the same result set without duplicates, missing entries, or final-page chatter. |
 | Verbosity chain | Run the same broad task with `concise`, drill down with `compact`, and confirm with `basic`. | `concise` is tiny and lossy, `compact` is enough to choose a target, and `basic` provides citeable evidence. |

@@ -67,12 +67,12 @@ Without local tools, scanning still works, but semantic validation is reduced.
 
 ## Install
 ```bash
-npx octocode-cli skills install --skill octocode-code-engineer
+npx octocode skills install --skill octocode-code-engineer
 ```
 
 Multi-target install:
 ```bash
-npx octocode-cli skills install --skill octocode-code-engineer --targets claude-code,claude-desktop,cursor,codex,opencode
+npx octocode skills install --skill octocode-code-engineer --targets claude-code,claude-desktop,cursor,codex,opencode
 ```
 
 ## Common commands

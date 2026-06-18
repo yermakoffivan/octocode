@@ -45,15 +45,15 @@ if (!toolName || !queriesJson) {
 // in_chars: payload ruler — queries JSON string only (the meaningful input payload)
 const inChars = cps(queriesJson);
 
-// Run `node <octocode-cli.js> tools <tool-name> --queries '<queries-json>'`.
+// Run `node <octocode.js> tools <tool-name> --queries '<queries-json>'`.
 // Use local CLI binary. ALLOWED_PATHS lets local tools access the benchmark clone.
 // stdout is captured as the tool result; stderr forwarded but not counted.
 //
 // OCTOCODE_CLI_BIN must be set to the local build path:
-//   /Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js
+//   /Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js
 // Falling back to a globally installed `octocode` is not allowed — it may be a
 // different version and will produce results that cannot be compared to the local build.
-const LOCAL_BUILD = '/Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js';
+const LOCAL_BUILD = '/Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js';
 const CLI_BIN = process.env.OCTOCODE_CLI_BIN || LOCAL_BUILD;
 if (!process.env.OCTOCODE_CLI_BIN) {
   console.error(`octo-meas: OCTOCODE_CLI_BIN not set — defaulting to local build: ${LOCAL_BUILD}`);

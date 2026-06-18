@@ -81,7 +81,7 @@ Regex matching still returns only the first match slice (same as B1).
 
 ---
 
-## `ghSearchPRs`
+## `ghHistoryResearch`
 
 ### Data shape
 
@@ -288,7 +288,7 @@ When `weeklyDownloads` is absent from the response, no hint is emitted. The fiel
 | Scan a whole file's structure | `ghGetFileContent` with `signaturesOnly: true` |
 | Read 2–10 functions from a file | Multiple `startLine`/`endLine` reads in one batched call |
 | Read a 3MB+ file | `ghCloneRepo` sparse + local read |
-| Understand why a PR was made | `ghSearchPRs` with `content.body: true` only |
+| Understand why a PR was made | `ghHistoryResearch` with `content.body: true` only |
 | Review a PR's changes | `content.changedFiles: true` first, then `content.patches.mode: "selected"` for relevant files |
 | Get all inline code comments on a PR | `content: { comments: { reviewInline: true, discussion: false } }` |
 | Count repos in an org | `owner: "vercel"` with no keywords → `totalMatches` from pagination |

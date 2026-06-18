@@ -1,6 +1,6 @@
 {
   "name": "@octocodeai/octocode-tools-core",
-  "version": "16.3.0",
+  "version": "16.3.1",
   "description": "Core tool implementations for Octocode: GitHub, local filesystem, LSP, and package search tools.",
   "author": "Guy Bary <bgauryy@octocodeai.com>",
   "license": "MIT",

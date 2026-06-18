@@ -18,13 +18,14 @@ octocode ls <path|owner/repo>
 octocode grep <keywords> <path|owner/repo>
 octocode find <query> [path|owner/repo]
 octocode ast <pattern> [path]
-octocode fetch <owner/repo[/path][@branch]|url>
+octocode clone <owner/repo[/path][@branch]|url>
 octocode pr <owner/repo[#N]|PR-URL>
 octocode repo <keywords...>
 octocode pkg <package>
 octocode symbols <file|path>
 octocode lsp <file> --type <type>
 octocode binary <file>
+octocode unzip <archive>
 
 # Raw tool runner
 octocode tools
@@ -42,7 +43,7 @@ Agents should use this order:
 3. `octocode tools <name> --scheme`
 4. `octocode tools <name> --queries '<json>'`
 
-Use `octocode context --full` only when every inline JSON schema is needed.
+Use `octocode context --full` for complete tool descriptions. Read schemas on demand with `octocode tools <name> --scheme`.
 
 ## Global Options
 
@@ -53,6 +54,8 @@ Use `octocode context --full` only when every inline JSON schema is needed.
 | `--json` | Print raw JSON MCP envelope for tool runs. |
 | `--compact` | Print lean tool output. |
 | `--no-color` | Disable ANSI color. Also honors `NO_COLOR=1`. |
+
+Unknown flags are rejected before a command runs. The error lists valid flags for that command and suggests near-miss typos.
 
 ## Quick Commands
 
@@ -65,13 +68,15 @@ Auto-route based on target: a local path routes to local tools; `owner/repo[/pat
 | `grep` | `localSearchCode` / `ghSearchCode` | Text or regex search |
 | `find` | `localFindFiles` / `localSearchCode` / `ghSearchCode` | Find files by name, path, or content |
 | `ast` | `localSearchCode` (structural) | AST shape search via ast-grep (local only) |
-| `fetch` | `ghCloneRepo` | Clone a repo or subtree to `~/.octocode/repos/` |
+| `clone` | `ghCloneRepo` | Clone a repo or subtree to `~/.octocode/repos/` |
 | `pr` | `ghHistoryResearch` | List or deep-dive pull requests |
+| `history` | `ghHistoryResearch` (commits) | Commit history for a repo, dir, or file (→ `#PR` deep-read) |
 | `repo` | `ghSearchRepos` | Discover GitHub repositories |
 | `pkg` | `npmSearch` | npm package metadata + source repo |
 | `symbols` | `lspGetSemantics` (documentSymbols) | Semantic symbol outline |
 | `lsp` | `lspGetSemantics` | Definitions, references, callers, hover, … |
 | `binary` | `localBinaryInspect` | Archives, compressed files, native binaries |
+| `unzip` | `localBinaryInspect` (unpack) | Unpack an archive to a cached directory |
 
 ### cat
 
@@ -243,12 +248,12 @@ octocode ast 'useState($X)' . --type tsx --context-lines 3
 octocode ast src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement'
 ```
 
-### fetch
+### clone
 
-Clone a GitHub repo or subtree locally. Clones land at `~/.octocode/repos/<owner>/<repo>/<branch>/` with a 24-hour cache.
+Clone a GitHub repo or subtree locally. Clones land at `~/.octocode/repos/<owner>/<repo>/<branch>/` with a 24-hour cache. Requires `ENABLE_CLONE=true`.
 
 ```
-fetch <owner/repo[/path][@branch]|url>
+clone <owner/repo[/path][@branch]|url>
     --branch <ref>      override branch (also parses from @branch syntax)
     --force-refresh     bypass 24-hour cache and re-clone
     --json
@@ -267,13 +272,13 @@ Accepted ref formats:
 Examples:
 
 ```bash
-octocode fetch facebook/react
-octocode fetch facebook/react/packages/react
-octocode fetch facebook/react@18.2.0/packages/react
-octocode fetch https://github.com/vercel/next.js/tree/main/packages/next
+octocode clone facebook/react
+octocode clone facebook/react/packages/react
+octocode clone facebook/react@18.2.0/packages/react
+octocode clone https://github.com/vercel/next.js/tree/main/packages/next
 ```
 
-After fetching, use local tools against the cloned path:
+After cloning, use local tools against the cloned path:
 
 ```bash
 octocode ls ~/.octocode/repos/facebook/react/main
@@ -317,6 +322,32 @@ octocode pr facebook/react
 octocode pr facebook/react --state merged --limit 20
 octocode pr facebook/react#29940 --patches --comments
 octocode pr https://github.com/vercel/next.js/pull/65000 --deep
+```
+
+### history
+
+Commit history for a repo, directory, or file — who changed what, when. A commit headline that embeds `(#NNN)` links to its PR: deep-read it with `pr owner/repo#NNN`.
+
+```
+history <owner/repo[/path][@branch]>
+    --since <iso>        ISO 8601, e.g. 2024-01-01T00:00:00Z (commits mode)
+    --until <iso>
+    --author <name>      filter by commit author
+    --branch <ref>       branch or SHA to walk (also parsed from @branch)
+    --diff               include per-commit file diffs (larger output)
+    --limit <n>          max commits shown (default: 20)
+    --page <n>
+    --json
+```
+
+Examples:
+
+```bash
+octocode history facebook/react/packages/react/src
+octocode history bgauryy/octocode/README.md --diff
+octocode history vercel/next.js --since 2024-06-01T00:00:00Z --author someone
+# follow a "(#421)" headline → full PR:
+octocode pr bgauryy/octocode#421 --deep
 ```
 
 ### repo
@@ -393,11 +424,11 @@ octocode symbols src/index.ts --kind function
 ### lsp
 
 ```
-lsp <file> --type <type>
+lsp <file> --type <type> --symbol <name> --line <n>
     --type   definition|references|callers|callees|callHierarchy
-             hover|documentSymbols|typeDefinition|implementation   (required)
-    --symbol <name>             required unless --type documentSymbols
-    --line <n>                  required unless --type documentSymbols
+             hover|typeDefinition|implementation   (required)
+    --symbol <name>             required
+    --line <n>                  required
     --workspace-root <path>
     --format structured|compact
     --context-lines <n>
@@ -412,7 +443,7 @@ Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`
 Examples:
 
 ```bash
-octocode lsp src/index.ts --type documentSymbols
+octocode symbols src/index.ts
 octocode lsp src/index.ts --type references --symbol runCLI --line 42
 octocode lsp src/index.ts --type callers --symbol executeDirectTool --line 18
 octocode lsp src/index.ts --type hover --symbol runCLI --line 42
@@ -447,6 +478,21 @@ octocode binary archive.zip --list
 octocode binary archive.zip --extract src/index.ts
 octocode binary release.tar.gz --decompress
 octocode binary lib.node --strings --min-length 12
+```
+
+### unzip
+
+Unpack an archive to a cached local directory, then use local commands on the extracted tree.
+
+```
+unzip <archive> [--json]
+```
+
+Examples:
+
+```bash
+octocode unzip app.zip
+octocode unzip release.tar.gz
 ```
 
 ## Management Commands
@@ -518,6 +564,8 @@ Skills guide: [docs/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blo
 
 `octocode tools` imports the canonical public catalog from `octocode-mcp/public`; the CLI does not maintain separate tool schemas.
 
+Raw tool calls use `--queries`. Legacy `--input` is not supported, and unsupported tool flags are rejected before execution.
+
 `--queries` accepts an object, array, or wrapped object:
 
 ```json
@@ -556,7 +604,7 @@ octocode tools ghCloneRepo --queries '{"owner":"facebook","repo":"react","sparse
 | `GITHUB_TOKEN` | GitHub token fallback. |
 | `OCTOCODE_HOME` | Override Octocode data directory (default: `~/.octocode`). |
 | `ENABLE_LOCAL` | Enable local filesystem tools (default: `true`). |
-| `ENABLE_CLONE` | Enable `ghCloneRepo` / `fetch` command (default: `false`). |
+| `ENABLE_CLONE` | Enable `ghCloneRepo` / `clone` command (default: `false`). |
 | `NO_COLOR` | Disable terminal color. |
 
 ## Exit Codes

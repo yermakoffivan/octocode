@@ -8166,9 +8166,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"octocode@workspace:packages/octocode-cli":
+"octocode@workspace:packages/octocode":
   version: 0.0.0-use.local
-  resolution: "octocode@workspace:packages/octocode-cli"
+  resolution: "octocode@workspace:packages/octocode"
   dependencies:
     "@inquirer/prompts": "npm:^8.1.0"
     "@octocodeai/octocode-tools-core": "npm:^16.3.0"
@@ -8184,7 +8184,7 @@ __metadata:
     tsx: "npm:^4.21.0"
     vitest: "npm:^4.0.16"
   bin:
-    octocode: ./out/octocode-cli.js
+    octocode: ./out/octocode.js
   languageName: unknown
   linkType: soft
 

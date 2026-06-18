@@ -2,7 +2,7 @@
  * Public API exports for octocode-mcp
  *
  * This module is the stable surface for programmatic consumers (e.g.
- * `octocode-cli`, `octocode-research`). Internal helpers — pattern-matching
+ * `octocode`, `octocode-research`). Internal helpers — pattern-matching
  * fallbacks, individual `register*Tool` functions, the lower-level core
  * implementations that hide behind the bulk `execute*` runners — are NOT part
  * of the public API and are intentionally absent from this file.

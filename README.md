@@ -40,20 +40,20 @@ Pick the path that matches where you want Octocode to show up.
 
 ```bash
 # Interactive installer for Cursor, Claude Code, Windsurf, Codex, and more.
-npx octocode-cli install
+npx octocode install
 
 # Non-interactive install for a specific client.
-npx octocode-cli install --ide cursor
+npx octocode install --ide cursor
 ```
 
 Then authenticate GitHub access:
 
 ```bash
-npx octocode-cli login
-npx octocode-cli status
+npx octocode login
+npx octocode status
 ```
 
-If you installed the CLI globally or with Homebrew, use `octocode` instead of `npx octocode-cli`.
+If you installed the CLI globally or with Homebrew, use `octocode` instead of `npx octocode`.
 
 ### Use Octocode From the Terminal
 
@@ -62,7 +62,7 @@ If you installed the CLI globally or with Homebrew, use `octocode` instead of `n
 brew install bgauryy/octocode/octocode
 
 # npm
-npm install -g octocode-cli
+npm install -g octocode
 
 # See the tools, then read a tool's schema before calling it
 octocode tools
@@ -102,7 +102,7 @@ Every command is `octocode tools <toolName> --queries '<json>'`. Always read the
 | Research a GitHub repo | `ghViewRepoStructure '{"owner":"<o>","repo":"<r>","path":""}'` | `ghSearchCode '{"keywords":["<term>"],"owner":"<o>","repo":"<r>"}'` -> `ghGetFileContent '{"owner":"<o>","repo":"<r>","path":"<file>"}'` |
 | Inspect a pull request | `ghHistoryResearch '{"owner":"<o>","repo":"<r>","type":"prs","concise":true}'` | Re-call with `"prNumber":<N>` for files, patches, comments, reviews, commits. |
 | Code-shape query (AST) | `localSearchCode '{"path":".","mode":"structural","pattern":"<shape>"}'` | Use `pattern` (e.g. `import $$$ from $MOD`) or a YAML `rule` for relational matches. |
-| Share an agent setup | `octocode context` | Add `--full` only when an agent needs inline JSON schemas. |
+| Share an agent setup | `octocode context` | Add `--full` when an agent needs complete tool descriptions; read schemas with `tools <name> --scheme`. |
 
 ## Platform
 
@@ -110,8 +110,8 @@ Octocode is not a chat prompt or a loose wrapper around `grep`. It is a tool run
 
 | Surface | Best for | Install | What you get |
 |---------|----------|---------|--------------|
-| **MCP server** | Claude Code, Cursor, Claude Desktop, Windsurf, Codex, and other MCP clients | `npx octocode-cli install` | 13 research tools (12 enabled by default) exposed directly to your AI assistant |
-| **CLI** | Terminal research, scripts, CI, quick lookups, debugging tool calls | `brew install bgauryy/octocode/octocode` or `npm install -g octocode-cli` | Agent-first runner for the same 13 tools (`octocode tools <name> --queries`) plus auth, install, and skills management |
+| **MCP server** | Claude Code, Cursor, Claude Desktop, Windsurf, Codex, and other MCP clients | `npx octocode install` | 13 research tools (12 enabled by default) exposed directly to your AI assistant |
+| **CLI** | Terminal research, scripts, CI, quick lookups, debugging tool calls | `brew install bgauryy/octocode/octocode` or `npm install -g octocode` | Agent-first runner for the same 13 tools (`octocode tools <name> --queries`) plus auth, install, and skills management |
 | **Agent Skills** | Packaged workflows for research, planning, review, and output | `octocode skills` or [skills.sh](https://www.skills.sh/bgauryy/octocode-mcp) | 20 ready-made skills that orchestrate the tools - see [Skills](#skills) |
 
 The normal research loop is:
@@ -132,7 +132,7 @@ The MCP server exposes all 13 tools directly to your AI assistant over stdio. In
 
 ```bash
 # Interactive - detects your installed clients
-npx octocode-cli install
+npx octocode install
 
 # Non-interactive
 octocode install --ide cursor
@@ -237,10 +237,10 @@ The CLI is the terminal interface to the same engine. Every MCP tool is availabl
 brew install bgauryy/octocode/octocode
 
 # npm
-npm install -g octocode-cli
+npm install -g octocode
 
 # no global install needed
-npx octocode-cli install
+npx octocode install
 ```
 
 ```bash
@@ -260,13 +260,15 @@ Auto-route based on target: a local path routes to local tools; `owner/repo[/pat
 | `grep <keywords> <path\|owner/repo>` | `localSearchCode` / `ghSearchCode` | Text or regex search |
 | `find <query> [path\|owner/repo]` | `localFindFiles` / `localSearchCode` / `ghSearchCode` | Find files by name, path, or content |
 | `ast <pattern> [path]` | `localSearchCode` (structural) | AST shape search via ast-grep (local only) |
-| `fetch <owner/repo[/path][@branch]>` | `ghCloneRepo` | Clone a repo or subtree to `~/.octocode/repos/` |
+| `clone <owner/repo[/path][@branch]>` | `ghCloneRepo` | Clone a repo or subtree to `~/.octocode/repos/` |
 | `pr <owner/repo[#N]\|PR-URL>` | `ghHistoryResearch` | List or deep-dive pull requests |
+| `history <owner/repo[/path]>` | `ghHistoryResearch` (commits) | Commit history for a repo, dir, or file (→ `#PR` deep-read) |
 | `repo <keywords...>` | `ghSearchRepos` | Discover GitHub repositories |
 | `pkg <package>` | `npmSearch` | npm package metadata + source repo |
 | `symbols <file\|path>` | `lspGetSemantics` (documentSymbols) | Semantic symbol outline |
 | `lsp <file> --type <type>` | `lspGetSemantics` | Definitions, references, callers, hover, ... |
 | `binary <file>` | `localBinaryInspect` | Archives, compressed files, native binaries |
+| `unzip <archive>` | `localBinaryInspect` (unpack) | Unpack an archive to a cached directory |
 
 #### cat
 
@@ -494,11 +496,11 @@ Directory mode discovers files matching extensions (defaults: `ts tsx js jsx mjs
 #### lsp
 
 ```
-lsp <file> --type <type>
+lsp <file> --type <type> --symbol <name> --line <n>
     --type   definition|references|callers|callees|callHierarchy
-             hover|documentSymbols|typeDefinition|implementation   (required)
-    --symbol <name>             required unless --type documentSymbols
-    --line <n>                  required unless --type documentSymbols
+             hover|typeDefinition|implementation   (required)
+    --symbol <name>             required
+    --line <n>                  required
     --workspace-root <path>
     --format structured|compact
     --context-lines <n>
@@ -601,7 +603,7 @@ octocode clone facebook/react@18.2.0/packages/react
 octocode clone https://github.com/vercel/next.js/tree/main/packages/next
 ```
 
-After fetching, use local tools against the returned path:
+After cloning, use local tools against the returned path:
 
 ```bash
 octocode ls ~/.octocode/repos/facebook/react/main
@@ -674,16 +676,16 @@ skills [search|read|install|remove|list|sync]
 Every MCP tool runs via `tools`. Read the schema before calling - field names vary per tool.
 
 ```bash
-octocode tools                                         # list all 13 tools
+octocode tools                                         # list all available tools
 octocode tools <name> --scheme                         # full JSON schema
 octocode tools <name> --queries '<json>'               # run (YAML by default)
 octocode tools <name> --queries '<json>' --json        # raw response envelope
 octocode tools <name> --queries '<json>' --compact     # leanest output
 octocode context                                       # agent protocol + system prompt
-octocode context --full                                # same + all schemas inline
+octocode context --full                                # complete tool descriptions; schemas stay on demand
 ```
 
-`--queries` accepts one object or an array of up to 5 independent queries.
+`--queries` accepts one object or an array of up to 5 independent queries. Legacy `--input` is not supported; unsupported tool flags are rejected before execution.
 
 ### Playbook
 
@@ -708,6 +710,8 @@ Global flags:
     --compact   leanest output
     --no-color  disable ANSI color
 
+Unknown command flags are rejected with command-specific valid flags and near-miss suggestions.
+
 Exit codes:
     0   ok
     2   bad input
@@ -721,9 +725,9 @@ Exit codes:
 
 ## Tools
 
-12 tools enabled by default. `ghCloneRepo` is opt-in (`ENABLE_CLONE=true`). Local tools require `ENABLE_LOCAL` (default: on). All flags: [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md).
+13 tools are available. `ghCloneRepo` is opt-in (`ENABLE_CLONE=true`). Local tools require `ENABLE_LOCAL` (default: on). All flags: [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md).
 
-All 13 tools run identically over MCP and CLI.
+The same tool implementations run over MCP and CLI.
 
 **Token knobs** - `concise:true` returns path/title-only lists. `minify` controls file read density: `symbols` = skeleton with line numbers, `standard` = comments/blanks stripped (default), `none` = exact bytes.
 
@@ -758,7 +762,7 @@ All 13 tools run identically over MCP and CLI.
 
 | Tool | What it does |
 |------|--------------|
-| `lspGetSemantics` | Typed semantic navigation. `type` selects the query: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, `implementation`. Requires `uri` + `symbolName` + `lineHint` (from a prior search) except for `documentSymbols`. Supports 19 languages via installed language servers — see the `lsp` command section for the full list and operation tiers. |
+| `lspGetSemantics` | Typed semantic navigation. Raw tools support `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored queries only; use `symbols` for `documentSymbols`. Supports 19 languages via installed language servers — see the `lsp` command section for the full list and operation tiers. |
 
 **References**
 - [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
@@ -831,7 +835,7 @@ yarn lint
 | Fix lint/format issues where possible | `yarn lint:fix` |
 | Validate MCP package contracts | `yarn mcp:contracts` |
 | Run the MCP package gate | `yarn mcp:package` |
-| Validate CLI registries | `cd packages/octocode-cli && yarn validate:mcp && yarn validate:skills` |
+| Validate CLI registries | `cd packages/octocode && yarn validate:mcp && yarn validate:skills` |
 
 Useful editing rules for this repo:
 
@@ -874,7 +878,7 @@ graph TB
     subgraph TS["TypeScript Layer"]
         direction TB
         MCP["octocode-mcp\n────────────────────────\nMCP server (stdio transport)\nTool registration · Lifecycle\nStartup / shutdown handling"]
-        CLIBIN["octocode-cli\n────────────────────────\nRaw tool runner  ( tools )\nAuth · Install · Skills\nMCP marketplace · Cache"]
+        CLIBIN["octocode\n────────────────────────\nRaw tool runner  ( tools )\nAuth · Install · Skills\nMCP marketplace · Cache"]
         CORE["@octocodeai/octocode-tools-core\n────────────────────────\n13 tool implementations\nGitHub client + Providers\nHints · Pagination · Session\nSecurity bridge"]
         SHARED["octocode-shared\n────────────────────────\nAES-256-GCM credentials\nToken resolution chain\nSession persistence"]
     end
@@ -971,7 +975,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 | Directory | npm package | Purpose |
 |-----------|-------------|---------|
 | [`packages/octocode-mcp`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server that registers the Octocode tool catalog for AI assistants. |
-| [`packages/octocode-cli`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-cli) | `octocode-cli` | Agent-first terminal interface: raw tool runner (`tools`), `context`, auth, install, status, token, and skills workflows. |
+| [`packages/octocode`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode) | `octocode` | Agent-first terminal interface: raw tool runner (`tools`), `context`, auth, install, status, token, and skills workflows. |
 | [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Shared tool catalog and implementations for GitHub, local filesystem, package search, and LSP flows. |
 | [`packages/octocode-context-utils`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-context-utils) | `@octocodeai/octocode-context-utils` | Rust-backed context engine for minification, signatures, pagination offsets, ripgrep parsing, diff filtering, and YAML output. |
 | [`packages/octocode-security`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-security) | `octocode-security` | Rust-backed secret detection plus TypeScript path, command, input, and tool security utilities. |
@@ -1026,7 +1030,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 | Skill | What it does |
 |-------|--------------|
 | [**Install**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-install) | Interactive step-by-step Octocode installer for macOS and Windows |
-| [**CLI**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-cli) | Run Octocode MCP tools from the terminal without wiring MCP |
+| [**CLI**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode) | Run Octocode MCP tools from the terminal without wiring MCP |
 | [**Search Skill**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-search-skill) | Find, evaluate, install, refactor Agent Skills (SKILL.md format) |
 | [**Stats**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-stats) | Local HTML dashboard from Octocode MCP usage stats |
 | [**Harness Status**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-harness-status) | Interactive dashboard of all skills, MCPs, CLIs, and tokens installed on this machine |

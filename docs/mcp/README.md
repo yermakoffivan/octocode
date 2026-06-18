@@ -1,6 +1,6 @@
 # MCP Server Docs
 
-The Octocode MCP server exposes 12 tools to AI coding clients via the Model Context Protocol.
+The Octocode MCP server exposes Octocode research tools to AI coding clients via the Model Context Protocol.
 
 ## Configuration
 
@@ -13,8 +13,8 @@ The Octocode MCP server exposes 12 tools to AI coding clients via the Model Cont
 
 | Doc | Purpose |
 |-----|---------|
-| [tools/GITHUB_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) | `ghSearchCode`, `ghGetFileContent`, `ghViewRepoStructure`, `ghSearchRepos`, `ghSearchPRs`, `ghCloneRepo`, `npmSearch` |
-| [tools/LOCAL_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) | `localSearchCode` (+ AST/structural), `localViewStructure`, `localFindFiles`, `localGetFileContent` |
+| [tools/GITHUB_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) | `ghSearchCode`, `ghGetFileContent`, `ghViewRepoStructure`, `ghSearchRepos`, `ghHistoryResearch`, `ghCloneRepo` |
+| [tools/LOCAL_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) | `localSearchCode` (+ AST/structural), `localViewStructure`, `localFindFiles`, `localGetFileContent`, `localBinaryInspect` |
 | [tools/BINARY_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/BINARY_TOOLS.md) | `localBinaryInspect` — archives, compressed streams, native binaries |
 | [tools/LSP_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md) | `lspGetSemantics` — definitions, references, callers, callees, hover |
 | [tools/TOOL_BEHAVIOR.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/TOOL_BEHAVIOR.md) | Known behaviors, tradeoffs, and control patterns per tool |

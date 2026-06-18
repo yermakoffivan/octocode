@@ -23,6 +23,26 @@ Is the code already on disk (a checkout you're reading or editing)?
           ghCloneRepo and switch to Part A on the clone.
 ```
 
+## CLI quick commands (agent fast path)
+
+Use CLI shortcuts only when terminal execution is faster than MCP JSON. Keep the same research loop: map → find → read → prove.
+
+**Command map:**
+`pkg` package → repo · `repo` discover repo · `ls` map tree · `grep` text search · `find` file search · `cat --mode symbols` skeleton · `cat --match-string ... --mode none` evidence · `ast` structural search · `symbols` file outline · `lsp` definition/references/callers/hover · `binary` inspect archive/compressed/binary · `unzip` unpack archive to local path · `clone` sparse/full GitHub clone · `pr` history.
+
+**Non-research CLI commands:** `context` shows tool context; `install` configures MCP clients; `auth`/`login`/`logout`/`token`/`status` manage credentials; `skills` manages bundled skills. Do not use these for code research unless the user asks for setup/auth/skill management.
+
+**Agent decisions:**
+
+- Unknown source file → `cat --mode symbols`; then exact evidence with `cat --match-string "X" --mode none` or `--start-line N --end-line M --mode none`.
+- Text lies or comments/strings pollute hits → `ast` on a local path. Clone first for GitHub repos.
+- Need identity/blast radius → get a real line from `grep`/`cat`/`ast`, then `lsp`; never invent `--line`.
+- Archive has one target entry → `binary --list`, then `binary --extract <entry>`; many entries → `unzip`, then local `ls`/`grep`/`cat`/`lsp`.
+- Compressed single stream (`.gz`, `.xz`, `.zst`) → `binary --decompress`; native binary (`.node`, `.so`, `.dylib`, `.exe`, `.wasm`) → `binary --strings`.
+- Remote work exceeds ~3 files or needs LSP → `ENABLE_CLONE=true octocode clone owner/repo[/path][@branch]`; prefer sparse subtree (`owner/repo/path`) before local deep research.
+
+**Remote-to-local flow:** `pkg`/`repo` → `ls owner/repo --depth 1` → `clone owner/repo/path` → local `grep`/`ast` → `cat --mode symbols` → `lsp`.
+
 ## Universal rules (apply to every call, both families)
 
 > **Golden rule — cheap → targeted → read → prove.** Orient with the cheapest tool (discovery / path-only / skeleton), narrow with scope filters, read the smallest slice with the right `minify`, then prove semantics with the LSP. Never open with a full-file read or a broad scan.

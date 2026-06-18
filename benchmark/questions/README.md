@@ -44,7 +44,7 @@ If your assigned role is unclear, ask before starting.
 Set `OCTOCODE_CLI_BIN` once to use the local development build:
 
 ```bash
-export OCTOCODE_CLI_BIN="/Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js"
+export OCTOCODE_CLI_BIN="/Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js"
 ```
 
 The metering wrapper reads this env var and runs `node $OCTOCODE_CLI_BIN tools ...` automatically. Unset = falls back to the global `octocode` binary.
@@ -131,7 +131,7 @@ Use this section only if your assigned role is `researcher: octocode`.
 ## Setup
 
 ```bash
-export OCTOCODE_CLI_BIN="/Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js"
+export OCTOCODE_CLI_BIN="/Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js"
 export ALLOWED_PATHS="/tmp/nextjs-bench"
 git clone --depth 1 https://github.com/vercel/next.js /tmp/nextjs-bench
 rm -rf benchmark/output/octocode

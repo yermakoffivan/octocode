@@ -32,7 +32,7 @@ unless `lm_tokens_in` and `lm_tokens_out` are explicitly recorded.
 SETUP
 From the repository root:
 
-  export OCTOCODE_CLI_BIN="/Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js"
+  export OCTOCODE_CLI_BIN="/Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js"
   rm -rf /tmp/nextjs-bench
   git clone --depth 1 https://github.com/vercel/next.js /tmp/nextjs-bench
   export ALLOWED_PATHS="/tmp/nextjs-bench"

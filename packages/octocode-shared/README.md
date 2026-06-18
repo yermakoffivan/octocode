@@ -48,7 +48,7 @@ export GITHUB_TOKEN=ghp_your_token_here
 
 **To store credentials permanently:**
 ```bash
-octocode-cli auth login
+octocode auth login
 ```
 
 ---

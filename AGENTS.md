@@ -14,7 +14,7 @@
 
 **Packages**
 - [`octocode-mcp`](#package-octocode-mcp) — MCP server (13 tools)
-- [`octocode-cli`](#package-octocode-cli) — CLI installer + tool runner
+- [`octocode`](#package-octocode) — CLI installer + tool runner
 - [`octocode-shared`](#package-octocode-shared) — Credentials, sessions, platform
 - [`octocode-vscode`](#package-octocode-vscode) — VS Code extension
 - [`octocode-security-utils`](#package-octocode-security-utils) — Security utilities
@@ -53,7 +53,7 @@ All links in documentation files (`docs/`, package READMEs) **MUST** use absolut
 octocode-mcp/
 ├── packages/
 │   ├── octocode-mcp/             # MCP server: GitHub, local tools, LSP
-│   ├── octocode-cli/             # CLI installer, tool runner, skills marketplace
+│   ├── octocode/             # CLI installer, tool runner, skills marketplace
 │   ├── octocode-vscode/          # VS Code extension (OAuth, multi-editor MCP install)
 │   ├── octocode-shared/          # Shared utilities (credentials, platform, session)
 │   └── octocode-security-utils/  # Standalone security utilities (no AGENTS section)
@@ -242,26 +242,26 @@ Tools return `structuredContent` validated against `outputSchema`. Server advert
 
 ---
 
-# Package: `octocode-cli`
+# Package: `octocode`
 
 CLI binary that **manages** Octocode (install, auth, skills, MCP marketplace, sync, cache) and **runs tools** (any Octocode tool from terminal).
 
-Run commands from `packages/octocode-cli/`.
+Run commands from `packages/octocode/`.
 
 ### Using the CLI
 
 ```
-octocode-cli --help                          # all commands + all 13 tools
-octocode-cli --tool <name> --help            # input/output schema for one tool
-octocode-cli --tools-context                 # full MCP instructions + all schemas (~2200 lines)
-octocode-cli --tool <name> --queries '<json>' [--json]
+octocode --help                          # all commands + all 13 tools
+octocode --tool <name> --help            # input/output schema for one tool
+octocode --tools-context                 # full MCP instructions + all schemas (~2200 lines)
+octocode --tool <name> --queries '<json>' [--json]
 ```
 
 `--queries` accepts an object, array, or `{ "queries": [...] }`. Fields `id`, `researchGoal`, `reasoning`, `mainResearchGoal` are auto-filled — only provide tool-specific fields.
 
 ```bash
-octocode-cli --tool localSearchCode --queries '{"path":".","pattern":"runCLI"}'
-octocode-cli --tool ghSearchCode --queries '{"keywordsToSearch":["useReducer"],"owner":"facebook","repo":"react"}'
+octocode --tool localSearchCode --queries '{"path":".","pattern":"runCLI"}'
+octocode --tool ghSearchCode --queries '{"keywordsToSearch":["useReducer"],"owner":"facebook","repo":"react"}'
 ```
 
 Output shape: `{ "content": [{ "type": "text", "text": "..." }], "structuredContent": {}, "isError": false }`
@@ -275,7 +275,7 @@ Output shape: `{ "content": [{ "type": "text", "text": "..." }], "structuredCont
 | `login` | `l` | `login [--hostname <host>] [--git-protocol <ssh\|https>]` |
 | `logout` | – | `logout [--hostname <host>]` |
 | `status` | `s` | `status [--hostname <host>]` |
-| `token` | `t` | `token [--type <auto\|octocode-cli\|gh>] [--hostname <host>] [--source] [--json]` |
+| `token` | `t` | `token [--type <auto\|octocode\|gh>] [--hostname <host>] [--source] [--json]` |
 | `sync` | `sy` | `sync [--force] [--dry-run] [--status]` |
 | `skills` | `sk` | `skills [install\|remove\|list] [--skill <name>] [--targets <list>] [--mode <copy\|symlink>] [--force]` |
 | `mcp` | – | `mcp [list\|install\|remove\|status] [--id <id>] [--client <client>\|--config <path>] [--search <text>] [--category <name>] [--env K=V] [--installed] [--force]` |
@@ -319,7 +319,7 @@ CLI args parse first; if a command or `--tool` matches, it runs. Otherwise falls
 
 ### Skills directory
 
-Bundled skills live at repo root [`skills/`](https://github.com/bgauryy/octocode-mcp/tree/main/skills). At publish, `prepack` copies them into `packages/octocode-cli/skills`. Run `yarn validate:skills` after changes.
+Bundled skills live at repo root [`skills/`](https://github.com/bgauryy/octocode-mcp/tree/main/skills). At publish, `prepack` copies them into `packages/octocode/skills`. Run `yarn validate:skills` after changes.
 
 ### Adding things
 
@@ -343,7 +343,7 @@ Tokens encrypted in `~/.octocode/` (AES-256-GCM). Never log tokens. Coverage: 90
 
 # Package: `octocode-shared`
 
-Shared utilities for credentials, session persistence, and platform detection across Octocode packages. Consumers: `octocode-cli`, `octocode-mcp`.
+Shared utilities for credentials, session persistence, and platform detection across Octocode packages. Consumers: `octocode`, `octocode-mcp`.
 
 Run commands from `packages/octocode-shared/`.
 

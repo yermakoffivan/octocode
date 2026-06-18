@@ -27,14 +27,14 @@ A="${1:-}"
 }
 
 # Validate OCTOCODE_CLI_BIN — must point to the local build, not a global install.
-LOCAL_BUILD="/Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js"
+LOCAL_BUILD="/Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js"
 if [[ -z "${OCTOCODE_CLI_BIN:-}" ]]; then
   echo "init-run: OCTOCODE_CLI_BIN not set — defaulting to local build: $LOCAL_BUILD" >&2
   export OCTOCODE_CLI_BIN="$LOCAL_BUILD"
 fi
 if [[ ! -f "$OCTOCODE_CLI_BIN" ]]; then
   echo "init-run: OCTOCODE_CLI_BIN does not exist: $OCTOCODE_CLI_BIN" >&2
-  echo "  Run: cd /Users/guybary/Documents/octocode-mcp/packages/octocode-cli && yarn build" >&2
+  echo "  Run: cd /Users/guybary/Documents/octocode-mcp/packages/octocode && yarn build" >&2
   return 1 2>/dev/null || exit 1
 fi
 

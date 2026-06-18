@@ -20,14 +20,14 @@ Two entry points. Each ships to users independently:
 
 ```
 npx octocode-mcp          →  octocode-mcp
-npx octocode / Homebrew   →  octocode-cli
+npx octocode / Homebrew   →  octocode
 ```
 
 ### Dependency tree
 
 ```
 octocode-mcp ──────────────────────────────────────────────────────────────────┐
-octocode-cli ──────────────────────────────────────────────────────────────────┤
+octocode ──────────────────────────────────────────────────────────────────┤
     │                                                                           │
     └─▶ @octocodeai/octocode-tools-core   (compiled; bundles octokit/node-cache)
               ├─▶ octocode-security          (Rust .node — secret detection)
@@ -36,7 +36,7 @@ octocode-cli ──────────────────────�
               └─▶ octocode-shared            (credentials/session/platform)
 ```
 
-`octocode-mcp` adds `@modelcontextprotocol/sdk` and the MCP server layer on top. `octocode-cli` skips the MCP layer and talks to `octocode-tools-core` directly — so the CLI has no runtime dependency on `octocode-mcp`.
+`octocode-mcp` adds `@modelcontextprotocol/sdk` and the MCP server layer on top. `octocode` skips the MCP layer and talks to `octocode-tools-core` directly — so the CLI has no runtime dependency on `octocode-mcp`.
 
 ### What each package bundles vs. externalizes
 
@@ -48,7 +48,7 @@ octocode-cli ──────────────────────�
 | `octocode-lsp` | — | `vscode-*`, `zod`, `octocode-security`, `octocode-shared`; **ships its own Rust `.node` via 6 platform `optionalDependencies`** |
 | `@octocodeai/octocode-tools-core` | `@octokit/*`, `octokit`, `node-cache`, `zod` | `octocode-{security,lsp,shared}`, `@octocodeai/{octocode-context-utils,octocode-core}`, `@modelcontextprotocol/sdk`, `@vscode/ripgrep`, `typescript`, `typescript-language-server` |
 | `octocode-mcp` | `zod` | `@modelcontextprotocol/sdk`, `@octocodeai/{octocode-tools-core,octocode-core}`, `octocode-{security,shared}` |
-| `octocode-cli` | `@inquirer/*`, `@octokit/*`, `open`, `zod` | `@octocodeai/octocode-tools-core`, `octocode-shared` |
+| `octocode` | `@inquirer/*`, `@octokit/*`, `open`, `zod` | `@octocodeai/octocode-tools-core`, `octocode-shared` |
 
 ---
 
@@ -80,7 +80,7 @@ At `npm install` time, npm checks `os` + `cpu` + `libc` on each platform package
 Both entry points deliver the same binaries through `octocode-tools-core`:
 
 ```
-npm install octocode-mcp            npm install octocode-cli
+npm install octocode-mcp            npm install octocode
   └─ @octocodeai/octocode-tools-core  └─ @octocodeai/octocode-tools-core
        └─ octocode-security                  └─ octocode-security
        └─ @octocodeai/octocode-               └─ @octocodeai/octocode-
@@ -154,7 +154,7 @@ Build order matters. Always build dependencies before consumers:
 
 ```
 octocode-shared → octocode-security → octocode-context-utils → octocode-lsp
-  → octocode-tools-core → octocode-mcp / octocode-cli
+  → octocode-tools-core → octocode-mcp / octocode
 ```
 
 ### Test
@@ -193,7 +193,7 @@ node release/sync-packages-local.mjs --verbose # see every dep that was checked
 2. yarn build:dev  (from the changed package)
 3. yarn build:dev  (from octocode-tools-core if a lib changed)
 4. yarn test       (from the affected package)
-5. Test end-to-end from octocode-mcp or octocode-cli
+5. Test end-to-end from octocode-mcp or octocode
 ```
 
 ---
@@ -241,10 +241,10 @@ The build scripts copy the compiled `.node` into `npm/{platform}/` automatically
 
 ### How users get binaries after `npm install`
 
-When a user runs `npm install octocode-mcp` or `npm install octocode-cli`, npm resolves the full dependency tree automatically:
+When a user runs `npm install octocode-mcp` or `npm install octocode`, npm resolves the full dependency tree automatically:
 
 ```
-npm install octocode-mcp  (or octocode-cli)
+npm install octocode-mcp  (or octocode)
   └─ @octocodeai/octocode-tools-core
        ├─ octocode-security
        │    └─ optionalDependencies:
@@ -312,7 +312,7 @@ Dependencies must exist on npm before dependents. Publish in this order:
 7. octocode-lsp
 8. @octocodeai/octocode-tools-core
 9. octocode-mcp
-10. octocode-cli  →  then update Homebrew tap
+10. octocode  →  then update Homebrew tap
 ```
 
 ### Publish commands
@@ -328,7 +328,7 @@ done
 # ... repeat for context-utils and octocode-lsp, then:
 npm publish packages/octocode-tools-core        --access public --provenance --dry-run
 npm publish packages/octocode-mcp               --access public --provenance --ignore-scripts --dry-run
-npm publish packages/octocode-cli               --access public --provenance --dry-run
+npm publish packages/octocode               --access public --provenance --dry-run
 
 # Live publish (same commands, drop --dry-run):
 npm publish packages/octocode-shared            --access public --provenance
@@ -359,7 +359,7 @@ npm publish packages/octocode-lsp               --access public --provenance
 
 npm publish packages/octocode-tools-core        --access public --provenance
 npm publish packages/octocode-mcp               --access public --provenance --ignore-scripts
-npm publish packages/octocode-cli               --access public --provenance
+npm publish packages/octocode               --access public --provenance
 ```
 
 ### Restore workspace refs after publish
@@ -383,7 +383,7 @@ yarn install
 
 ```bash
 tmp=$(mktemp -d) && cd "$tmp" && npm init -y >/dev/null
-npm install octocode-mcp@X.Y.Z octocode-cli@X.Y.Z
+npm install octocode-mcp@X.Y.Z octocode@X.Y.Z
 node --input-type=module -e "const s = await import('octocode-security'); console.log('security:', Boolean(s.securityRegistry))"
 node --input-type=module -e "const c = await import('@octocodeai/octocode-context-utils'); console.log('context-utils:', c.getSupportedSignatureExtensions().length > 0)"
 node --input-type=module -e "await import('octocode-lsp'); console.log('lsp: native .node loaded ✓')"  # throws if no platform optionalDependency was installed
@@ -430,7 +430,7 @@ The loaders check `dist/runtime/` before falling back to npm `optionalDependenci
 
 **Tap repo:** [`bgauryy/homebrew-octocode`](https://github.com/bgauryy/homebrew-octocode)
 
-The formula installs the published `octocode-cli` npm tarball. Publish `octocode-cli` first, then:
+The formula installs the published `octocode` npm tarball. Publish `octocode` first, then:
 
 ```bash
 cd /Users/guybary/Documents/homebrew-octocode
@@ -442,7 +442,7 @@ brew install bgauryy/octocode/octocode
 octocode --version && octocode tools
 ```
 
-Homebrew users get native binaries through the same `optionalDependencies` chain: `octocode-cli → octocode-tools-core → octocode-security + octocode-context-utils → platform .node`.
+Homebrew users get native binaries through the same `optionalDependencies` chain: `octocode → octocode-tools-core → octocode-security + octocode-context-utils → platform .node`.
 
 ---
 

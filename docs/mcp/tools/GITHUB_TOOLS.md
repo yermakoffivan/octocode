@@ -23,7 +23,7 @@ Every tool accepts bulk input (`{ "queries": [...] }`), up to 5 queries per call
 | Read a file or fetch a directory | `ghGetFileContent` |
 | Browse a repository tree | `ghViewRepoStructure` |
 | Discover repositories | `ghSearchRepos` |
-| Search PR history or inspect a PR | `ghSearchPRs` |
+| Search PR history or inspect a PR | `ghHistoryResearch` |
 | Materialize a repo/subtree locally | `ghCloneRepo` |
 | Resolve npm package to source repo | `npmSearch` |
 
@@ -138,7 +138,7 @@ Examples:
 { "owner": "openai" }
 ```
 
-## `ghSearchPRs`
+## `ghHistoryResearch`
 
 Find PRs or inspect one PR.
 
@@ -240,7 +240,7 @@ Use `npmSearch` before GitHub repo search when the user gives a package name.
 | Understand a package | `npmSearch` -> `ghViewRepoStructure` -> `ghSearchCode` -> `ghGetFileContent` |
 | Find examples of a pattern | `ghSearchCode` -> `ghGetFileContent` |
 | Explore a repo | `ghViewRepoStructure` -> `ghGetFileContent(README)` -> `ghSearchCode` |
-| Explain why code changed | `ghSearchCode` -> `ghSearchPRs` -> direct `prNumber` content |
+| Explain why code changed | `ghSearchCode` -> `ghHistoryResearch` -> direct `prNumber` content |
 | Deep local analysis | `ghCloneRepo` -> local tools |
 
 ## Rules

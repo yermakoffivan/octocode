@@ -33,7 +33,7 @@ Use environment variables for per-client/per-project settings and tokens. Use `.
 Install helpers write client-specific paths automatically:
 
 ```bash
-npx octocode-cli install --ide cursor
+npx octocode install --ide cursor
 ```
 
 Supported clients are listed in the [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/REFERENCE.md#install).

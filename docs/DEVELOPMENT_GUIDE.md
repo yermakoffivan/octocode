@@ -39,7 +39,7 @@
 | Package | Key Commands |
 |---------|--------------|
 | `octocode-mcp` | `yarn mcp:package`, `yarn mcp:contracts`, `yarn debug`, `yarn build:watch` |
-| `octocode-cli` | `yarn start`, `yarn validate:mcp`, `yarn validate:skills` |
+| `octocode` | `yarn start`, `yarn validate:mcp`, `yarn validate:skills` |
 | `octocode-vscode` | `yarn package`, `yarn publish` |
 | `octocode-shared` | `yarn shared:package`, `yarn typecheck` |
 
@@ -91,7 +91,7 @@
 | `octocode-mcp` | Contract suite | `yarn mcp:contracts` | You need the fast deterministic contract signal while iterating locally. |
 | `octocode-shared` | Package gate | `yarn shared:package` | Shared config, credential, platform, or session boundaries regress. |
 
-For package-specific references, see the consolidated [docs index](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md) — `octocode-shared` API/credentials/session docs and `octocode-cli` reference all live there.
+For package-specific references, see the consolidated [docs index](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md) — `octocode-shared` API/credentials/session docs and `octocode` reference all live there.
 
 ### Structure
 ```
