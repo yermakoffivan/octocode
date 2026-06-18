@@ -14,6 +14,35 @@ export function getString(opts: Options, ...keys: string[]): string {
   return '';
 }
 
+export interface FlagError {
+  error: string;
+}
+
+export function isFlagError(v: unknown): v is FlagError {
+  return typeof v === 'object' && v !== null && 'error' in v;
+}
+
+/**
+ * Strict integer flag parsing. Returns:
+ *   - undefined when the flag is absent,
+ *   - the number when valid,
+ *   - { error } when present but not an integer >= min.
+ * Use isFlagError() to branch — never silently drops a typo or passes NaN on.
+ */
+export function intFlag(
+  raw: string,
+  flag: string,
+  opts: { min?: number } = {}
+): number | undefined | FlagError {
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  const min = opts.min ?? 0;
+  if (!Number.isInteger(n) || String(n) !== raw.trim() || n < min) {
+    return { error: `--${flag} must be an integer >= ${min} (got "${raw}").` };
+  }
+  return n;
+}
+
 export function resolveHostname(opts: Options): string {
   const v = opts['hostname'];
   return (

@@ -284,7 +284,7 @@ Known failure modes:
 
 ## Prior results
 
-Historical comparison tables (old T1–T4 synthetic benchmark) preserved in [PR #387](https://github.com/bgauryy/octocode-mcp/pull/387). R1–R5 results will be published in follow-up PRs as they're run.
+Historical comparison tables (old T1–T4 synthetic benchmark) preserved in [PR #387](https://github.com/bgauryy/octocode/pull/387). R1–R5 results will be published in follow-up PRs as they're run.
 
 ## Reproduction checklist
 

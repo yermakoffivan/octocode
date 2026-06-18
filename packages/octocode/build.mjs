@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild';
 import { builtinModules } from 'module';
-import { chmodSync, readFileSync, writeFileSync } from 'fs';
+import { chmodSync, copyFileSync, readFileSync, writeFileSync } from 'fs';
 import { rm } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -9,6 +9,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+const rootReadmePath = resolve(__dirname, '..', '..', 'README.md');
+const packageReadmePath = resolve(__dirname, 'README.md');
+
+copyFileSync(rootReadmePath, packageReadmePath);
+console.log('✓ README.md synced from repository root');
 
 const nodeExternals = [
   ...builtinModules,

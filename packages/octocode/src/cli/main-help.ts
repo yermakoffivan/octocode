@@ -91,14 +91,12 @@ export function showHelp(): void {
 
     // ── Agent instructions — concise, tag-delimited so agents can parse it ──
     `  ${dim('<AGENT_INSTRUCTIONS>')}`,
-    `  ${dim('Octocode researches code across LOCAL files and EXTERNAL GitHub/npm with one toolset.')}`,
-    `  ${dim('• Prefer the')} ${c('cyan', 'QUICK COMMANDS')} ${dim('below — they auto-route a local path vs an owner/repo.')}`,
-    `  ${dim('• Raw tools: read the schema FIRST')} ${c('yellow', 'tools <name> --scheme')}${dim(', then run')} ${c('yellow', "tools <name> --queries '<json>'")}${dim('. Never guess fields.')}`,
-    `  ${dim('• Flow: locate → search → read the smallest slice → prove. Snippets are discovery, not proof — re-read exact text.')}`,
-    `  ${dim('•')} ${c('red', bold('Do NOT hallucinate'))} ${dim('paths, line numbers, or fields — verify with the tools.')}`,
-    `  ${dim('•')} ${c('cyan', 'context')} ${dim('is optional — use it only to optimize deeper / autonomous research.')}`,
-    `  ${dim('• Auth is for humans (')}${c('yellow', 'login')}${dim('); agents pass GITHUB_TOKEN / OCTOCODE_TOKEN / GH_TOKEN via env.')}`,
-    `  ${dim('• Docs:')} ${underline('https://github.com/bgauryy/octocode/tree/main/docs')}  ${dim('· Skill:')} ${c('yellow', 'skills install --skill octocode')}`,
+    `  ${dim('One toolset for LOCAL files and EXTERNAL GitHub/npm research.')}`,
+    `  ${dim('1. QUICK COMMANDS for simple work; raw')} ${c('yellow', 'tools <name> --scheme')} ${dim('then')} ${c('yellow', "tools <name> --queries '<json>'")} ${dim('for full control — never guess fields.')}`,
+    `  ${dim('2. Flow: locate → search → read the smallest slice → prove (see PLAYBOOK).')}`,
+    `  ${dim('3.')} ${c('red', bold('Do NOT hallucinate'))} ${dim('paths, lines, or fields — verify with tools.')}`,
+    `  ${dim('Auth: humans run')} ${c('yellow', 'login')}${dim('; agents pass GITHUB_TOKEN / OCTOCODE_TOKEN / GH_TOKEN via env. Deeper protocol:')} ${c('cyan', 'context')}${dim('.')}`,
+    `  ${dim('Docs:')} ${underline('https://github.com/bgauryy/octocode/tree/main/docs')}  ${dim('· Skill:')} ${c('yellow', 'skills install --skill octocode')}`,
     `  ${dim('</AGENT_INSTRUCTIONS>')}`,
     '',
 
@@ -162,7 +160,7 @@ export function showHelp(): void {
     '',
 
     // ── Playbook (distilled from the system prompt) ─────────────────────────
-    `  ${c('green', bold('PLAYBOOK'))}  ${dim('locate → map → search → read → prove — cheapest tool first, smallest slice, stop at evidence.answerReady')}`,
+    `  ${c('green', bold('PLAYBOOK'))}  ${dim('cheapest tool first · smallest slice · narrow before paging')}`,
     `    ${c('cyan', 'orient cheap')}    ${dim('concise:true (string list) · localSearchCode mode:discovery (paths) · ls then drill')}`,
     `    ${c('cyan', 'minify by goal')}  ${dim('symbols=skeleton (orient unknown) · standard=read (default) · none=exact quote/diff')}`,
     `    ${c('cyan', 'prove')}           ${dim('snippets are discovery, not proof — re-read exact text · search→lineHint→lsp · pkg→owner/repo')}`,

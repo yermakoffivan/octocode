@@ -10,20 +10,16 @@ interface CommitAuthor {
   name?: string;
 }
 
-interface CommitFile {
-  path?: string;
-  filename?: string;
-  additions?: number;
-  deletions?: number;
-}
-
 interface Commit {
   sha?: string;
   message?: string;
   messageHeadline?: string;
   date?: string;
   author?: CommitAuthor | string;
-  files?: CommitFile[];
+  // populated when includeDiff (--diff) is set
+  additions?: number;
+  deletions?: number;
+  patch?: string;
 }
 
 interface CommitsResult {
@@ -128,10 +124,20 @@ function renderCommits(
     const head = (cm.messageHeadline ?? cm.message ?? '').split('\n')[0];
     lines.push(`  ${sha}  ${when} ${head}  ${who}`);
     if (showDiff) {
-      for (const f of cm.files ?? []) {
-        const add = f.additions != null ? c('green', `+${f.additions}`) : '';
-        const del = f.deletions != null ? c('red', `-${f.deletions}`) : '';
-        lines.push(`      ${dim(f.path ?? f.filename ?? '')}  ${add} ${del}`);
+      const add = cm.additions != null ? c('green', `+${cm.additions}`) : '';
+      const del = cm.deletions != null ? c('red', `-${cm.deletions}`) : '';
+      if (add || del) lines.push(`      ${add} ${del}`);
+      if (cm.patch) {
+        const MAX = 12;
+        const pl = cm.patch.split('\n');
+        pl.slice(0, MAX).forEach(l => {
+          if (l.startsWith('+')) lines.push(`      ${c('green', l)}`);
+          else if (l.startsWith('-')) lines.push(`      ${c('red', l)}`);
+          else if (l.startsWith('@@')) lines.push(`      ${c('cyan', l)}`);
+          else lines.push(`      ${dim(l)}`);
+        });
+        if (pl.length > MAX)
+          lines.push(`      ${dim(`… ${pl.length - MAX} more diff lines`)}`);
       }
     }
   }

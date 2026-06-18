@@ -4,11 +4,11 @@ This playbook verifies that every Octocode MCP tool works as a research tool, no
 
 ## Source Of Truth
 
-The active MCP tool catalog is defined in [packages/octocode-tools-core/src/tools/toolConfig.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/toolConfig.ts). Local schema helpers live in [packages/octocode-tools-core/src/scheme/fields.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/scheme/fields.ts); each GitHub/package/LSP tool owns its independent `scheme.ts` beside the tool implementation, for example [packages/octocode-tools-core/src/tools/github_search_pull_requests/scheme.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/github_search_pull_requests/scheme.ts) and [packages/octocode-tools-core/src/tools/lsp/semantic_content/scheme.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/lsp/semantic_content/scheme.ts).
+The active MCP tool catalog is defined in [packages/octocode-tools-core/src/tools/toolConfig.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/tools/toolConfig.ts). Local schema helpers live in [packages/octocode-tools-core/src/scheme/fields.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/scheme/fields.ts); each GitHub/package/LSP tool owns its independent `scheme.ts` beside the tool implementation, for example [packages/octocode-tools-core/src/tools/github_search_pull_requests/scheme.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/tools/github_search_pull_requests/scheme.ts) and [packages/octocode-tools-core/src/tools/lsp/semantic_content/scheme.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/tools/lsp/semantic_content/scheme.ts).
 
-Response behavior is shared through [packages/octocode-tools-core/src/utils/response/bulk.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/utils/response/bulk.ts), [packages/octocode-tools-core/src/utils/response/structuredPagination.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/utils/response/structuredPagination.ts), [packages/octocode-tools-core/src/utils/pagination/hints.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/utils/pagination/hints.ts), and [packages/octocode-tools-core/src/scheme/responseEnvelope.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/scheme/responseEnvelope.ts).
+Response behavior is shared through [packages/octocode-tools-core/src/utils/response/bulk.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/utils/response/bulk.ts), [packages/octocode-tools-core/src/utils/response/structuredPagination.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/utils/response/structuredPagination.ts), [packages/octocode-tools-core/src/utils/pagination/hints.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/utils/pagination/hints.ts), and [packages/octocode-tools-core/src/scheme/responseEnvelope.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/scheme/responseEnvelope.ts).
 
-Existing contract tests that this playbook extends include [packages/octocode-mcp/tests/tools/all-tools.pagination.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/all-tools.pagination.test.ts), [packages/octocode-mcp/tests/tools/hints/all-tools.lean-contract.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/hints/all-tools.lean-contract.test.ts), [packages/octocode-mcp/tests/tools/response_structure.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/response_structure.test.ts), and [packages/octocode-mcp/tests/tools/executionBoundaries.flows.test.ts](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/tests/tools/executionBoundaries.flows.test.ts).
+Existing contract tests that this playbook extends include [packages/octocode-mcp/tests/tools/all-tools.pagination.test.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-mcp/tests/tools/all-tools.pagination.test.ts), [packages/octocode-mcp/tests/tools/hints/all-tools.lean-contract.test.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-mcp/tests/tools/hints/all-tools.lean-contract.test.ts), [packages/octocode-mcp/tests/tools/response_structure.test.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-mcp/tests/tools/response_structure.test.ts), and [packages/octocode-mcp/tests/tools/executionBoundaries.flows.test.ts](https://github.com/bgauryy/octocode/blob/main/packages/octocode-mcp/tests/tools/executionBoundaries.flows.test.ts).
 
 ## Verification Goals
 
@@ -53,7 +53,7 @@ Run these scenarios for every tool before adding tool-specific edge cases:
 
 ### `ghSearchCode`
 
-Primary code: [src/tools/github_search_code/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_search_code). Schema: `GitHubCodeSearchQueryLocalSchema`.
+Primary code: [src/tools/github_search_code/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/github_search_code). Schema: `GitHubCodeSearchQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -66,7 +66,7 @@ Primary code: [src/tools/github_search_code/](https://github.com/bgauryy/octocod
 
 ### `ghGetFileContent`
 
-Primary code: [src/tools/github_fetch_content/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_fetch_content). Schema: `FileContentQueryLocalSchema`.
+Primary code: [src/tools/github_fetch_content/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/github_fetch_content). Schema: `FileContentQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -80,7 +80,7 @@ Primary code: [src/tools/github_fetch_content/](https://github.com/bgauryy/octoc
 
 ### `ghViewRepoStructure`
 
-Primary code: [src/tools/github_view_repo_structure/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_view_repo_structure). Schema: `GitHubViewRepoStructureQueryLocalSchema`.
+Primary code: [src/tools/github_view_repo_structure/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/github_view_repo_structure). Schema: `GitHubViewRepoStructureQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -92,7 +92,7 @@ Primary code: [src/tools/github_view_repo_structure/](https://github.com/bgauryy
 
 ### `ghSearchRepos`
 
-Primary code: [src/tools/github_search_repos/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_search_repos). Schema: `GitHubReposSearchSingleQueryLocalSchema`.
+Primary code: [src/tools/github_search_repos/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/github_search_repos). Schema: `GitHubReposSearchSingleQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -104,7 +104,7 @@ Primary code: [src/tools/github_search_repos/](https://github.com/bgauryy/octoco
 
 ### `ghHistoryResearch`
 
-Primary code: [src/tools/github_search_pull_requests/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_search_pull_requests). Schema: `GitHubPullRequestSearchQueryLocalSchema`.
+Primary code: [src/tools/github_search_pull_requests/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/github_search_pull_requests). Schema: `GitHubPullRequestSearchQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -116,7 +116,7 @@ Primary code: [src/tools/github_search_pull_requests/](https://github.com/bgaury
 
 ### `npmSearch`
 
-Primary code: [src/tools/package_search/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/package_search). Schema: `NpmSearchQueryLocalSchema`.
+Primary code: [src/tools/package_search/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/package_search). Schema: `NpmSearchQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -128,7 +128,7 @@ Primary code: [src/tools/package_search/](https://github.com/bgauryy/octocode-mc
 
 ### `ghCloneRepo`
 
-Primary code: [src/tools/github_clone_repo/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/github_clone_repo). Schema: `CloneRepoQueryLocalSchema`.
+Primary code: [src/tools/github_clone_repo/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/github_clone_repo). Schema: `CloneRepoQueryLocalSchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -141,7 +141,7 @@ Primary code: [src/tools/github_clone_repo/](https://github.com/bgauryy/octocode
 
 ### `localSearchCode`
 
-Primary code: [src/tools/local_ripgrep/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/local_ripgrep). Schema: `RipgrepQuerySchema`.
+Primary code: [src/tools/local_ripgrep/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/local_ripgrep). Schema: `RipgrepQuerySchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -155,7 +155,7 @@ Primary code: [src/tools/local_ripgrep/](https://github.com/bgauryy/octocode-mcp
 
 ### `localViewStructure`
 
-Primary code: [src/tools/local_view_structure/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/local_view_structure). Schema: `ViewStructureQuerySchema`.
+Primary code: [src/tools/local_view_structure/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/local_view_structure). Schema: `ViewStructureQuerySchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -168,7 +168,7 @@ Primary code: [src/tools/local_view_structure/](https://github.com/bgauryy/octoc
 
 ### `localFindFiles`
 
-Primary code: [src/tools/local_find_files/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/local_find_files). Schema: `FindFilesQuerySchema`.
+Primary code: [src/tools/local_find_files/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/local_find_files). Schema: `FindFilesQuerySchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -180,7 +180,7 @@ Primary code: [src/tools/local_find_files/](https://github.com/bgauryy/octocode-
 
 ### `localGetFileContent`
 
-Primary code: [src/tools/local_fetch_content/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/local_fetch_content). Schema: `FetchContentQuerySchema`.
+Primary code: [src/tools/local_fetch_content/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/local_fetch_content). Schema: `FetchContentQuerySchema`.
 
 | Surface | Checks |
 | --- | --- |
@@ -193,7 +193,7 @@ Primary code: [src/tools/local_fetch_content/](https://github.com/bgauryy/octoco
 
 ### `lspGetSemantics`
 
-Primary code: [src/tools/lsp/semantic_content/](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp/src/tools/lsp/semantic_content). Schema: `LspGetSemanticsQuerySchema`.
+Primary code: [src/tools/lsp/semantic_content/](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp/src/tools/lsp/semantic_content). Schema: `LspGetSemanticsQuerySchema`.
 
 | Surface | Checks |
 | --- | --- |

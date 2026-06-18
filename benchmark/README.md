@@ -35,7 +35,7 @@ benchmark/
 ```
 
 The default benchmark uses
-[`benchmark/questions/nextjs.md`](https://github.com/bgauryy/octocode-mcp/blob/main/benchmark/questions/nextjs.md).
+[`benchmark/questions/nextjs.md`](https://github.com/bgauryy/octocode/blob/main/benchmark/questions/nextjs.md).
 It covers **10 remote-only questions** (Section 1). The shared scripts can run any question file that uses the existing
 `### Q<n> — <question>` heading format.
 
@@ -97,7 +97,7 @@ Every research command must go through a metering wrapper. Bare `octocode`,
 ## Run The Judge
 
 Wait until both researcher runs contain `output.md` and `summary.json`, then use
-[`benchmark/prompts/judge.md`](https://github.com/bgauryy/octocode-mcp/blob/main/benchmark/prompts/judge.md)
+[`benchmark/prompts/judge.md`](https://github.com/bgauryy/octocode/blob/main/benchmark/prompts/judge.md)
 with:
 
 ```text
@@ -164,7 +164,7 @@ approx_tokens = ceil(total_chars_to_answer / 4)
 
 For the full scoring model, clean-win rules, drift handling, and character/token
 policy, see
-[`benchmark/COMPARISON.md`](https://github.com/bgauryy/octocode-mcp/blob/main/benchmark/COMPARISON.md).
+[`benchmark/COMPARISON.md`](https://github.com/bgauryy/octocode/blob/main/benchmark/COMPARISON.md).
 
 ## Output Contract
 

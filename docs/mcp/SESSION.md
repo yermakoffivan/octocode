@@ -73,5 +73,5 @@ Testing helper: `_resetSessionState()` clears cache, timer, and exit handlers.
 
 ## Related Documentation
 
-- [Credentials Architecture](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CREDENTIALS.md)
-- [octocode-shared README](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-shared/README.md)
+- [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md)
+- [octocode-shared README](https://github.com/bgauryy/octocode/blob/main/packages/octocode-shared/README.md)

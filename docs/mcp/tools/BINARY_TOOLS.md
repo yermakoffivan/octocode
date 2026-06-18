@@ -147,5 +147,5 @@ localBinaryInspect(queries=[
 
 ## See Also
 
-- [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md)
+- [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md)

@@ -12,7 +12,7 @@
 | `localViewStructure` | Browse directory structure and metadata. |
 | `localFindFiles` | Find files/directories by name, path, time, size, type, and permissions. |
 | `localGetFileContent` | Read targeted file content by line range, match, signature skeleton, or char page. |
-| `localBinaryInspect` | Inspect archives, compressed streams, and native binaries. See [BINARY_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/BINARY_TOOLS.md). |
+| `localBinaryInspect` | Inspect archives, compressed streams, and native binaries. See [BINARY_TOOLS.md](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/BINARY_TOOLS.md). |
 
 ---
 
@@ -43,7 +43,7 @@ Useful local-tool environment variables:
 | `ALLOWED_PATHS` | Optional comma-separated allowlist. Empty means all paths are allowed after normal validation. |
 | `ENABLE_CLONE` | Enables clone-backed workflows and GitHub directory fetches that materialize local files. |
 
-Config reference: [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md).
+Config reference: [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md).
 
 ---
 
@@ -110,7 +110,7 @@ Fast content search powered by ripgrep.
 | Parameter | Description |
 |-----------|-------------|
 | `path` | File or directory to search. Relative paths resolve from the workspace root. |
-| `pattern` | Text or regex pattern. Use `fixedString=true` for literal search. |
+| `keywords` | Text or regex pattern for non-structural search. Use `fixedString=true` for literal search. Required unless `mode:"structural"`. |
 | `mode` | `paginated` (default), `discovery` (file paths only), `detailed` (expanded context), `structural` (AST/shape — use `pattern` or `rule`). |
 | `pattern` | ast-grep code-shaped pattern. `$X` = single node, `$$$ARGS` = list. **Only with `mode:"structural"`**. |
 | `rule` | YAML relational rule (`not`/`inside`/`has`/`all`/`any`). Add `stopBy: end` for ancestor/descendant relations. **Only with `mode:"structural"`**. |
@@ -127,7 +127,7 @@ Fast content search powered by ripgrep.
 
 | Parameter | Description |
 |-----------|-------------|
-| `fixedString` | Treat `pattern` as literal text. Mutually exclusive with `perlRegex`. |
+| `fixedString` | Treat `keywords` as literal text. Mutually exclusive with `perlRegex`. |
 | `perlRegex` | Enable PCRE2 regex features. Mutually exclusive with `fixedString`. |
 | `caseSensitive` | Force case-sensitive matching. |
 | `caseInsensitive` | Force case-insensitive matching. Mutually exclusive with `caseSensitive`. |
@@ -140,7 +140,7 @@ Fast content search powered by ripgrep.
 
 | Parameter | Description |
 |-----------|-------------|
-| `type` | Ripgrep language/type filter such as `ts`, `js`, `py`, `go`. |
+| `langType` | Ripgrep language/type filter such as `ts`, `js`, `py`, `go`. |
 | `include` | Glob patterns to include. |
 | `exclude` | Glob patterns to exclude. |
 | `excludeDir` | Directory names to skip. |
@@ -151,14 +151,14 @@ Fast content search powered by ripgrep.
 
 ### Output
 
-Normal results include matched files and match snippets with line and column information. Count modes (`count`, `countMatches`) return counts instead of match bodies.
+Normal results include matched files and match snippets with line and column information. For count-only output use `countLinesPerFile:true` or `countMatchesPerFile:true`.
 
 ### Examples
 
 ```bash
-localSearchCode(path="packages/octocode-mcp/src", pattern="registerTool", type="ts")
-localSearchCode(path=".", pattern="TODO", filesOnly=true)
-localSearchCode(path="src", pattern="class\\s+\\w+Service", perlRegex=true, contextLines=3)
+localSearchCode(path="packages/octocode-mcp/src", keywords="registerTool", langType="ts")
+localSearchCode(path=".", keywords="TODO", filesOnly=true)
+localSearchCode(path="src", keywords="class\\s+\\w+Service", perlRegex=true, contextLines=3)
 ```
 
 ### Structural / AST Search
@@ -190,7 +190,8 @@ Directory browsing for understanding shape, ownership, and file distribution.
 | Parameter | Description |
 |-----------|-------------|
 | `path` | Directory to browse. Relative paths resolve from the workspace root. |
-| `depth` | Recursion depth. Max 20. Use low depth first. |
+| `recursive` | Descend into subdirectories. Use with `maxDepth` to control cost. |
+| `maxDepth` | Recursion depth. Max 20. Use low depth first. |
 | `page` | Result page. |
 | `itemsPerPage` | Directory entries per page. Max 50. |
 | `limit` | Hard pre-pagination cap. Max 10000. |
@@ -200,7 +201,6 @@ Directory browsing for understanding shape, ownership, and file distribution.
 | `pattern` | Filter entries by glob or substring. |
 | `hidden` | Include hidden files and directories. |
 | `details` | Include size, permissions, and dates. |
-| `humanReadable` | Show sizes as KB/MB. |
 | `showFileLastModified` | Include last-modified timestamps. |
 | `sortBy` | Sort field. |
 | `reverse` | Reverse sort order. |
@@ -212,8 +212,8 @@ Directory browsing for understanding shape, ownership, and file distribution.
 ### Examples
 
 ```bash
-localViewStructure(path=".", depth=1)
-localViewStructure(path="packages/octocode-mcp/src", depth=2, directoriesOnly=true)
+localViewStructure(path=".", recursive=true, maxDepth=1)
+localViewStructure(path="packages/octocode-mcp/src", recursive=true, maxDepth=2, directoriesOnly=true)
 localViewStructure(path="docs", extensions=["md"], details=true)
 ```
 
@@ -234,13 +234,10 @@ Metadata search for files and directories.
 | Parameter | Description |
 |-----------|-------------|
 | `path` | Directory root for metadata search. |
-| `name` | Case-sensitive filename glob such as `*.ts`. |
-| `iname` | Case-insensitive filename glob. |
-| `names` | Multiple filename globs OR-combined. |
+| `names` | Filename globs OR-combined, such as `["*.ts", "*.tsx"]`. |
 | `pathPattern` | Glob matched against the full path. |
-| `regex` | Regex path/name search. |
-| `regexType` | Regex flavor. |
-| `type` | `f` for files, `d` for directories. |
+| `regex` | Rust regex over the basename only. |
+| `entryType` | `f` for files, `d` for directories. |
 | `minDepth` / `maxDepth` | Depth bounds. |
 | `modifiedWithin` | Files modified within a window, such as `7d` or `2h`. |
 | `modifiedBefore` | Files modified before a date/window. |
@@ -252,7 +249,7 @@ Metadata search for files and directories.
 | `excludeDir` | Directory names to skip. |
 | `details` | Include file metadata. |
 | `showFileLastModified` | Include modification timestamps. |
-| `sortBy` | Sort by `name`, `modified`, `size`, or `created`. |
+| `sortBy` | Sort by `modified`, `name`, `path`, or `size`. |
 | `page` | Result page. |
 | `itemsPerPage` | Files per page. Max 50. |
 | `limit` | Hard pre-pagination cap. Max 10000. |
@@ -260,9 +257,9 @@ Metadata search for files and directories.
 ### Examples
 
 ```bash
-localFindFiles(path=".", name="*.test.ts")
-localFindFiles(path="packages", iname="readme.md")
-localFindFiles(path=".", modifiedWithin="24h", type="f", details=true)
+localFindFiles(path=".", names=["*.test.ts"])
+localFindFiles(path="packages", regex="^readme\\.md$")
+localFindFiles(path=".", modifiedWithin="24h", entryType="f", details=true)
 ```
 
 ---
@@ -276,7 +273,7 @@ Targeted file reading. Use it after structure/search has narrowed the file and s
 - Reading a known line range.
 - Extracting context around a known string or regex.
 - Viewing a small whole file.
-- Getting signatures/imports/classes without full bodies.
+- Getting a structural skeleton without full bodies.
 
 ### Extraction Modes
 
@@ -284,10 +281,10 @@ Choose one main extraction mode:
 
 | Mode | Fields |
 |------|--------|
-| Match extraction | `matchString`, optional `matchStringContextLines`, `matchStringIsRegex`, `matchStringCaseSensitive` |
+| Match extraction | `matchString`, optional `contextLines`, `matchStringIsRegex`, `matchStringCaseSensitive` |
 | Line range | `startLine` and `endLine` |
 | Whole file | `fullContent=true` |
-| Structural skeleton | `signaturesOnly=true` |
+| Structural skeleton | `minify:"symbols"` |
 
 Do not combine `fullContent` with match or line-range extraction. Do not combine `matchString` with `startLine`/`endLine`.
 
@@ -298,19 +295,19 @@ Do not combine `fullContent` with match or line-range extraction. Do not combine
 | `path` | File path to read. Use `localViewStructure` for directories. |
 | `startLine` / `endLine` | 1-based inclusive line range. Use together. |
 | `matchString` | Anchor text or regex. |
-| `matchStringContextLines` | Lines around each match. Default 5, max 100. |
+| `contextLines` | Lines around each match. Default 5, max 100. |
 | `matchStringIsRegex` | Treat `matchString` as regex. |
 | `matchStringCaseSensitive` | Case-sensitive match search. |
 | `charOffset` / `charLength` | Character pagination for large content. |
-| `page` | Continue paginated full-file or match results when the response advertises pages. |
-| `signaturesOnly` | Return structural skeleton only. |
+| `minify` | `symbols` for skeleton, `standard` for compact readable content, `none` for exact bytes. |
+| `charOffset` | Continue character pagination when the response advertises more content. |
 
 ### Examples
 
 ```bash
-localGetFileContent(path="packages/octocode-mcp/src/public.ts", startLine=1, endLine=80)
-localGetFileContent(path="README.md", matchString="Configuration", matchStringContextLines=4)
-localGetFileContent(path="src/index.ts", signaturesOnly=true)
+localGetFileContent(path="packages/octocode-mcp/src/public.ts", startLine=1, endLine=80, minify="none")
+localGetFileContent(path="README.md", matchString="Configuration", contextLines=4)
+localGetFileContent(path="src/index.ts", minify="symbols")
 ```
 
 ---
@@ -320,33 +317,33 @@ localGetFileContent(path="src/index.ts", signaturesOnly=true)
 ### Explore A New Repository
 
 ```text
-localViewStructure(path=root, depth=1)
-localViewStructure(path=root+"/src", depth=2)
+localViewStructure(path=root, recursive=true, maxDepth=1)
+localViewStructure(path=root+"/src", recursive=true, maxDepth=2)
 localFindFiles(path=root, names=["package.json", "tsconfig.json", "README.md"])
-localSearchCode(path=root, pattern="export", filesOnly=true)
-localGetFileContent(path="README.md", fullContent=true)
+localSearchCode(path=root, keywords="export", filesOnly=true)
+localGetFileContent(path="README.md", minify="symbols")
 ```
 
 ### Search Then Read
 
 ```text
-localSearchCode(path="src", pattern="validateInput", contextLines=2)
-localGetFileContent(path="src/validation.ts", matchString="validateInput", matchStringContextLines=20)
+localSearchCode(path="src", keywords="validateInput", contextLines=2)
+localGetFileContent(path="src/validation.ts", matchString="validateInput", contextLines=20)
 ```
 
 ### Find Tests For A Feature
 
 ```text
 localFindFiles(path=".", names=["*.test.ts", "*.spec.ts"])
-localSearchCode(path="tests", pattern="featureName", filesOnly=true)
+localSearchCode(path="tests", keywords="featureName", filesOnly=true)
 localGetFileContent(path="tests/feature.test.ts", matchString="featureName")
 ```
 
 ### Inspect Recent Changes
 
 ```text
-localFindFiles(path=".", modifiedWithin="24h", type="f", details=true)
-localSearchCode(path=".", pattern="TODO|FIXME", perlRegex=true)
+localFindFiles(path=".", modifiedWithin="24h", entryType="f", details=true)
+localSearchCode(path=".", keywords="TODO|FIXME", perlRegex=true)
 ```
 
 ---
@@ -356,7 +353,7 @@ localSearchCode(path=".", pattern="TODO|FIXME", perlRegex=true)
 1. Use `localViewStructure` or `localFindFiles` before reading when the file is unknown.
 2. Use `localSearchCode(filesOnly=true)` for fast discovery when match bodies are not needed.
 3. Use `localSearchCode` with `contextLines` before opening a large file.
-4. Use `localGetFileContent` with `matchString`, `startLine`/`endLine`, or `signaturesOnly` instead of `fullContent` for large files.
+4. Use `localGetFileContent` with `matchString`, `startLine`/`endLine`, or `minify:"symbols"` instead of `fullContent` for large files.
 5. Use pagination fields when a response advertises `hasMore=true`.
 
 ---
@@ -372,7 +369,7 @@ localSearchCode(path=".", pattern="TODO|FIXME", perlRegex=true)
 
 | Anti-Pattern | Better Approach |
 |--------------|-----------------|
-| `fullContent=true` on large files | Use `matchString`, line range, or `signaturesOnly` |
+| `fullContent=true` on large files | Use `matchString`, line range, or `minify:"symbols"` |
 | Search without scoping dirs | Use `excludeDir` to skip generated/vendor folders |
 | Regex for exact literals | Use `fixedString=true` |
 | Combining mutually exclusive flags | Pick one extraction mode |
@@ -383,6 +380,6 @@ localSearchCode(path=".", pattern="TODO|FIXME", perlRegex=true)
 
 ## Related Documentation
 
-- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CLONE_WORKFLOW.md) - cloning repositories before local analysis.
-- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) - remote GitHub search, fetch, clone, and PR tools.
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md) - environment variables and config file behavior.
+- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CLONE_WORKFLOW.md) - cloning repositories before local analysis.
+- [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) - remote GitHub search, fetch, clone, and PR tools.
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) - environment variables and config file behavior.

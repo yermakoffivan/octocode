@@ -380,5 +380,5 @@ Then add a totals row and a brief qualitative verdict.
 
 ## Links
 
-- Questions: [`benchmark/questions/nextjs.md`](https://github.com/bgauryy/octocode-mcp/blob/main/benchmark/questions/nextjs.md)
-- Benchmark framework: [`benchmark/README.md`](https://github.com/bgauryy/octocode-mcp/blob/main/benchmark/README.md)
+- Questions: [`benchmark/questions/nextjs.md`](https://github.com/bgauryy/octocode/blob/main/benchmark/questions/nextjs.md)
+- Benchmark framework: [`benchmark/README.md`](https://github.com/bgauryy/octocode/blob/main/benchmark/README.md)

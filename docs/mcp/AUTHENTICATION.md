@@ -97,7 +97,7 @@ This enables `ghCloneRepo` and `ghGetFileContent` with `type: "directory"`.
 
 ## See Also
 
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md)
-- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
-- [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/REFERENCE.md)
-- [Credentials Architecture](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CREDENTIALS.md)
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md)
+- [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
+- [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md)
+- [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md)

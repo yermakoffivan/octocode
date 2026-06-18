@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/bgauryy/octocode-mcp/raw/main/packages/octocode-mcp/assets/logo_white.png" width="320" alt="Octocode Logo">
+  <img src="https://github.com/bgauryy/octocode/raw/main/packages/octocode-mcp/assets/logo_white.png" width="320" alt="Octocode Logo">
   <h1>Octocode Code Engineer</h1>
   <p><strong>AI agent skill for safe, codebase-aware engineering — JavaScript/TypeScript and Python</strong></p>
 </div>
@@ -121,4 +121,4 @@ Use other tools for:
 - runtime debugging (tests/debugger, pytest)
 
 ## License
-MIT License © 2026 Octocode — see [LICENSE](https://github.com/bgauryy/octocode-mcp/blob/main/LICENSE).
+MIT License © 2026 Octocode — see [LICENSE](https://github.com/bgauryy/octocode/blob/main/LICENSE).

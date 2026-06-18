@@ -164,4 +164,4 @@ Keep SKILL.md under 500 lines. Use `references/` for extended content.
 
 ---
 
-[CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/REFERENCE.md) | [Claude Skills Documentation](https://support.anthropic.com/en/articles/10176498-how-to-use-custom-instructions-for-your-projects)
+[CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md) | [Claude Skills Documentation](https://support.anthropic.com/en/articles/10176498-how-to-use-custom-instructions-for-your-projects)

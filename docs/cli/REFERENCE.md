@@ -45,6 +45,19 @@ Agents should use this order:
 
 Use `octocode context --full` for complete tool descriptions. Read schemas on demand with `octocode tools <name> --scheme`.
 
+## UX Map
+
+| Need | Use |
+|------|-----|
+| Map files and repos | `ls`, `find`, `repo`, `pkg` |
+| Search text or code structure | `grep`, `ast` |
+| Read less, cite exact evidence | `cat --mode symbols`, `cat --match-string`, `cat --start-line ... --end-line ...` |
+| Trace symbols semantically | `symbols`, then `lsp --type ... --symbol ... --line ...` |
+| Inspect PRs/history or clone for local analysis | `pr`, `history`, `clone` |
+| Inspect archives/binaries | `binary`, `unzip` |
+| Configure Octocode | `install`, `auth`, `login`, `logout`, `token`, `status`, `skills` |
+| Run any MCP tool directly | `tools <name> --scheme`, then `tools <name> --queries '<json>'` |
+
 ## Global Options
 
 | Option | Meaning |
@@ -74,9 +87,19 @@ Auto-route based on target: a local path routes to local tools; `owner/repo[/pat
 | `repo` | `ghSearchRepos` | Discover GitHub repositories |
 | `pkg` | `npmSearch` | npm package metadata + source repo |
 | `symbols` | `lspGetSemantics` (documentSymbols) | Semantic symbol outline |
-| `lsp` | `lspGetSemantics` | Definitions, references, callers, hover, … |
+| `lsp` | `lspGetSemantics` | Definition, references, callers, callees, call hierarchy, hover, type definition, implementation |
 | `binary` | `localBinaryInspect` | Archives, compressed files, native binaries |
 | `unzip` | `localBinaryInspect` (unpack) | Unpack an archive to a cached directory |
+
+## Minimize First
+
+Use the CLI in this order: map cheaply, search narrowly, then read the smallest proof slice.
+
+- `--compact` trims CLI rendering; `--json` returns the raw envelope when automation needs it.
+- `--concise` returns path/title-only discovery lists for search-style commands.
+- `cat --mode symbols` gives a line-numbered skeleton before reading bodies.
+- `cat --match-string`, `--start-line`, and `--end-line` keep evidence reads small and quotable.
+- `grep --mode discovery` finds files only; switch to paginated/detailed only after narrowing.
 
 ### cat
 
@@ -440,6 +463,8 @@ lsp <file> --type <type> --symbol <name> --line <n>
 
 Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`.
 
+All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode symbols <file|path>` for `documentSymbols`.
+
 Examples:
 
 ```bash
@@ -558,7 +583,7 @@ skills [search|read|install|remove|list|sync]
 
 Supported install targets: `claude-code`, `claude-desktop`, `cursor`, `codex`, `opencode`.
 
-Skills guide: [docs/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/SKILLS_GUIDE.md)
+Skills guide: [docs/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md)
 
 ## Tool Runner
 

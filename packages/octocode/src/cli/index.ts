@@ -204,11 +204,25 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
     return true;
   }
 
-  const { findUnknownOptions, printUnknownOptionError } =
-    await import('./command-validation.js');
+  const {
+    findUnknownOptions,
+    printUnknownOptionError,
+    findInvalidNumericOptions,
+  } = await import('./command-validation.js');
   const unknownOptions = findUnknownOptions(command, args);
   if (unknownOptions.length > 0) {
     printUnknownOptionError(command, unknownOptions);
+    process.exitCode = EXIT.USAGE;
+    return true;
+  }
+
+  const badNumeric = findInvalidNumericOptions(args);
+  if (badNumeric.length > 0) {
+    console.log();
+    console.log(
+      `  Invalid numeric value: ${badNumeric.join(', ')} — must be a whole number >= 0.`
+    );
+    console.log();
     process.exitCode = EXIT.USAGE;
     return true;
   }

@@ -2,7 +2,7 @@
 
 > **Purpose**: Known behaviors, tradeoffs, and control patterns per tool.  
 > **Audience**: Agents and developers who want to tune quality, token cost, or completeness.  
-> Read the [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) first for the basic API.
+> Read the [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) first for the basic API.
 
 ---
 
@@ -298,6 +298,6 @@ When `weeklyDownloads` is absent from the response, no hint is emitted. The fiel
 
 ## Related
 
-- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
-- [Local + LSP Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
-- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CLONE_WORKFLOW.md)
+- [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
+- [Local + LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CLONE_WORKFLOW.md)

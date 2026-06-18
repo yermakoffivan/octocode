@@ -254,7 +254,7 @@ Use `npmSearch` before GitHub repo search when the user gives a package name.
 
 Related docs:
 
-- [Tool Behavior Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/TOOL_BEHAVIOR.md) — known behaviors, control patterns, and token-cost tradeoffs per tool
-- [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
-- [LSP Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md)
-- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CLONE_WORKFLOW.md)
+- [Tool Behavior Guide](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/TOOL_BEHAVIOR.md) — known behaviors, control patterns, and token-cost tradeoffs per tool
+- [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CLONE_WORKFLOW.md)

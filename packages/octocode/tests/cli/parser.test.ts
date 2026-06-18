@@ -335,6 +335,22 @@ describe('CLI Parser', () => {
       expect(result.args).toEqual([]);
       expect(result.options).toEqual({ extra: 'payload' });
     });
+
+    it('should skip a standalone "--" separator (npm/yarn style) and keep parsing', () => {
+      const result = parseArgs(['--', 'pkg', '@x/y', '--json']);
+      expect(result.command).toBe('pkg');
+      expect(result.args).toEqual(['@x/y']);
+      expect(result.options).toEqual({ json: true });
+      // never produces an empty-string option key
+      expect(Object.keys(result.options)).not.toContain('');
+    });
+
+    it('should skip "--" anywhere in the argv, not just at the front', () => {
+      const result = parseArgs(['pkg', 'zod', '--', '--mode', 'lean']);
+      expect(result.command).toBe('pkg');
+      expect(result.args).toEqual(['zod']);
+      expect(result.options).toEqual({ mode: 'lean' });
+    });
   });
 
   describe('hasHelpFlag', () => {

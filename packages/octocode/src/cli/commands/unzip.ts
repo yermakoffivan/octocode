@@ -55,6 +55,22 @@ export const unzipCommand: CLICommand = {
       });
 
       printDirectToolResult(result, jsonOutput);
+
+      if (!jsonOutput) {
+        const sc = result.structuredContent as
+          | { results?: Array<{ data?: { localPath?: string } }> }
+          | undefined;
+        const localPath = sc?.results?.[0]?.data?.localPath;
+        if (localPath) {
+          console.log(
+            `  ${dim('Next — research it with the local tools:')}\n` +
+              `    ${c('cyan', `ls ${localPath}`)}                 ${dim('# map the tree')}\n` +
+              `    ${c('cyan', `grep <term> ${localPath}`)}        ${dim('# search code')}\n` +
+              `    ${c('cyan', `cat ${localPath}/<file>`)}         ${dim('# read a file')}\n`
+          );
+        }
+      }
+
       markDirectToolFailure(result);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);

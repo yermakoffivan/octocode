@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/bgauryy/octocode-mcp/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
+  <img src="https://github.com/bgauryy/octocode/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
 
   <h1>Octocode Pull Request & Code Reviewer</h1>
 
@@ -7,7 +7,7 @@
   <p>Architectural analysis • Defect detection • Security scanning • LSP-powered flow tracing</p>
 
   [![Skill](https://img.shields.io/badge/skill-agentskills.io-purple)](https://agentskills.io/what-are-skills)
-  [![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/bgauryy/octocode-mcp/blob/main/LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/bgauryy/octocode/blob/main/LICENSE)
 
 </div>
 
@@ -27,7 +27,7 @@ This skill turns your AI agent into an expert code reviewer that handles both **
 ## Installation
 
 ```bash
-npx add-skill https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-pull-request-reviewer
+npx add-skill https://github.com/bgauryy/octocode/tree/main/skills/octocode-pull-request-reviewer
 ```
 
 ---
@@ -37,7 +37,7 @@ npx add-skill https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-
 ### For PR Mode (Remote Pull Requests)
 
 - **Octocode MCP server** running with GitHub authentication
-- See [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md)
+- See [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md)
 
 ### For Local Mode (Local Changes) — `ENABLE_LOCAL=true`
 
@@ -64,7 +64,7 @@ export ENABLE_LOCAL=true
 | **Local Filesystem** | `localSearchCode`, `localViewStructure`, `localFindFiles`, `localGetFileContent` | Search, explore, and read code in your workspace |
 | **LSP Semantic** | `lspGotoDefinition`, `lspFindReferences`, `lspCallHierarchy` | Jump to definitions, find all usages, trace call chains |
 
-> **Full documentation:** [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LOCAL_TOOLS_REFERENCE.md) | [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md)
+> **Full documentation:** [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) | [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md)
 
 **Verify it's working:**
 
@@ -237,8 +237,8 @@ Optionally saved to:
 | [references/verification-checklist.md](./references/verification-checklist.md) | Full delivery checklist |
 | [references/parallel-agent-protocol.md](./references/parallel-agent-protocol.md) | Multi-agent swarm strategy |
 | [references/output-template.md](./references/output-template.md) | Report format template (PR + Local) |
-| [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LOCAL_TOOLS_REFERENCE.md) | Full local + LSP tool documentation |
-| [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) | `ENABLE_LOCAL` and other settings |
+| [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) | Full local + LSP tool documentation |
+| [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) | `ENABLE_LOCAL` and other settings |
 
 ---
 
@@ -246,4 +246,4 @@ Optionally saved to:
 
 MIT License © 2026 Octocode
 
-See [LICENSE](https://github.com/bgauryy/octocode-mcp/blob/main/LICENSE) for details.
+See [LICENSE](https://github.com/bgauryy/octocode/blob/main/LICENSE) for details.

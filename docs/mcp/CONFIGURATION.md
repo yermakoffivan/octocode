@@ -36,7 +36,7 @@ Install helpers write client-specific paths automatically:
 npx octocode install --ide cursor
 ```
 
-Supported clients are listed in the [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/REFERENCE.md#install).
+Supported clients are listed in the [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md#install).
 
 ## `.octocoderc`
 
@@ -156,7 +156,7 @@ All state lives under `${OCTOCODE_HOME:-~/.octocode}`:
 | `logs/` | Local logs. |
 | `lsp-servers.json` | User-level LSP server config. |
 
-Architecture details: [Credentials](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CREDENTIALS.md) · [Session](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/SESSION.md)
+Architecture details: [Credentials](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md) · [Session](https://github.com/bgauryy/octocode/blob/main/docs/mcp/SESSION.md)
 
 ## Project `.octocode/` Folder
 
@@ -215,7 +215,7 @@ Common fixes:
 
 ## See Also
 
-- [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/AUTHENTICATION.md)
-- [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/REFERENCE.md)
-- [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
-- [LSP Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+- [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md)
+- [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md)
+- [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)

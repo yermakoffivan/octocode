@@ -143,7 +143,7 @@ ls ~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter   # binary exists
 Pi's stated philosophy is "CLI tools with READMEs (Skills) over MCP." If you don't need every octocode tool exposed, install the octocode researcher skill instead:
 
 ```bash
-npx skills add https://github.com/bgauryy/octocode-mcp --skill octocode-researcher
+npx skills add https://github.com/bgauryy/octocode --skill octocode-researcher
 ```
 
 The skill drives octocode via the CLI and avoids the MCP transport layer entirely. Use the adapter route when you want the full 13-tool surface; use the skill route when a focused research workflow is enough.
@@ -152,4 +152,4 @@ The skill drives octocode via the CLI and avoids the MCP transport layer entirel
 
 - pi-mcp-adapter — https://github.com/nicobailon/pi-mcp-adapter
 - Pi (coding agent) — https://github.com/earendil-works/pi
-- octocode-mcp tool reference — [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md), [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md), [LSP Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+- octocode-mcp tool reference — [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md), [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md), [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)

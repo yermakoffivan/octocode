@@ -200,10 +200,10 @@ Octocode looks for configuration in `~/.octocode/.octocoderc`:
 
 ## Docs
 
-- [Docs Index](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md) — all Octocode docs
-- [Credentials Architecture](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/CREDENTIALS_ARCHITECTURE.md) — secure token storage design
-- [Session Persistence](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/SESSION_PERSISTENCE.md) — session lifecycle and deferred writes
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) — env vars and `.octocoderc`
+- [Docs Index](https://github.com/bgauryy/octocode/blob/main/docs/README.md) — all Octocode docs
+- [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md) — secure token storage design
+- [Session Persistence](https://github.com/bgauryy/octocode/blob/main/docs/mcp/SESSION.md) — session lifecycle and deferred writes
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) — env vars and `.octocoderc`
 
 ## Development
 

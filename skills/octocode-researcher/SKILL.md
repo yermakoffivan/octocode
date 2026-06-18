@@ -10,6 +10,14 @@ Drive the octocode tools efficiently and prove every claim with `file:line` evid
 - **Local** (a checkout on disk): `localSearchCode`, `localGetFileContent`, `localViewStructure`, `localFindFiles`, `lspGetSemantics`, `localBinaryInspect`.
 - **GitHub** (the live API): `npmSearch`, `ghSearchRepos`, `ghViewRepoStructure`, `ghSearchCode`, `ghGetFileContent`, `ghHistoryResearch`, `ghCloneRepo`.
 
+Canonical source links:
+
+- **CLI:** [packages/octocode](https://github.com/bgauryy/octocode/tree/main/packages/octocode)
+- **MCP:** [packages/octocode-mcp](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp)
+- **Docs:** [docs](https://github.com/bgauryy/octocode/tree/main/docs)
+- **CLI reference:** [docs/cli/REFERENCE.md](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md)
+- **MCP docs:** [docs/mcp](https://github.com/bgauryy/octocode/tree/main/docs/mcp)
+
 ## Where to start (decide this first)
 
 ```
@@ -84,6 +92,8 @@ The thinking, distilled: **high hit count → narrow; unknown file → skeleton;
 | Find files by name / size / mtime / regex | `localFindFiles` |
 | Symbol identity / callers / all usages | `lspGetSemantics` (needs a real `lineHint`) |
 | Look inside an archive / compressed file / binary | `localBinaryInspect` (needs `ENABLE_LOCAL=true`) |
+
+**Shape vs identity vs outline (pick the right one):** `mode:"structural"` = *what code looks like* (call sites / syntactic forms regex over-matches) — no `lineHint`. `lspGetSemantics` `references`/`callers` = *what a symbol is and who uses it* — needs a real `lineHint`; prefer `callers` for cross-file flow (`references` is open-file-scoped). `documentSymbols` = *just list a file's declarations* — orient cheaply, no `lineHint`.
 
 ## A2. Core flow: find → prove → read
 
@@ -165,8 +175,10 @@ list       → archive entry names           .zip/.jar/.tar.*/.7z…; page entri
 extract    → one entry's content           archiveFile = an exact name from a prior list
 decompress → a single-stream file's text   .gz/.bz2/.xz/.zst…; + matchString filtering
 strings    → printable runs from a binary  .so/.dylib/.node/.exe; minLength + includeOffsets
+unpack     → ALL entries to a local dir    multi-file archives; returns localPath → then chain local tools
 ```
 
+- **`unpack` is the entry point for multi-file archives** (the `unzip` CLI command): extracts the whole archive to a cached `~/.octocode/archives/<hash>/` and returns `localPath` — then `localViewStructure`/`localSearchCode`/`localGetFileContent`/`lspGetSemantics` work on the tree, exactly like a cloned repo. Use `extract` for **one** known entry, `unpack` for the whole tree.
 - **`list` before `extract`** — `archiveFile` must be an exact entry name (case-sensitive; must not start with `-`). `extract` without `archiveFile`, and `decompress` on a multi-entry archive, are rejected with guidance.
 - `decompress` is single-stream only. Override detection with `format:` only when the extension lies.
 - `strings`: raise `minLength` (12–16) for symbols/URLs/versions only; `includeOffsets:true` gives hex offsets to pivot on.

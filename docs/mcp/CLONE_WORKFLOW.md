@@ -254,7 +254,7 @@ For TypeScript/JavaScript LSP:
 
 ## Related Documentation
 
-- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) — Full `ghCloneRepo` parameter reference
-- [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) — Local filesystem search, structure, metadata, and content tools
-- [LSP Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md) — Semantic content tool
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md) — `ENABLE_LOCAL`, `ENABLE_CLONE`, and other settings
+- [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) — Full `ghCloneRepo` parameter reference
+- [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) — Local filesystem search, structure, metadata, and content tools
+- [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md) — Semantic content tool
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) — `ENABLE_LOCAL`, `ENABLE_CLONE`, and other settings

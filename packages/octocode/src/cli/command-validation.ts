@@ -36,6 +36,44 @@ export function findUnknownOptions(
   return Object.keys(args.options).filter(key => !allowed.has(key));
 }
 
+// Flags that must be non-negative integers wherever they appear. Validated
+// centrally so every command rejects a bad value the same way — instead of
+// silently ignoring it or passing NaN down to the tool.
+const NUMERIC_FLAGS = new Set([
+  'page',
+  'page-size',
+  'limit',
+  'depth',
+  'line',
+  'pr',
+  'context-lines',
+  'max-matches',
+  'max-matches-per-file',
+  'max-files',
+  'match-page',
+  'max-entries',
+  'min-length',
+  'start-line',
+  'end-line',
+  'char-offset',
+  'char-length',
+  'min-depth',
+  'max-depth',
+]);
+
+/** Returns `--flag=value` strings for any numeric flag given a non-integer value. */
+export function findInvalidNumericOptions(args: ParsedArgs): string[] {
+  const bad: string[] = [];
+  for (const [key, val] of Object.entries(args.options)) {
+    if (!NUMERIC_FLAGS.has(key) || typeof val !== 'string') continue;
+    const n = Number.parseInt(val, 10);
+    if (!Number.isInteger(n) || String(n) !== val.trim() || n < 0) {
+      bad.push(`--${key}=${val}`);
+    }
+  }
+  return bad;
+}
+
 /** Levenshtein distance — used for "did you mean" suggestions. */
 function editDistance(a: string, b: string): number {
   const rows = a.length + 1;

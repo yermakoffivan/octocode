@@ -2,7 +2,7 @@
 
 > **Use Octocode. Smart Search. Any Code.**
 
-[Octocode.ai](https://octocode.ai) • [GitHub Repository](https://github.com/bgauryy/octocode-mcp) • [Report Issues](https://github.com/bgauryy/octocode-mcp/issues)
+[Octocode.ai](https://octocode.ai) • [GitHub Repository](https://github.com/bgauryy/octocode) • [Report Issues](https://github.com/bgauryy/octocode/issues)
 
 ---
 
@@ -14,12 +14,12 @@ Octocode is the leading AI-powered GitHub code intelligence platform. This exten
 
 ## Agenda
 
-- [Requirements](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-vscode/README.md#requirements)
-- [Authentication & Installation](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-vscode/README.md#-authentication--installation)
-- [Prompts Menu](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-vscode/README.md#prompts-menu)
-- [Tools Available](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-vscode/README.md#tools-available)
-- [Supported IDEs & AI Assistants](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-vscode/README.md#supported-ides--ai-assistants)
-- [Troubleshooting & More Info](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-vscode/README.md#troubleshooting--more-info)
+- [Requirements](https://github.com/bgauryy/octocode/blob/main/packages/octocode-vscode/README.md#requirements)
+- [Authentication & Installation](https://github.com/bgauryy/octocode/blob/main/packages/octocode-vscode/README.md#-authentication--installation)
+- [Prompts Menu](https://github.com/bgauryy/octocode/blob/main/packages/octocode-vscode/README.md#prompts-menu)
+- [Tools Available](https://github.com/bgauryy/octocode/blob/main/packages/octocode-vscode/README.md#tools-available)
+- [Supported IDEs & AI Assistants](https://github.com/bgauryy/octocode/blob/main/packages/octocode-vscode/README.md#supported-ides--ai-assistants)
+- [Troubleshooting & More Info](https://github.com/bgauryy/octocode/blob/main/packages/octocode-vscode/README.md#troubleshooting--more-info)
 
 ---
 
@@ -166,9 +166,9 @@ This extension works with all major AI-powered editors and assistants:
 
 ## Documentation
 
-- [Docs Index](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md) — all Octocode docs
-- [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) — GitHub auth model
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md) — MCP env/config options
+- [Docs Index](https://github.com/bgauryy/octocode/blob/main/docs/README.md) — all Octocode docs
+- [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md) — GitHub auth model
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) — MCP env/config options
 
 ## Troubleshooting & More Info
 
@@ -188,7 +188,7 @@ You can opt-out at any time:
 export LOG=false
 ```
 
-For full details, please read our [Privacy Policy](https://github.com/bgauryy/octocode-mcp/blob/main/PRIVACY.md) and [Terms of Usage](https://github.com/bgauryy/octocode-mcp/blob/main/TERMS.md).
+For full details, please read our [Privacy Policy](https://github.com/bgauryy/octocode/blob/main/PRIVACY.md) and [Terms of Usage](https://github.com/bgauryy/octocode/blob/main/TERMS.md).
 
 ---
 
@@ -198,7 +198,7 @@ This project is licensed under the **MIT License**.
 
 Copyright © 2026 Octocode AI.
 
-See [LICENSE](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-vscode/LICENSE) for details.
+See [LICENSE](https://github.com/bgauryy/octocode/blob/main/packages/octocode-vscode/LICENSE) for details.
 
 <div align="center">
   <p>Powered by <a href="https://octocode.ai"><b>Octocode.ai</b></a></p>

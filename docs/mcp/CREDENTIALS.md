@@ -103,5 +103,5 @@ Hostname normalization lowercases hostnames and strips protocol/trailing slash, 
 
 ## Related Documentation
 
-- [Session Persistence](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/SESSION.md)
-- [octocode-shared README](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-shared/README.md)
+- [Session Persistence](https://github.com/bgauryy/octocode/blob/main/docs/mcp/SESSION.md)
+- [octocode-shared README](https://github.com/bgauryy/octocode/blob/main/packages/octocode-shared/README.md)

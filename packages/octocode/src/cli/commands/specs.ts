@@ -725,6 +725,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'lsp answers symbol IDENTITY: references, definitions, hover, callers, callees, typeDefinition, implementation.',
       'For a file or directory OUTLINE, use the symbols command — lsp no longer exposes documentSymbols.',
       'If the line is unknown, run grep or symbols first; do not guess --line.',
+      'references scope depends on which files the language server has open/indexed, so it can look narrower than reality — for cross-file incoming-call flow prefer --type callers; pass --workspace-root to widen.',
     ],
     examples: [
       'lsp src/index.ts --type references --symbol runCLI --line 42',

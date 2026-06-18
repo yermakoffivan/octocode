@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/bgauryy/octocode-mcp/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
+  <img src="https://github.com/bgauryy/octocode/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
 
   <h1>Octocode Documentation Writer Skill</h1>
 
@@ -7,7 +7,7 @@
   <p>Production-ready pipeline • Intelligent orchestration • Conflict-free writing</p>
 
   [![Skill](https://img.shields.io/badge/skill-agentskills.io-purple)](https://agentskills.io/what-are-skills)
-  [![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/bgauryy/octocode-mcp/blob/main/LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/bgauryy/octocode/blob/main/LICENSE)
 
 </div>
 
@@ -36,12 +36,12 @@ Agents struggle with writing documentation because:
 ### Installation
 
 ```bash
-npx add-skill https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-documentation-writer
+npx add-skill https://github.com/bgauryy/octocode/tree/main/skills/octocode-documentation-writer
 ```
 
 ### 🔌 Octocode MCP Setup
 
-This skill uses the **[Octocode MCP](https://github.com/bgauryy/octocode-mcp)** server for deep research capabilities (LSP, local search, etc.).
+This skill uses the **[Octocode MCP](https://github.com/bgauryy/octocode)** server for deep research capabilities (LSP, local search, etc.).
 
 Install via the CLI or add to your MCP config:
 ```json
@@ -56,7 +56,7 @@ Install via the CLI or add to your MCP config:
 }
 ```
 
-For authentication and full setup, see the [Octocode MCP docs](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md).
+For authentication and full setup, see the [Octocode MCP docs](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md).
 
 ---
 
@@ -110,4 +110,4 @@ The generated documentation will be saved in the `documentation/` directory with
 
 MIT License © 2026 Octocode
 
-See [LICENSE](https://github.com/bgauryy/octocode-mcp/blob/main/LICENSE) for details.
+See [LICENSE](https://github.com/bgauryy/octocode/blob/main/LICENSE) for details.

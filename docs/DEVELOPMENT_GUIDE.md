@@ -91,7 +91,7 @@
 | `octocode-mcp` | Contract suite | `yarn mcp:contracts` | You need the fast deterministic contract signal while iterating locally. |
 | `octocode-shared` | Package gate | `yarn shared:package` | Shared config, credential, platform, or session boundaries regress. |
 
-For package-specific references, see the consolidated [docs index](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md) — `octocode-shared` API/credentials/session docs and `octocode` reference all live there.
+For package-specific references, see the consolidated [docs index](https://github.com/bgauryy/octocode/blob/main/docs/README.md) — `octocode-shared` API/credentials/session docs and `octocode` reference all live there.
 
 ### Structure
 ```
@@ -108,22 +108,22 @@ packages/<name>/tests/
 
 For detailed research workflows including local discovery, LSP navigation, and external research patterns, see the canonical references:
 
-- [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) — Local filesystem discovery, search, and file reading
-- [LSP Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md) — Semantic navigation, diagnostics, and flow tracing
-- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) — External research and package discovery
-- [Advanced MCP Tool Verification](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/TOOL_VERIFICATION.md) — Release-grade tool contract, pagination, hints, empty-state, and research-quality checks
-- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CLONE_WORKFLOW.md) — Bridging GitHub repos with local + LSP tools
+- [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) — Local filesystem discovery, search, and file reading
+- [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md) — Semantic navigation, diagnostics, and flow tracing
+- [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) — External research and package discovery
+- [Advanced MCP Tool Verification](https://github.com/bgauryy/octocode/blob/main/docs/mcp/TOOL_VERIFICATION.md) — Release-grade tool contract, pagination, hints, empty-state, and research-quality checks
+- [Clone & Local Tools Workflow](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CLONE_WORKFLOW.md) — Bridging GitHub repos with local + LSP tools
 
 ## Skills System
 
 Skills are markdown-based instruction sets that teach AI assistants specific tasks. For the complete skills guide including installation, creating custom skills, and the marketplace:
 
-- [Skills Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/SKILLS_GUIDE.md) — Comprehensive guide to the skills system
-- [Skills Index](https://github.com/bgauryy/octocode-mcp/blob/main/skills/README.md) — All available skills with when-to-use guide
+- [Skills Guide](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md) — Comprehensive guide to the skills system
+- [Skills Index](https://github.com/bgauryy/octocode/blob/main/skills/README.md) — All available skills with when-to-use guide
 
 ## Package Documentation
 
-For the complete package documentation index, see [docs/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md).
+For the complete package documentation index, see [docs/README.md](https://github.com/bgauryy/octocode/blob/main/docs/README.md).
 
 
 ## Agent Compatibility
@@ -137,5 +137,5 @@ For the complete package documentation index, see [docs/README.md](https://githu
 
 ## See Also
 
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md) — All env vars and `.octocoderc` options
-- [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/AUTHENTICATION.md) — GitHub auth
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) — All env vars and `.octocoderc` options
+- [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md) — GitHub auth

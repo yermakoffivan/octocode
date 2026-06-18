@@ -40,10 +40,10 @@ The one skip is Python call hierarchy because `pylsp` does not advertise `callHi
 
 Core source:
 
-- [Rust config registry](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-lsp/src/config.rs)
-- [Rust grammar registry](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-lsp/src/grammar.rs)
-- [Native client](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-lsp/src/client.rs)
-- [JS wrapper](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-lsp/src/client.ts)
+- [Rust config registry](https://github.com/bgauryy/octocode/blob/main/packages/octocode-lsp/src/config.rs)
+- [Rust grammar registry](https://github.com/bgauryy/octocode/blob/main/packages/octocode-lsp/src/grammar.rs)
+- [Native client](https://github.com/bgauryy/octocode/blob/main/packages/octocode-lsp/src/client.rs)
+- [JS wrapper](https://github.com/bgauryy/octocode/blob/main/packages/octocode-lsp/src/client.ts)
 
 ## Supported Languages
 
@@ -143,9 +143,9 @@ Good integration:
 
 Relevant adapters:
 
-- [tools-core semantic executor](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/lsp/semantic_content/execution.ts)
-- [tools-core symbol anchor resolver](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-tools-core/src/tools/lsp/shared/resolveSymbolAnchor.ts)
-- [MCP registration](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-mcp/src/tools/lsp/semantic_content/register.ts)
+- [tools-core semantic executor](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/tools/lsp/semantic_content/execution.ts)
+- [tools-core symbol anchor resolver](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/src/tools/lsp/shared/resolveSymbolAnchor.ts)
+- [MCP registration](https://github.com/bgauryy/octocode/blob/main/packages/octocode-mcp/src/tools/lsp/semantic_content/register.ts)
 
 ## Custom Servers
 
@@ -199,7 +199,7 @@ Build scripts copy the fresh `.node` artifact into the matching optional package
 yarn build:dev
 ```
 
-The copy is handled by [scripts/sync-platform-binaries.cjs](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-lsp/scripts/sync-platform-binaries.cjs).
+The copy is handled by [scripts/sync-platform-binaries.cjs](https://github.com/bgauryy/octocode/blob/main/packages/octocode-lsp/scripts/sync-platform-binaries.cjs).
 
 ## Development
 

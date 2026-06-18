@@ -181,6 +181,14 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   while (i < argv.length) {
     const arg = argv[i];
 
+    // Bare "--" is the conventional npm/yarn/pnpm arg separator (e.g.
+    // `yarn start -- pkg x --json`). Skip it; keep parsing what follows as
+    // normal so flags after it still work.
+    if (arg === '--') {
+      i++;
+      continue;
+    }
+
     if (arg.startsWith('--')) {
       const [key, value] = arg.slice(2).split('=');
       if (value !== undefined) {

@@ -132,9 +132,27 @@ export const lspCommand: CLICommand = {
       return;
     }
 
-    if (!symbolName || !lineHint) {
+    // Report the specific missing input (an invalid --line value is already
+    // rejected centrally before we get here).
+    if (!symbolName && !lineHint) {
       printUsageError(
         '--symbol and --line are required. For a file/dir outline, use: symbols <file|dir>',
+        jsonOutput
+      );
+      process.exitCode = EXIT.USAGE;
+      return;
+    }
+    if (!symbolName) {
+      printUsageError(
+        '--symbol <name> is required for this --type.',
+        jsonOutput
+      );
+      process.exitCode = EXIT.USAGE;
+      return;
+    }
+    if (!lineHint) {
+      printUsageError(
+        "--line <n> is required for this --type (the symbol's line from a prior grep/symbols hit — do not guess).",
         jsonOutput
       );
       process.exitCode = EXIT.USAGE;

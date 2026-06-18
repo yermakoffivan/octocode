@@ -7,7 +7,7 @@ linear-time `regex` engine — ReDoS is structurally impossible.  Path
 validation, command allowlisting, and input sanitization run in TypeScript.
 
 Every code example below is verified by
-[`tests/readme-examples.test.ts`](./tests/readme-examples.test.ts).
+[`tests/readme-examples.test.ts`](https://github.com/bgauryy/octocode/blob/main/packages/octocode-security/tests/readme-examples.test.ts).
 
 ---
 
