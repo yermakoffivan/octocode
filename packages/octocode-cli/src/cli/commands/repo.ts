@@ -99,9 +99,9 @@ function reportUsageError(message: string, jsonOutput: boolean): void {
     console.error(`\n  ${c('red', 'x')} ${message}`);
     console.error(
       `\n  ${dim('Examples:')}\n` +
-        `    octocode repo react state --language TypeScript --stars '>1000'\n` +
-        `    octocode repo --topic mcp,agents --sort stars --limit 10\n` +
-        `    octocode repo --owner vercel --language TypeScript --verbose\n`
+        `    repo react state --language TypeScript --stars '>1000'\n` +
+        `    repo --topic mcp,agents --sort stars --limit 10\n` +
+        `    repo --owner vercel --language TypeScript --verbose\n`
     );
   }
   process.exitCode = EXIT.USAGE;
@@ -237,7 +237,7 @@ export const repoCommand: CLICommand = {
   name: 'repo',
   description: 'Search GitHub repositories with research-oriented filters',
   usage:
-    'octocode repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--sort stars|forks|help-wanted-issues|updated|best-match] [--verbose] [--json]',
+    'repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--sort stars|forks|help-wanted-issues|updated|best-match] [--verbose] [--json]',
   options: [
     { name: 'topic', hasValue: true, description: 'Comma-separated topics' },
     { name: 'language', hasValue: true, description: 'Language filter' },

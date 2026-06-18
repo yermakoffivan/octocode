@@ -166,7 +166,7 @@ export const skillsCommand: CLICommand = {
   name: 'skills',
   description: 'Search, install, and manage Octocode skills across AI clients',
   usage:
-    'octocode skills [search|read|install|remove|list|sync] [--skill <name>] [--targets <list>] [--mode <copy|symlink>] [--json]',
+    'skills [search|read|install|remove|list|sync] [--skill <name>] [--targets <list>] [--mode <copy|symlink>] [--json]',
   options: [
     { name: 'force', description: 'Overwrite existing skills' },
     {
@@ -258,9 +258,7 @@ export const skillsCommand: CLICommand = {
           `  ${c('red', 'X')} Invalid --mode value: ${c('yellow', rawMode)}`
         );
         console.log(`  ${dim('Allowed values:')} copy, symlink`);
-        console.log(
-          `  ${dim('Example:')} octocode skills install --mode symlink`
-        );
+        console.log(`  ${dim('Example:')} skills install --mode symlink`);
         console.log();
         process.exitCode = 1;
         return;
@@ -342,9 +340,7 @@ export const skillsCommand: CLICommand = {
       if (!rawInput) {
         console.log();
         console.log(`  ${c('red', '✗')} Missing path`);
-        console.log(
-          `  ${dim('Usage:')} octocode skills read <path-to-SKILL.md>`
-        );
+        console.log(`  ${dim('Usage:')} skills read <path-to-SKILL.md>`);
         console.log(`  ${dim('Local:')}  skills read ./my-skill/SKILL.md`);
         console.log(
           `  ${dim('GitHub:')} skills read owner/repo/skills/my-skill`
@@ -431,7 +427,7 @@ export const skillsCommand: CLICommand = {
               .at(-1) ?? '';
           if (skillName) {
             console.log(
-              `  ${dim('Search for it:')} octocode skills search "${skillName}" --direct`
+              `  ${dim('Search for it:')} skills search "${skillName}" --direct`
             );
           }
         }
@@ -503,10 +499,10 @@ export const skillsCommand: CLICommand = {
         console.log();
         console.log(`  ${c('red', '✗')} Missing search query`);
         console.log(
-          `  ${dim('Usage:')} octocode skills search <query> [--direct] [--json] [--limit N]`
+          `  ${dim('Usage:')} skills search <query> [--direct] [--json] [--limit N]`
         );
         console.log(
-          `  ${dim('Example:')} octocode skills search "code review" --direct`
+          `  ${dim('Example:')} skills search "code review" --direct`
         );
         console.log();
         process.exitCode = 1;
@@ -548,8 +544,8 @@ export const skillsCommand: CLICommand = {
                 repo: r.source,
                 installs: r.installs,
                 url: `https://github.com/${r.source}`,
-                readCmd: `octocode skills read ${r.source}/${r.skillId}/SKILL.md`,
-                installCmd: `octocode skills install --local ${r.source}/${r.skillId}`,
+                readCmd: `skills read ${r.source}/${r.skillId}/SKILL.md`,
+                installCmd: `skills install --local ${r.source}/${r.skillId}`,
               })),
               error: webError ?? undefined,
             })
@@ -600,7 +596,7 @@ export const skillsCommand: CLICommand = {
                 : '';
             console.log(`    ${c('green', '•')} ${bold(r.name)}${installsStr}`);
             console.log(
-              `      ${dim('read:')} octocode skills read ${r.source}/${r.skillId}/SKILL.md`
+              `      ${dim('read:')} skills read ${r.source}/${r.skillId}/SKILL.md`
             );
           }
         }
@@ -640,7 +636,7 @@ export const skillsCommand: CLICommand = {
               `  ${c('red', '✗')} Could not fetch skill: ${installError ?? 'empty content'}`
             );
             console.log(
-              `  ${dim('Try manually:')} octocode skills install --local <path>`
+              `  ${dim('Try manually:')} skills install --local <path>`
             );
           } else {
             const { mkdirSync: mkd, writeFileSync: wf } =
@@ -714,7 +710,7 @@ export const skillsCommand: CLICommand = {
       console.log(`  ${bold('References:')} ${SEARCH_SKILL_REFS}`);
       console.log();
       console.log(
-        `  ${dim('For immediate results:  octocode skills search <query> --direct')}`
+        `  ${dim('For immediate results:  skills search <query> --direct')}`
       );
 
       console.log();
@@ -818,9 +814,7 @@ export const skillsCommand: CLICommand = {
         console.log(
           `  ${dim('Available to install:')} ${availableSkills.join(', ')}`
         );
-        console.log(
-          `  ${dim('Install:')} octocode skills install --targets <targets>`
-        );
+        console.log(`  ${dim('Install:')} skills install --targets <targets>`);
       }
       console.log();
       return;
@@ -1106,10 +1100,8 @@ export const skillsCommand: CLICommand = {
           `  ${c('red', 'X')} Missing required option: ${c('cyan', '--skill <name>')} or ${c('cyan', '--local <path>')}`
         );
         console.log();
-        console.log(`  ${dim('Usage:')} octocode skills remove --skill <name>`);
-        console.log(
-          `  ${dim('   or:')} octocode skills remove --local ./my-skill`
-        );
+        console.log(`  ${dim('Usage:')} skills remove --skill <name>`);
+        console.log(`  ${dim('   or:')} skills remove --local ./my-skill`);
         console.log();
         process.exitCode = 1;
         return;
@@ -1187,15 +1179,13 @@ export const skillsCommand: CLICommand = {
       const toTarget = args.args[2];
 
       if (!fromTarget || !toTarget) {
-        const msg = 'Usage: octocode skills sync <from-target> <to-target>';
+        const msg = 'Usage: skills sync <from-target> <to-target>';
         if (jsonOutput) {
           console.log(JSON.stringify({ success: false, error: msg }));
         } else {
           console.log();
           console.log(`  ${c('red', '✗')} ${msg}`);
-          console.log(
-            `  ${dim('Example:')} octocode skills sync cursor agents`
-          );
+          console.log(`  ${dim('Example:')} skills sync cursor agents`);
           console.log(`  ${dim('Targets:')} ${formatSkillInstallTargets()}`);
           console.log();
         }
@@ -1337,7 +1327,7 @@ export const skillsCommand: CLICommand = {
     console.log();
     console.log(`  ${c('red', '✗')} Unknown subcommand: ${subcommand}`);
     console.log(
-      `  ${dim('Usage:')} octocode skills [search|read|install|remove|list|sync]`
+      `  ${dim('Usage:')} skills [search|read|install|remove|list|sync]`
     );
     console.log();
     process.exitCode = 1;

@@ -95,7 +95,7 @@ describe('command-help-specs', () => {
     for (const command of COMMAND_SPECS) {
       const seen = new Set<string>();
       expect(command.description.trim().length).toBeGreaterThan(0);
-      expect(command.usage?.startsWith(`octocode ${command.name}`)).toBe(true);
+      expect(command.usage?.startsWith(command.name)).toBe(true);
       expect(command.scheme?.length).toBeGreaterThan(0);
 
       if (researchCommands.has(command.name)) {
@@ -189,7 +189,7 @@ describe('command-help-specs', () => {
     );
     expect(output).toContain('runtime: lspGetSemantics');
     expect(output).toContain('after search or symbols');
-    expect(output).toContain('octocode lsp src/index.ts --type references');
+    expect(output).toContain('lsp src/index.ts --type references');
 
     stdoutSpy.mockRestore();
   });
@@ -272,13 +272,14 @@ describe('agent protocol help', () => {
     const output = stdoutSpy.mock.calls
       .map((c: unknown[]) => c.map(String).join(' '))
       .join('\n');
-    // Smart commands temporarily unhooked — fallback now shows protocol steps
-    expect(output).toContain('octocode auth login');
-    expect(output).toContain('octocode status');
-    expect(output).toContain('octocode tools <name>');
-    expect(output).toContain('octocode context');
-    expect(output).toContain('octocode skills list');
-    expect(output).toContain('octocode skills install --skill <name>');
+    // Smart commands temporarily unhooked — fallback now shows protocol steps.
+    // Command examples omit the `octocode` prefix — agents know how to invoke the CLI.
+    expect(output).toContain('auth login');
+    expect(output).toContain('status');
+    expect(output).toContain('tools <name>');
+    expect(output).toContain('context');
+    expect(output).toContain('skills list');
+    expect(output).toContain('skills install --skill <name>');
 
     stdoutSpy.mockRestore();
   });

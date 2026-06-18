@@ -174,9 +174,9 @@ function printUsageError(message: string, jsonOutput: boolean): void {
   console.error(`\n  ${c('red', 'x')} ${message}`);
   console.error(
     `\n  ${dim('Examples:')}\n` +
-      `    octocode symbols src/index.ts\n` +
-      `    octocode symbols src --ext ts,tsx --limit 10\n` +
-      `    octocode symbols src/index.ts --kind function\n`
+      `    symbols src/index.ts\n` +
+      `    symbols src --ext ts,tsx --limit 10\n` +
+      `    symbols src/index.ts --kind function\n`
   );
 }
 
@@ -261,7 +261,7 @@ export const symbolsCommand: CLICommand = {
   name: 'symbols',
   description: 'Show a semantic symbol outline for a local file or directory',
   usage:
-    'octocode symbols <file|path> [--ext <list>] [--kind <kind>] [--limit <n>] [--depth <n>] [--page-size <n>] [--json]',
+    'symbols <file|path> [--ext <list>] [--kind <kind>] [--limit <n>] [--depth <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'ext',

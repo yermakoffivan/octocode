@@ -144,7 +144,7 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
         unknownOption === 'contecxt' ? ' (did you mean --context?)' : '';
       console.log();
       console.log(`  Unknown option: --${unknownOption}${suggestion}`);
-      console.log(`  Run 'octocode --help' to see available commands.`);
+      console.log(`  Run '--help' to see available commands.`);
       console.log();
       process.exitCode = EXIT.NOT_FOUND;
       return true;
@@ -198,7 +198,7 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
   if (!command) {
     console.log();
     console.log(`  Unknown command: ${args.command}`);
-    console.log(`  Run 'octocode --help' to see available commands.`);
+    console.log(`  Run '--help' to see available commands.`);
     console.log();
     process.exitCode = EXIT.NOT_FOUND;
     return true;

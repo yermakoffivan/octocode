@@ -334,7 +334,7 @@ describe('tokenCommand', () => {
     });
     expect(process.exitCode).toBe(1);
     expect(out('No Octocode token found')).toBe(true);
-    expect(out('octocode login')).toBe(true);
+    expect(out('login')).toBe(true);
   });
 
   it('no gh token prints gh login hint and exitCode 1', async () => {

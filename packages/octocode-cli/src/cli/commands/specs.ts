@@ -6,7 +6,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     description:
       'Fetch and minify file content for local paths and GitHub references',
     usage:
-      'octocode get <path|github-ref> [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]',
+      'get <path|github-ref> [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]',
     scheme: [
       'arg[0] target: required string; local file path OR owner/repo/path GitHub ref.',
       'options: --mode enum(none|standard|symbols, default standard), --branch string, --content-type enum(file|directory).',
@@ -21,9 +21,9 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'If output is paginated, continue only when the page hints say more content is needed; otherwise narrow with --match-string or line bounds.',
     ],
     examples: [
-      'octocode get packages/octocode-cli/src/cli/index.ts',
-      'octocode get bgauryy/octocode-mcp/package.json --mode none',
-      'octocode get src/index.ts --match-string "runCLI" --mode none',
+      'get packages/octocode-cli/src/cli/index.ts',
+      'get bgauryy/octocode-mcp/package.json --mode none',
+      'get src/index.ts --match-string "runCLI" --mode none',
     ],
     options: [
       {
@@ -91,8 +91,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'tree',
     description:
       'View directory structure for local paths and GitHub repositories',
-    usage:
-      'octocode tree <path|github-ref> [--depth <n>] [--branch <ref>] [--json]',
+    usage: 'tree <path|github-ref> [--depth <n>] [--branch <ref>] [--json]',
     scheme: [
       'arg[0] target: required string; local directory path OR owner/repo[/subpath] GitHub ref.',
       'options: --depth positive int, --branch string for GitHub refs, --json boolean.',
@@ -104,8 +103,8 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'Follow with files/search to locate specific paths, then get for source.',
     ],
     examples: [
-      'octocode tree packages/octocode-cli/src --depth 2',
-      'octocode tree bgauryy/octocode-mcp --depth 2',
+      'tree packages/octocode-cli/src --depth 2',
+      'tree bgauryy/octocode-mcp --depth 2',
     ],
     options: [
       { name: 'depth', hasValue: true, description: 'Directory depth' },
@@ -121,7 +120,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'search',
     description: 'Smart code search for local paths and GitHub repositories',
     usage:
-      'octocode search <pattern> <path|github-ref> [--type <ext>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+      'search <pattern> <path|github-ref> [--type <ext>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
     scheme: [
       'arg[0] pattern: required string; code text, regex-ish text, symbol name, error text, or import.',
       'arg[1] target: required string; local path OR owner/repo[/path] GitHub ref.',
@@ -135,8 +134,8 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'This is the code-search smart command; there is no separate `code` command.',
     ],
     examples: [
-      'octocode search "executeDirectTool" packages/octocode-cli/src --type ts',
-      'octocode search "useState" facebook/react --type tsx --limit 5',
+      'search "executeDirectTool" packages/octocode-cli/src --type ts',
+      'search "useState" facebook/react --type tsx --limit 5',
     ],
     options: [
       {
@@ -172,7 +171,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     description:
       'Find file paths and content matches across local paths and GitHub repositories',
     usage:
-      'octocode files <query> [path|owner/repo] [--owner <owner> --repo <repo>] [--source auto|local|github] [--search path|content|both] [--ext <list>] [--path <subpath>] [--limit <n>] [--page <n>] [--json]',
+      'files <query> [path|owner/repo] [--owner <owner> --repo <repo>] [--source auto|local|github] [--search path|content|both] [--ext <list>] [--path <subpath>] [--limit <n>] [--page <n>] [--json]',
     scheme: [
       'arg[0] query: required string; filename/path fragment or content term.',
       'arg[1] target: optional local path OR owner/repo; may be replaced by --owner and --repo for GitHub.',
@@ -189,9 +188,9 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'Follow path hits with get for exact source, or search when you need line-level code matches.',
     ],
     examples: [
-      'octocode files "command-help" packages/octocode-cli/src --search both --ext ts',
-      'octocode files "package.json" bgauryy/octocode-mcp --search path --source github',
-      'octocode files "parser" . --source local --search path --ext ts',
+      'files "command-help" packages/octocode-cli/src --search both --ext ts',
+      'files "package.json" bgauryy/octocode-mcp --search path --source github',
+      'files "parser" . --source local --search path --ext ts',
     ],
     options: [
       {
@@ -382,7 +381,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     description:
       'Search and view pull requests; list with filters or deep-dive one PR',
     usage:
-      'octocode pr <owner/repo[#N] | PR-URL> [--pr <n>] [--state open|closed|merged] [--patches] [--comments] [--commits] [--deep] [--json]',
+      'pr <owner/repo[#N] | PR-URL> [--pr <n>] [--state open|closed|merged] [--patches] [--comments] [--commits] [--deep] [--json]',
     scheme: [
       'arg[0] target: required owner/repo, owner/repo#number, or GitHub PR URL.',
       'selection: --pr int selects one PR; #N or PR URL also selects one PR.',
@@ -397,9 +396,9 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'For large PRs, use --file or --match-string before paging broad patches/comments.',
     ],
     examples: [
-      'octocode pr bgauryy/octocode-mcp --state open --limit 5',
-      'octocode pr bgauryy/octocode-mcp#123 --patches --comments',
-      'octocode pr https://github.com/bgauryy/octocode-mcp/pull/123 --deep',
+      'pr bgauryy/octocode-mcp --state open --limit 5',
+      'pr bgauryy/octocode-mcp#123 --patches --comments',
+      'pr https://github.com/bgauryy/octocode-mcp/pull/123 --deep',
     ],
     options: [
       { name: 'pr', hasValue: true, description: 'PR number to view' },
@@ -435,7 +434,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'repo',
     description: 'Search GitHub repositories with research-oriented filters',
     usage:
-      'octocode repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--forks <range>] [--good-first-issues <range>] [--license <spdx>] [--created <range>] [--updated <range>] [--size <range>] [--match name,description,readme] [--sort stars|forks|help-wanted-issues|updated|best-match] [--archived true|false] [--visibility public|private] [--limit <n>] [--page <n>] [--verbose] [--json]',
+      'repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--forks <range>] [--good-first-issues <range>] [--license <spdx>] [--created <range>] [--updated <range>] [--size <range>] [--match name,description,readme] [--sort stars|forks|help-wanted-issues|updated|best-match] [--archived true|false] [--visibility public|private] [--limit <n>] [--page <n>] [--verbose] [--json]',
     scheme: [
       'args keywords: optional string list; AND-combined repository search keywords.',
       'discovery filters: --owner string, --topic comma-list, --language string, --license SPDX, --visibility enum(public|private).',
@@ -450,9 +449,9 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'Use --owner with no keywords to enumerate an organization.',
     ],
     examples: [
-      'octocode repo "mcp server" --language TypeScript --stars ">100"',
-      'octocode repo --owner bgauryy --limit 10',
-      'octocode repo "code search" --topic mcp --sort stars',
+      'repo "mcp server" --language TypeScript --stars ">100"',
+      'repo --owner bgauryy --limit 10',
+      'repo "code search" --topic mcp --sort stars',
     ],
     options: [
       { name: 'topic', hasValue: true, description: 'Comma-separated topics' },
@@ -499,7 +498,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
   {
     name: 'pkg',
     description: 'Research an npm package and its source repository',
-    usage: 'octocode pkg <package> [--page <n>] [--json]',
+    usage: 'pkg <package> [--page <n>] [--json]',
     scheme: [
       'arg[0] package: required npm package name or keyword query.',
       'options: --page int, --json boolean.',
@@ -510,7 +509,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'Use when the research starts from an npm package name.',
       'Follow source repository fields with repo/tree/files/get for implementation evidence.',
     ],
-    examples: ['octocode pkg zod', 'octocode pkg "@modelcontextprotocol/sdk"'],
+    examples: ['pkg zod', 'pkg "@modelcontextprotocol/sdk"'],
     options: [
       {
         name: 'page',
@@ -525,7 +524,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     description:
       'Run LSP semantic navigation for a local source file after you know the symbol and line',
     usage:
-      'octocode lsp <file> --type <type> [--symbol <name>] [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
+      'lsp <file> --type <type> [--symbol <name>] [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
     scheme: [
       'arg[0] file: required local source file path.',
       'required option: --type enum(definition|references|callers|callees|callHierarchy|hover|documentSymbols|typeDefinition|implementation).',
@@ -541,9 +540,9 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'If the line is unknown, run search or symbols first; do not guess --line.',
     ],
     examples: [
-      'octocode lsp src/index.ts --type documentSymbols',
-      'octocode lsp src/index.ts --type references --symbol runCLI --line 42',
-      'octocode lsp src/index.ts --type definition --symbol runCLI --line 42 --format compact',
+      'lsp src/index.ts --type documentSymbols',
+      'lsp src/index.ts --type references --symbol runCLI --line 42',
+      'lsp src/index.ts --type definition --symbol runCLI --line 42 --format compact',
     ],
     options: [
       {
@@ -588,7 +587,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     description:
       'Show a semantic symbol outline for a local file or directory before deeper LSP navigation',
     usage:
-      'octocode symbols <file|path> [--ext <list>] [--kind <kind>] [--limit <n>] [--depth <n>] [--page-size <n>] [--json]',
+      'symbols <file|path> [--ext <list>] [--kind <kind>] [--limit <n>] [--depth <n>] [--page-size <n>] [--json]',
     scheme: [
       'arg[0] target: required local source file or directory path.',
       'directory options: --ext comma-list, --limit int files, --depth int directory depth.',
@@ -602,8 +601,8 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'Follow with lsp --type references/definition/hover when a specific symbol and line matter.',
     ],
     examples: [
-      'octocode symbols packages/octocode-cli/src --ext ts --limit 10',
-      'octocode symbols packages/octocode-cli/src/cli/commands/lsp.ts --kind function',
+      'symbols packages/octocode-cli/src --ext ts --limit 10',
+      'symbols packages/octocode-cli/src/cli/commands/lsp.ts --kind function',
     ],
     options: [
       {
@@ -634,7 +633,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'context',
     description:
       'Print the agent protocol, MCP system prompt, tool descriptions, and schemas',
-    usage: 'octocode context [--full]  OR  octocode --context [--full]',
+    usage: 'context [--full]  OR  --context [--full]',
     scheme: [
       'args: none.',
       'top-level shortcut: --context prints the same agent target as the context command.',
@@ -645,11 +644,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
       'Use before autonomous research to see the exact operating prompt and tool routing rules.',
       'Use --full when an agent needs all JSON schemas in one target output.',
     ],
-    examples: [
-      'octocode context',
-      'octocode context --full',
-      'octocode --context --full',
-    ],
+    examples: ['context', 'context --full', '--context --full'],
     options: [
       {
         name: 'full',
@@ -661,7 +656,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'install',
     description: 'Install octocode-mcp for an IDE',
     usage:
-      'octocode install --ide <ide> [--method npx] [--force] [--check] [--rollback] [--backup-path <path>] [--json]',
+      'install --ide <ide> [--method npx] [--force] [--check] [--rollback] [--backup-path <path>] [--json]',
     scheme: [
       'args: none.',
       'required option: --ide supported client id.',
@@ -692,7 +687,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'auth',
     description: 'Manage GitHub authentication',
     usage:
-      'octocode auth [login|logout|status|token|refresh] [--hostname <host>] [--json]',
+      'auth [login|logout|status|token|refresh] [--hostname <host>] [--json]',
     scheme: [
       'arg[0] action: optional enum(login|logout|status|token|refresh); defaults to interactive/auth status flow.',
       'options: --hostname GitHub Enterprise host, --json boolean.',
@@ -712,7 +707,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'login',
     description: 'Authenticate with GitHub',
     usage:
-      'octocode login [--hostname <host>] [--git-protocol <ssh|https>] [--force] [--json]',
+      'login [--hostname <host>] [--git-protocol <ssh|https>] [--force] [--json]',
     scheme: [
       'args: none.',
       'options: --hostname GitHub Enterprise host, --git-protocol enum(ssh|https), --force boolean, --json boolean.',
@@ -740,7 +735,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
   {
     name: 'logout',
     description: 'Sign out from GitHub',
-    usage: 'octocode logout [--hostname <host>] [--yes] [--json]',
+    usage: 'logout [--hostname <host>] [--yes] [--json]',
     scheme: [
       'args: none.',
       'options: --hostname GitHub Enterprise host, --yes boolean skips confirmation, --json boolean.',
@@ -762,7 +757,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     description:
       'Search, install, and manage Octocode skills across AI clients',
     usage:
-      'octocode skills [search|read|install|remove|list|sync] [--skill <name>] [--targets <list>] [--mode <copy|symlink>] [--json]',
+      'skills [search|read|install|remove|list|sync] [--skill <name>] [--targets <list>] [--mode <copy|symlink>] [--json]',
     scheme: [
       'arg[0] action: optional enum(search|read|install|remove|list|sync).',
       'skill selectors: --skill name, --local path, --target single target, --targets comma-list.',
@@ -806,7 +801,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
     name: 'token',
     description: 'Print the GitHub token',
     usage:
-      'octocode token [--type <auto|octocode|gh>] [--hostname <host>] [--source] [--validate] [--reveal] [--json]',
+      'token [--type <auto|octocode|gh>] [--hostname <host>] [--source] [--validate] [--reveal] [--json]',
     scheme: [
       'args: none.',
       'options: --type enum(auto|octocode|gh, default auto), --hostname GitHub Enterprise host, --source boolean, --validate boolean, --reveal boolean, --json boolean.',
@@ -833,7 +828,7 @@ export const COMMAND_SPECS: readonly CLICommandSpec[] = [
   {
     name: 'status',
     description: 'Show Octocode health status',
-    usage: 'octocode status [--hostname <host>] [--sync] [--json]',
+    usage: 'status [--hostname <host>] [--sync] [--json]',
     scheme: [
       'args: none.',
       'options: --hostname GitHub Enterprise host, --sync boolean includes MCP sync analysis, --json boolean.',

@@ -134,7 +134,7 @@ describe('statusCommand', () => {
     expect(out('repos:')).toBe(true);
     expect(out('skills:')).toBe(true);
     expect(out('logs:')).toBe(true);
-    expect(out('octocode status --sync')).toBe(true);
+    expect(out('status --sync')).toBe(true);
     expect(process.exitCode).toBeUndefined();
   });
 

@@ -148,7 +148,7 @@ describe('cli/commands/install', () => {
       args: [],
       options: {},
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Missing required option')
     );
@@ -225,7 +225,7 @@ describe('cli/commands/install', () => {
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Invalid IDE')
     );
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('errors on invalid method', async () => {
@@ -240,7 +240,7 @@ describe('cli/commands/install', () => {
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Invalid method')
     );
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('errors when already configured without --force', async () => {
@@ -406,7 +406,7 @@ describe('cli/commands/install', () => {
       options: { ide: 'cursor', method: 'direct' },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('uses --method with npx', async () => {
@@ -509,7 +509,7 @@ describe('cli/commands/install', () => {
       configPath: null,
     });
     expect(json.error).toContain('Missing required option');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
     Object.defineProperty(process.stdout, 'isTTY', {
       configurable: true,
       value: undefined,
@@ -564,7 +564,7 @@ describe('cli/commands/install', () => {
     const json = lastJson();
     expect(json.success).toBe(false);
     expect(json.error).toContain('Invalid IDE');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('outputs JSON error on invalid method with --json', async () => {
@@ -577,7 +577,7 @@ describe('cli/commands/install', () => {
     const json = lastJson();
     expect(json.success).toBe(false);
     expect(json.error).toContain('Invalid method');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
   });
 
   it('outputs JSON error when already configured without --force and --json', async () => {

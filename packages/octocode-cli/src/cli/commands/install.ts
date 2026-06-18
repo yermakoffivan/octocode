@@ -21,6 +21,7 @@ import {
 import { existsSync, copyFileSync, accessSync, constants } from 'node:fs';
 import { mkdirSync } from 'node:fs';
 import { readMCPConfig } from '../../utils/mcp-io.js';
+import { EXIT } from '../exit-codes.js';
 import path from 'node:path';
 
 const SUPPORTED_INSTALL_CLIENTS = DETECTABLE_MCP_CLIENTS;
@@ -30,7 +31,7 @@ export const installCommand: CLICommand = {
   name: 'install',
   description: 'Install octocode-mcp for an IDE',
   usage:
-    'octocode install --ide <ide> [--method npx] [--force] [--check] [--rollback] [--backup-path <path>] [--json]',
+    'install --ide <ide> [--method npx] [--force] [--check] [--rollback] [--backup-path <path>] [--json]',
   options: [
     {
       name: 'ide',
@@ -96,10 +97,10 @@ export const installCommand: CLICommand = {
           console.log();
           console.log(`  Missing required option: --ide`);
           console.log(`  Supported: ${SUPPORTED_INSTALL_CLIENTS_TEXT}`);
-          console.log(`  Example: octocode install --ide cursor`);
+          console.log(`  Example: install --ide cursor`);
           console.log();
         }
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
       const { runInteractiveMode } = await import('../../interactive.js');
@@ -259,14 +260,14 @@ export const installCommand: CLICommand = {
             error: `Invalid IDE: ${rawIde}. Supported: ${SUPPORTED_INSTALL_CLIENTS_TEXT}`,
           })
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
       console.log();
       console.log(`  ${c('red', '✗')} Invalid IDE: ${rawIde}`);
       console.log(`  ${dim('Supported:')} ${SUPPORTED_INSTALL_CLIENTS_TEXT}`);
       console.log();
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -281,14 +282,14 @@ export const installCommand: CLICommand = {
             error: `Invalid method: ${method}. Supported: npx`,
           })
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
       console.log();
       console.log(`  ${c('red', '✗')} Invalid method: ${method}`);
       console.log(`  ${dim('Supported:')} npx`);
       console.log();
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 

@@ -54,9 +54,9 @@ function reportUsage(message: string, jsonOutput: boolean): void {
     console.error(`\n  ${c('red', 'x')} ${message}`);
     console.error(
       `\n  ${dim('Examples:')}\n` +
-        `    octocode get src/utils.ts --match-string createClient --mode none\n` +
-        `    octocode get bgauryy/octocode-mcp/README.md --match-string Octocode --mode none\n` +
-        `    octocode get src/index.ts --start-line 40 --end-line 90 --mode none\n`
+        `    get src/utils.ts --match-string createClient --mode none\n` +
+        `    get bgauryy/octocode-mcp/README.md --match-string Octocode --mode none\n` +
+        `    get src/index.ts --start-line 40 --end-line 90 --mode none\n`
     );
   }
   process.exitCode = EXIT.USAGE;
@@ -155,7 +155,7 @@ export const getCommand: CLICommand = {
   description:
     'Fetch file content from local paths and GitHub references with match, line, pagination, and minify controls',
   usage:
-    'octocode get <path|github-ref> [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]',
+    'get <path|github-ref> [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]',
   options: [
     {
       name: 'mode',

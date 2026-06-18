@@ -232,7 +232,7 @@ describe('toolCommand', () => {
 
     expect(publicMocks.localSearchCode).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Use octocode tools')
+      expect.stringContaining('Use tools')
     );
     expect(process.exitCode).toBe(2);
   });
@@ -374,7 +374,7 @@ describe('toolCommand', () => {
 
     expect(publicMocks.loadToolContent).toHaveBeenCalledTimes(1);
     expect(context).toContain('TOOL CALLS');
-    expect(context).toContain('octocode tools');
+    expect(context).toContain('tools <name>');
     expect(context).toContain('Use Octocode tools carefully.');
     expect(context).toContain('1. ghSearchCode');
     expect(context).toContain('2. ghCloneRepo');

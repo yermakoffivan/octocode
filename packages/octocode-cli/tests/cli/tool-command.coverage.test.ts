@@ -151,7 +151,7 @@ describe('tool-command coverage', () => {
 
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Octocode CLI — Agent Context');
-    expect(output).toContain('octocode tools <name>');
+    expect(output).toContain('tools <name>');
     // Smart commands section removed; verify RESEARCH LOOP and TOOL CALLS are present
     expect(output).toContain('RESEARCH LOOP');
     expect(output).toContain('TOOL CALLS');

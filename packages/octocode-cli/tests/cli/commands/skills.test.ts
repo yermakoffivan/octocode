@@ -999,7 +999,7 @@ describe('skillsCommand', () => {
     expect(output).toContain('owner-b/repo-b');
     expect(output).toContain('owner-a/repo-a');
     expect(output).toContain('skill-one');
-    expect(output).toContain('octocode skills read');
+    expect(output).toContain('skills read');
   });
 
   it('search --direct --json: returns structured results array', async () => {
@@ -1998,7 +1998,7 @@ description: RAG pipelines
 
     expect(process.exitCode).toBe(1);
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('octocode skills sync')
+      expect.stringContaining('skills sync')
     );
   });
 

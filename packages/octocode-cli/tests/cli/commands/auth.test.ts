@@ -884,7 +884,7 @@ describe('cli/commands/auth', () => {
         expect.stringContaining('Not authenticated')
       );
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('octocode login')
+        expect.stringContaining('login')
       );
       expect(process.exitCode).toBe(1);
     });
@@ -1045,7 +1045,7 @@ describe('cli/commands/auth', () => {
         expect.stringContaining('Not authenticated')
       );
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('octocode login')
+        expect.stringContaining('login')
       );
     });
 
@@ -1327,7 +1327,7 @@ describe('cli/commands/auth', () => {
         );
         expect(
           consoleSpy.mock.calls.some((call: unknown[]) =>
-            String(call[0]).includes('octocode login')
+            String(call[0]).includes('login')
           )
         ).toBe(true);
         expect(process.exitCode).toBe(1);

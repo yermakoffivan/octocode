@@ -16,24 +16,24 @@ export function showLightAvailableTools(): void {
   console.log();
   console.log(`  ${bold('When the runtime loads, use:')}`);
   console.log(
-    `    ${c('yellow', 'octocode tools')}                                   ${dim('# list all tools with live schema')}`
+    `    ${c('yellow', 'tools')}                                            ${dim('# list all tools with live schema')}`
   );
   console.log(
-    `    ${c('yellow', 'octocode tools <name>')}                            ${dim('# show full input schema for one tool')}`
+    `    ${c('yellow', 'tools <name>')}                                     ${dim('# show full input schema for one tool')}`
   );
   console.log(
-    `    ${c('yellow', 'octocode tools <name> --scheme')}                   ${dim('# schema only, never runs')}`
+    `    ${c('yellow', 'tools <name> --scheme')}                            ${dim('# schema only, never runs')}`
   );
   console.log(
-    `    ${c('yellow', "octocode tools <name> --queries '<json>'")}         ${dim('# run a tool')}`
+    `    ${c('yellow', "tools <name> --queries '<json>'")}                  ${dim('# run a tool')}`
   );
   console.log();
   console.log(`  ${bold('AGENT CONTEXT')}`);
   console.log(
-    `    ${c('yellow', 'octocode context')}                                 ${dim('# protocol + system prompt + compact tool schemas')}`
+    `    ${c('yellow', 'context')}                                          ${dim('# protocol + system prompt + compact tool schemas')}`
   );
   console.log(
-    `    ${c('yellow', 'octocode context --full')}                          ${dim('# full schemas when runtime loads')}`
+    `    ${c('yellow', 'context --full')}                                   ${dim('# full schemas when runtime loads')}`
   );
   console.log();
 }
@@ -55,20 +55,20 @@ export function printLightInstructions(options: { full?: boolean } = {}): void {
   console.log();
   console.log('Protocol:');
   console.log('1. Authenticate before using GitHub tools:');
-  console.log('   octocode auth login');
-  console.log('   octocode status          # verify auth + cache');
+  console.log('   auth login');
+  console.log('   status          # verify auth + cache');
   console.log('2. Inspect a tool schema before calling (required):');
-  console.log('   octocode tools <name>    # schema: fields, types, example');
-  console.log('   octocode tools <n1> <n2> ...  # batch schema reads');
-  console.log("   octocode tools <name> --queries '<json>'");
+  console.log('   tools <name>    # schema: fields, types, example');
+  console.log('   tools <n1> <n2> ...  # batch schema reads');
+  console.log("   tools <name> --queries '<json>'");
   console.log('3. Read the agent protocol and tool descriptions:');
   console.log(
-    '   octocode context         # protocol + system prompt + tool descriptions'
+    '   context         # protocol + system prompt + tool descriptions'
   );
-  console.log('   octocode context --full  # full tool descriptions');
+  console.log('   context --full  # full tool descriptions');
   console.log('4. Browse and install agent skills:');
-  console.log('   octocode skills list');
-  console.log('   octocode skills install --skill <name>');
+  console.log('   skills list');
+  console.log('   skills install --skill <name>');
   console.log(
     '5. Read YAML output directly; use --json only when you need the envelope.'
   );

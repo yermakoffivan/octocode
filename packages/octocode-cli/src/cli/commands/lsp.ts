@@ -43,9 +43,9 @@ function printUsageError(message: string, jsonOutput: boolean): void {
   console.error(`\n  ${c('red', 'x')} ${message}`);
   console.error(
     `\n  ${dim('Examples:')}\n` +
-      `    octocode lsp src/index.ts --type documentSymbols\n` +
-      `    octocode lsp src/index.ts --type references --symbol runCLI --line 42\n` +
-      `    octocode lsp src/index.ts --type hover --symbol runCLI --line 42\n`
+      `    lsp src/index.ts --type documentSymbols\n` +
+      `    lsp src/index.ts --type references --symbol runCLI --line 42\n` +
+      `    lsp src/index.ts --type hover --symbol runCLI --line 42\n`
   );
 }
 
@@ -53,7 +53,7 @@ export const lspCommand: CLICommand = {
   name: 'lsp',
   description: 'Run LSP semantic research for a local source file',
   usage:
-    'octocode lsp <file> --type <type> [--symbol <name>] [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
+    'lsp <file> --type <type> [--symbol <name>] [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
   options: [
     {
       name: 'type',

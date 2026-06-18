@@ -205,10 +205,10 @@ function renderGithubResults(
       `  ${c('yellow', '→')} GitHub code search may not index this repo. Alternatives:`
     );
     lines.push(
-      `     ${bold('octocode tree ' + repoRef)}  — browse structure, then target a file`
+      `     ${bold('tree ' + repoRef)}  — browse structure, then target a file`
     );
     lines.push(
-      `     ${bold('octocode get ' + repoRef + '/<file> --match-string <pattern> --mode symbols')}  — search inside a known file (efficient)`
+      `     ${bold('get ' + repoRef + '/<file> --match-string <pattern> --mode symbols')}  — search inside a known file (efficient)`
     );
   }
 
@@ -219,7 +219,7 @@ export const searchCommand: CLICommand = {
   name: 'search',
   description: 'Search code — works for local paths and GitHub repositories',
   usage:
-    'octocode search <pattern> <path|github-ref> [--type <ext>] [--mode paginated|discovery|detailed] [--include <glob>] [--exclude <glob>] [--context <n>] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+    'search <pattern> <path|github-ref> [--type <ext>] [--mode paginated|discovery|detailed] [--include <glob>] [--exclude <glob>] [--context <n>] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'type',
@@ -319,9 +319,9 @@ export const searchCommand: CLICommand = {
         console.error(`\n  ${c('red', '✗')} ${err}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
-            `    octocode search "useState" src/\n` +
-            `    octocode search "executeDirectTool" bgauryy/octocode-mcp\n` +
-            `    octocode search "TODO" . --type ts\n`
+            `    search "useState" src/\n` +
+            `    search "executeDirectTool" bgauryy/octocode-mcp\n` +
+            `    search "TODO" . --type ts\n`
         );
       }
       process.exitCode = 1;

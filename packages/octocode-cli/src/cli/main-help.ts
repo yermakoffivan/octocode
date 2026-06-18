@@ -73,7 +73,7 @@ export function showHelp(): void {
     : [
         `  ${c('red', '─'.repeat(62))}`,
         `  ${c('red', bold('  ⚠  NOT AUTHENTICATED'))}  ${c('red', 'GitHub token required for tool calls.')}`,
-        `  ${c('red', '     Run: ')}${c('yellow', bold('octocode login'))}`,
+        `  ${c('red', '     Run: ')}${c('yellow', bold('login'))}`,
         `  ${c('red', '─'.repeat(62))}`,
         '',
       ];
@@ -81,17 +81,17 @@ export function showHelp(): void {
   const lines = [
     '',
     ...authBanner,
-    `  ${c('magenta', bold('🔍🐙 Octocode'))}  ${dim('Code research CLI — GitHub · Local · LSP · AST · Package')}`,
+    `  ${c('magenta', bold('🔍🐙 Octocode'))}  ${dim('Agent-first code research CLI')}`,
     '',
 
-    // ── Agent rule — first thing an agent sees ──────────────────────────────
-    `  ${c('red', bold('AGENTS — read schema before every raw tool call. Never guess fields.'))}`,
-    `    ${c('yellow', 'octocode tools <name>')}           ${dim('# required fields, types, example call')}`,
-    `    ${c('yellow', 'octocode tools <n1> <n2> ...')}    ${dim('# batch schema reads')}`,
-    `    ${c('yellow', 'octocode context')}                ${dim('# protocol + system prompt + tool descriptions')}`,
-    `    ${c('yellow', 'octocode auth login')}             ${dim('# authenticate — GitHub token required for all GitHub tools')}`,
-    `    ${c('yellow', 'octocode skills list')}            ${dim('# browse agent skills (install with: octocode skills install --skill <name>)')}`,
-    `    ${c('yellow', 'octocode status')}                 ${dim('# health check: auth + cache + MCP')}`,
+    // ── Agent contract — first thing an agent sees ──────────────────────────
+    `  ${c('red', bold('<AGENT_INSTRUCTIONS>'))}`,
+    `    ${c('red', bold('Before EVERY tool call read its context + schema. Never guess or hallucinate fields.'))}`,
+    `      ${c('yellow', 'tools <name> [<n2> ...]')}  ${dim('# schema: required fields, types, example call')}`,
+    `      ${c('yellow', 'context')}                  ${dim('# protocol + system prompt + tool descriptions')}`,
+    `    ${dim('Plan research with the octocode-researcher skill:')}`,
+    `      ${c('cyan', 'https://github.com/bgauryy/octocode/blob/main/skills/octocode-researcher/SKILL.md')}`,
+    `  ${c('red', bold('</AGENT_INSTRUCTIONS>'))}`,
     '',
 
     // ── Smart-usage playbook (distilled from the system prompt) ─────────────
@@ -103,7 +103,7 @@ export function showHelp(): void {
     '',
 
     // ── Live tool list ──────────────────────────────────────────────────────
-    `  ${bold(`TOOLS (${toolCount})`)}  ${dim('* = required   ? = optional   |  octocode tools <name> → full schema + examples')}`,
+    `  ${bold(`TOOLS (${toolCount})`)}  ${dim('* = required   ? = optional   |  tools <name> → full schema + examples')}`,
     ...toolLines,
     '',
 

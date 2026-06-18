@@ -16,7 +16,7 @@ import path from 'node:path';
 export const statusCommand: CLICommand = {
   name: 'status',
   description: 'Show full Octocode health status (auth + MCPs + cache)',
-  usage: 'octocode status [--hostname <host>] [--sync] [--json]',
+  usage: 'status [--hostname <host>] [--sync] [--json]',
   options: [
     {
       name: 'hostname',
@@ -190,7 +190,7 @@ export const statusCommand: CLICommand = {
     } else {
       console.log();
       console.log(
-        `  ${dim('Run')} ${c('cyan', 'octocode status --sync')} ${dim('to include sync analysis.')}`
+        `  ${dim('Run')} ${c('cyan', 'status --sync')} ${dim('to include sync analysis.')}`
       );
     }
     console.log();

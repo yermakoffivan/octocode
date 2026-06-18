@@ -459,7 +459,7 @@ describe('CLI Commands', () => {
         expect.stringContaining('No Octocode token found')
       );
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('octocode login')
+        expect.stringContaining('login')
       );
       expect(process.exitCode).toBe(1);
     });

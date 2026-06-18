@@ -21,7 +21,7 @@ export const loginCommand: CLICommand = {
   name: 'login',
   description: 'Authenticate with GitHub',
   usage:
-    'octocode login [--hostname <host>] [--git-protocol <ssh|https>] [--force] [--json]',
+    'login [--hostname <host>] [--git-protocol <ssh|https>] [--force] [--json]',
   options: [
     {
       name: 'hostname',
@@ -70,9 +70,7 @@ export const loginCommand: CLICommand = {
       );
       console.log();
       console.log(`  ${dim('To switch accounts, use --force:')}`);
-      console.log(
-        `    ${c('cyan', '→')} ${c('yellow', 'octocode login --force')}`
-      );
+      console.log(`    ${c('cyan', '→')} ${c('yellow', 'login --force')}`);
       console.log();
       return;
     }
@@ -93,7 +91,7 @@ export const loginCommand: CLICommand = {
           JSON.stringify({
             success: false,
             error:
-              'Login requires browser interaction. Run "octocode login" in an interactive terminal.',
+              'Login requires browser interaction. Run "login" in an interactive terminal.',
             requiresInteraction: true,
           })
         );
@@ -101,7 +99,7 @@ export const loginCommand: CLICommand = {
         console.log();
         console.log(`  ${c('red', '✗')} Login requires browser interaction.`);
         console.log(
-          `  ${dim('Run')} ${c('yellow', 'octocode login')} ${dim('in an interactive terminal.')}`
+          `  ${dim('Run')} ${c('yellow', 'login')} ${dim('in an interactive terminal.')}`
         );
         console.log();
       }
@@ -211,7 +209,7 @@ export const loginCommand: CLICommand = {
 export const logoutCommand: CLICommand = {
   name: 'logout',
   description: 'Sign out from GitHub',
-  usage: 'octocode logout [--hostname <host>] [--yes] [--json]',
+  usage: 'logout [--hostname <host>] [--yes] [--json]',
   options: [
     {
       name: 'hostname',
@@ -310,7 +308,7 @@ export const authCommand: CLICommand = {
   name: 'auth',
   description: 'Manage GitHub authentication',
   usage:
-    'octocode auth [login|logout|status|token|refresh] [--hostname <host>] [--json]',
+    'auth [login|logout|status|token|refresh] [--hostname <host>] [--json]',
   options: [
     {
       name: 'hostname',
@@ -403,7 +401,7 @@ export const authCommand: CLICommand = {
       }
 
       if (tokenSource === 'none' || !currentStatus.authenticated) {
-        const msg = 'Not authenticated. Run `octocode login` first.';
+        const msg = 'Not authenticated. Run `login` first.';
         if (jsonOutput) {
           console.log(
             JSON.stringify({
@@ -452,7 +450,7 @@ export const authCommand: CLICommand = {
           `  ${c('red', '✗')} Token refresh failed: ${result.error ?? 'unknown error'}`
         );
         console.log(
-          `  ${dim('Tip:')} run ${c('yellow', 'octocode login')} to re-authenticate`
+          `  ${dim('Tip:')} run ${c('yellow', 'login')} to re-authenticate`
         );
         process.exitCode = 1;
       }

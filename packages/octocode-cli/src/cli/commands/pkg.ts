@@ -17,7 +17,7 @@ function parsePage(value: string): number | undefined {
 export const pkgCommand: CLICommand = {
   name: 'pkg',
   description: 'Research an npm package and its source repository',
-  usage: 'octocode pkg <package> [--page <n>] [--json]',
+  usage: 'pkg <package> [--page <n>] [--json]',
   options: [
     {
       name: 'page',
@@ -42,8 +42,8 @@ export const pkgCommand: CLICommand = {
         console.error(`\n  ${c('red', 'x')} ${error}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
-            `    octocode pkg zod\n` +
-            `    octocode pkg @modelcontextprotocol/sdk\n`
+            `    pkg zod\n` +
+            `    pkg @modelcontextprotocol/sdk\n`
         );
       }
       process.exitCode = EXIT.USAGE;

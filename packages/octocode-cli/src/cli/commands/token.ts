@@ -82,7 +82,7 @@ export const tokenCommand: CLICommand = {
   name: 'token',
   description: 'Print the GitHub token (matches octocode-mcp priority)',
   usage:
-    'octocode token [--type <auto|octocode|gh>] [--hostname <host>] [--source] [--validate] [--reveal] [--json]',
+    'token [--type <auto|octocode|gh>] [--hostname <host>] [--source] [--validate] [--reveal] [--json]',
   options: [
     {
       name: 'type',
@@ -196,12 +196,10 @@ export const tokenCommand: CLICommand = {
         );
         console.log();
         console.log(`  ${dim('To login with Octocode:')}`);
-        console.log(`    ${c('cyan', '→')} ${c('yellow', 'octocode login')}`);
+        console.log(`    ${c('cyan', '→')} ${c('yellow', 'login')}`);
         console.log();
         console.log(`  ${dim('Or use gh CLI token:')}`);
-        console.log(
-          `    ${c('cyan', '→')} ${c('yellow', 'octocode token --type=gh')}`
-        );
+        console.log(`    ${c('cyan', '→')} ${c('yellow', 'token --type=gh')}`);
       } else if (tokenSource === 'gh') {
         console.log(
           `  ${c('yellow', '⚠')} No gh CLI token found for ${hostname}`
@@ -212,7 +210,7 @@ export const tokenCommand: CLICommand = {
         console.log();
         console.log(`  ${dim('Or use Octocode token:')}`);
         console.log(
-          `    ${c('cyan', '→')} ${c('yellow', 'octocode token --type=octocode')}`
+          `    ${c('cyan', '→')} ${c('yellow', 'token --type=octocode')}`
         );
       } else {
         console.log(`  ${c('yellow', '⚠')} Not authenticated to ${hostname}`);

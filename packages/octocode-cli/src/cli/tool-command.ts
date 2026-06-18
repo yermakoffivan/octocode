@@ -83,7 +83,7 @@ async function getOptionalToolMetadata(): Promise<Awaited<
 
 function formatToolExampleCommand(toolName: string): string {
   const exampleInput = JSON.stringify(buildDirectToolExampleQuery(toolName));
-  return `octocode tools ${toolName} --queries '${exampleInput}'`;
+  return `tools ${toolName} --queries '${exampleInput}'`;
 }
 
 function getUnexpectedToolOptionKeys(args: ParsedArgs): string[] {
@@ -251,16 +251,16 @@ export async function showAvailableTools(): Promise<void> {
     `  ${c('red', bold('SCHEMA REQUIRED — never call a tool without reading its schema:'))}`
   );
   console.log(
-    `    ${c('yellow', 'octocode tools <name>')}                            ${dim('# required fields, types, example call')}`
+    `    ${c('yellow', 'tools <name>')}                                     ${dim('# required fields, types, example call')}`
   );
   console.log(
-    `    ${c('yellow', 'octocode tools <name> --scheme')}                   ${dim('# schema only, never runs')}`
+    `    ${c('yellow', 'tools <name> --scheme')}                            ${dim('# schema only, never runs')}`
   );
   console.log(
-    `    ${c('yellow', 'octocode tools <n1> <n2> ...')}                     ${dim('# batch schema reads')}`
+    `    ${c('yellow', 'tools <n1> <n2> ...')}                              ${dim('# batch schema reads')}`
   );
   console.log(
-    `    ${c('yellow', 'octocode context --full')}                          ${dim('# full protocol + complete tool descriptions')}`
+    `    ${c('yellow', 'context --full')}                                   ${dim('# full protocol + complete tool descriptions')}`
   );
   console.log();
 
@@ -302,19 +302,17 @@ export async function showAvailableTools(): Promise<void> {
   }
 
   console.log(
-    `  ${bold('TO CALL')}  octocode tools <name> --queries '<json>'  ${dim('# YAML (default)')}`
+    `  ${bold('TO CALL')}  tools <name> --queries '<json>'  ${dim('# YAML (default)')}`
   );
   console.log(
-    `           octocode tools <name> --queries '<json>' --json  ${dim('# raw envelope')}`
+    `           tools <name> --queries '<json>' --json  ${dim('# raw envelope')}`
   );
   console.log(
-    `           octocode tools <name> --queries '<json>' --compact  ${dim('# leanest')}`
+    `           tools <name> --queries '<json>' --compact  ${dim('# leanest')}`
   );
   console.log();
   // Smart commands temporarily unhooked — will be re-added in a future release.
-  console.log(
-    `  ${dim('Full protocol: octocode context  |  All commands: octocode --help')}`
-  );
+  console.log(`  ${dim('Full protocol: context  |  All commands: --help')}`);
   console.log();
 }
 
@@ -407,7 +405,7 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
     for (const [label, query] of LSP_TYPE_EXAMPLES) {
       console.log(`    ${dim('#')} ${label}`);
       console.log(
-        `    ${c('yellow', `octocode tools ${LSP_TOOL_NAME} --queries '${JSON.stringify(query)}'`)}`
+        `    ${c('yellow', `tools ${LSP_TOOL_NAME} --queries '${JSON.stringify(query)}'`)}`
       );
       console.log();
     }
@@ -479,9 +477,9 @@ export async function getToolsContextString(
       '  *** SCHEMA CHECK — REQUIRED BEFORE EVERY RAW TOOL CALL ***',
       '  This context lists what each tool is for. It does NOT include schemas —',
       "  read a tool's schema before calling it:",
-      '    octocode tools <name> --scheme           # schema: fields, types, bounds, defaults',
-      '    octocode tools <name>                    # same schema/help shortcut',
-      '    octocode tools <n1> <n2> ... --scheme    # batch: read multiple schemas at once',
+      '    tools <name> --scheme           # schema: fields, types, bounds, defaults',
+      '    tools <name>                    # same schema/help shortcut',
+      '    tools <n1> <n2> ... --scheme    # batch: read multiple schemas at once',
       '',
       '  *** RESEARCH LOOP ***',
       '  1. Orient: localViewStructure / ghViewRepoStructure / npmSearch.',
@@ -490,9 +488,9 @@ export async function getToolsContextString(
       '  4. Prove: lspGetSemantics or ghHistoryResearch; stop when evidence.answerReady is true.',
       '',
       '  *** TOOL CALLS ***',
-      "  octocode tools <name> --queries '<json>'           # run tool, YAML output",
-      "  octocode tools <name> --queries '<json>' --json    # run tool, raw JSON envelope",
-      "  octocode tools <name> --queries '<json>' --compact # run tool, leanest output",
+      "  tools <name> --queries '<json>'           # run tool, YAML output",
+      "  tools <name> --queries '<json>' --json    # run tool, raw JSON envelope",
+      "  tools <name> --queries '<json>' --compact # run tool, leanest output",
       '',
       '  Output: clean YAML by default; use --compact for leanest text, --json for the raw envelope.',
       '',
@@ -559,8 +557,8 @@ export async function getToolsContextString(
     'Schemas are not shown here — read them on demand (required before any call):'
   );
   sections.push(
-    '  octocode tools <name> --scheme            # one tool',
-    '  octocode tools <n1> <n2> ... --scheme     # several tools at once'
+    '  tools <name> --scheme            # one tool',
+    '  tools <n1> <n2> ... --scheme     # several tools at once'
   );
 
   return sections.join('\n').trim();
@@ -685,7 +683,7 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
       sourceLabel: 'octocode-cli',
       onUnknownFields: (unknownFields, queryIndex) => {
         console.error(
-          `  ${c('yellow', '!')} Query ${queryIndex + 1}: unknown field(s): ${unknownFields.join(', ')} — run \`octocode tools ${tool.name}\` to see valid fields.`
+          `  ${c('yellow', '!')} Query ${queryIndex + 1}: unknown field(s): ${unknownFields.join(', ')} — run \`tools ${tool.name}\` to see valid fields.`
         );
       },
     });
@@ -720,7 +718,7 @@ export const toolCommand: CLICommand = {
   name: 'tools',
   description:
     'Run an Octocode MCP tool directly using the same implementation under the hood',
-  usage: `octocode tools <toolName> [--scheme] [--queries '<json-stringified-input>']`,
+  usage: `tools <toolName> [--scheme] [--queries '<json-stringified-input>']`,
   options: [
     {
       name: 'queries',

@@ -552,7 +552,7 @@ export const prCommand: CLICommand = {
   description:
     'Search and view pull requests — list with filters or deep-dive a single PR',
   usage:
-    'octocode pr <owner/repo[#N] | PR-URL> [--pr <n>] [--state open|closed|merged] [--patches] [--comments] [--commits] [--deep] [--json]',
+    'pr <owner/repo[#N] | PR-URL> [--pr <n>] [--state open|closed|merged] [--patches] [--comments] [--commits] [--deep] [--json]',
   options: [
     {
       name: 'pr',
@@ -683,13 +683,13 @@ export const prCommand: CLICommand = {
         console.error(`\n  ${c('red', '✗')} ${err}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
-            `    octocode pr bgauryy/octocode-mcp\n` +
-            `    octocode pr bgauryy/octocode-mcp --state merged --limit 5\n` +
-            `    octocode pr bgauryy/octocode-mcp --query "fix auth"\n` +
-            `    octocode pr bgauryy/octocode-mcp#142\n` +
-            `    octocode pr bgauryy/octocode-mcp --pr 142 --patches\n` +
-            `    octocode pr bgauryy/octocode-mcp --pr 142 --deep\n` +
-            `    octocode pr https://github.com/bgauryy/octocode-mcp/pull/142\n`
+            `    pr bgauryy/octocode-mcp\n` +
+            `    pr bgauryy/octocode-mcp --state merged --limit 5\n` +
+            `    pr bgauryy/octocode-mcp --query "fix auth"\n` +
+            `    pr bgauryy/octocode-mcp#142\n` +
+            `    pr bgauryy/octocode-mcp --pr 142 --patches\n` +
+            `    pr bgauryy/octocode-mcp --pr 142 --deep\n` +
+            `    pr https://github.com/bgauryy/octocode-mcp/pull/142\n`
         );
       }
       process.exitCode = 1;

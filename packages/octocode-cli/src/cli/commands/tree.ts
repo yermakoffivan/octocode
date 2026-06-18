@@ -122,8 +122,7 @@ export const treeCommand: CLICommand = {
   name: 'tree',
   description:
     'View directory structure — works for local paths and GitHub repositories',
-  usage:
-    'octocode tree <path|github-ref> [--depth <n>] [--branch <ref>] [--json]',
+  usage: 'tree <path|github-ref> [--depth <n>] [--branch <ref>] [--json]',
   options: [
     {
       name: 'depth',
@@ -157,9 +156,9 @@ export const treeCommand: CLICommand = {
         console.error(`\n  ${c('red', '✗')} ${err}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
-            `    octocode tree src/\n` +
-            `    octocode tree bgauryy/octocode-mcp/packages\n` +
-            `    octocode tree bgauryy/octocode-mcp --depth 2\n`
+            `    tree src/\n` +
+            `    tree bgauryy/octocode-mcp/packages\n` +
+            `    tree bgauryy/octocode-mcp --depth 2\n`
         );
       }
       process.exitCode = 1;

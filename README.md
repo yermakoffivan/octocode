@@ -4,17 +4,17 @@
   <img src="https://github.com/bgauryy/octocode-mcp/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
   
   <h3>Research like a Senior Staff Engineer.<br/>In every codebase, in seconds.</h3>
-  <p><strong>Stop guessing.</strong> Octocode gives AI agents and humans one evidence-first research engine for local workspaces, GitHub repositories, pull requests, npm packages, and LSP semantic navigation.</p>
-  <p>It has <strong>two interfaces</strong>: an <strong>MCP server</strong> for AI assistants and a <strong>CLI</strong> for terminals, scripts, and CI.</p>
+  <p><strong>Stop guessing.</strong> Octocode is a platform for <strong>agentic research across local and external code and content</strong> - one evidence-first engine spanning local workspaces, GitHub repositories, pull requests, npm packages, binaries, and LSP semantic navigation.</p>
+  <p>Use it <strong>three ways</strong>: an <strong>MCP server</strong> for AI assistants, a <strong>CLI</strong> for terminals, scripts, and CI, and a library of <strong>Agent Skills</strong> that turn the tools into ready-made research and review workflows.</p>
 
   <p>
     <a href="https://octocode.ai"><strong>octocode.ai</strong></a>
     &nbsp;·&nbsp;
     <a href="#quickstart">Quickstart</a>
     &nbsp;·&nbsp;
-    <a href="#two-interfaces-one-engine">Interfaces</a>
+    <a href="#one-platform-three-surfaces">Platform</a>
     &nbsp;·&nbsp;
-    <a href="#all-12-octocode-tools">Tools</a>
+    <a href="#all-13-octocode-tools">Tools</a>
     &nbsp;·&nbsp;
     <a href="#cli-commands">CLI</a>
     &nbsp;·&nbsp;
@@ -75,6 +75,15 @@ octocode search "useState" facebook/react
 octocode pr vercel/next.js#12345
 ```
 
+### Add Agent Skills
+
+```bash
+# Search, preview, and install packaged research/review workflows.
+octocode skills
+```
+
+Or browse the catalog at [skills.sh/bgauryy/octocode-mcp](https://www.skills.sh/bgauryy/octocode-mcp). See the [full list below](#skills).
+
 ### Common Workflows
 
 | Goal | Start with | Then |
@@ -85,14 +94,15 @@ octocode pr vercel/next.js#12345
 | Debug MCP behavior | `octocode tools` | `octocode tools <toolName> --scheme` -> `octocode tools <toolName> --queries '<json>'` |
 | Share an agent setup | `octocode context` | Copy the protocol only when an agent cannot load MCP schemas directly. |
 
-## Two Interfaces, One Engine
+## One Platform, Three Surfaces
 
-Octocode is not a chat prompt or a loose wrapper around `grep`. It is a tool runtime with a shared core: the MCP server and the CLI call the same tool catalog, the same security layer, the same response shaping, and the same Rust-backed hot paths.
+Octocode is not a chat prompt or a loose wrapper around `grep`. It is a tool runtime with a shared core: every surface calls the same tool catalog, the same security layer, the same response shaping, and the same Rust-backed hot paths. Pick the surface that fits where you work.
 
-| Interface | Best for | Install | What you get |
-|-----------|----------|---------|--------------|
-| **MCP server** | Claude Code, Cursor, Claude Desktop, Windsurf, Codex, and other MCP clients | `npx octocode-cli install` | 12 research tools exposed directly to your AI assistant |
-| **CLI** | Terminal research, scripts, CI, quick lookups, debugging tool calls | `brew install bgauryy/octocode/octocode` or `npm install -g octocode-cli` | Friendly smart commands plus raw access to the same 12 tools |
+| Surface | Best for | Install | What you get |
+|---------|----------|---------|--------------|
+| **MCP server** | Claude Code, Cursor, Claude Desktop, Windsurf, Codex, and other MCP clients | `npx octocode-cli install` | 13 research tools (12 enabled by default) exposed directly to your AI assistant |
+| **CLI** | Terminal research, scripts, CI, quick lookups, debugging tool calls | `brew install bgauryy/octocode/octocode` or `npm install -g octocode-cli` | Friendly smart commands plus raw access to the same tools |
+| **Agent Skills** | Packaged workflows for research, planning, review, and output | `octocode skills` or [skills.sh](https://www.skills.sh/bgauryy/octocode-mcp) | 20 ready-made skills that orchestrate the tools - see [Skills](#skills) |
 
 The normal research loop is:
 
@@ -191,7 +201,7 @@ octocode status
 | `octocode pkg <package>` | Resolve npm metadata and source repositories. | Inspect the source repo with GitHub tools. |
 | `octocode symbols <file|path>` | Produce semantic outlines for files or directories. | Use before `lsp` to choose symbol anchors. |
 | `octocode lsp <file> --type <type>` | Run semantic navigation: definitions, references, callers, callees, call hierarchy, hover, document symbols, type definitions, implementations. | Use after `symbols` or `search` gives a symbol and line. |
-| `octocode tools` | List, inspect, or run the raw 12 MCP tools. | Use `octocode tools <name> --scheme` before raw calls. |
+| `octocode tools` | List, inspect, or run the raw MCP tools. | Use `octocode tools <name> --scheme` before raw calls. |
 | `octocode context` | Print agent protocol, routing guidance, tool list, and schemas. | Use `--full` only when inline JSON schemas are needed. |
 | `octocode install` | Configure `octocode-mcp` for an IDE or MCP client. | Run `status` to verify. |
 | `octocode auth` / `login` / `logout` | Manage GitHub authentication. | Use `token --source` to inspect resolution. |
@@ -214,7 +224,9 @@ Direct CLI tool runs auto-fill `id`, `mainResearchGoal`, `researchGoal`, and `re
 
 ---
 
-## All 12 Octocode Tools
+## All 13 Octocode Tools
+
+**12 tools are enabled by default.** Only `ghCloneRepo` is opt-in (enable with `ENABLE_CLONE=true`) - see the note in its row below. Local tools (search, structure, find, fetch, binary, LSP) require `ENABLE_LOCAL` (on by default). All enablement flags and limits are documented in the [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md).
 
 | Tool | Interface | What it is for |
 |------|-----------|----------------|
@@ -222,13 +234,14 @@ Direct CLI tool runs auto-fill `id`, `mainResearchGoal`, `researchGoal`, and `re
 | `ghGetFileContent` | MCP + CLI | Read exact GitHub file content by full file, line range, match slice, char page, or signature skeleton. |
 | `ghViewRepoStructure` | MCP + CLI | Browse a GitHub repository tree before reading files. |
 | `ghSearchRepos` | MCP + CLI | Discover repositories by keywords, owner, topics, language, stars, size, dates, and archive state. |
-| `ghSearchPRs` | MCP + CLI | Search PR history or inspect one PR's metadata, changed files, patches, comments, reviews, and commits. |
-| `ghCloneRepo` | MCP + CLI | Clone a repository or sparse subtree into Octocode's local cache for local/LSP analysis. |
+| `ghHistoryResearch` | MCP + CLI | Search PR history or inspect one PR's metadata, changed files, patches, comments, reviews, and commits. |
+| `ghCloneRepo` | MCP + CLI | Clone a repository or sparse subtree into Octocode's local cache for local/LSP analysis. Opt-in (enable with `ENABLE_CLONE=true`). |
 | `npmSearch` | MCP + CLI | Resolve npm packages to metadata and source repositories. |
-| `localSearchCode` | MCP + CLI | Search local file contents with ripgrep-style filtering, pagination, snippets, and count modes. |
+| `localSearchCode` | MCP + CLI | Search local file contents with ripgrep-style filtering, pagination, snippets, and count modes - plus a `structural` (AST) mode for code-shape queries regex can't express. |
 | `localViewStructure` | MCP + CLI | Browse local directories with depth, filters, pagination, and metadata. |
 | `localFindFiles` | MCP + CLI | Find local files or directories by name, path, regex, extension, size, time, permissions, and type. |
 | `localGetFileContent` | MCP + CLI | Read targeted local file content by exact slice, match, symbols, line range, or char page. |
+| `localBinaryInspect` | MCP + CLI | Unpack and inspect archives and binaries - decompress, list archive entries, and read embedded text. |
 | `lspGetSemantics` | MCP + CLI | Ask local language servers for definitions, references, callers, callees, call hierarchy, hover, document symbols, type definitions, and implementations. |
 
 Tool behavior references:
@@ -323,7 +336,7 @@ This is a yarn-workspaces monorepo. Runtime code is split so the MCP server, CLI
 
 | Directory | npm package | Purpose |
 |-----------|-------------|---------|
-| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server that registers the 12 Octocode tools for AI assistants. |
+| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server that registers the Octocode tool catalog for AI assistants. |
 | [`packages/octocode-cli`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-cli) | `octocode-cli` | Terminal interface: smart research commands, raw tool runner, auth, install, status, token, and skills workflows. |
 | [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Shared tool catalog and implementations for GitHub, local filesystem, package search, and LSP flows. |
 | [`packages/octocode-context-utils`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-context-utils) | `@octocodeai/octocode-context-utils` | Rust-backed context engine for minification, signatures, pagination offsets, ripgrep parsing, diff filtering, and YAML output. |
@@ -337,7 +350,7 @@ This is a yarn-workspaces monorepo. Runtime code is split so the MCP server, CLI
 ## Skills
 
 > [Agent Skills](https://agentskills.io/what-are-skills) are a lightweight, open format for extending AI agent capabilities.
-> Skills index: [skills/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/skills/README.md)
+> Browse and install on [**skills.sh/bgauryy/octocode-mcp**](https://www.skills.sh/bgauryy/octocode-mcp) · Skills index: [skills/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/skills/README.md)
 
 **Research & Code Analysis**
 
@@ -382,6 +395,7 @@ This is a yarn-workspaces monorepo. Runtime code is split so the MCP server, CLI
 | [**CLI**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-cli) | Run Octocode MCP tools from the terminal without wiring MCP |
 | [**Search Skill**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-search-skill) | Find, evaluate, install, refactor Agent Skills (SKILL.md format) |
 | [**Stats**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-stats) | Local HTML dashboard from Octocode MCP usage stats |
+| [**Harness Status**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-harness-status) | Interactive dashboard of all skills, MCPs, CLIs, and tokens installed on this machine |
 
 https://github.com/user-attachments/assets/5b630763-2dee-4c2d-b5c1-6335396723ec
 
@@ -389,7 +403,7 @@ https://github.com/user-attachments/assets/5b630763-2dee-4c2d-b5c1-6335396723ec
 
 ## Documentation
 
-Full index: **[docs/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md)**. All monorepo documentation lives in [`docs/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs) (no per-package `docs/`).
+Website: **[octocode.ai](https://octocode.ai)** · Full docs: **[github.com/bgauryy/octocode/tree/main/docs](https://github.com/bgauryy/octocode/tree/main/docs)** · Index: **[docs/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md)**. All monorepo documentation lives in [`docs/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs) (no per-package `docs/`).
 
 **Docs map**
 - [`docs/configuration/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs/configuration): install, auth providers, MCP clients, env/config, troubleshooting

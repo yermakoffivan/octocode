@@ -50,12 +50,9 @@ describe('Tool Configuration', () => {
       }
     });
 
-    it('should have all tools marked as default (except opt-in tools)', () => {
-      const optInTools = ['localBinaryInspect'];
+    it('should have all tools marked as default (clone is default but gated by ENABLE_CLONE)', () => {
       ALL_TOOLS.forEach(tool => {
-        if (!optInTools.includes(tool.name)) {
-          expect(tool.isDefault).toBe(true);
-        }
+        expect(tool.isDefault).toBe(true);
       });
     });
 

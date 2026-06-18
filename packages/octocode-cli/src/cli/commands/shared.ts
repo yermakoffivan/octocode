@@ -63,7 +63,7 @@ export function safeTokenOutput(token: string): string {
 
 export function printLoginHint(): void {
   console.log(`  ${dim('To login:')}`);
-  console.log(`    ${c('cyan', '→')} ${c('yellow', 'octocode login')}`);
+  console.log(`    ${c('cyan', '→')} ${c('yellow', 'login')}`);
   console.log(`    ${dim('or')}`);
   console.log(`    ${c('cyan', '→')} ${c('yellow', 'gh auth login')}`);
 }

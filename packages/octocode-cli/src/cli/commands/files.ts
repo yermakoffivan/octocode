@@ -199,9 +199,9 @@ function error(message: string, jsonOutput: boolean): void {
     console.error(`\n  ${c('red', 'x')} ${message}`);
     console.error(
       `\n  ${dim('Examples:')}\n` +
-        `    octocode files auth src --source local --search path --ext ts\n` +
-        `    octocode files executeDirectTool . --search content --ext ts\n` +
-        `    octocode files auth bgauryy/octocode-mcp --source github --search both\n`
+        `    files auth src --source local --search path --ext ts\n` +
+        `    files executeDirectTool . --search content --ext ts\n` +
+        `    files auth bgauryy/octocode-mcp --source github --search both\n`
     );
   }
   process.exitCode = EXIT.USAGE;
@@ -549,10 +549,10 @@ function printGithubPathFallbackHint(
   const repoRef = `${target.owner}/${target.repo}`;
   console.log('smartHints:');
   console.log(
-    `- GitHub path search can miss unindexed repos; use octocode tree ${repoRef} --depth 2 to browse paths.`
+    `- GitHub path search can miss unindexed repos; use tree ${repoRef} --depth 2 to browse paths.`
   );
   console.log(
-    `- If the path is known, use octocode get ${repoRef}/<path> --mode standard.`
+    `- If the path is known, use get ${repoRef}/<path> --mode standard.`
   );
   console.log();
 }
@@ -562,7 +562,7 @@ export const filesCommand: CLICommand = {
   description:
     'Find files and content matches across local paths and GitHub repositories',
   usage:
-    'octocode files <query> [path|owner/repo] [--owner <owner> --repo <repo>] [--source auto|local|github] [--search path|content|both] [--ext <list>] [--path <subpath>] [--limit <n>] [--page <n>] [--json]',
+    'files <query> [path|owner/repo] [--owner <owner> --repo <repo>] [--source auto|local|github] [--search path|content|both] [--ext <list>] [--path <subpath>] [--limit <n>] [--page <n>] [--json]',
   options: [
     {
       name: 'source',

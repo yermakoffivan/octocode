@@ -328,7 +328,7 @@ function createToolCatalog(
   };
 
   const LOCAL_BINARY_INSPECT = createTool(gateway, 'LOCAL_BINARY_INSPECT', {
-    isDefault: false,
+    isDefault: true,
     isLocal: true,
     isBinary: true,
     type: 'content',
