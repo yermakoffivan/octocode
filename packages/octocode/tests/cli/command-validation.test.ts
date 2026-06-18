@@ -1,7 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Keep color helpers as identity passthroughs so assertions match plain text.
+vi.mock('../../src/utils/colors.js', () => ({
+  c: (_color: string, s: string) => s,
+  bold: (s: string) => s,
+  dim: (s: string) => s,
+}));
+
 import {
   findUnknownOptions,
   getAllowedOptionNames,
+  findInvalidNumericOptions,
+  printUnknownOptionError,
 } from '../../src/cli/command-validation.js';
 import { lsCommand } from '../../src/cli/commands/ls.js';
 import { skillsCommand } from '../../src/cli/commands/skills.js';
@@ -38,5 +48,72 @@ describe('command option validation', () => {
     for (const g of ['json', 'compact', 'no-color', 'help', 'version']) {
       expect(allowed.has(g)).toBe(true);
     }
+  });
+});
+
+describe('findInvalidNumericOptions', () => {
+  it('flags a non-integer numeric value', () => {
+    expect(findInvalidNumericOptions(args({ limit: 'abc' }))).toEqual([
+      '--limit=abc',
+    ]);
+  });
+
+  it('flags a negative numeric value', () => {
+    expect(findInvalidNumericOptions(args({ page: '-1' }))).toEqual([
+      '--page=-1',
+    ]);
+  });
+
+  it('flags a value with trailing junk', () => {
+    expect(findInvalidNumericOptions(args({ depth: '3x' }))).toEqual([
+      '--depth=3x',
+    ]);
+  });
+
+  it('accepts valid non-negative integers', () => {
+    expect(findInvalidNumericOptions(args({ limit: '10', page: '0' }))).toEqual(
+      []
+    );
+  });
+
+  it('ignores non-numeric flags and boolean values', () => {
+    expect(
+      findInvalidNumericOptions(args({ mode: 'abc', json: true }))
+    ).toEqual([]);
+  });
+});
+
+describe('printUnknownOptionError', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  function output(): string {
+    return logSpy.mock.calls
+      .map((call: unknown[]) => call.join(' '))
+      .join('\n');
+  }
+
+  it('names the offending flag and lists valid flags', () => {
+    printUnknownOptionError(lsCommand, ['bogus']);
+    const out = output();
+    expect(out).toContain(`Unknown flag --bogus for '${lsCommand.name}'`);
+    expect(out).toContain(`Valid flags for ${lsCommand.name}`);
+  });
+
+  it('suggests a near-miss flag for a typo', () => {
+    printUnknownOptionError(lsCommand, ['dpeth']);
+    expect(output()).toContain('did you mean --depth?');
+  });
+
+  it('does not suggest anything for an unrelated flag', () => {
+    printUnknownOptionError(lsCommand, ['xxxxxxxxxx']);
+    expect(output()).not.toContain('did you mean');
   });
 });

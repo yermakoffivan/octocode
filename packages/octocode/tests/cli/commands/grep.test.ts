@@ -16,7 +16,7 @@ vi.mock('../../../src/utils/colors.js', () => ({
 import { grepCommand } from '../../../src/cli/commands/grep.js';
 import type { ParsedArgs } from '../../../src/cli/types.js';
 
-function run(args: string[], options: Record<string, unknown> = {}) {
+function run(args: string[], options: Record<string, string | boolean> = {}) {
   const parsed: ParsedArgs = { command: 'grep', args, options };
   return grepCommand.handler(parsed);
 }

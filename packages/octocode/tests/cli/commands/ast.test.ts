@@ -16,7 +16,7 @@ vi.mock('../../../src/utils/colors.js', () => ({
 import { astCommand } from '../../../src/cli/commands/ast.js';
 import type { ParsedArgs } from '../../../src/cli/types.js';
 
-function run(args: string[], options: Record<string, unknown> = {}) {
+function run(args: string[], options: Record<string, string | boolean> = {}) {
   const parsed: ParsedArgs = { command: 'ast', args, options };
   return astCommand.handler(parsed);
 }

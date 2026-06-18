@@ -27,7 +27,7 @@ Skip to the tool you are using.
 |------|-------------|---------------|
 | `matchString` | Matching line(s) ± context | ~50–300 |
 | `startLine`/`endLine` (small) | Exact line range | ~100–500 |
-| `signaturesOnly` | Imports + function/class/type signatures, bodies stripped | 5–20% of full file |
+| `minify: "symbols"` | Imports + function/class/type signatures, bodies stripped | 5–20% of full file |
 | `startLine`/`endLine` (large chunk) | Up to `charLength` chars of a range | 1k–10k |
 | `fullContent` | Entire file, minified | Can exceed 50k |
 
@@ -70,7 +70,7 @@ Regex matching still returns only the first match slice (same as B1).
 
 **Skeleton scan before diving in:**
 ```json
-{ "signaturesOnly": true }
+{ "minify": "symbols" }
 // then follow up:
 { "startLine": 1486, "endLine": 1530 }
 ```
@@ -285,7 +285,7 @@ When `weeklyDownloads` is absent from the response, no hint is emitted. The fiel
 |------|------------------|
 | Find if a function exists in a file | `ghSearchCode` with `keywordsToSearch: ["functionName"]` |
 | Read one function body | `ghGetFileContent` with `matchString: "function name"` + small `contextLines` |
-| Scan a whole file's structure | `ghGetFileContent` with `signaturesOnly: true` |
+| Scan a whole file's structure | `ghGetFileContent` with `minify: "symbols"` |
 | Read 2–10 functions from a file | Multiple `startLine`/`endLine` reads in one batched call |
 | Read a 3MB+ file | `ghCloneRepo` sparse + local read |
 | Understand why a PR was made | `ghHistoryResearch` with `content.body: true` only |

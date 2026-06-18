@@ -74,9 +74,9 @@ Key fields:
 | `matchStringContextLines` | Context around `matchString`. |
 | `matchStringIsRegex`, `matchStringCaseSensitive` | Match behavior. |
 | `charOffset`, `charLength` | File-content pagination. |
-| `signaturesOnly` | Return structural skeleton only. |
+| `minify` | `standard` (default, strips comments/blank lines), `none` (exact raw text), or `symbols` (structural skeleton only). |
 
-File extraction modes are mutually exclusive: use one of `fullContent`, `startLine`/`endLine`, `matchString`, or `signaturesOnly`.
+File extraction modes are mutually exclusive: use one of `fullContent`, `startLine`/`endLine`, `matchString`, or `minify: "symbols"`.
 
 Directory mode:
 
@@ -248,7 +248,7 @@ Use `npmSearch` before GitHub repo search when the user gives a package name.
 - Use GitHub tools for remote repositories, not files already on disk.
 - Use `npmSearch` for known npm package names.
 - Use `ghViewRepoStructure` before reading unknown paths.
-- Use `matchString`, line ranges, or `signaturesOnly` instead of `fullContent` for large files.
+- Use `matchString`, line ranges, or `minify: "symbols"` instead of `fullContent` for large files.
 - Use PR metadata first, then selected content.
 - Use `ghCloneRepo` only when local analysis is worth the clone cost.
 

@@ -14,6 +14,7 @@ import {
   findNextBlockBoundary,
 } from '../../utils/pagination/boundary.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
+import { countLines } from '../../utils/core/lines.js';
 import { getOutputCharLimit } from '../../utils/pagination/charLimit.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
@@ -439,7 +440,7 @@ function buildExtractionState(
   _defaultOutputCharLength: number
 ): ExtractionState {
   const lines = content.split('\n');
-  const totalLines = lines.length;
+  const totalLines = countLines(content);
 
   if (query.matchString) {
     return buildMatchExtractionState(query, lines, totalLines);
@@ -746,7 +747,7 @@ export async function fetchContent(
         signaturesSkippedWarning = `minify:"symbols" is not supported for this file type (${queryPath.split('.').pop() ?? 'unknown'}) — falling back to standard content view.`;
       }
       if (sigs !== null) {
-        const totalLinesOrig = content.split('\n').length;
+        const totalLinesOrig = countLines(content);
         const sigsProcessed = contextUtils.applyContentViewMinification(
           sigs,
           queryPath
@@ -774,7 +775,7 @@ export async function fetchContent(
       }
     }
 
-    const totalLines = content.split('\n').length;
+    const totalLines = countLines(content);
     const extraction = buildExtractionState(
       query,
       content,

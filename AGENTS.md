@@ -69,7 +69,7 @@ octocode-mcp/
 | `packages/*/src/`, `packages/*/tests/` | ✅ Auto |
 | `docs/` | ✅ Auto |
 | `*.json`, `*.config.*` | ⚠️ Ask |
-| `.env*`, `.octocode/`, `node_modules/`, `dist/`, `out/`, `coverage/` | ❌ Never |
+| `.env*`, `.octocode/`, `node_modules/`, `dist/`, `coverage/` | ❌ Never |
 
 ## Quick Commands
 
@@ -335,7 +335,7 @@ Bundled skills live at repo root [`skills/`](https://github.com/bgauryy/octocode
 |------|--------|
 | `src/`, `tests/` | ✅ FULL |
 | `scripts/`, `*.json`, `*.config.*` | ⚠️ ASK |
-| `out/`, `node_modules/` | ❌ NEVER |
+| `node_modules/` | ❌ NEVER |
 
 Tokens encrypted in `~/.octocode/` (AES-256-GCM). Never log tokens. Coverage: 90% required.
 

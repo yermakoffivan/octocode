@@ -3,6 +3,7 @@ import { getOutputCharLimit } from '../utils/pagination/charLimit.js';
 import { GITHUB_FILE_CONTENT_DEFAULT_CHAR_LENGTH } from '../config.js';
 import { ContentSanitizer } from 'octocode-security/contentSanitizer';
 import { contextUtils } from '../utils/contextUtils.js';
+import { countLines } from '../utils/core/lines.js';
 import { applyPagination } from '../utils/pagination/core.js';
 import {
   snapToSemanticBoundary,
@@ -159,7 +160,7 @@ export async function processFileContentAPI(
         contentView: 'symbols',
         isSkeleton: true,
         branch,
-        totalLines: decodedContent.split('\n').length,
+        totalLines: countLines(decodedContent),
         ...sourceSizeFields(sourceChars, sourceBytes),
         isPartial: false,
         signaturesExtracted: true,
@@ -172,7 +173,7 @@ export async function processFileContentAPI(
 
   const originalContent = decodedContent;
   const originalLines = originalContent.split('\n');
-  const totalLines = originalLines.length;
+  const totalLines = countLines(originalContent);
 
   let finalContent = decodedContent;
   let actualStartLine: number | undefined;
