@@ -61,15 +61,18 @@ describe('command-help-specs', () => {
       'skills',
       'token',
       'status',
-      'get',
-      'tree',
-      'files',
-      'search',
+      'cat',
+      'ls',
+      'find',
+      'grep',
+      'ast',
       'pr',
       'repo',
       'pkg',
       'symbols',
       'lsp',
+      'clone',
+      'unzip',
       'context',
     ];
     for (const name of names) {
@@ -81,15 +84,17 @@ describe('command-help-specs', () => {
     const { COMMAND_SPECS } = await import('../../src/cli/commands/specs.js');
 
     const researchCommands = new Set([
-      'get',
-      'tree',
-      'files',
-      'search',
+      'cat',
+      'ls',
+      'find',
+      'grep',
+      'ast',
       'pr',
       'repo',
       'pkg',
       'symbols',
       'lsp',
+      'clone',
     ]);
 
     for (const command of COMMAND_SPECS) {
@@ -116,8 +121,8 @@ describe('command-help-specs', () => {
     const { findStaticCommandHelp } =
       await import('../../src/cli/command-help-specs.js');
 
-    expect(findStaticCommandHelp('get')!.usage).toContain('--full-content');
-    expect(findStaticCommandHelp('search')!.usage).toContain('--branch <ref>');
+    expect(findStaticCommandHelp('cat')!.usage).toContain('--full-content');
+    expect(findStaticCommandHelp('grep')!.usage).toContain('--branch <ref>');
     expect(findStaticCommandHelp('lsp')!.usage).toContain(
       '--workspace-root <path>'
     );
@@ -188,7 +193,7 @@ describe('command-help-specs', () => {
       'required option: --type enum(definition|references'
     );
     expect(output).toContain('runtime: lspGetSemantics');
-    expect(output).toContain('after search or symbols');
+    expect(output).toContain('after grep or symbols');
     expect(output).toContain('lsp src/index.ts --type references');
 
     stdoutSpy.mockRestore();

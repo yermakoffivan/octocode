@@ -26,6 +26,7 @@ export async function safeExec(
     cwd,
     env,
     maxOutputSize = 10 * 1024 * 1024,
+    tolerateOutputLimit = false,
   } = options;
 
   const result = await spawnWithTimeout(command, args, {
@@ -34,6 +35,19 @@ export async function safeExec(
     env,
     maxOutputSize,
   });
+
+  // An output overflow leaves the partial prefix in result.stdout. When the
+  // caller opts in, hand that back flagged `truncated` instead of throwing —
+  // a bounded prefix is still useful (e.g. `strings` on a huge binary).
+  if (result.outputLimitExceeded && tolerateOutputLimit) {
+    return {
+      success: true,
+      code: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      truncated: true,
+    };
+  }
 
   if (result.error) {
     throw result.error;

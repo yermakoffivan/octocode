@@ -10,6 +10,8 @@ import {
   printDirectToolResult,
 } from './direct-tool-output.js';
 
+// Relational / identity queries only. For a file or directory outline
+// (documentSymbols) use the `symbols` command instead.
 const LSP_TYPES = [
   'definition',
   'references',
@@ -17,7 +19,6 @@ const LSP_TYPES = [
   'callees',
   'callHierarchy',
   'hover',
-  'documentSymbols',
   'typeDefinition',
   'implementation',
 ] as const;
@@ -43,33 +44,35 @@ function printUsageError(message: string, jsonOutput: boolean): void {
   console.error(`\n  ${c('red', 'x')} ${message}`);
   console.error(
     `\n  ${dim('Examples:')}\n` +
-      `    lsp src/index.ts --type documentSymbols\n` +
       `    lsp src/index.ts --type references --symbol runCLI --line 42\n` +
-      `    lsp src/index.ts --type hover --symbol runCLI --line 42\n`
+      `    lsp src/index.ts --type definition --symbol runCLI --line 42\n` +
+      `    lsp src/index.ts --type hover --symbol runCLI --line 42\n` +
+      `    ${dim('# for a file/dir outline, use: symbols src/index.ts')}\n`
   );
 }
 
 export const lspCommand: CLICommand = {
   name: 'lsp',
-  description: 'Run LSP semantic research for a local source file',
+  description:
+    'Run LSP semantic research (symbol identity) for a local source file — definitions, references, callers, hover. For a file/dir outline use the `symbols` command.',
   usage:
-    'lsp <file> --type <type> [--symbol <name>] [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
+    'lsp <file> --type <type> --symbol <name> --line <n> [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
   options: [
     {
       name: 'type',
       hasValue: true,
       description:
-        'Semantic query: definition, references, callers, callees, callHierarchy, hover, documentSymbols, typeDefinition, implementation',
+        'Semantic query: definition, references, callers, callees, callHierarchy, hover, typeDefinition, implementation',
     },
     {
       name: 'symbol',
       hasValue: true,
-      description: 'Symbol name; required unless type is documentSymbols',
+      description: 'Symbol name (required)',
     },
     {
       name: 'line',
       hasValue: true,
-      description: 'Line hint; required unless type is documentSymbols',
+      description: 'Line hint for the symbol (required)',
     },
     {
       name: 'workspace-root',
@@ -129,9 +132,9 @@ export const lspCommand: CLICommand = {
       return;
     }
 
-    if (rawType !== 'documentSymbols' && (!symbolName || !lineHint)) {
+    if (!symbolName || !lineHint) {
       printUsageError(
-        '--symbol and --line are required unless --type documentSymbols',
+        '--symbol and --line are required. For a file/dir outline, use: symbols <file|dir>',
         jsonOutput
       );
       process.exitCode = EXIT.USAGE;
@@ -177,10 +180,7 @@ export const lspCommand: CLICommand = {
             ...(depth ? { depth } : {}),
             ...(format ? { format } : {}),
             mainResearchGoal: `Run ${rawType} LSP research`,
-            researchGoal:
-              rawType === 'documentSymbols'
-                ? `List document symbols in ${uri}`
-                : `Resolve ${rawType} for ${symbolName} near line ${lineHint}`,
+            researchGoal: `Resolve ${rawType} for ${symbolName} near line ${lineHint}`,
             reasoning: 'CLI lsp command',
           },
         ],

@@ -13,7 +13,7 @@
 - [Key References](#key-references)
 
 **Packages**
-- [`octocode-mcp`](#package-octocode-mcp) — MCP server (12 tools)
+- [`octocode-mcp`](#package-octocode-mcp) — MCP server (13 tools)
 - [`octocode-cli`](#package-octocode-cli) — CLI installer + tool runner
 - [`octocode-shared`](#package-octocode-shared) — Credentials, sessions, platform
 - [`octocode-vscode`](#package-octocode-vscode) — VS Code extension
@@ -30,8 +30,9 @@ All links in documentation files (`docs/`, package READMEs) **MUST** use absolut
 ```
 ❌ WRONG: Config -> ./CONFIGURATION_REFERENCE.md
 ❌ WRONG: Auth -> ../docs/AUTHENTICATION_SETUP.md
-✅ RIGHT: [Config](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md)
-✅ RIGHT: [Auth](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md)
+✅ RIGHT: [Config](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md)
+✅ RIGHT: [Auth](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/AUTHENTICATION.md)
+✅ RIGHT: [CLI](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/REFERENCE.md)
 ```
 
 ## Core Methodology
@@ -44,7 +45,7 @@ All links in documentation files (`docs/`, package READMEs) **MUST** use absolut
 6. **Efficiency**: Use Linux commands (`mv`, `cp`, `sed`) for file operations
 
 > **File Operations**: Use Linux commands for file changes and prefer batching changes.
-> For command examples and workflows, see: [Linux & File Operations](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/DEVELOPMENT_GUIDE.md#linux--file-operations)
+> For command examples and workflows, see: [Linux & File Operations](https://github.com/bgauryy/octocode-mcp/blob/main/docs/DEVELOPMENT_GUIDE.md#linux--file-operations)
 
 ## Repository Structure
 
@@ -72,38 +73,38 @@ octocode-mcp/
 
 ## Quick Commands
 
-Canonical command list lives in the [Development Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/DEVELOPMENT_GUIDE.md) (Commands & Workflow section).
+Canonical command list lives in the [Development Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/DEVELOPMENT_GUIDE.md) (Commands & Workflow section).
 
 ## Key References
 
 ### Core
 - **Docs Index**: [docs/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md)
-- **Configuration Docs**: [docs/configuration/](https://github.com/bgauryy/octocode-mcp/tree/main/docs/configuration) — install, auth providers, MCP clients, env/config, troubleshooting
-- **Developer Docs**: [docs/dev/](https://github.com/bgauryy/octocode-mcp/tree/main/docs/dev) — tool/API references, workflows, architecture, contributing, skills
-- **Specs**: [docs/specs/](https://github.com/bgauryy/octocode-mcp/tree/main/docs/specs) — design specs and RFCs
-- **Development Guide**: [docs/dev/DEVELOPMENT_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/DEVELOPMENT_GUIDE.md)
-- **Release Guide**: [docs/dev/RELEASE_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/RELEASE_GUIDE.md)
-- **Configuration**: [docs/configuration/CONFIGURATION_REFERENCE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md)
+- **Development Guide**: [docs/DEVELOPMENT_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/DEVELOPMENT_GUIDE.md)
+- **Release Guide**: [release/RELEASE_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/release/RELEASE_GUIDE.md)
 
 ### Octocode MCP
-- **GitHub Tools**: [docs/dev/reference/GITHUB_TOOLS_REFERENCE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_TOOLS_REFERENCE.md)
-- **Local + LSP Tools**: [docs/dev/reference/LOCAL_TOOLS_REFERENCE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LOCAL_TOOLS_REFERENCE.md)
-- **Clone & Local Workflow**: [docs/dev/workflows/CLONE_AND_LOCAL_TOOLS_WORKFLOW.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/workflows/CLONE_AND_LOCAL_TOOLS_WORKFLOW.md)
-- **Authentication**: [docs/configuration/providers/AUTHENTICATION_SETUP.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md)
-- **Using with Pi**: [docs/configuration/clients/PI_SETUP_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/clients/PI_SETUP_GUIDE.md)
+- **MCP Docs**: [docs/mcp/](https://github.com/bgauryy/octocode-mcp/tree/main/docs/mcp)
+- **Configuration**: [docs/mcp/CONFIGURATION.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CONFIGURATION.md)
+- **Authentication**: [docs/mcp/AUTHENTICATION.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/AUTHENTICATION.md)
+- **GitHub Tools**: [docs/mcp/tools/GITHUB_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
+- **Local Tools**: [docs/mcp/tools/LOCAL_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- **Binary Tools**: [docs/mcp/tools/BINARY_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/BINARY_TOOLS.md)
+- **LSP Tools**: [docs/mcp/tools/LSP_TOOLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+- **Tool Behavior**: [docs/mcp/tools/TOOL_BEHAVIOR.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/tools/TOOL_BEHAVIOR.md)
+- **Clone & Local Workflow**: [docs/mcp/CLONE_WORKFLOW.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CLONE_WORKFLOW.md)
+- **Credentials**: [docs/mcp/CREDENTIALS.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CREDENTIALS.md)
+- **Session Persistence**: [docs/mcp/SESSION.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/SESSION.md)
+- **Using with Pi**: [docs/PI_SETUP_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/PI_SETUP_GUIDE.md)
 
 ### Octocode CLI
-- **CLI Reference**: [docs/dev/reference/CLI_REFERENCE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/CLI_REFERENCE.md)
-- **Skills Guide**: [docs/dev/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/SKILLS_GUIDE.md)
-- **CLI vs MCP Benchmark**: [docs/dev/workflows/BENCHMARK.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/workflows/BENCHMARK.md)
-
-### Octocode Shared
-- **Credentials**: [docs/dev/architecture/CREDENTIALS_ARCHITECTURE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/CREDENTIALS_ARCHITECTURE.md)
-- **Session Persistence**: [docs/dev/architecture/SESSION_PERSISTENCE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/SESSION_PERSISTENCE.md)
+- **CLI Docs**: [docs/cli/](https://github.com/bgauryy/octocode-mcp/tree/main/docs/cli)
+- **CLI Reference**: [docs/cli/REFERENCE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/REFERENCE.md)
+- **CLI vs MCP Benchmark**: [docs/cli/BENCHMARK.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/cli/BENCHMARK.md)
+- **Skills Guide**: [docs/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/SKILLS_GUIDE.md)
 
 ### Skills
 - **All Skills**: [skills/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/skills/README.md)
-- **Skills Guide**: [docs/dev/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/SKILLS_GUIDE.md)
+- **Skills Guide**: [docs/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/SKILLS_GUIDE.md)
 
 ---
 
@@ -135,7 +136,7 @@ src/
 ├── index.ts, serverConfig.ts, session.ts, responses.ts, errorCodes.ts, types.ts, public.ts
 ├── hints/        # Dynamic + static hint generation
 ├── scheme/       # Shared schema utilities (baseSchema.ts)
-├── tools/        # 12 tool modules + toolMetadata/, each: execution.ts, scheme.ts, types.ts, register.ts, index.ts
+├── tools/        # 13 tool modules + toolMetadata/, each: execution.ts, scheme.ts, types.ts, register.ts, index.ts
 │                 # toolsManager.ts, toolRegistry.ts, toolConfig.ts, toolMetadata.ts, toolNames.ts
 ├── github/       # Octokit client, code/repo/PR/file search, query builders, errors
 ├── providers/    # Provider abstraction (github) via factory
@@ -164,10 +165,11 @@ tests/  ←  index.*, serverConfig.*, session.*, errorCodes,
 | `ghSearchRepos` | search | ❌ | Search repositories |
 | `ghSearchPRs` | history | ❌ | Search PRs and view diffs |
 | `npmSearch` | search | ❌ | NPM package + repo URL lookup |
-| `localSearchCode` | search | ✅ | ripgrep search |
+| `localSearchCode` | search | ✅ | ripgrep search + AST/structural search (`mode:"structural"`, ast-grep) |
 | `localViewStructure` | content | ✅ | Browse local directories |
 | `localFindFiles` | search | ✅ | Find files by metadata |
 | `localGetFileContent` | content | ✅ | Read local file content |
+| `localBinaryInspect` | content | ✅ | Inspect archives, compressed streams, and native binaries (identify/list/extract/decompress/strings) |
 | `lspGetSemantics` | LSP | ✅ | Unified semantic navigation: definition, references, callers, callees, callHierarchy, hover, documentSymbols, typeDefinition, implementation (8 types via `type` param) |
 
 The LSP tool is standalone (no IDE required); TS/JS bundled, 30+ other langs via installed servers; cross-platform.
@@ -249,7 +251,7 @@ Run commands from `packages/octocode-cli/`.
 ### Using the CLI
 
 ```
-octocode-cli --help                          # all commands + all 12 tools
+octocode-cli --help                          # all commands + all 13 tools
 octocode-cli --tool <name> --help            # input/output schema for one tool
 octocode-cli --tools-context                 # full MCP instructions + all schemas (~2200 lines)
 octocode-cli --tool <name> --queries '<json>' [--json]
@@ -381,7 +383,7 @@ import { ... } from 'octocode-shared/platform';
 import { ... } from 'octocode-shared/session';
 ```
 
-Shared package behavior is documented in [Credentials Architecture](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/CREDENTIALS_ARCHITECTURE.md) and [Session Persistence](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/SESSION_PERSISTENCE.md).
+Shared package behavior is documented in [Credentials Architecture](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/CREDENTIALS.md) and [Session Persistence](https://github.com/bgauryy/octocode-mcp/blob/main/docs/mcp/SESSION.md).
 
 ### Credential storage
 

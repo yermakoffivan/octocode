@@ -1,6 +1,6 @@
 {
-  "name": "octocode-cli",
-  "version": "16.3.0",
+  "name": "octocode",
+  "version": "1.0.0",
   "description": "Code research CLI for Octocode tools, local workspaces, GitHub repositories, LSP, and MCP setup",
   "keywords": [
     "ai-coding",
@@ -27,9 +27,7 @@
   "bugs": "https://github.com/bgauryy/octocode-mcp/issues",
   "license": "MIT",
   "type": "module",
-  "bin": {
-    "octocode": "./out/octocode-cli.js"
-  },
+  "bin": "./out/octocode-cli.js",
   "files": [
     "out",
     "skills",
@@ -47,7 +45,8 @@
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "postpack": "rm -rf ./skills",
-    "prepack": "node scripts/prepack.mjs",
+    "prepack": "node scripts/check-no-workspace-protocol.mjs && node scripts/prepack.mjs",
+    "prepublishOnly": "node scripts/check-no-workspace-protocol.mjs",
     "start": "node ./out/octocode-cli.js",
     "test": "vitest run --coverage",
     "test:quiet": "vitest run --reporter=dot --silent",
@@ -65,7 +64,7 @@
     "@octokit/auth-oauth-device": "^8.0.3",
     "@octokit/oauth-methods": "^6.0.2",
     "@octokit/request": "^10.0.7",
-    "octocode-shared": "workspace:^",
+    "octocode-shared": "^16.2.0",
     "open": "^11.0.0"
   },
   "devDependencies": {

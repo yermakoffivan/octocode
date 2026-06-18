@@ -84,6 +84,12 @@ const OPTIONS_WITH_VALUES = new Set([
   'match-string',
   'start-line',
   'end-line',
+  'pattern',
+  'rule',
+  'max-matches',
+  'extract',
+  'min-length',
+  'max-entries',
 ]);
 
 const BOOLEAN_OPTIONS = new Set([
@@ -92,6 +98,7 @@ const BOOLEAN_OPTIONS = new Set([
   'force',
   'source',
   'json',
+  'concise',
   'status',
   'stats',
   'context',
@@ -126,7 +133,9 @@ const BOOLEAN_OPTIONS = new Set([
   'hidden',
   'no-ignore',
   'files-only',
+  'dirs-only',
   'files-without-match',
+  'reverse',
   'multiline',
   'multiline-dotall',
   'sort-reverse',
@@ -136,10 +145,14 @@ const BOOLEAN_OPTIONS = new Set([
   'match-case-sensitive',
   'full-content',
   'force-refresh',
+  'strings',
+  'decompress',
+  'identify',
+  'offsets',
 ]);
 
 function shouldConsumeNextValue(args: ParsedArgs, key: string): boolean {
-  if (key === 'source' && args.command === 'files') {
+  if (key === 'source' && args.command === 'find') {
     return true;
   }
 

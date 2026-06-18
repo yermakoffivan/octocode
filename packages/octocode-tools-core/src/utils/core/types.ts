@@ -3,6 +3,8 @@ export interface ExecResult {
   stdout: string;
   stderr: string;
   success: boolean;
+  /** True when output hit maxOutputSize and stdout is the partial prefix. */
+  truncated?: boolean;
 }
 
 export interface ExecOptions {
@@ -11,6 +13,12 @@ export interface ExecOptions {
   env?: Record<string, string>;
   maxOutputSize?: number;
   toolName?: string;
+  /**
+   * When true, an output-size overflow returns the partial stdout flagged
+   * `truncated` instead of throwing. For commands (e.g. `strings` on a huge
+   * binary) where a bounded prefix is still useful.
+   */
+  tolerateOutputLimit?: boolean;
 }
 
 export interface PaginationInfo {

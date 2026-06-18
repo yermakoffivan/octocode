@@ -41,6 +41,8 @@ export interface StringsResult {
   success: boolean;
   strings?: string[];
   totalFound?: number;
+  /** True when the binary was larger than the output cap and only its prefix was scanned. */
+  truncated?: boolean;
   error?: string;
 }
 
@@ -55,7 +57,13 @@ export async function extractStrings(
   if (includeOffsets) args.push('-t', 'x');
   args.push('-n', String(minLength), path);
 
-  const result = await safeExec('strings', args);
+  // Huge binaries (e.g. a 250MB Electron framework) blow past the default 10MB
+  // output cap. Raise it to 32MB so most binaries scan fully, and tolerate an
+  // overflow beyond that: keep the prefix and flag truncation, never hard-fail.
+  const result = await safeExec('strings', args, {
+    maxOutputSize: 32 * 1024 * 1024,
+    tolerateOutputLimit: true,
+  });
 
   if (!result.success) {
     return {
@@ -69,10 +77,22 @@ export async function extractStrings(
     .map(l => l.trim())
     .filter(Boolean);
 
-  if (all.length === 0) return { success: true, strings: [], totalFound: 0 };
+  if (all.length === 0) {
+    return {
+      success: true,
+      strings: [],
+      totalFound: 0,
+      truncated: result.truncated,
+    };
+  }
 
   // Sort by length desc to surface longest (most meaningful) strings first
   const sorted = [...all].sort((a, b) => b.length - a.length);
 
-  return { success: true, strings: sorted, totalFound: all.length };
+  return {
+    success: true,
+    strings: sorted,
+    totalFound: all.length,
+    truncated: result.truncated,
+  };
 }

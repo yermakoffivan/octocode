@@ -246,9 +246,9 @@ describe('CLI Parser', () => {
       });
     });
 
-    it('should parse files command value and boolean options', () => {
+    it('should parse find command value and boolean options', () => {
       const result = parseArgs([
-        'files',
+        'find',
         'auth',
         '.',
         '--source',
@@ -287,7 +287,7 @@ describe('CLI Parser', () => {
         '20',
       ]);
 
-      expect(result.command).toBe('files');
+      expect(result.command).toBe('find');
       expect(result.args).toEqual(['auth', '.']);
       expect(result.options).toEqual({
         source: 'local',
@@ -311,10 +311,10 @@ describe('CLI Parser', () => {
       });
     });
 
-    it('keeps token --source boolean while files --source consumes a value', () => {
+    it('keeps token --source boolean while find --source consumes a value', () => {
       expect(parseArgs(['token', '--source']).options.source).toBe(true);
       expect(
-        parseArgs(['files', 'x', '.', '--source', 'github']).options.source
+        parseArgs(['find', 'x', '.', '--source', 'github']).options.source
       ).toBe('github');
     });
 

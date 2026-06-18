@@ -191,3 +191,31 @@ export async function extractArchiveEntry(
 ): Promise<ArchiveChainResult> {
   return runChain(extractChain(path, entry));
 }
+
+function unpackChain(path: string, destDir: string): ChainAttempt[] {
+  // Each backend extracts ALL entries into destDir. tar/bsdtar/unzip strip
+  // leading "/" and reject "../" by default (no -P), so zip-slip is contained.
+  const tar = { command: 'tar', args: ['-xf', path, '-C', destDir] };
+  const unzip = { command: 'unzip', args: ['-o', '-q', path, '-d', destDir] };
+  const bsdtar = { command: 'bsdtar', args: ['-xf', path, '-C', destDir] };
+  const sevenzArgs = ['x', `-o${destDir}`, '-y', '-bd', '--', path];
+  const sevenz = { command: '7z', args: sevenzArgs };
+  const sevenzz = { command: '7zz', args: sevenzArgs };
+  const aa = { command: 'aa', args: ['extract', '-i', path, '-d', destDir] };
+
+  if (is(APPLE_ARCHIVE_EXTS, path)) return [aa];
+  if (is(SEVENZIP_NATIVE_EXTS, path))
+    return [sevenz, sevenzz, bsdtar, tar, unzip];
+  if (is(BSDTAR_NATIVE_EXTS, path))
+    return [bsdtar, sevenz, sevenzz, tar, unzip];
+  if (is(TAR_EXTS, path)) return [tar, bsdtar, sevenz, sevenzz, unzip];
+  return [unzip, tar, bsdtar, sevenz, sevenzz];
+}
+
+/** Extracts the whole archive into destDir (which must already exist). */
+export async function extractArchiveToDir(
+  path: string,
+  destDir: string
+): Promise<ArchiveChainResult> {
+  return runChain(unpackChain(path, destDir));
+}

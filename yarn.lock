@@ -2145,12 +2145,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-core@npm:^16.2.0":
-  version: 16.2.0
-  resolution: "@octocodeai/octocode-core@npm:16.2.0"
+"@octocodeai/octocode-core@npm:^16.2.1":
+  version: 16.2.1
+  resolution: "@octocodeai/octocode-core@npm:16.2.1"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/7e241207f00a0e8193b1eb1020a0b72bfef7ea17a1a141d40be91131b7760bbf8514e58c2f226f950283ccb46c5297e0e65c4de9b7efa7ec02f7c412d5a037f3
+  checksum: 10c0/3329aa57a996258c9602a00e2e3f6ff9b0eba92e6fc4f30cf0a5a930a6429db320769f3ddd78684d485705d83a48a601df4e73ce83ac92ec4eb6dbe20032ec43
   languageName: node
   linkType: hard
 
@@ -2160,7 +2160,7 @@ __metadata:
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@octocodeai/octocode-context-utils": "npm:^16.3.0"
-    "@octocodeai/octocode-core": "npm:^16.2.0"
+    "@octocodeai/octocode-core": "npm:^16.2.1"
     "@octokit/core": "npm:^7.0.6"
     "@octokit/openapi-types": "npm:^27.0.0"
     "@octokit/plugin-rest-endpoint-methods": "npm:^17.0.0"
@@ -2173,7 +2173,7 @@ __metadata:
     node-cache: "npm:^5.1.2"
     octocode-lsp: "npm:^16.3.0"
     octocode-security: "npm:^16.3.0"
-    octocode-shared: "workspace:^"
+    octocode-shared: "npm:^16.2.0"
     octokit: "npm:^5.0.5"
     typescript: "npm:^5.9.3"
     vitest: "npm:^4.0.16"
@@ -7928,28 +7928,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"octocode-cli@workspace:packages/octocode-cli":
-  version: 0.0.0-use.local
-  resolution: "octocode-cli@workspace:packages/octocode-cli"
-  dependencies:
-    "@inquirer/prompts": "npm:^8.1.0"
-    "@octocodeai/octocode-tools-core": "npm:^16.3.0"
-    "@octokit/auth-oauth-device": "npm:^8.0.3"
-    "@octokit/oauth-methods": "npm:^6.0.2"
-    "@octokit/request": "npm:^10.0.7"
-    "@types/node": "npm:^25.9.3"
-    "@vitest/coverage-v8": "npm:^4.0.16"
-    esbuild: "npm:^0.28.1"
-    eslint: "npm:^9.18.0"
-    octocode-shared: "workspace:^"
-    open: "npm:^11.0.0"
-    tsx: "npm:^4.21.0"
-    vitest: "npm:^4.0.16"
-  bin:
-    octocode: ./out/octocode-cli.js
-  languageName: unknown
-  linkType: soft
-
 "octocode-lsp-darwin-arm64@npm:16.3.0, octocode-lsp-darwin-arm64@workspace:packages/octocode-lsp/npm/darwin-arm64":
   version: 0.0.0-use.local
   resolution: "octocode-lsp-darwin-arm64@workspace:packages/octocode-lsp/npm/darwin-arm64"
@@ -8172,7 +8150,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"octocode-shared@workspace:^, octocode-shared@workspace:packages/octocode-shared":
+"octocode-shared@npm:^16.2.0, octocode-shared@workspace:^, octocode-shared@workspace:packages/octocode-shared":
   version: 0.0.0-use.local
   resolution: "octocode-shared@workspace:packages/octocode-shared"
   dependencies:
@@ -8185,6 +8163,28 @@ __metadata:
     typescript: "npm:^5.9.3"
     vitest: "npm:^4.0.16"
     zod: "npm:^4.3.6"
+  languageName: unknown
+  linkType: soft
+
+"octocode@workspace:packages/octocode-cli":
+  version: 0.0.0-use.local
+  resolution: "octocode@workspace:packages/octocode-cli"
+  dependencies:
+    "@inquirer/prompts": "npm:^8.1.0"
+    "@octocodeai/octocode-tools-core": "npm:^16.3.0"
+    "@octokit/auth-oauth-device": "npm:^8.0.3"
+    "@octokit/oauth-methods": "npm:^6.0.2"
+    "@octokit/request": "npm:^10.0.7"
+    "@types/node": "npm:^25.9.3"
+    "@vitest/coverage-v8": "npm:^4.0.16"
+    esbuild: "npm:^0.28.1"
+    eslint: "npm:^9.18.0"
+    octocode-shared: "npm:^16.2.0"
+    open: "npm:^11.0.0"
+    tsx: "npm:^4.21.0"
+    vitest: "npm:^4.0.16"
+  bin:
+    octocode: ./out/octocode-cli.js
   languageName: unknown
   linkType: soft
 

@@ -180,6 +180,19 @@ function printUsageError(message: string, jsonOutput: boolean): void {
   );
 }
 
+/**
+ * localFindFiles relativizes hits against the search root's PARENT, so a search
+ * in `.../commands` returns `commands/foo.ts`. Resolving that against the search
+ * root itself would double the segment (`commands/commands/foo.ts` → ENOENT), so
+ * resolve against the parent first and fall back to the root, guarded by exists.
+ */
+function resolveDiscoveredPath(dirPath: string, filePath: string): string {
+  if (path.isAbsolute(filePath)) return filePath;
+  const fromParent = path.resolve(path.dirname(dirPath), filePath);
+  if (existsSync(fromParent)) return fromParent;
+  return path.resolve(dirPath, filePath);
+}
+
 async function discoverSourceFiles(
   executeDirectTool: DirectToolExecutor,
   dirPath: string,
@@ -209,9 +222,7 @@ async function discoverSourceFiles(
   }
 
   return filePathsFromFindResult(result.structuredContent)
-    .map(filePath =>
-      path.isAbsolute(filePath) ? filePath : path.resolve(dirPath, filePath)
-    )
+    .map(filePath => resolveDiscoveredPath(dirPath, filePath))
     .slice(0, limit);
 }
 

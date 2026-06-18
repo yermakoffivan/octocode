@@ -40,10 +40,11 @@ const OPTION_NAMES = new Set([
   'limit',
   'page',
   'verbose',
+  'concise',
 ]);
 
 type RepoSearchQuery = {
-  keywordsToSearch?: string[];
+  keywords?: string[];
   topicsToSearch?: string[];
   language?: string;
   owner?: string;
@@ -61,6 +62,7 @@ type RepoSearchQuery = {
   license?: string;
   goodFirstIssues?: string;
   verbose?: boolean;
+  concise?: boolean;
   mainResearchGoal: string;
   researchGoal: string;
   reasoning: string;
@@ -109,7 +111,7 @@ function reportUsageError(message: string, jsonOutput: boolean): void {
 
 function hasResearchFilter(query: RepoSearchQuery): boolean {
   return Boolean(
-    query.keywordsToSearch?.length ||
+    query.keywords?.length ||
     query.topicsToSearch?.length ||
     query.language ||
     query.owner ||
@@ -179,7 +181,7 @@ function buildQuery(
   }
 
   const query: RepoSearchQuery = {
-    ...(keywords.length > 0 && { keywordsToSearch: keywords }),
+    ...(keywords.length > 0 && { keywords: keywords }),
     ...(topics && { topicsToSearch: topics }),
     ...(getString(args.options, 'language') && {
       language: getString(args.options, 'language'),
@@ -215,12 +217,13 @@ function buildQuery(
       goodFirstIssues: getString(args.options, 'good-first-issues'),
     }),
     ...(getBool(args.options, 'verbose') && { verbose: true }),
+    ...(getBool(args.options, 'concise') && { concise: true }),
     mainResearchGoal:
       keywords.length > 0
         ? `Search GitHub repositories for ${keywords.join(' ')}`
         : 'Search GitHub repositories',
     researchGoal:
-      'Discover relevant repositories to inspect with tree, search, get, or pr commands',
+      'Discover relevant repositories to inspect with ls, grep, cat, or pr commands',
     reasoning: 'CLI repo command',
   };
 
@@ -237,8 +240,13 @@ export const repoCommand: CLICommand = {
   name: 'repo',
   description: 'Search GitHub repositories with research-oriented filters',
   usage:
-    'repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--sort stars|forks|help-wanted-issues|updated|best-match] [--verbose] [--json]',
+    'repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--sort stars|forks|help-wanted-issues|updated|best-match] [--concise] [--verbose] [--json]',
   options: [
+    {
+      name: 'concise',
+      description:
+        'Flat "owner/repo" list — cheapest scan; re-run without it (or use ls) on the one you pick',
+    },
     { name: 'topic', hasValue: true, description: 'Comma-separated topics' },
     { name: 'language', hasValue: true, description: 'Language filter' },
     { name: 'owner', hasValue: true, description: 'Owner or organization' },
@@ -290,7 +298,7 @@ export const repoCommand: CLICommand = {
 
     if (!jsonOutput) {
       const label =
-        built.query.keywordsToSearch?.join(' ') ??
+        built.query.keywords?.join(' ') ??
         built.query.topicsToSearch?.join(',') ??
         built.query.owner ??
         'repositories';

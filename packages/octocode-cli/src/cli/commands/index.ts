@@ -18,16 +18,20 @@ const lightweightCommands: readonly CLICommand[] = [
 ];
 
 const commandLoaders: Record<string, CommandLoader> = {
-  // Smart commands temporarily unhooked — will be re-added in a future release.
-  // get: async () => (await import('./get.js')).getCommand,
-  // tree: async () => (await import('./tree.js')).treeCommand,
-  // files: async () => (await import('./files.js')).filesCommand,
-  // search: async () => (await import('./search.js')).searchCommand,
-  // pr: async () => (await import('./pr.js')).prCommand,
-  // repo: async () => (await import('./repo.js')).repoCommand,
-  // pkg: async () => (await import('./pkg.js')).pkgCommand,
-  // symbols: async () => (await import('./symbols.js')).symbolsCommand,
-  // lsp: async () => (await import('./lsp.js')).lspCommand,
+  // Smart "quick" commands — Unix-style shortcuts that route local-or-GitHub.
+  cat: async () => (await import('./cat.js')).catCommand,
+  ls: async () => (await import('./ls.js')).lsCommand,
+  find: async () => (await import('./find.js')).findFilesCommand,
+  grep: async () => (await import('./grep.js')).grepCommand,
+  ast: async () => (await import('./ast.js')).astCommand,
+  pr: async () => (await import('./pr.js')).prCommand,
+  repo: async () => (await import('./repo.js')).repoCommand,
+  pkg: async () => (await import('./pkg.js')).pkgCommand,
+  symbols: async () => (await import('./symbols.js')).symbolsCommand,
+  lsp: async () => (await import('./lsp.js')).lspCommand,
+  binary: async () => (await import('./binary.js')).binaryCommand,
+  unzip: async () => (await import('./unzip.js')).unzipCommand,
+  clone: async () => (await import('./clone.js')).cloneCommand,
   install: async () => (await import('./install.js')).installCommand,
   auth: async () => (await import('./auth.js')).authCommand,
   login: async () => (await import('./auth.js')).loginCommand,

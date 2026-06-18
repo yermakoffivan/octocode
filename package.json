@@ -12,10 +12,10 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "node ./scripts/workspace-health.mjs run build",
+    "build": "yarn prepublish && node ./scripts/workspace-health.mjs run build",
     "build:native:all": "yarn workspace octocode-security build:all && yarn workspace @octocodeai/octocode-context-utils build:all && yarn workspace octocode-lsp build:all",
     "platforms:check": "yarn workspace octocode-security platforms:check && yarn workspace @octocodeai/octocode-context-utils platforms:check && yarn workspace octocode-lsp platforms:check",
-    "build:publish": "yarn build:native:all && yarn platforms:check && yarn workspace octocode-mcp build:publish",
+    "build:publish": "yarn prepublish && yarn build:native:all && yarn platforms:check && yarn workspace octocode-mcp build:publish",
     "docs:verify": "node ./scripts/docs-verify.mjs",
     "health:check": "node ./scripts/workspace-health.mjs check",
     "health:report": "node ./scripts/workspace-health.mjs report",
@@ -32,7 +32,8 @@
     "test": "node ./scripts/workspace-health.mjs run test",
     "test:quiet": "yarn workspaces foreach -Apt run test:quiet",
     "typecheck": "node ./scripts/workspace-health.mjs run typecheck",
-    "verify": "node ./scripts/workspace-health.mjs verify"
+    "verify": "node ./scripts/workspace-health.mjs verify",
+    "prepublish": "cp README.md packages/octocode-mcp/README.md && cp README.md packages/octocode-cli/README.md"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

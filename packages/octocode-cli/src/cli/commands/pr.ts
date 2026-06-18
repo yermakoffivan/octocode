@@ -239,6 +239,29 @@ function renderList(sc: PRSearchResult, limit: number): string {
   return lines.join('\n');
 }
 
+/** concise:true returns pull_requests as flat "#number title" strings. */
+function renderConciseList(sc: PRSearchResult, limit: number): string {
+  const { prs, total, pagination } = extractPRs(sc);
+  if (prs.length === 0) return `  ${dim('No pull requests found.')}`;
+
+  const entries = prs as Array<string | PRItem>;
+  const lines = entries.slice(0, limit).map(pr => {
+    const text =
+      typeof pr === 'string' ? pr : `#${pr.number ?? '?'} ${pr.title ?? ''}`;
+    return `  ${text}`;
+  });
+
+  const shown = Math.min(entries.length, limit);
+  if (total > shown) lines.push(`\n  ${dim(`… ${total - shown} more`)}`);
+  if (pagination?.totalPages && pagination.totalPages > 1) {
+    const cur = pagination.currentPage ?? pagination.page ?? 1;
+    lines.push(
+      `\n  ${dim(`Page ${cur}/${pagination.totalPages} — use --page <n> to navigate`)}`
+    );
+  }
+  return lines.join('\n');
+}
+
 function renderDetail(sc: PRSearchResult): string {
   const { prs, pagination } = extractPRs(sc);
   const pr = prs[0];
@@ -412,6 +435,7 @@ interface ListOpts {
   draft?: boolean;
   created?: string;
   mergedAt?: string;
+  concise?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -421,9 +445,10 @@ async function fetchPRList(
   repo: string,
   opts: ListOpts
 ): Promise<PRSearchResult> {
-  const result = await executeDirectTool('ghSearchPRs', {
+  const result = await executeDirectTool('ghHistoryResearch', {
     queries: [
       {
+        type: 'prs',
         owner,
         repo,
         keywordsToSearch: opts.query ? [opts.query] : undefined,
@@ -434,15 +459,17 @@ async function fetchPRList(
         sort: opts.sort as
           | 'created'
           | 'updated'
-          | 'popularity'
-          | 'long-running'
+          | 'best-match'
+          | 'comments'
+          | 'reactions'
           | undefined,
         order: opts.order as 'asc' | 'desc' | undefined,
         draft: opts.draft,
         created: opts.created,
         'merged-at': opts.mergedAt,
+        concise: opts.concise || undefined,
         page: opts.page ?? 1,
-        itemsPerPage: opts.pageSize,
+        limit: opts.pageSize,
         mainResearchGoal: 'List pull requests',
         researchGoal: `List PRs for ${owner}/${repo}`,
         reasoning: 'CLI pr command list mode',
@@ -507,9 +534,10 @@ async function fetchPRDetail(
     content['reviews'] = true;
   }
 
-  const result = await executeDirectTool('ghSearchPRs', {
+  const result = await executeDirectTool('ghHistoryResearch', {
     queries: [
       {
+        type: 'prs',
         owner,
         repo,
         prNumber,
@@ -552,12 +580,17 @@ export const prCommand: CLICommand = {
   description:
     'Search and view pull requests — list with filters or deep-dive a single PR',
   usage:
-    'pr <owner/repo[#N] | PR-URL> [--pr <n>] [--state open|closed|merged] [--patches] [--comments] [--commits] [--deep] [--json]',
+    'pr <owner/repo[#N] | PR-URL> [--pr <n>] [--state open|closed|merged] [--concise] [--patches] [--comments] [--commits] [--deep] [--json]',
   options: [
     {
       name: 'pr',
       hasValue: true,
       description: 'PR number to view (alternative to owner/repo#N)',
+    },
+    {
+      name: 'concise',
+      description:
+        'List mode: flat "#number title" lines — leanest output for triage before deep-reading one PR',
     },
     {
       name: 'query',
@@ -588,7 +621,7 @@ export const prCommand: CLICommand = {
       name: 'sort',
       hasValue: true,
       description:
-        'Sort list results: created · updated · popularity · long-running (list mode)',
+        'Sort list results: created · updated · best-match · comments · reactions (list mode)',
     },
     {
       name: 'order',
@@ -767,6 +800,7 @@ export const prCommand: CLICommand = {
           draft: getBool(options, 'draft') || undefined,
           created: getString(options, 'created') || undefined,
           mergedAt: getString(options, 'merged-at') || undefined,
+          concise: getBool(options, 'concise') || undefined,
           page,
           pageSize,
         };
@@ -775,7 +809,13 @@ export const prCommand: CLICommand = {
           console.log(JSON.stringify(sc, null, 2));
           return;
         }
-        console.log('\n' + renderList(sc, limit) + '\n');
+        console.log(
+          '\n' +
+            (listOpts.concise
+              ? renderConciseList(sc, limit)
+              : renderList(sc, limit)) +
+            '\n'
+        );
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

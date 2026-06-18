@@ -57,6 +57,11 @@ function buildToolBlock(): string[] {
   return lines;
 }
 
+/** One aligned `name <args>  description` line for the QUICK COMMANDS block. */
+function quick(name: string, argHint: string, description: string): string {
+  return `    ${c('cyan', name.padEnd(8))} ${dim(argHint.padEnd(28))}  ${dim(description)}`;
+}
+
 export function showHelp(): void {
   const toolCount = DIRECT_TOOL_DEFINITIONS.length;
   const toolLines = buildToolBlock();
@@ -81,34 +86,69 @@ export function showHelp(): void {
   const lines = [
     '',
     ...authBanner,
-    `  ${c('magenta', bold('🔍🐙 Octocode'))}  ${dim('Agent-first code research CLI')}`,
+    `  ${c('magenta', bold('🔍🐙 Octocode'))}  ${dim('Code research CLI — for humans and agents')}`,
     '',
 
-    // ── Agent contract — first thing an agent sees ──────────────────────────
-    `  ${c('red', bold('<AGENT_INSTRUCTIONS>'))}`,
-    `    ${c('red', bold('Before EVERY tool call read its context + schema. Never guess or hallucinate fields.'))}`,
-    `      ${c('yellow', 'tools <name> [<n2> ...]')}  ${dim('# schema: required fields, types, example call')}`,
-    `      ${c('yellow', 'context')}                  ${dim('# protocol + system prompt + tool descriptions')}`,
-    `    ${dim('Plan research with the octocode-researcher skill:')}`,
-    `      ${c('cyan', 'https://github.com/bgauryy/octocode/blob/main/skills/octocode-researcher/SKILL.md')}`,
-    `  ${c('red', bold('</AGENT_INSTRUCTIONS>'))}`,
+    // ── Quick commands FIRST — the friendly, human-first surface ────────────
+    `  ${c('green', bold('QUICK COMMANDS'))}  ${dim('smart shortcuts — auto-route local path vs owner/repo. Add --json for raw output.')}`,
+    quick('ls', '<path|owner/repo>', 'directory structure'),
+    quick(
+      'cat',
+      '<path|owner/repo/path>',
+      'read + minify a file (--mode none|standard|symbols)'
+    ),
+    quick(
+      'grep',
+      '<keywords> <path|owner/repo>',
+      'text/regex search → file + line'
+    ),
+    quick(
+      'find',
+      '<query> [path|owner/repo]',
+      'find files by name/path/content'
+    ),
+    quick('ast', '<pattern> [path]', 'code-shape search (ast-grep, local)'),
+    quick('symbols', '<file|dir>', 'outline of a file/dir (local)'),
+    quick(
+      'lsp',
+      '<file> --type <type> --symbol <s> --line <n>',
+      'identity: defs, refs, callers, hover (local)'
+    ),
+    quick('repo', '<keywords...>', 'discover GitHub repositories'),
+    quick('pr', '<owner/repo[#N]|PR-URL>', 'list PRs or deep-read one PR'),
+    quick('pkg', '<package>', 'npm package + source repo'),
+    quick(
+      'binary',
+      '<file>',
+      'list, decompress, or strings (archives & binaries)'
+    ),
+    quick(
+      'unzip',
+      '<archive>',
+      'unpack archive → ~/.octocode/archives, then grep/ls/cat it'
+    ),
+    quick(
+      'clone',
+      '<owner/repo[/path][@branch]>',
+      'clone a repo or subtree → ~/.octocode/repos'
+    ),
     '',
 
-    // ── Smart-usage playbook (distilled from the system prompt) ─────────────
-    `  ${c('green', bold('PLAYBOOK'))}  ${dim('locate → map → search → read → prove — cheapest tool that proves/disproves, smallest slice, stop when evidence.answerReady')}`,
-    `    ${c('cyan', 'orient cheap')}    ${dim('concise:true (string list) · localSearchCode mode:discovery (paths) · localViewStructure maxDepth:1 then drill')}`,
-    `    ${c('cyan', 'minify by goal')}  ${dim('symbols=skeleton (orient unknown) · standard=read (default) · none=exact quote/diff')}`,
-    `    ${c('cyan', 'batch')}           ${dim('up to 5 sub-queries/call (N paths/PRs/pkgs in one); serialize only search→read→LSP')}`,
-    `    ${c('cyan', 'prove')}           ${dim('snippets are discovery, not proof — re-read exact text · search→lineHint→LSP · npmSearch→owner/repo')}`,
-    '',
-
-    // ── Live tool list ──────────────────────────────────────────────────────
-    `  ${bold(`TOOLS (${toolCount})`)}  ${dim('* = required   ? = optional   |  tools <name> → full schema + examples')}`,
+    // ── Raw execution — every tool, including ones without a quick command ──
+    `  ${bold(`TOOLS (${toolCount})`)}  ${dim('raw execution — schema-exact, all tools incl. clone, binary inspect, AST')}`,
+    `    ${c('yellow', 'tools'.padEnd(28))} ${dim('list all tools')}`,
+    `    ${c('yellow', 'tools <name> --scheme'.padEnd(28))} ${dim('read schema (never guess fields)')}`,
+    `    ${c('yellow', "tools <name> --queries '<json>'".padEnd(28))} ${dim('run a tool (1 object or array of ≤5)')}`,
+    `    ${c('yellow', 'context [--full]'.padEnd(28))} ${dim('agent protocol + system prompt + descriptions')}`,
     ...toolLines,
     '',
 
-    // Smart commands temporarily unhooked — will be re-added in a future release.
-    // octocode get / tree / files / search / pr / repo / pkg / symbols / lsp
+    // ── Playbook (distilled from the system prompt) ─────────────────────────
+    `  ${c('green', bold('PLAYBOOK'))}  ${dim('locate → map → search → read → prove — cheapest tool first, smallest slice, stop at evidence.answerReady')}`,
+    `    ${c('cyan', 'orient cheap')}    ${dim('concise:true (string list) · localSearchCode mode:discovery (paths) · ls then drill')}`,
+    `    ${c('cyan', 'minify by goal')}  ${dim('symbols=skeleton (orient unknown) · standard=read (default) · none=exact quote/diff')}`,
+    `    ${c('cyan', 'prove')}           ${dim('snippets are discovery, not proof — re-read exact text · search→lineHint→lsp · pkg→owner/repo')}`,
+    '',
 
     // ── Management (users) ─────────────────────────────────────────────────
     `  ${bold('MANAGEMENT')}`,

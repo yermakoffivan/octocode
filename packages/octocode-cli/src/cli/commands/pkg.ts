@@ -14,15 +14,24 @@ function parsePage(value: string): number | undefined {
   return Number.isInteger(page) && page > 0 ? page : undefined;
 }
 
+const MODE_VALUES = new Set(['lean', 'full']);
+
 export const pkgCommand: CLICommand = {
   name: 'pkg',
-  description: 'Research an npm package and its source repository',
-  usage: 'pkg <package> [--page <n>] [--json]',
+  description:
+    'Research an npm package (exact name → rich result + source repo) or a keyword query (→ lean candidate list)',
+  usage: 'pkg <package|keywords> [--mode lean|full] [--page <n>] [--json]',
   options: [
+    {
+      name: 'mode',
+      hasValue: true,
+      description:
+        'lean (default, token-efficient summary) or full (all metadata fields)',
+    },
     {
       name: 'page',
       hasValue: true,
-      description: 'Result page for package keyword searches',
+      description: 'Result page for keyword-query searches',
     },
     {
       name: 'json',
@@ -33,9 +42,18 @@ export const pkgCommand: CLICommand = {
     const packageName = args.args[0] ?? '';
     const jsonOutput = getBool(args.options, 'json');
     const page = parsePage(getString(args.options, 'page'));
+    const mode = getString(args.options, 'mode') || undefined;
+
+    if (mode && !MODE_VALUES.has(mode)) {
+      const error = 'Invalid --mode. Use lean or full.';
+      if (jsonOutput) console.log(JSON.stringify({ success: false, error }));
+      else console.error(`\n  ${c('red', 'x')} ${error}\n`);
+      process.exitCode = EXIT.USAGE;
+      return;
+    }
 
     if (!packageName) {
-      const error = 'Provide a package name.';
+      const error = 'Provide a package name or keyword query.';
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error }));
       } else {
@@ -43,7 +61,8 @@ export const pkgCommand: CLICommand = {
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    pkg zod\n` +
-            `    pkg @modelcontextprotocol/sdk\n`
+            `    pkg @modelcontextprotocol/sdk\n` +
+            `    pkg "react state management" --page 1\n`
         );
       }
       process.exitCode = EXIT.USAGE;
@@ -62,6 +81,7 @@ export const pkgCommand: CLICommand = {
           {
             packageName,
             page,
+            mode,
             mainResearchGoal: `Research npm package ${packageName}`,
             researchGoal:
               'Resolve package metadata, install guidance, and source repository',

@@ -1,4 +1,7 @@
 import { promises as fs } from 'fs';
+import { homedir } from 'node:os';
+import { join, basename } from 'node:path';
+import { createHash } from 'node:crypto';
 import { securityRegistry } from 'octocode-security/registry';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
@@ -8,7 +11,11 @@ import {
 import { applyPagination } from '../../utils/pagination/core.js';
 import { getOutputCharLimit } from '../../utils/pagination/charLimit.js';
 import type { BinaryInspectQuery } from './scheme.js';
-import { listArchiveEntries, extractArchiveEntry } from './archiveOps.js';
+import {
+  listArchiveEntries,
+  extractArchiveEntry,
+  extractArchiveToDir,
+} from './archiveOps.js';
 import { decompressFile } from './decompressOps.js';
 import { identifyFile, extractStrings } from './binaryOps.js';
 
@@ -50,7 +57,6 @@ function registerBinaryCommands(): void {
 
 const DEFAULT_MAX_ENTRIES = 1000;
 const DEFAULT_MIN_STRING_LENGTH = 8;
-const DEFAULT_STRING_LIMIT = 200;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -298,16 +304,106 @@ async function handleStrings(path: string, query: BinaryInspectQuery) {
     );
   }
 
-  const all = result.strings ?? [];
-  const limited = all.slice(0, DEFAULT_STRING_LIMIT);
+  // Longest-first (most meaningful) strings joined into one blob, then
+  // char-paginated exactly like decompress/extract so agents can window the
+  // whole output losslessly via charOffset/charLength instead of a hard cap.
+  const content = (result.strings ?? []).join('\n');
+  const defaultLimit = getOutputCharLimit();
+  const paginated = paginateContent(
+    content,
+    query.charOffset,
+    query.charLength,
+    defaultLimit
+  );
+
+  const hints: string[] = [];
+  if (paginated.nextCharOffset !== undefined) {
+    hints.push(`charOffset=${paginated.nextCharOffset}`);
+  }
+  if (result.truncated) {
+    hints.push(
+      'Binary larger than the 32MB scan cap — strings cover only its leading section. Raise --min-length to cut noise, or pass --match to target a term.'
+    );
+  }
 
   return {
     status: 'success' as const,
     mode: 'strings' as const,
     path,
-    strings: limited,
+    content: paginated.content,
+    contentLength: content.length,
     totalFound: result.totalFound ?? 0,
-    returned: limited.length,
+    isPartial: paginated.isPartial,
+    ...(result.truncated ? { scanTruncated: true } : {}),
+    ...(hints.length ? { hints } : {}),
+  };
+}
+
+async function handleUnpack(path: string, query: BinaryInspectQuery) {
+  // Cache key: path + size + mtime, so a changed archive re-extracts.
+  let stat;
+  try {
+    stat = await fs.stat(path);
+  } catch {
+    return createErrorResult(`File not found: ${path}`, query);
+  }
+  const hash = createHash('sha1')
+    .update(`${path}:${stat.size}:${stat.mtimeMs}`)
+    .digest('hex')
+    .slice(0, 12);
+  const destDir = join(
+    homedir(),
+    '.octocode',
+    'archives',
+    `${basename(path)}__${hash}`
+  );
+
+  // Cache hit when the dir already holds extracted entries.
+  let cached = false;
+  try {
+    cached = (await fs.readdir(destDir)).length > 0;
+  } catch {
+    /* not yet extracted */
+  }
+
+  if (!cached) {
+    await fs.mkdir(destDir, { recursive: true });
+    const result = await extractArchiveToDir(path, destDir);
+    if (!result.success) {
+      return createErrorResult(
+        `Unpack failed: ${result.stderr || 'no backend could extract this archive'}`,
+        query,
+        {
+          customHints: [
+            'unpack handles archives (.zip/.jar/.tar.*/.7z/.deb/.dmg…). For a single-stream file use mode="decompress"; for a native binary use mode="strings".',
+            ...(result.missingCommands?.length
+              ? [
+                  `Missing backends: ${result.missingCommands.join(', ')} — install one (e.g. unzip, bsdtar, 7z).`,
+                ]
+              : []),
+          ],
+        }
+      );
+    }
+  }
+
+  let topLevelEntries = 0;
+  try {
+    topLevelEntries = (await fs.readdir(destDir)).length;
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    status: 'success' as const,
+    mode: 'unpack' as const,
+    path,
+    localPath: destDir,
+    cached,
+    topLevelEntries,
+    hints: [
+      `Unpacked to ${destDir} — now run localViewStructure(path="${destDir}"), localSearchCode, or localGetFileContent on it.`,
+    ],
   };
 }
 
@@ -344,6 +440,8 @@ export async function inspectBinary(query: BinaryInspectQuery) {
       return handleDecompress(filePath, query);
     case 'strings':
       return handleStrings(filePath, query);
+    case 'unpack':
+      return handleUnpack(filePath, query);
     default:
       return createErrorResult(
         `Unknown mode: ${String((query as BinaryInspectQuery).mode)}`,

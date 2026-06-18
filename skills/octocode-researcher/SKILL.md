@@ -180,7 +180,8 @@ strings    → printable runs from a binary  .so/.dylib/.node/.exe; minLength + 
 | You want | Use |
 |---|---|
 | Research an npm package's source (smart entry) | `npmSearch` → `repository` + `repositoryDirectory` |
-| Find repos by name / topic / popularity / owner | `ghSearchRepos` (`verbose:false` first) |
+| Find repos by name / topic / popularity / owner | `ghSearchRepos` (`concise:true` → flat `"owner/repo"` list) |
+| Get flat file paths across a repo (no snippets) | `ghSearchCode` `concise:true` → `"owner/repo:path"` list |
 | List every repo an org owns | `ghSearchRepos` with `owner` and no `keywords` |
 | Map an unknown repo's layout | `ghViewRepoStructure` (`maxDepth:1`, then drill) |
 | Confirm a file exists before reading | `ghSearchCode` `match:"path"` (cheapest — no snippets) |
@@ -229,7 +230,7 @@ lspGetSemantics(uri, "createStore", lineHint)             ← prove (after ghClo
 
 **C — concept → repo → layout → code** (no package name):
 ```
-ghSearchRepos(keywords, language, stars:">5000", verbose:false)   ← lean discovery
+ghSearchRepos(keywords, language, stars:">5000", concise:true)    ← flat "owner/repo" list (leanest)
 ghViewRepoStructure(owner, repo, maxDepth:1) → drill into src      ← map
 ghSearchCode(owner, repo, match:"path", keywords)                  ← confirm a file exists (cheapest)
 ghGetFileContent(path, minify:"symbols")                           ← orient, then read
@@ -252,7 +253,7 @@ The cheapest, most accurate way to start *package* research.
 
 ## B5. `ghSearchRepos` — discover repos
 
-- **Lean first.** `verbose:false` (default) returns one pipe-string per repo: `owner/repo | stars | forks | issues | lang | pushed | #topics | description`. `verbose:true` only to filter/sort programmatically.
+- **Lean first.** `concise:true` returns a flat `"owner/repo"` string list — minimal tokens, ideal for scanning candidates. Default (`concise:false`) returns structured objects with stars, forks, language, license, topics, dates — use when filtering or comparing programmatically.
 - **Owner semantics:** `owner` alone enumerates an org's repos; `owner`+`keywords` scopes to them; `keywords` alone searches across GitHub.
 - **AND vs OR:** `topicsToSearch` is strict AND and *sparse* — pair with `keywords`/`language`. Both `topicsToSearch` **and** `keywords` fires two searches merged with OR; for strict AND use one keyword set.
 - **GitHub range syntax:** `stars:">5000"`, `forks:"50..500"`, `created:">2023-01-01"`, `updated:">2024-01-01"` (`updated` maps to `pushed:`). `sort`: `stars`/`forks`/`updated`/`help-wanted-issues`/`best-match`.
@@ -265,9 +266,10 @@ Map before searching. Start shallow (`maxDepth:1`), then drill (`path:"src"`, `m
 
 > ⚠️ **GitHub is deprecating this API (planned removal ~Sep 2026).** For known paths prefer `ghGetFileContent` / `ghViewRepoStructure`. Treat it as a hint generator, **never as proof.**
 
-- **`match:"path"` is the cheapest call in the suite** — searches paths only, no snippet payload. Use it to confirm a file exists.
+- **`concise:true` is the cheapest call in the suite** — returns flat `"owner/repo:path"` strings with no snippet payload. Use it to enumerate file locations before reading.
+- **`match:"path"`** searches paths only, no snippet payload. Use it to confirm a file exists or filter by path pattern without content search.
 - **`match:"file"`** (default) searches contents → `matches[].value` (snippet) + `matchIndices` (char offsets, **not** lines). Matches comments/strings/docs too — a hit in `docs/*.md` is not a definition. Re-anchor with `ghGetFileContent(matchString=…)` for a real line number.
-- **Keywords are ANDed** (every term must appear). Put alternatives in separate query objects. `filename`/`extension`/`language`/`path` narrow scope; `repo` requires `owner`. `verbose:true` adds a SHA-pinned `html_url`.
+- **Keywords are ANDed** (every term must appear). Put alternatives in separate query objects. `filename`/`extension`/`language`/`path` narrow scope; `repo` requires `owner`.
 - **Hard caps (GitHub's):** **20 results max per code search**; ~1000 / 10 pages total. Indexes the **default branch only**. (See Universal "Empty ≠ absent.")
 
 ## B8. `ghGetFileContent` — read & minify (the proof tool)
@@ -284,7 +286,7 @@ Map before searching. Start shallow (`maxDepth:1`), then drill (`path:"src"`, `m
 
 ## B9. `ghHistoryResearch` — PRs + commit history
 
-**`type:"prs"` — LIST mode** (no `prNumber`): search by `keywordsToSearch`+`match:["title"]` (most precise) or raw `query`. Filter by `state`/`author`/`label`/`review`/`checks`/`base`/dates. Returns lean metadata (`number`, `title`, `state`, `author`, dates, counts) — not file contents.
+**`type:"prs"` — LIST mode** (no `prNumber`): search by `keywordsToSearch`+`match:["title"]` (most precise) or raw `query`. Filter by `state`/`author`/`label`/`review`/`checks`/`base`/dates. Returns lean metadata (`number`, `title`, `state`, `author`, dates, counts) — not file contents. Add `concise:true` for the leanest output: a flat `"#number title"` string list — useful for quick triage before re-calling with `prNumber`.
 
 **DETAIL mode** (`prNumber` required): select surfaces via `content{body,changedFiles,patches,comments,reviews,commits}`, or `reviewMode:"full"` for **all surfaces in one call** (body + files + patches + threaded comments with `in_reply_to_id` + reviews + commits + `reviewSummary`). Selectors are silently ignored without `prNumber`. `patches.mode`: `"none"` / `"selected"` (`files[]` or per-file `ranges` — cheapest) / `"all"`. Bot comments hidden by default → `content.comments.includeBots:true`.
 
