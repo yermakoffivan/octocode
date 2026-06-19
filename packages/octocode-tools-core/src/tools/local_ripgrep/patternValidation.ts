@@ -1,3 +1,5 @@
+import { contextUtils } from '../../utils/contextUtils.js';
+
 interface RipgrepPatternInput {
   pattern: string;
   fixedString?: boolean;
@@ -22,11 +24,13 @@ export function preflightValidateRipgrepPattern(
     return { isValid: false, errors, warnings };
   }
 
-  if (!input.fixedString) {
-    const regexError = detectRegexError(pattern);
-    if (regexError) {
-      errors.push(`invalid regex: ${regexError}`);
-    }
+  const nativeValidation = contextUtils.validateRipgrepPattern(
+    pattern,
+    input.fixedString,
+    input.perlRegex
+  );
+  if (!nativeValidation.valid) {
+    errors.push(`invalid regex: ${nativeValidation.error ?? 'unknown regex parse error'}`);
   }
 
   if (!input.fixedString && looksLikeLiteralSearch(pattern)) {
@@ -42,15 +46,6 @@ export function preflightValidateRipgrepPattern(
   }
 
   return { isValid: errors.length === 0, errors, warnings };
-}
-
-function detectRegexError(pattern: string): string | null {
-  try {
-    new RegExp(pattern);
-    return null;
-  } catch (err) {
-    return err instanceof Error ? err.message : 'unknown regex parse error';
-  }
 }
 
 function looksLikeLiteralSearch(pattern: string): boolean {

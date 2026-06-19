@@ -103,12 +103,20 @@ impl CompiledQuery {
             None => None,
         };
 
+        let min_depth = options.min_depth.unwrap_or(0);
+        if options
+            .max_depth
+            .is_some_and(|max_depth| min_depth > max_depth)
+        {
+            return Err("minDepth must be less than or equal to maxDepth".to_owned());
+        }
+
         Ok(Self {
             root,
             include_root: options.include_root.unwrap_or(false),
             recursive: options.recursive.unwrap_or(true),
             max_depth: options.max_depth,
-            min_depth: options.min_depth.unwrap_or(0),
+            min_depth,
             show_hidden: options.show_hidden.unwrap_or(true),
             name_globs,
             path_glob,
@@ -592,6 +600,19 @@ mod tests {
         assert_eq!(parse_duration(&format!("{huge}h")), None);
         assert_eq!(parse_duration(&format!("{huge}d")), None);
         assert_eq!(parse_duration(&format!("{huge}w")), None);
+    }
+
+    #[test]
+    fn rejects_min_depth_greater_than_max_depth() {
+        let err = query_file_system_inner(FileSystemQueryOptions {
+            path: ".".to_owned(),
+            min_depth: Some(2),
+            max_depth: Some(1),
+            ..Default::default()
+        })
+        .expect_err("min_depth greater than max_depth must be rejected");
+
+        assert!(err.contains("minDepth must be less than or equal to maxDepth"));
     }
 
     #[test]

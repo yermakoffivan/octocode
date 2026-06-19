@@ -224,9 +224,9 @@ describe('Skills Utilities', () => {
     });
 
     it('resolves skill destinations only under the destination directory', () => {
-      expect(resolveSkillDestination('/dest/skills', 'octocode-rfc-generator')).toBe(
-        '/dest/skills/octocode-rfc-generator'
-      );
+      expect(
+        resolveSkillDestination('/dest/skills', 'octocode-rfc-generator')
+      ).toBe('/dest/skills/octocode-rfc-generator');
       expect(resolveSkillDestination('/dest/skills', '../evil')).toBeNull();
     });
 

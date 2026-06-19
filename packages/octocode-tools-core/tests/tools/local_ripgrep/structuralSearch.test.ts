@@ -1,16 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  stat: vi.fn(),
-  readFile: vi.fn(),
   validateToolPath: vi.fn(),
-  queryFileSystem: vi.fn(),
-  structuralSearch: vi.fn(),
-}));
-
-vi.mock('node:fs/promises', () => ({
-  stat: mocks.stat,
-  readFile: mocks.readFile,
+  structuralSearchFiles: vi.fn(),
 }));
 
 vi.mock('../../../src/utils/file/toolHelpers.js', async importOriginal => {
@@ -25,8 +17,7 @@ vi.mock('../../../src/utils/file/toolHelpers.js', async importOriginal => {
 
 vi.mock('../../../src/utils/contextUtils.js', () => ({
   contextUtils: {
-    queryFileSystem: mocks.queryFileSystem,
-    structuralSearch: mocks.structuralSearch,
+    structuralSearchFiles: mocks.structuralSearchFiles,
   },
 }));
 
@@ -47,12 +38,6 @@ function makeQuery(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function entries(count: number) {
-  return Array.from({ length: count }, (_, index) => ({
-    path: `/repo/file-${index}.ts`,
-  }));
-}
-
 describe('searchContentStructural', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,50 +45,84 @@ describe('searchContentStructural', () => {
       isValid: true,
       sanitizedPath: '/repo',
     });
-    mocks.stat.mockImplementation(async (path: string) => {
-      if (path === '/repo') return { isFile: () => false };
-      return { size: 100 };
+    mocks.structuralSearchFiles.mockReturnValue({
+      files: [],
+      totalMatches: 0,
+      parsedFiles: 0,
+      skippedByPreFilter: 0,
+      skippedUnreadable: 0,
+      skippedLarge: 0,
+      warnings: [],
     });
-    mocks.queryFileSystem.mockReturnValue({ entries: entries(0) });
-    mocks.readFile.mockResolvedValue('target(value)');
-    mocks.structuralSearch.mockReturnValue([
-      { startLine: 1, startCol: 1, text: 'target(value)' },
-    ]);
   });
 
-  it('warns when candidate files cannot be read instead of silently reducing completeness', async () => {
-    mocks.queryFileSystem.mockReturnValue({ entries: entries(3) });
-    mocks.readFile.mockImplementation(async (path: string) => {
-      if (path === '/repo/file-1.ts') throw new Error('EACCES');
-      return 'target(value)';
+  it('delegates filesystem traversal, reads, and AST matching to native Rust', async () => {
+    mocks.structuralSearchFiles.mockReturnValue({
+      files: [
+        {
+          path: '/repo/a.ts',
+          matches: [
+            { startLine: 1, startCol: 1, text: 'target(value)', metavars: {} },
+          ],
+        },
+      ],
+      totalMatches: 1,
+      parsedFiles: 1,
+      skippedByPreFilter: 2,
+      skippedUnreadable: 0,
+      skippedLarge: 0,
+      warnings: ['Pre-filter skipped parsing 2 file(s); parsed 1.'],
     });
 
     const result = await searchContentStructural(makeQuery());
 
+    expect(mocks.structuralSearchFiles).toHaveBeenCalledWith({
+      path: '/repo',
+      pattern: 'target($X)',
+      rule: undefined,
+      include: undefined,
+      excludeDir: [
+        'node_modules',
+        'dist',
+        '.git',
+        'build',
+        'coverage',
+        '.next',
+        'out',
+        'target',
+      ],
+      maxFiles: 10,
+      maxFileBytes: 1_000_000,
+    });
     expect(result.searchEngine).toBe('structural');
-    expect(result.files).toHaveLength(2);
-    expect(result.warnings?.join('\n')).toContain(
-      'Skipped 1 unreadable or vanished candidate file(s).'
+    expect(result.files).toHaveLength(1);
+    expect(result.warnings?.join('\n')).toContain('Pre-filter skipped');
+    expect(result.hints?.join('\n')).toContain('lspGetSemantics');
+  });
+
+  it('passes caller include and excludeDir options to native Rust', async () => {
+    await searchContentStructural(
+      makeQuery({ include: ['*.tsx'], excludeDir: ['vendor'], maxFiles: 3 })
+    );
+
+    expect(mocks.structuralSearchFiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: ['*.tsx'],
+        excludeDir: ['vendor'],
+        maxFiles: 3,
+      })
     );
   });
 
-  it('limits concurrent file reads while processing structural candidates', async () => {
-    mocks.queryFileSystem.mockReturnValue({ entries: entries(12) });
-    let activeReads = 0;
-    let maxActiveReads = 0;
-    mocks.readFile.mockImplementation(async () => {
-      activeReads++;
-      maxActiveReads = Math.max(maxActiveReads, activeReads);
-      await new Promise(resolve => setTimeout(resolve, 5));
-      activeReads--;
-      return 'target(value)';
+  it('surfaces native structural errors with pattern guidance', async () => {
+    mocks.structuralSearchFiles.mockImplementation(() => {
+      throw new Error('invalid structural pattern: bad');
     });
 
-    const result = await searchContentStructural(makeQuery({ maxFiles: 12 }));
+    const result = await searchContentStructural(makeQuery());
 
-    expect(result.searchEngine).toBe('structural');
-    expect(result.files).toHaveLength(12);
-    expect(maxActiveReads).toBeGreaterThan(1);
-    expect(maxActiveReads).toBeLessThanOrEqual(4);
+    expect(result.status).toBe('error');
+    expect(result.error).toContain('Invalid structural pattern');
+    expect(result.hints?.join('\n')).toContain('Use $X');
   });
 });

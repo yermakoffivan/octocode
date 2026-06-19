@@ -80,11 +80,14 @@ const MINIFIER_FUNCTION_EXPORTS = [
   'minifyHTMLQuality',
   'stripPythonDocstrings',
   'extractSignatures',
+  'structuralSearchFiles',
+  'getSupportedStructuralExtensions',
   'getSemanticBoundaryOffsets',
   'getSupportedSignatureExtensions',
   'jsonToYamlString',
   'getMINIFY_CONFIG',
   'parseRipgrepJson',
+  'validateRipgrepPattern',
   'queryFileSystem',
   'charToByteOffset',
   'byteToCharOffset',
@@ -99,6 +102,7 @@ const PUBLIC_NATIVE_EXPORTS = [
   ...MINIFIER_FUNCTION_EXPORTS,
   'MINIFY_CONFIG',
   'SUPPORTED_SIGNATURE_EXTENSIONS',
+  'SUPPORTED_STRUCTURAL_EXTENSIONS',
 ] as const satisfies readonly (keyof typeof import('../index.js'))[];
 
 beforeAll(async () => {
@@ -152,6 +156,16 @@ describe('queryFileSystem', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('rejects minDepth greater than maxDepth', () => {
+    expect(() =>
+      addon!.queryFileSystem({
+        path: '.',
+        minDepth: 2,
+        maxDepth: 1,
+      })
+    ).toThrow('minDepth must be less than or equal to maxDepth');
   });
 });
 
@@ -392,6 +406,54 @@ API
     expect(out!).toContain('# API');
     expect(out!).toContain('link ref: [api]: ./api.md');
     expect(out!).not.toContain('hidden');
+  });
+});
+
+describe('structuralSearchFiles', () => {
+  it('searches files natively and returns grouped structural matches', () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-structural-'));
+    try {
+      mkdirSync(join(root, 'src'), { recursive: true });
+      writeFileSync(join(root, 'src', 'a.ts'), 'target(value);\n');
+      writeFileSync(join(root, 'src', 'b.ts'), 'other(value);\n');
+
+      const result = addon!.structuralSearchFiles({
+        path: root,
+        pattern: 'target($X)',
+        include: ['*.ts'],
+        maxFiles: 10,
+      });
+
+      expect(result.totalMatches).toBe(1);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].path).toContain('a.ts');
+      expect(result.files[0].matches[0].metavars.X).toEqual(['value']);
+      expect(result.skippedByPreFilter).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('getSupportedStructuralExtensions', () => {
+  it('returns the Rust-owned structural extension list', () => {
+    const exts = addon!.getSupportedStructuralExtensions();
+    expect(exts).toContain('ts');
+    expect(exts).toContain('rs');
+    expect(addon!.SUPPORTED_STRUCTURAL_EXTENSIONS).toContain('ts');
+  });
+});
+
+describe('validateRipgrepPattern', () => {
+  it('validates default ripgrep regex syntax in native Rust', () => {
+    const result = addon!.validateRipgrepPattern('(', false, false);
+    expect(result.valid).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+
+  it('does not reject PCRE-only syntax with JavaScript RegExp rules', () => {
+    const result = addon!.validateRipgrepPattern('(?<=foo)bar', false, true);
+    expect(result.valid).toBe(true);
   });
 });
 

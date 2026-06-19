@@ -194,19 +194,33 @@ yarn build
 
 ### 2. Wire the local build into `octocode-tools-core`
 
-`packages/octocode-tools-core/package.json` must point to the local build:
+`@octocodeai/octocode-core` is the **one** internal dep that does NOT use `workspace:*` (it lives in the separate `octocode-mcp-host` repo). For local dev, point `packages/octocode-tools-core/package.json` at the local build via a `file:` dep — replace the published range:
 
 ```json
 "@octocodeai/octocode-core": "file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core"
 ```
 
-Then sync and build:
+> ⚠️ **Local-only — never commit this.** It is an absolute, machine-specific path and would break CI/publish. Revert to the npm range (`"^16.x"`) before committing.
+
+Then re-link and build:
 
 ```bash
-cd /Users/guybary/Documents/octocode-mcp/packages/octocode-tools-core
-yarn          # re-links the file: dep
-yarn build    # compiles tools-core with local octocode-core
+cd /Users/guybary/Documents/octocode-mcp
+yarn install                                  # re-links the file: dep
+yarn workspace @octocodeai/octocode-tools-core build
 ```
+
+> 🐛 **Stale `file:` cache gotcha.** Yarn caches `file:` deps by content hash and will silently reuse an **old tarball** — symptom: `node_modules/@octocodeai/octocode-core/dist` contains only `data/` (no `.js`/`.d.ts`), so `tsc` fails with `Cannot find module '@octocodeai/octocode-core'`. Fix: purge the cached tarballs and reinstall so the current `dist` is re-packed:
+>
+> ```bash
+> rm -f .yarn/cache/@octocodeai-octocode-core-file-*.zip \
+>       ~/.yarn/berry/cache/@octocodeai-octocode-core-file-*.zip
+> rm -rf node_modules/@octocodeai/octocode-core
+> yarn install
+> # verify: find node_modules/@octocodeai/octocode-core/dist -name '*.js' | wc -l  → 23, not 0
+> ```
+>
+> Always rebuild `octocode-core` itself (`§1`) **before** the reinstall — yarn packs whatever `dist/` holds at install time.
 
 ### 3. Internal deps resolve from the workspace (not npm)
 
@@ -237,6 +251,27 @@ If a link is missing or you add/change an internal dep, re-run `yarn install` fr
 # From monorepo root — builds context-utils, lsp, security (Rust/napi),
 # then shared, tools-core, octocode (CLI), octocode-mcp, vscode, skills.
 yarn build
+```
+
+**Checking local flows (the fast TS loop).** When you only touched TypeScript (e.g. `octocode-core` metadata or `octocode-tools-core` logic), the native Rust crates don't need rebuilding — build just the consuming chain. These are the three source packages a local flow runs through:
+
+| Package | Role in the flow |
+|---------|------------------|
+| `@octocodeai/octocode-tools-core` | tool execution layer — consumes local `octocode-core` (`file:`), `octocode-lsp`, `octocode-security`, `octocode-context-utils` |
+| `octocode` (CLI) | thin surface that exercises tools-core — the package you run to check a flow |
+| `octocode-mcp` | the MCP server, the other tools-core consumer — build it to check the MCP path |
+
+```bash
+cd /Users/guybary/Documents/octocode-mcp
+yarn workspace @octocodeai/octocode-tools-core build   # picks up local octocode-core
+yarn workspace octocode build:dev                      # CLI (esbuild only, skips lint)
+yarn workspace octocode-mcp build                      # MCP server + bundled rg
+```
+
+Confirm the local core is actually wired (the system-prompt text should match your local `octocode-core`, not the published one):
+
+```bash
+node packages/octocode/out/octocode.js context | sed -n '/Agent System Prompt/,+2p'
 ```
 
 > **Native (Rust) packages:** `yarn build` runs the release napi build. For a faster local loop on just one native crate, `cd packages/octocode-context-utils && yarn build:dev` (debug, current platform) — it retains the root `.node` so `octocode-tools-core` loads your changes immediately. Always finish with a root `yarn build` before trusting end-to-end results.

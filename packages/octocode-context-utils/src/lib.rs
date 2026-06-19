@@ -7,6 +7,7 @@ mod fs_query;
 mod line_extractor;
 mod minifier;
 mod ripgrep_parser;
+mod ripgrep_pattern;
 mod signatures;
 mod strategies;
 mod structural;
@@ -255,6 +256,20 @@ pub fn structural_search(
     outcome.map_err(|message| Error::new(Status::InvalidArg, message))
 }
 
+#[napi(js_name = "structuralSearchFiles")]
+pub fn structural_search_files(
+    options: structural::StructuralSearchFilesOptions,
+) -> Result<structural::StructuralSearchFilesResult> {
+    std::panic::catch_unwind(|| structural::search_files(options))
+        .unwrap_or_else(|_| Err("structural file search failed on pathological input".to_string()))
+        .map_err(|message| Error::new(Status::InvalidArg, message))
+}
+
+#[napi(js_name = "getSupportedStructuralExtensions")]
+pub fn get_supported_structural_extensions() -> Vec<String> {
+    structural::supported_extensions()
+}
+
 /// Returns a sorted list of JS char offsets (UTF-16 code units) where
 /// top-level semantic blocks begin in `content`.
 ///
@@ -385,6 +400,19 @@ pub fn parse_ripgrep_json(
     options: Option<RipgrepParseOptions>,
 ) -> RipgrepParseResult {
     ripgrep_parser::parse_ripgrep_json_inner(&stdout, options)
+}
+
+#[napi(js_name = "validateRipgrepPattern")]
+pub fn validate_ripgrep_pattern(
+    pattern: String,
+    fixed_string: Option<bool>,
+    perl_regex: Option<bool>,
+) -> ripgrep_pattern::RipgrepPatternValidationResult {
+    ripgrep_pattern::validate(
+        &pattern,
+        fixed_string.unwrap_or(false),
+        perl_regex.unwrap_or(false),
+    )
 }
 
 // ── Filesystem query ──────────────────────────────────────────────────────────

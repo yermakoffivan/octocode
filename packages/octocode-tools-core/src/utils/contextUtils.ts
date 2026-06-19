@@ -103,6 +103,24 @@ export const contextUtils = {
     return loadNative().structuralSearch(content, filePath, pattern, rule);
   },
 
+  structuralSearchFiles(
+    options: NativeContextUtils.StructuralSearchFilesOptions
+  ): NativeContextUtils.StructuralSearchFilesResult {
+    return loadNative().structuralSearchFiles(options);
+  },
+
+  getSupportedStructuralExtensions(): string[] {
+    return loadNative().getSupportedStructuralExtensions();
+  },
+
+  validateRipgrepPattern(
+    pattern: string,
+    fixedString?: boolean | null,
+    perlRegex?: boolean | null
+  ): NativeContextUtils.RipgrepPatternValidationResult {
+    return loadNative().validateRipgrepPattern(pattern, fixedString, perlRegex);
+  },
+
   getSemanticBoundaryOffsets(content: string, filePath: string): number[] {
     return loadNative().getSemanticBoundaryOffsets(content, filePath);
   },

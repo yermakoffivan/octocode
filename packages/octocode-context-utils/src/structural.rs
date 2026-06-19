@@ -16,6 +16,8 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use napi_derive::napi;
 
@@ -42,6 +44,34 @@ pub struct StructuralMatch {
     /// `$$$ARGS` yields the full list of captured nodes. Keyed by the bare
     /// metavar name (no leading `$`).
     pub metavars: HashMap<String, Vec<String>>,
+}
+
+#[napi(object)]
+pub struct StructuralSearchFilesOptions {
+    pub path: String,
+    pub pattern: Option<String>,
+    pub rule: Option<String>,
+    pub include: Option<Vec<String>>,
+    pub exclude_dir: Option<Vec<String>>,
+    pub max_files: Option<u32>,
+    pub max_file_bytes: Option<u32>,
+}
+
+#[napi(object)]
+pub struct StructuralSearchFileResult {
+    pub path: String,
+    pub matches: Vec<StructuralMatch>,
+}
+
+#[napi(object)]
+pub struct StructuralSearchFilesResult {
+    pub files: Vec<StructuralSearchFileResult>,
+    pub total_matches: u32,
+    pub parsed_files: u32,
+    pub skipped_by_pre_filter: u32,
+    pub skipped_unreadable: u32,
+    pub skipped_large: u32,
+    pub warnings: Vec<String>,
 }
 
 /// A tree-sitter language wrapped so ast-grep can drive it. A single wrapper
@@ -168,6 +198,13 @@ fn to_match(m: &NodeMatch<StrDoc<AgLanguage>>) -> StructuralMatch {
 /// Returns `Err` for: an unsupported extension, an invalid pattern, invalid
 /// rule YAML, or both/neither query supplied — the napi layer maps these to a
 /// JS error so the caller can surface guidance instead of a silent empty set.
+pub fn supported_extensions() -> Vec<String> {
+    languages::supported_extensions()
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
 pub fn search(
     content: &str,
     ext: &str,
@@ -221,9 +258,227 @@ pub fn search(
     Ok(out)
 }
 
+pub fn search_files(
+    options: StructuralSearchFilesOptions,
+) -> Result<StructuralSearchFilesResult, String> {
+    let root = PathBuf::from(&options.path);
+    let pattern = options.pattern.as_deref();
+    let rule = options.rule.as_deref();
+    validate_query_shape(pattern, rule)?;
+
+    let include = options.include.unwrap_or_default();
+    let exclude_dir = options.exclude_dir.unwrap_or_else(default_exclude_dirs);
+    let max_files = options.max_files.map(|n| n as usize).unwrap_or(2_000);
+    let max_file_bytes = options.max_file_bytes.map(|n| n as u64).unwrap_or(1_000_000);
+    let anchor = pattern.and_then(derive_literal_anchor);
+
+    let mut candidate_files = Vec::new();
+    collect_candidate_files(&root, &include, &exclude_dir, max_files, &mut candidate_files)?;
+
+    let mut files = Vec::new();
+    let mut total_matches = 0u32;
+    let mut parsed_files = 0u32;
+    let mut skipped_by_pre_filter = 0u32;
+    let mut skipped_unreadable = 0u32;
+    let mut skipped_large = 0u32;
+    let mut warnings = Vec::new();
+
+    for file_path in candidate_files {
+        let metadata = match fs::metadata(&file_path) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                skipped_unreadable += 1;
+                continue;
+            }
+        };
+        if metadata.len() > max_file_bytes {
+            skipped_large += 1;
+            continue;
+        }
+
+        let content = match fs::read_to_string(&file_path) {
+            Ok(content) => content,
+            Err(_) => {
+                skipped_unreadable += 1;
+                continue;
+            }
+        };
+
+        if anchor.is_some_and(|literal| !content.contains(literal)) {
+            skipped_by_pre_filter += 1;
+            continue;
+        }
+
+        let ext = extension_for_path(&file_path).unwrap_or_default();
+        let matches = search(&content, &ext, pattern, rule)?;
+        parsed_files += 1;
+        if matches.is_empty() {
+            continue;
+        }
+        total_matches = total_matches.saturating_add(matches.len() as u32);
+        files.push(StructuralSearchFileResult {
+            path: file_path.to_string_lossy().to_string(),
+            matches,
+        });
+    }
+
+    if anchor.is_none() {
+        warnings.push(format!(
+            "No literal anchor in the {} — parsed all {parsed_files} candidate file(s) with no text pre-filter.",
+            if rule.is_some() { "rule" } else { "pattern" }
+        ));
+    } else if skipped_by_pre_filter > 0 {
+        warnings.push(format!(
+            "Pre-filter skipped parsing {skipped_by_pre_filter} file(s); parsed {parsed_files}."
+        ));
+    }
+    if skipped_unreadable > 0 {
+        warnings.push(format!(
+            "Skipped {skipped_unreadable} unreadable or vanished candidate file(s)."
+        ));
+    }
+    if skipped_large > 0 {
+        warnings.push(format!(
+            "Skipped {skipped_large} candidate file(s) larger than {max_file_bytes} bytes."
+        ));
+    }
+
+    Ok(StructuralSearchFilesResult {
+        files,
+        total_matches,
+        parsed_files,
+        skipped_by_pre_filter,
+        skipped_unreadable,
+        skipped_large,
+        warnings,
+    })
+}
+
+fn validate_query_shape(pattern: Option<&str>, rule: Option<&str>) -> Result<(), String> {
+    match (pattern, rule) {
+        (Some(p), None) if p.trim().is_empty() => Err("pattern must not be empty".to_string()),
+        (None, Some(r)) if r.trim().is_empty() => Err("rule must not be empty".to_string()),
+        (Some(_), None) | (None, Some(_)) => Ok(()),
+        (Some(_), Some(_)) => Err("provide either `pattern` or `rule`, not both".to_string()),
+        (None, None) => Err("structural search requires `pattern` or `rule`".to_string()),
+    }
+}
+
+fn default_exclude_dirs() -> Vec<String> {
+    ["node_modules", "dist", ".git", "build", "coverage", ".next", "out", "target"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
+fn collect_candidate_files(
+    root: &Path,
+    include: &[String],
+    exclude_dir: &[String],
+    max_files: usize,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    if out.len() >= max_files {
+        return Ok(());
+    }
+    let metadata = fs::metadata(root).map_err(|err| {
+        format!(
+            "Cannot access structural search path '{}': {err}",
+            root.display()
+        )
+    })?;
+    if metadata.is_file() {
+        if path_matches_include(root, include) {
+            out.push(root.to_path_buf());
+        }
+        return Ok(());
+    }
+    if !metadata.is_dir() {
+        return Ok(());
+    }
+
+    let entries = fs::read_dir(root).map_err(|err| {
+        format!(
+            "Cannot read structural search directory '{}': {err}",
+            root.display()
+        )
+    })?;
+    for entry in entries {
+        if out.len() >= max_files {
+            break;
+        }
+        let entry = entry.map_err(|err| format!("Cannot read structural search entry: {err}"))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|err| {
+                format!(
+                    "Cannot inspect structural search entry '{}': {err}",
+                    path.display()
+                )
+            })?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if file_type.is_dir() {
+            if exclude_dir.iter().any(|dir| dir == &name) {
+                continue;
+            }
+            collect_candidate_files(&path, include, exclude_dir, max_files, out)?;
+        } else if file_type.is_file() && path_matches_include(&path, include) {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn path_matches_include(path: &Path, include: &[String]) -> bool {
+    if include.is_empty() {
+        return extension_for_path(path).is_some_and(|ext| languages::find_entry(&ext).is_some());
+    }
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+    include.iter().any(|pattern| glob_matches_name(pattern, name))
+}
+
+fn extension_for_path(path: &Path) -> Option<String> {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+}
+
+fn glob_matches_name(pattern: &str, name: &str) -> bool {
+    if let Some(ext) = pattern.strip_prefix("*.") {
+        return name.ends_with(&format!(".{ext}"));
+    }
+    pattern == name
+}
+
+fn derive_literal_anchor(pattern: &str) -> Option<&str> {
+    let mut best: Option<&str> = None;
+    for token in pattern.split(|ch: char| !(ch == '_' || ch.is_ascii_alphanumeric())) {
+        if token.len() < 3 || token.chars().all(|ch| ch.is_ascii_uppercase()) {
+            continue;
+        }
+        if best.is_none_or(|current| token.len() > current.len()) {
+            best = Some(token);
+        }
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    fn temp_root(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "octocode_structural_{}_{}",
+            name,
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create temp root");
+        root
+    }
 
     fn run_pattern(src: &str, ext: &str, pattern: &str) -> Vec<StructuralMatch> {
         search(src, ext, Some(pattern), None).expect("pattern search should succeed")
@@ -297,6 +552,87 @@ mod tests {
             Err(e) => assert!(e.contains("does not support")),
             Ok(_) => panic!("expected an unsupported-extension error"),
         }
+    }
+
+    #[test]
+    fn supported_extensions_are_rust_owned() {
+        let exts = supported_extensions();
+        assert!(exts.iter().any(|ext| ext == "ts"));
+        assert!(exts.iter().any(|ext| ext == "rs"));
+    }
+
+    #[test]
+    fn search_files_finds_matches_and_prefilters_non_matching_files() {
+        let root = temp_root("files");
+        fs::write(root.join("a.ts"), "target(value);\n").expect("write a");
+        fs::write(root.join("b.ts"), "other(value);\n").expect("write b");
+        fs::write(root.join("note.txt"), "target(value);\n").expect("write txt");
+
+        let result = search_files(StructuralSearchFilesOptions {
+            path: root.to_string_lossy().to_string(),
+            pattern: Some("target($X)".to_owned()),
+            rule: None,
+            include: None,
+            exclude_dir: None,
+            max_files: Some(10),
+            max_file_bytes: None,
+        })
+        .expect("search files");
+
+        assert_eq!(result.total_matches, 1);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].path.ends_with("a.ts"));
+        assert_eq!(result.skipped_by_pre_filter, 1);
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn search_files_respects_excluded_directories_and_large_file_limit() {
+        let root = temp_root("filters");
+        fs::create_dir_all(root.join("src")).expect("src");
+        fs::create_dir_all(root.join("node_modules/pkg")).expect("node_modules");
+        fs::write(root.join("src/a.ts"), "target(v);\n").expect("write a");
+        fs::write(root.join("src/large.ts"), "target(value);\n").expect("write large");
+        fs::write(root.join("node_modules/pkg/b.ts"), "target(value);\n").expect("write b");
+
+        let result = search_files(StructuralSearchFilesOptions {
+            path: root.to_string_lossy().to_string(),
+            pattern: Some("target($X)".to_owned()),
+            rule: None,
+            include: Some(vec!["*.ts".to_owned()]),
+            exclude_dir: Some(vec!["node_modules".to_owned()]),
+            max_files: Some(10),
+            max_file_bytes: Some(14),
+        })
+        .expect("search files");
+
+        assert_eq!(result.total_matches, 1);
+        assert_eq!(result.skipped_large, 1);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].path.ends_with("src/a.ts"));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn search_files_accepts_single_file_root() {
+        let root = temp_root("single");
+        let file = root.join("a.ts");
+        fs::write(&file, "target(value);\n").expect("write file");
+
+        let result = search_files(StructuralSearchFilesOptions {
+            path: file.to_string_lossy().to_string(),
+            pattern: Some("target($X)".to_owned()),
+            rule: None,
+            include: None,
+            exclude_dir: None,
+            max_files: None,
+            max_file_bytes: None,
+        })
+        .expect("search file");
+
+        assert_eq!(result.total_matches, 1);
+        assert_eq!(result.files.len(), 1);
+        fs::remove_dir_all(root).expect("cleanup");
     }
 
     #[test]

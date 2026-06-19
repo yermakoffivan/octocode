@@ -74,13 +74,18 @@ Clone and switch to local tools when analysis spans several files or needs AST/L
 
 ### Binary/archive evidence
 
-Use when the source is packaged or compiled:
+Use when the source is packaged or compiled.
 
-```text
-localBinaryInspect identify/list/extract/decompress/strings/unpack
-→ localViewStructure on unpacked localPath
-→ localSearchCode / localGetFileContent / AST / LSP
-```
+| Need | MCP | CLI |
+|---|---|---|
+| Identify file type | `localBinaryInspect(mode:"identify")` | `octocode binary --identify` |
+| List archive entries | `localBinaryInspect(mode:"list")` | `octocode binary --list` |
+| Extract one entry | `localBinaryInspect(mode:"extract")` | `octocode binary --extract` |
+| Decompress stream | `localBinaryInspect(mode:"decompress")` | `octocode binary --decompress` |
+| Inspect strings | `localBinaryInspect(mode:"strings")` | `octocode binary --strings` |
+| Unpack archive | `localBinaryInspect(mode:"unpack")` | `octocode unzip` |
+
+Flow: identify/list → extract one entry or unpack all → run local tools on the returned `localPath`.
 
 ## 3. Understand
 
@@ -138,9 +143,7 @@ Compare on:
 
 ## 6. Write the RFC or plan
 
-Use `references/rfc-template.md` for full RFCs.
-
-For implementation plans, include:
+Use `references/rfc-template.md` for full RFCs; do not duplicate the whole template in the prompt. For implementation plans, include only the sections needed for the work:
 
 ```markdown
 # Plan: <title>
