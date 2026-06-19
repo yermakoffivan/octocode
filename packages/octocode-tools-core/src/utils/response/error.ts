@@ -157,9 +157,7 @@ export function createErrorResult(
  * version-agnostic so it does not couple to a specific Zod release.
  */
 interface SafeParseableSchema<T> {
-  safeParse(
-    input: unknown
-  ):
+  safeParse(input: unknown):
     | { success: true; data: T; error?: never }
     | {
         success: false;

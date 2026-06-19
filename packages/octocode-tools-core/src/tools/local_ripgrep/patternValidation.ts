@@ -30,7 +30,9 @@ export function preflightValidateRipgrepPattern(
     input.perlRegex
   );
   if (!nativeValidation.valid) {
-    errors.push(`invalid regex: ${nativeValidation.error ?? 'unknown regex parse error'}`);
+    errors.push(
+      `invalid regex: ${nativeValidation.error ?? 'unknown regex parse error'}`
+    );
   }
 
   if (!input.fixedString && looksLikeLiteralSearch(pattern)) {

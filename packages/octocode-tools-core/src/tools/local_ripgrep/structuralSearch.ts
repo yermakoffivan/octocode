@@ -55,7 +55,9 @@ export async function searchContentStructural(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return createErrorResult(
-      new Error(`Invalid structural ${query.rule ? 'rule' : 'pattern'}: ${message}`),
+      new Error(
+        `Invalid structural ${query.rule ? 'rule' : 'pattern'}: ${message}`
+      ),
       query,
       {
         toolName: TOOL_NAMES.LOCAL_RIPGREP,
@@ -68,15 +70,17 @@ export async function searchContentStructural(
     ) as LocalSearchCodeToolResult;
   }
 
-  const files: LocalSearchCodeFile[] = nativeResult.files.map((file: StructuralSearchFileResult) => ({
-    path: file.path,
-    matchCount: file.matches.length,
-    matches: file.matches.map(match => ({
-      line: match.startLine,
-      value: match.text.split('\n', 1)[0],
-      column: match.startCol,
-    })),
-  }));
+  const files: LocalSearchCodeFile[] = nativeResult.files.map(
+    (file: StructuralSearchFileResult) => ({
+      path: file.path,
+      matchCount: file.matches.length,
+      matches: file.matches.map(match => ({
+        line: match.startLine,
+        value: match.text.split('\n', 1)[0],
+        column: match.startCol,
+      })),
+    })
+  );
 
   const stats: SearchStats = { matchCount: nativeResult.totalMatches };
   const result = await buildSearchResult(
