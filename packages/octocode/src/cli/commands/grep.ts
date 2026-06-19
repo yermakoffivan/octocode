@@ -52,7 +52,10 @@ function listOption(value: string | undefined): string[] | undefined {
   return items && items.length > 0 ? items : undefined;
 }
 
-function localIncludeGlobs(include: string[] | undefined, typeFilter: string | undefined): string[] | undefined {
+function localIncludeGlobs(
+  include: string[] | undefined,
+  typeFilter: string | undefined
+): string[] | undefined {
   const filters = [...(include ?? [])];
   const ext = typeFilter?.trim().replace(/^\./, '');
   if (ext) filters.push(ext.includes('*') ? ext : `*.${ext}`);

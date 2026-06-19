@@ -12,7 +12,6 @@ import {
 } from '../utils.js';
 import { FileContentQueryLocalSchema } from './scheme.js';
 import type { MinifyMode } from '../../scheme/fields.js';
-import { isCloneEnabled } from '../../serverConfig.js';
 import { fetchDirectoryContents } from '../../github/directoryFetch.js';
 import { resolveDefaultBranch } from '../../github/client.js';
 import { countSerializedChars } from '../../utils/response/charSavings.js';
@@ -86,18 +85,6 @@ async function handleDirectoryFetch(
   authInfo: AuthInfo | undefined,
   providerContext: ReturnType<typeof createProviderExecutionContext>
 ) {
-  if (!isCloneEnabled()) {
-    return handleCatchError(
-      new Error(
-        'Directory fetch requires ENABLE_LOCAL=true and ENABLE_CLONE=true. ' +
-          'Directory mode saves files to disk using the same cache as ghCloneRepo.'
-      ),
-      query,
-      'Clone not enabled',
-      TOOL_NAMES.GITHUB_FETCH_CONTENT
-    );
-  }
-
   if (!providerSupports(providerContext, 'fetchDirectoryToDisk')) {
     return handleCatchError(
       new Error(

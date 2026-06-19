@@ -9,6 +9,15 @@ import {
   printDirectToolResult,
 } from './direct-tool-output.js';
 
+type CloneStructuredContent = {
+  results?: Array<{ data?: { localPath?: string } }>;
+};
+
+function cloneLocalPath(structuredContent: unknown): string | undefined {
+  const content = structuredContent as CloneStructuredContent;
+  return content.results?.[0]?.data?.localPath;
+}
+
 export const cloneCommand: CLICommand = {
   name: 'clone',
   description:
@@ -83,6 +92,18 @@ export const cloneCommand: CLICommand = {
       });
 
       printDirectToolResult(result, jsonOutput);
+      if (!jsonOutput && !result.isError) {
+        const localPath = cloneLocalPath(result.structuredContent);
+        if (localPath) {
+          console.log(
+            `  ${c('green', '→')} Local clone: ${c('cyan', localPath)}\n` +
+              `    ${c('cyan', `ls ${localPath}`)}                 ${dim('# map the tree')}\n` +
+              `    ${c('cyan', `grep <term> ${localPath}`)}        ${dim('# search locally')}\n` +
+              `    ${c('cyan', `cat ${localPath}/<file>`)}         ${dim('# read a file')}\n` +
+              `    ${c('cyan', `lsp ${localPath}/<file> --type documentSymbols`)}  ${dim('# semantic outline')}\n`
+          );
+        }
+      }
       markDirectToolFailure(result);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);

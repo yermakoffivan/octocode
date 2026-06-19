@@ -86,6 +86,8 @@ describe('renderLocalResults match counts', () => {
       ],
     };
 
-    expect(renderLocalResults(sc, 10)).toContain('$ARGS=() => { body(); }, [dep]');
+    expect(renderLocalResults(sc, 10)).toContain(
+      '$ARGS=() => { body(); }, [dep]'
+    );
   });
 });

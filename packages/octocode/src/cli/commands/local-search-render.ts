@@ -28,7 +28,9 @@ export interface LocalSearchResult {
   }>;
 }
 
-function formatMetavars(metavars: Record<string, string[]> | undefined): string {
+function formatMetavars(
+  metavars: Record<string, string[]> | undefined
+): string {
   if (!metavars) return '';
   const parts = Object.entries(metavars)
     .filter(([, values]) => values.length > 0)

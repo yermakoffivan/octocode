@@ -227,18 +227,42 @@ pub fn extract_signatures_inner(content: &str, file_path: &str) -> Option<String
     if content.len() > crate::minifier::MAX_SIZE {
         return None;
     }
-    std::panic::catch_unwind(|| {
+    let skeleton = std::panic::catch_unwind(|| {
         let ext = get_extension_internal(file_path, true, "txt");
         extract_by_ext(content, &ext)
     })
-    .unwrap_or(None)
+    .unwrap_or(None)?;
+
+    // Universal anti-growth guard (applied centrally, after rendering, for every
+    // language path). A symbol skeleton exists to COMPRESS — its whole value is
+    // handing the agent fewer bytes than the source file. When the heuristic
+    // fails to drop bodies (a config-shaped `.cjs`/`.mjs`, or a language whose
+    // extractor falls through to the generic brace-depth fallback: Lua, Erlang,
+    // Clojure, VB) the rendered outline can equal or exceed the source. That is
+    // pure loss, so return None and let the caller fall back to the standard/none
+    // view of the real file instead of emitting a bloated "outline".
+    //
+    // The comparison is on the rendered output the agent actually receives
+    // (gutter included) — that is the byte count we promise never to inflate.
+    // Tiny files where the per-line gutter alone tips the balance are suppressed
+    // too, which is correct: a symbol outline of a handful of lines carries no
+    // navigational value over just showing the lines.
+    if skeleton.len() >= content.len() {
+        return None;
+    }
+    Some(skeleton)
 }
 
 /// Extensions where symbol extraction has no semantic value:
 /// data/config formats have key-value pairs, not code signatures;
 /// most prose formats have no reliable navigation anchors.
-/// Code languages (Lua, Erlang, Clojure, VB) are intentionally excluded
-/// even when their heuristic grows output — the skeleton is still useful.
+///
+/// Code languages whose heuristic sometimes fails to compress (Lua, Erlang,
+/// Clojure, VB, config-shaped `.cjs`/`.mjs`) are NOT listed here — they are
+/// handled content-by-content by the universal anti-growth guard in
+/// `extract_signatures_inner`: a skeleton is only returned when it is actually
+/// smaller than the source, so a well-structured Lua module still gets an
+/// outline while a body-heavy one falls back to the real file.
 const NO_SYMBOL_EXTS: &[&str] = &[
     // Data / config — no code signatures whatsoever
     "json",
@@ -473,14 +497,61 @@ API
     }
 
     #[test]
+    fn skeleton_never_grows_beyond_source() {
+        // Languages whose heuristic falls through to the generic extractor and
+        // historically returned a skeleton >= source (benchmark: cjs/mjs/lua/
+        // erl/clj/vb all had negative symbol cuts). The anti-growth guard must
+        // either suppress these (None) or, if it does return a skeleton, that
+        // skeleton must be smaller than the source — never larger. Use
+        // realistically sized inputs so the verdict reflects real compression,
+        // not per-line gutter noise on a handful of lines.
+        let lua = "local Path = {}\nPath.__index = Path\n".to_string()
+            + &"function Path:exists()\n  local stat = vim.loop.fs_stat(self.filename)\n  return stat ~= nil\nend\n".repeat(40)
+            + "return Path\n";
+        let erl = "-module(demo).\n-export([rev/1]).\n".to_string()
+            + &"rev(List) -> rev(List, []).\nrev([], Acc) -> Acc;\nrev([H | T], Acc) -> rev(T, [H | Acc]).\n".repeat(40);
+        let cjs = "module.exports = {\n".to_string()
+            + &"  presets: [['@babel/preset-env', { targets: { node: 'current' } }]],\n  plugins: ['@babel/plugin-transform-runtime'],\n".repeat(40)
+            + "};\n";
+        let cases: &[(&str, &str)] = &[
+            (lua.as_str(), "path.lua"),
+            (erl.as_str(), "lists.erl"),
+            (cjs.as_str(), "babel.config.cjs"),
+        ];
+        for (content, path) in cases {
+            if let Some(skeleton) = extract(content, path) {
+                assert!(
+                    skeleton.len() < content.len(),
+                    "{path}: skeleton ({} bytes) must be smaller than source ({} bytes)",
+                    skeleton.len(),
+                    content.len()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn well_structured_code_still_gets_a_skeleton_after_guard() {
+        // The guard is content-driven, not extension-driven: a body-heavy file is
+        // dropped, but a signature-dense file that genuinely compresses survives.
+        let src = "export function add(a: number, b: number): number {\n  const sum = a + b;\n  console.log(sum);\n  return sum;\n}\n\nexport function sub(a: number, b: number): number {\n  const diff = a - b;\n  console.log(diff);\n  return diff;\n}\n";
+        let s = extract(src, "math.ts").expect("dense TS must still extract");
+        assert!(s.len() < src.len(), "skeleton must compress");
+        assert!(s.contains("add") && s.contains("sub"));
+    }
+
+    #[test]
     fn code_formats_still_extract_despite_denylist() {
+        // SQL and TS are NOT in NO_SYMBOL_EXTS, so a body-bearing source that the
+        // skeleton can genuinely compress must still extract. (One-liners that
+        // drop nothing now correctly return None via the anti-growth guard — the
+        // outline would be identical to the file, so it carries no value.)
+        let sql = "CREATE PROCEDURE refresh_totals()\nBEGIN\n".to_string()
+            + &"  UPDATE totals SET amount = amount + 1 WHERE active = 1;\n  INSERT INTO audit (msg) VALUES ('refreshed');\n".repeat(20)
+            + "END;\n";
+        assert!(extract(&sql, "schema.sql").is_some());
         assert!(extract(
-            "CREATE TABLE users (id INT, name VARCHAR(255));",
-            "schema.sql"
-        )
-        .is_some());
-        assert!(extract(
-            "export function add(a: number, b: number): number { return a + b; }",
+            "export function add(a: number, b: number): number {\n  const sum = a + b;\n  return sum;\n}\n",
             "math.ts"
         )
         .is_some());
