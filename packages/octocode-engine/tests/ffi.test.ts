@@ -80,6 +80,9 @@ const MINIFIER_FUNCTION_EXPORTS = [
   'minifyHTMLQuality',
   'stripPythonDocstrings',
   'extractSignatures',
+  'extractJsSymbols',
+  'findInFileReferences',
+  'getSupportedJsTsExtensions',
   'structuralSearchFiles',
   'getSupportedStructuralExtensions',
   'getSemanticBoundaryOffsets',
@@ -407,6 +410,85 @@ API
     expect(out!).toContain('# API');
     expect(out!).toContain('link ref: [api]: ./api.md');
     expect(out!).not.toContain('hidden');
+  });
+});
+
+describe('extractJsSymbols (native oxc document symbols)', () => {
+  it('returns a nested LSP DocumentSymbol[] for TypeScript', () => {
+    const src = `export class Calc {
+  value = 0;
+  multiply(x: number): number { return x; }
+}
+export const handler = (req: unknown) => req;
+export function main(): void {}
+`;
+    const json = addon!.extractJsSymbols(src, 'calc.ts');
+    expect(json).not.toBeNull();
+    const symbols = JSON.parse(json!) as Array<{
+      name: string;
+      kind: number;
+      range: { start: { line: number } };
+      children?: Array<{ name: string; kind: number }>;
+    }>;
+    const byName = new Map(symbols.map(s => [s.name, s]));
+    expect(byName.get('Calc')?.kind).toBe(5); // class
+    expect(byName.get('handler')?.kind).toBe(12); // arrow const → function
+    expect(byName.get('main')?.kind).toBe(12); // function
+    const members = (byName.get('Calc')?.children ?? []).map(c => c.name);
+    expect(members).toContain('value');
+    expect(members).toContain('multiply');
+    // 0-based lines (LSP convention)
+    expect(byName.get('Calc')?.range.start.line).toBe(0);
+  });
+
+  it('returns null for non-JS/TS and empty content', () => {
+    expect(addon!.extractJsSymbols('package main\nfunc f(){}', 'main.go')).toBeNull();
+    expect(addon!.extractJsSymbols('', 'empty.ts')).toBeNull();
+  });
+
+  it('never throws on adversarial input', () => {
+    expect(() =>
+      addon!.extractJsSymbols('class { { { unterminated', 'x.ts')
+    ).not.toThrow();
+  });
+
+  it('getSupportedJsTsExtensions is the dispatch source of truth', () => {
+    const exts = addon!.getSupportedJsTsExtensions();
+    expect(exts).toEqual(
+      expect.arrayContaining(['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts'])
+    );
+    // Every advertised extension must actually produce a native outline.
+    for (const ext of exts) {
+      const out = addon!.extractJsSymbols(`export function f(){}`, `probe.${ext}`);
+      expect(out, `extension ${ext} must outline natively`).not.toBeNull();
+    }
+    // A non-listed extension must not.
+    expect(addon!.extractJsSymbols('export function f(){}', 'probe.go')).toBeNull();
+  });
+});
+
+describe('findInFileReferences (native oxc in-file references)', () => {
+  it('finds the declaration and every same-file reference', () => {
+    const src = 'const count = 1;\nconst a = count + 1;\nconsole.log(count);\n';
+    // Cursor on the `count` declaration identifier (line 0, char 6).
+    const json = addon!.findInFileReferences(src, 'm.ts', 0, 6);
+    expect(json).not.toBeNull();
+    const ranges = JSON.parse(json!) as Array<{ start: { line: number } }>;
+    expect(ranges).toHaveLength(3);
+    expect(ranges[0]!.start.line).toBe(0); // declaration first
+    const lines = ranges.map(r => r.start.line);
+    expect(lines).toContain(1);
+    expect(lines).toContain(2);
+  });
+
+  it('returns null when the cursor is not on a binding', () => {
+    expect(addon!.findInFileReferences('const x = 1;\n', 'm.ts', 0, 0)).toBeNull();
+  });
+
+  it('returns null for non-JS/TS files', () => {
+    expect(
+      addon!.findInFileReferences('x = 1\nprint(x)\n', 'm.py', 0, 0)
+    ).toBeNull();
   });
 });
 

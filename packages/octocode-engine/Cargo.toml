@@ -45,13 +45,14 @@ ignore = "0.4"
 lightningcss = { version = "1.0.0-alpha.71", default-features = false }
 minify-html  = { version = "0.18", default-features = false }
 
-# ── OXC — JS/TS AST minifier ─────────────────────────────────────────────────
-oxc_allocator = "0.135"
-oxc_ast       = "0.135"
-oxc_codegen   = "0.135"
-oxc_minifier  = "0.135"
-oxc_parser    = "0.135"
-oxc_span      = "0.135"
+# ── OXC — JS/TS AST minifier + native semantic (scopes/bindings/refs) ─────────
+oxc_allocator = "0.137"
+oxc_ast       = "0.137"
+oxc_codegen   = "0.137"
+oxc_minifier  = "0.137"
+oxc_parser    = "0.137"
+oxc_span      = "0.137"
+oxc_semantic  = "0.137"   # real ECMAScript scopes/bindings/in-file refs — native JS/TS symbols
 
 # ── tree-sitter core ─────────────────────────────────────────────────────────
 tree-sitter          = "0.26"
@@ -68,7 +69,7 @@ ast-grep-config = "0.43"   # parses the YAML relational/composite `rule` object
 
 # ── top-10 grammar crates ─────────────────────────────────────────────────────
 tree-sitter-typescript = "0.23"   # covers .ts / .tsx
-tree-sitter-javascript = "0.23"   # covers .js / .jsx / .mjs / .cjs
+tree-sitter-javascript = "0.25"   # covers .js / .jsx / .mjs / .cjs
 tree-sitter-python     = "0.23"   # covers .py
 tree-sitter-go         = "0.23"   # covers .go
 tree-sitter-rust       = "0.23"   # covers .rs

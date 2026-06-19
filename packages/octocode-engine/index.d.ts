@@ -90,6 +90,40 @@ export interface ExtractMatchingLinesResult {
  */
 export declare function extractSignatures(content: string, filePath: string): string | null
 
+/**
+ * Native JS/TS document symbols (server-free) as a JSON `DocumentSymbol[]`.
+ *
+ * Parses ECMAScript/TypeScript *syntax* with oxc and walks declarations into
+ * the LSP `DocumentSymbol` shape (nested, numeric `SymbolKind`, 0-based UTF-16
+ * ranges). **No type inference** — in-file scope/binding accuracy only; type-aware
+ * outlines still require a language server. Only `ts/tsx/js/jsx/mjs/cjs/mts/cts`
+ * are handled.
+ *
+ * Returns `null` for non-JS/TS files, oversized content, a hard parse failure
+ * (caller should fall back to `extractSignatures`), or a file with no
+ * extractable top-level symbols.
+ */
+export declare function extractJsSymbols(content: string, filePath: string): string | null
+
+/**
+ * Native in-file references (server-free) for the JS/TS symbol under
+ * `(line, character)` (0-based, UTF-16), as a JSON `Range[]` covering the
+ * declaration and every resolved in-file reference (declaration first).
+ *
+ * **Same-file only** — oxc resolves bindings within one module; cross-file
+ * references require a language server. No type inference. Returns `null` for
+ * non-JS/TS files, oversized content, a parse failure, or when the cursor is
+ * not on a resolvable binding/reference.
+ */
+export declare function findInFileReferences(content: string, filePath: string, line: number, character: number): string | null
+
+/**
+ * Canonical list of file extensions (lowercase, no leading dot) handled by the
+ * native oxc JS/TS path (`extractJsSymbols` / `findInFileReferences`). Gate
+ * native dispatch on this list instead of hardcoding it.
+ */
+export declare function getSupportedJsTsExtensions(): Array<string>
+
 export interface FileSystemEntry {
   /** Absolute or input-root-relative path as returned by the platform. */
   path: string

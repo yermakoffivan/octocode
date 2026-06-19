@@ -82,9 +82,28 @@ If `workspaceRoot` is omitted:
 2. Files outside `WORKSPACE_ROOT` walk upward to the nearest project marker, such as `package.json`, `tsconfig.json`, `.git`, `Cargo.toml`, `go.mod`, or `pyproject.toml`.
 3. If no marker exists, the file's directory is used.
 
+## Native vs. server fidelity (JS/TS)
+
+For JavaScript/TypeScript, `documentSymbols` and same-file `references` have a **native fast path** (oxc) that runs with no language server:
+
+| Source (`lsp.source`) | When | Fidelity |
+|-----------------------|------|----------|
+| `lsp` | A TS language server is available | Type-aware. Cross-file references, type-accurate. |
+| `native` | No server available | Syntax-only. **No type inference.** `documentSymbols` is a full outline; `references` are **same-file only** — cross-file references need a server. |
+
+The native path means `documentSymbols` returns an outline even with no toolchain installed (previously it returned "No symbols found"). Results carry `lsp.source` so callers know the tier. Other languages always require a server.
+
+## TypeScript backends
+
+The TS/JS server resolves in this order:
+
+1. `OCTOCODE_TS_SERVER_PATH` — explicit override (args auto-selected: `--lsp -stdio` if the path is `tsgo`, else `--stdio`).
+2. **`tsgo` on `PATH`** — Microsoft's Go-native server (`tsgo --lsp -stdio`, Node-free, ~10× faster). Opt-in: present-on-PATH only, no flag. References/rename are still maturing upstream.
+3. **`typescript-language-server`** — the bundled zero-config default.
+
 ## Language Servers
 
-TypeScript and JavaScript are bundled through `typescript-language-server` and `typescript`. Other languages require their language server to be installed or configured.
+TypeScript and JavaScript are bundled through `typescript-language-server` and `typescript`; JS/TS also has the server-free native path above. Other languages require their language server to be installed or configured.
 
 Common environment overrides:
 

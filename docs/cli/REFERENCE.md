@@ -448,6 +448,8 @@ symbols <file|path>
 
 For a file, runs `lspGetSemantics type=documentSymbols`. For a directory, discovers source files then batches `documentSymbols` over them.
 
+For JavaScript/TypeScript, the outline works **with no language server installed** via a native (oxc) fast path — syntax-only, no type inference. With a TS server present, results are type-aware. Each result carries `lsp.source` (`native` or `lsp`) so you can tell which tier produced it. The same applies to same-file `lsp --type references` (cross-file references still need a server).
+
 Examples:
 
 ```bash

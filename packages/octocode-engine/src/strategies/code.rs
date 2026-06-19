@@ -41,12 +41,13 @@ fn minify_js_oxc_inner(content: &str, file_path: &str, mangle: bool) -> Option<S
 
     let parser_ret = Parser::new(&allocator, content, source_type).parse();
     // If plain-JS parse failed (e.g. Flow-annotated file with `import type`), retry as TS.
-    let parser_ret = if !parser_ret.errors.is_empty() && matches!(ext.as_str(), "js" | "cjs") {
+    let parser_ret = if !parser_ret.diagnostics.is_empty() && matches!(ext.as_str(), "js" | "cjs")
+    {
         Parser::new(&allocator, content, SourceType::ts()).parse()
     } else {
         parser_ret
     };
-    if !parser_ret.errors.is_empty() {
+    if !parser_ret.diagnostics.is_empty() {
         return None;
     }
 

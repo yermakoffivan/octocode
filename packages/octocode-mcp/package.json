@@ -100,17 +100,18 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@octocodeai/octocode-tools-core": "workspace:*"
+    "@octocodeai/octocode-tools-core": "workspace:*",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
-    "@vitest/coverage-v8": "^4.0.16",
-    "@vitest/ui": "^4.0.16",
+    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/ui": "^4.1.9",
     "esbuild": "^0.28.1",
     "eslint": "^9.18.0",
     "octokit": "^5.0.5",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.9"
   },
   "mcp": {
     "type": "stdio",

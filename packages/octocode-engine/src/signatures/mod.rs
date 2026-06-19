@@ -1,5 +1,6 @@
 pub mod extractor;
 pub mod heuristic;
+pub mod js_oxc;
 pub mod languages;
 pub mod renderer;
 

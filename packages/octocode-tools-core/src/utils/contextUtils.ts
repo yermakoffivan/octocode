@@ -95,6 +95,37 @@ export const contextUtils = {
     return loadNative().extractSignatures(content, filePath);
   },
 
+  /**
+   * Native JS/TS document symbols as a JSON `DocumentSymbol[]` string, or null
+   * when oxc declines the input (non-JS/TS, oversized, hard parse failure, or
+   * no symbols). Server-free, syntax-only — no type inference.
+   */
+  extractJsSymbols(content: string, filePath: string): string | null {
+    return loadNative().extractJsSymbols(content, filePath);
+  },
+
+  /**
+   * Native in-file references as a JSON `Range[]` (declaration first), or null
+   * when oxc declines the input or the cursor is not on a resolvable binding.
+   * Same-file only, syntax-only — no type inference, no cross-file resolution.
+   */
+  findInFileReferences(
+    content: string,
+    filePath: string,
+    line: number,
+    character: number
+  ): string | null {
+    return loadNative().findInFileReferences(content, filePath, line, character);
+  },
+
+  /**
+   * Canonical lowercase extensions (no leading dot) the native oxc JS/TS path
+   * handles. Source of truth lives in the engine — gate native dispatch on this.
+   */
+  getSupportedJsTsExtensions(): string[] {
+    return loadNative().getSupportedJsTsExtensions();
+  },
+
   structuralSearch(
     content: string,
     filePath: string,

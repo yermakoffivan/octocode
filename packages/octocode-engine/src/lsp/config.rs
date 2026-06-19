@@ -47,16 +47,7 @@ pub fn default_server_for_file(
     }
 
     let spec = spec_for_extension(&extension)?;
-    let command = spec
-        .env_var
-        .and_then(|key| std::env::var(key).ok())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| spec.command.to_owned());
-    let (command, args) = resolve_server_invocation(
-        &command,
-        spec.args.iter().map(|arg| (*arg).to_owned()).collect(),
-        &workspace_root,
-    );
+    let (command, args) = resolve_spec_invocation(&spec, &workspace_root);
 
     Some(JsLanguageServerConfig {
         command,
@@ -66,6 +57,58 @@ pub fn default_server_for_file(
         initialization_options: None,
         env: None,
     })
+}
+
+/// True for the JS/TS server spec (the one fronting the TS backend selection).
+fn is_typescript_spec(spec: &ServerSpec) -> bool {
+    spec.env_var == Some("OCTOCODE_TS_SERVER_PATH")
+}
+
+/// `tsgo` (Microsoft's Go-native TypeScript server) speaks LSP over stdio with
+/// `--lsp -stdio`, unlike `typescript-language-server`'s `--stdio`.
+fn command_is_tsgo(command: &str) -> bool {
+    Path::new(command)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("tsgo"))
+}
+
+fn tsgo_args() -> Vec<String> {
+    vec!["--lsp".to_owned(), "-stdio".to_owned()]
+}
+
+/// Resolve a spec's command + args. JS/TS gets the Track-T backend ladder:
+/// `OCTOCODE_TS_SERVER_PATH` → `tsgo` on PATH → `typescript-language-server`
+/// (zero-config default). Every other language keeps its single spec.
+fn resolve_spec_invocation(spec: &ServerSpec, workspace_root: &str) -> (String, Vec<String>) {
+    let env_override = spec
+        .env_var
+        .and_then(|key| std::env::var(key).ok())
+        .filter(|value| !value.trim().is_empty());
+
+    if is_typescript_spec(spec) {
+        // 1) Explicit override — pick args by whether it points at tsgo.
+        if let Some(command) = env_override {
+            let args = if command_is_tsgo(&command) {
+                tsgo_args()
+            } else {
+                spec.args.iter().map(|arg| (*arg).to_owned()).collect()
+            };
+            return resolve_server_invocation(&command, args, workspace_root);
+        }
+        // 2) tsgo on PATH (opt-in, no flag) — preferred when present.
+        if which::which("tsgo").is_ok() {
+            return resolve_server_invocation("tsgo", tsgo_args(), workspace_root);
+        }
+        // 3) Fall through to the typescript-language-server default below.
+    }
+
+    let command = env_override.unwrap_or_else(|| spec.command.to_owned());
+    resolve_server_invocation(
+        &command,
+        spec.args.iter().map(|arg| (*arg).to_owned()).collect(),
+        workspace_root,
+    )
 }
 
 pub fn is_command_available(command: String) -> Result<bool, String> {
@@ -431,11 +474,21 @@ fn find_python_user_script(script_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        command_resolves_to_executable, current_node_command, default_server_for_file,
-        detect_language_id, is_command_available, is_rust_analyzer_command,
-        resolve_known_server_command, resolve_server_invocation,
+        command_is_tsgo, command_resolves_to_executable, current_node_command,
+        default_server_for_file, detect_language_id, is_command_available,
+        is_rust_analyzer_command, resolve_known_server_command, resolve_server_invocation,
     };
     use std::path::PathBuf;
+
+    #[test]
+    fn recognizes_tsgo_command_by_stem() {
+        assert!(command_is_tsgo("tsgo"));
+        assert!(command_is_tsgo("/usr/local/bin/tsgo"));
+        assert!(command_is_tsgo("TSGO")); // case-insensitive
+        assert!(!command_is_tsgo("typescript-language-server"));
+        assert!(!command_is_tsgo("/opt/node_modules/.bin/typescript-language-server"));
+        assert!(!command_is_tsgo("tsserver"));
+    }
 
     #[test]
     fn detects_requested_language_matrix_from_native_grammar_registry() {

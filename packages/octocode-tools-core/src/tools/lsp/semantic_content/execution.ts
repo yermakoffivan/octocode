@@ -44,6 +44,39 @@ import {
   type SymbolAnchor,
 } from '../shared/resolveSymbolAnchor.js';
 import { semanticHints } from './hints.js';
+import { contextUtils } from '../../../utils/contextUtils.js';
+
+/**
+ * Extensions oxc can outline natively (server-free, syntax-only). Sourced from
+ * the engine (`getSupportedJsTsExtensions`) so the dispatch list never drifts
+ * from the Rust guard; dotted + cached for `path.extname` comparison.
+ */
+let nativeJsTsExtsCache: Set<string> | undefined;
+function isNativeJsTsFile(uri: string): boolean {
+  if (!nativeJsTsExtsCache) {
+    nativeJsTsExtsCache = new Set(
+      contextUtils.getSupportedJsTsExtensions().map(ext => `.${ext}`)
+    );
+  }
+  return nativeJsTsExtsCache.has(path.extname(uri).toLowerCase());
+}
+
+/**
+ * Native JS/TS document symbols via oxc, parsed into the LSP `DocumentSymbol[]`
+ * shape. Returns `null` when oxc declines the input so the caller can fall back
+ * to the "no symbols" empty state.
+ */
+function nativeDocumentSymbols(uri: string, content: string): unknown[] | null {
+  if (!isNativeJsTsFile(uri)) return null;
+  try {
+    const json = contextUtils.extractJsSymbols(content, uri);
+    if (!json) return null;
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 const DEFAULT_SYMBOLS_PER_PAGE = 40;
 const DEFAULT_LOCATIONS_PER_PAGE = 40;
@@ -343,6 +376,12 @@ async function getSemanticContent(
     workspaceRoot
   );
   if (!serverAvailable) {
+    // Native fast path: same-file references for JS/TS without a server.
+    // Cross-file resolution still requires a language server.
+    if (query.type === 'references') {
+      const native = nativeReferences(query, anchor.value);
+      if (native) return native;
+    }
     return emptyEnvelope(
       query.type,
       anchor.value,
@@ -494,18 +533,31 @@ async function getDocumentSymbols(
   const client = serverAvailable
     ? await acquirePooledClient(workspaceRoot, anchor.value.uri)
     : null;
-  const symbols = client
-    ? client.hasCapability('documentSymbolProvider')
-      ? await client.documentSymbols(anchor.value.uri, anchor.value.content)
-      : []
-    : [];
-  const complete = Boolean(client?.hasCapability('documentSymbolProvider'));
-  const compactSymbols = flattenDocumentSymbols(
-    Array.isArray(symbols) ? symbols : []
-  );
-  const topLevelSymbols = countTopLevelDocumentSymbols(
-    Array.isArray(symbols) ? symbols : []
-  );
+  const lspProvides = Boolean(client?.hasCapability('documentSymbolProvider'));
+
+  // Source priority: type-aware LSP when present, else the native oxc outline
+  // for JS/TS (server-free, no type inference). Stamp `source` so callers know
+  // the fidelity tier.
+  let symbols: unknown[] = [];
+  let source: 'lsp' | 'native' | undefined;
+  if (lspProvides && client) {
+    const raw = await client.documentSymbols(
+      anchor.value.uri,
+      anchor.value.content
+    );
+    symbols = Array.isArray(raw) ? raw : [];
+    source = 'lsp';
+  } else {
+    const native = nativeDocumentSymbols(anchor.value.uri, anchor.value.content);
+    if (native) {
+      symbols = native;
+      source = 'native';
+    }
+  }
+
+  const complete = source !== undefined;
+  const compactSymbols = flattenDocumentSymbols(symbols);
+  const topLevelSymbols = countTopLevelDocumentSymbols(symbols);
   const { pageItems, pagination } = paginateItems(
     compactSymbols,
     query.page ?? 1,
@@ -516,7 +568,7 @@ async function getDocumentSymbols(
     ? undefined
     : serverAvailable
       ? 'documentSymbolProvider unsupported'
-      : 'Language server unavailable';
+      : 'Language server unavailable; native outline supports JS/TS only';
   const empty = complete
     ? undefined
     : {
@@ -531,7 +583,8 @@ async function getDocumentSymbols(
     uri: anchor.value.uri,
     lsp: {
       serverAvailable,
-      ...(complete ? { provider: 'documentSymbolProvider' } : {}),
+      ...(source === 'lsp' ? { provider: 'documentSymbolProvider' } : {}),
+      ...(source ? { source } : {}),
     },
     summary: {
       totalSymbols: compactSymbols.length,
@@ -746,11 +799,19 @@ function locationsEnvelope(
   };
 }
 
+type ReferencesSource =
+  | { kind: 'lsp' }
+  | { kind: 'native'; scope: 'file' };
+
+const LSP_REFERENCES_SOURCE: ReferencesSource = { kind: 'lsp' };
+
 function referencesEnvelope(
   query: SymbolAnchoredSemanticQuery,
   anchor: SymbolAnchor,
-  locations: CodeSnippet[]
+  locations: CodeSnippet[],
+  source: ReferencesSource = LSP_REFERENCES_SOURCE
 ): LspSemanticEnvelope {
+  const native = source.kind === 'native';
   const refs = locations.map((location): ReferenceLocation => {
     const isDefinition =
       location.uri === anchor.uri &&
@@ -770,7 +831,9 @@ function referencesEnvelope(
     refs.length === 0
       ? {
           category: 'noReferences' as const,
-          reason: 'referencesProvider returned no references',
+          reason: native
+            ? 'no in-file references found'
+            : 'referencesProvider returned no references',
         }
       : undefined;
 
@@ -778,7 +841,9 @@ function referencesEnvelope(
     type: 'references',
     uri: anchor.uri,
     resolvedSymbol: compactResolvedSymbol(anchor.resolvedSymbol),
-    lsp: { serverAvailable: true, provider: 'referencesProvider' },
+    lsp: native
+      ? { serverAvailable: false, source: 'native' }
+      : { serverAvailable: true, provider: 'referencesProvider', source: 'lsp' },
     payload: {
       kind: 'references',
       ...(byFile ? { byFile: pageItems } : { locations: pageItems }),
@@ -796,9 +861,57 @@ function referencesEnvelope(
             ),
           ]
         : []),
+      ...(native
+        ? [
+            'source: native (oxc) — same-file references only; install a language server for cross-file references.',
+          ]
+        : []),
       ...semanticHints('references', true),
     ],
   };
+}
+
+/** A native-oxc `Range` (0-based, UTF-16) as emitted by `findInFileReferences`. */
+type NativeRange = {
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+};
+
+/**
+ * Native same-file references envelope via oxc, or null when oxc declines the
+ * input (non-JS/TS, parse failure, or cursor not on a resolvable binding).
+ */
+function nativeReferences(
+  query: SymbolAnchoredSemanticQuery,
+  anchor: SymbolAnchor
+): LspSemanticEnvelope | null {
+  if (!isNativeJsTsFile(anchor.uri)) return null;
+  let ranges: NativeRange[];
+  try {
+    const json = contextUtils.findInFileReferences(
+      anchor.content,
+      anchor.uri,
+      anchor.resolvedSymbol.position.line,
+      anchor.resolvedSymbol.position.character
+    );
+    if (!json) return null;
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return null;
+    ranges = parsed as NativeRange[];
+  } catch {
+    return null;
+  }
+
+  const lines = anchor.content.split('\n');
+  const locations: CodeSnippet[] = ranges.map(range => ({
+    uri: anchor.uri,
+    range,
+    content: (lines[range.start.line] ?? '').trim(),
+  }));
+  return referencesEnvelope(query, anchor, locations, {
+    kind: 'native',
+    scope: 'file',
+  });
 }
 
 async function hoverEnvelope(

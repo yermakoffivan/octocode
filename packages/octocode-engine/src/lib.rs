@@ -370,6 +370,52 @@ pub fn extract_signatures(content: String, file_path: String) -> Option<String> 
     signatures::extract_signatures_inner(&content, &file_path)
 }
 
+/// Native JS/TS document symbols (server-free) as a JSON `DocumentSymbol[]`.
+///
+/// Parses ECMAScript/TypeScript *syntax* with `oxc_parser` and walks
+/// declarations into the LSP `DocumentSymbol` shape (nested, numeric
+/// `SymbolKind`, 0-based UTF-16 ranges). **No type inference** — in-file
+/// scope/binding accuracy only; type-aware outlines still require a language
+/// server. Only `ts/tsx/js/jsx/mjs/cjs/mts/cts` are handled.
+///
+/// Returns `null` for non-JS/TS files, oversized content, a hard parse failure
+/// (caller should fall back to `extractSignatures`/tree-sitter), or a file with
+/// no extractable top-level symbols.
+#[napi(js_name = "extractJsSymbols")]
+pub fn extract_js_symbols(content: String, file_path: String) -> Option<String> {
+    signatures::js_oxc::extract_js_symbols(&content, &file_path)
+}
+
+/// Canonical list of file extensions (lowercase, no leading dot) handled by the
+/// native oxc JS/TS path (`extractJsSymbols` / `findInFileReferences`). Callers
+/// should gate native dispatch on this list rather than hardcoding it, so the
+/// Rust and JS sides never drift.
+#[napi(js_name = "getSupportedJsTsExtensions")]
+pub fn get_supported_js_ts_extensions() -> Vec<String> {
+    signatures::js_oxc::JS_TS_EXTENSIONS
+        .iter()
+        .map(|ext| (*ext).to_owned())
+        .collect()
+}
+
+/// Native in-file references (server-free) for the JS/TS symbol under
+/// `(line, character)` (0-based, UTF-16), as a JSON `Range[]` covering the
+/// declaration and every resolved in-file reference (declaration first).
+///
+/// **Same-file only.** oxc resolves bindings within one module; cross-file
+/// references require a language server. No type inference. Returns `null` for
+/// non-JS/TS files, oversized content, a parse failure, or when the cursor is
+/// not on a resolvable binding/reference.
+#[napi(js_name = "findInFileReferences")]
+pub fn find_in_file_references(
+    content: String,
+    file_path: String,
+    line: u32,
+    character: u32,
+) -> Option<String> {
+    signatures::js_oxc::find_in_file_references(&content, &file_path, line, character)
+}
+
 /// Structural (AST) search — octocode's L2 layer. Resolves the grammar from
 /// `file_path`'s extension and matches an ast-grep `pattern` OR a YAML `rule`
 /// (exactly one). Returns node ranges (1-based lines, ready as `lineHint`s)

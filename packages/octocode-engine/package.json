@@ -281,14 +281,16 @@
     "prepack": "yarn readme:sync"
   },
   "dependencies": {
-    "zod": "^4.3.6"
+    "typescript": "^5.9.3",
+    "typescript-language-server": "^4.4.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^3.7.1",
+    "@napi-rs/cli": "^3.7.2",
     "@types/node": "^25.9.3",
-    "@vitest/coverage-v8": "^4.0.16",
+    "@vitest/coverage-v8": "^4.1.9",
     "esbuild": "^0.28.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.9"
   }
 }
