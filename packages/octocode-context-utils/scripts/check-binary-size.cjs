@@ -20,6 +20,7 @@ if (!existsSync(npmDir)) {
 const binaries = []
 for (const dirName of readdirSync(npmDir)) {
   const packageDir = join(npmDir, dirName)
+  if (!statSync(packageDir).isDirectory()) continue
   for (const entry of readdirSync(packageDir)) {
     if (entry.endsWith('.node')) {
       binaries.push(join(packageDir, entry))
