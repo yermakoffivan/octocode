@@ -27,6 +27,51 @@ const DEFAULT_MAX_STRUCTURAL_FILES = 2000;
 const MAX_STRUCTURAL_FILE_BYTES = 1_000_000;
 
 /**
+ * Native structural search filters candidate files by `include` globs (or scans
+ * every supported extension when none are given). `langType` is the ergonomic
+ * the regex path uses, so map it to `*.ext` include globs here — otherwise
+ * `mode:"structural", langType:"ts"` would also parse HTML/CSS/Scala/etc.
+ */
+const LANG_TYPE_EXTENSIONS: Record<string, string[]> = {
+  ts: ['ts', 'tsx', 'mts', 'cts'],
+  typescript: ['ts', 'tsx', 'mts', 'cts'],
+  tsx: ['tsx'],
+  js: ['js', 'jsx', 'mjs', 'cjs'],
+  javascript: ['js', 'jsx', 'mjs', 'cjs'],
+  jsx: ['jsx'],
+  py: ['py', 'pyi'],
+  python: ['py', 'pyi'],
+  go: ['go'],
+  rs: ['rs'],
+  rust: ['rs'],
+  java: ['java'],
+  c: ['c', 'h'],
+  cpp: ['cpp', 'hpp', 'cc', 'cxx', 'hh', 'hxx'],
+  'c++': ['cpp', 'hpp', 'cc', 'cxx', 'hh', 'hxx'],
+  cs: ['cs'],
+  csharp: ['cs'],
+  sh: ['sh', 'bash', 'zsh'],
+  bash: ['sh', 'bash', 'zsh'],
+  shell: ['sh', 'bash', 'zsh'],
+  html: ['html', 'htm'],
+  css: ['css'],
+  scss: ['scss'],
+  less: ['less'],
+  scala: ['scala', 'sc', 'sbt'],
+  json: ['json', 'jsonc'],
+  yaml: ['yaml', 'yml'],
+  yml: ['yaml', 'yml'],
+  toml: ['toml'],
+};
+
+function includeGlobsForLangType(langType?: string): string[] | undefined {
+  if (!langType) return undefined;
+  const key = langType.trim().toLowerCase();
+  const exts = LANG_TYPE_EXTENSIONS[key] ?? [key.replace(/^[.*]+/, '')];
+  return exts.filter(Boolean).map(ext => `*.${ext}`);
+}
+
+/**
  * mode:"structural" execution path. Path validation and result shaping stay in
  * TypeScript with the rest of localSearchCode; filesystem traversal, file reads,
  * pre-filtering, parsing, and ast-grep matching run in native Rust.
@@ -45,7 +90,11 @@ export async function searchContentStructural(
       path: pathValidation.sanitizedPath,
       pattern: query.pattern,
       rule: query.rule,
-      include: query.include,
+      // Honor langType by scoping to its extensions when no explicit include was
+      // given; explicit include globs always win.
+      include: query.include?.length
+        ? query.include
+        : includeGlobsForLangType(query.langType),
       excludeDir: query.excludeDir?.length
         ? query.excludeDir
         : DEFAULT_STRUCTURAL_EXCLUDE_DIRS,

@@ -525,6 +525,54 @@ describe('getSupportedStructuralExtensions', () => {
     expect(exts).toContain('rs');
     expect(addon!.SUPPORTED_STRUCTURAL_EXTENSIONS).toContain('ts');
   });
+
+  it('exposes the markup/style/config/JVM grammars + extension aliases', () => {
+    const exts = addon!.getSupportedStructuralExtensions();
+    for (const ext of [
+      'html',
+      'css',
+      'scss',
+      'less',
+      'scala',
+      'json',
+      'yaml',
+      'toml',
+      'mts',
+      'cts',
+      'pyi',
+    ]) {
+      expect(exts).toContain(ext);
+    }
+  });
+});
+
+describe('structuralSearch across new languages (napi shape)', () => {
+  it('matches a CSS declaration value and captures the metavar', () => {
+    const matches = addon!.structuralSearch(
+      '.btn { color: red; }\n',
+      'a.css',
+      '.btn { color: $C; }',
+      null
+    );
+    expect(matches.length).toBe(1);
+    expect(matches[0].metavars.C).toEqual(['red']);
+  });
+
+  it('matches HTML tag-name metavars (z-expando) over napi', () => {
+    const matches = addon!.structuralSearch('<input>\n', 'p.html', '<$TAG>', null);
+    expect(matches.length).toBe(1);
+    expect(matches[0].metavars.TAG).toEqual(['input']);
+  });
+
+  it('runs a JSON kind rule over napi', () => {
+    const matches = addon!.structuralSearch(
+      '{"a":1,"b":2}\n',
+      'c.json',
+      null,
+      'rule:\n  kind: pair\n'
+    );
+    expect(matches.length).toBe(2);
+  });
 });
 
 describe('validateRipgrepPattern', () => {

@@ -82,7 +82,9 @@ fn init_language_table() -> Vec<LanguageEntry> {
     // Non-feature-gated entries: use vec! to satisfy clippy::vec_init_then_push.
     let mut entries = vec![
         LanguageEntry {
-            extensions: &["ts"],
+            // `.mts`/`.cts` are first-class TS (oxc + LSP already treat them so);
+            // align signature/structural with that.
+            extensions: &["ts", "mts", "cts"],
             language: tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             body_query: TS_BODY_QUERY,
             comment_style: "c",
@@ -100,7 +102,8 @@ fn init_language_table() -> Vec<LanguageEntry> {
             comment_style: "c",
         },
         LanguageEntry {
-            extensions: &["py"],
+            // `.pyi` stubs parse with the Python grammar (LSP already maps them).
+            extensions: &["py", "pyi"],
             language: tree_sitter_python::LANGUAGE.into(),
             body_query: PY_BODY_QUERY,
             comment_style: "hash",
@@ -175,12 +178,37 @@ fn init_language_table() -> Vec<LanguageEntry> {
             body_query: "",
             comment_style: "c",
         },
+        // ── Config grammars: structural-search only ──────────────────────────
+        // Linked for the LSP layer; registered here so structural search can run
+        // shape queries over package manifests, CI workflows, k8s/compose YAML,
+        // etc. Empty body_query + their presence in NO_SYMBOL_EXTS keeps the
+        // signature path returning None (data files have no code signatures).
+        LanguageEntry {
+            extensions: &["json", "jsonc"],
+            language: tree_sitter_json::LANGUAGE.into(),
+            body_query: "",
+            comment_style: "c",
+        },
+        LanguageEntry {
+            extensions: &["yaml", "yml"],
+            language: tree_sitter_yaml::LANGUAGE.into(),
+            body_query: "",
+            comment_style: "hash",
+        },
+        LanguageEntry {
+            extensions: &["toml"],
+            language: tree_sitter_toml_ng::LANGUAGE.into(),
+            body_query: "",
+            comment_style: "hash",
+        },
     ];
 
     // Feature-gated grammars: conditional push after vec! creation is fine.
     #[cfg(feature = "tree-sitter-cpp")]
     entries.push(LanguageEntry {
-        extensions: &["cpp", "hpp", "cc", "cxx"],
+        // Include the `.hh`/`.hxx` header variants the structural expando table
+        // already anticipates.
+        extensions: &["cpp", "hpp", "cc", "cxx", "hh", "hxx"],
         language: tree_sitter_cpp::LANGUAGE.into(),
         body_query: CPP_BODY_QUERY,
         comment_style: "c",

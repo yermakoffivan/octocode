@@ -87,6 +87,22 @@ describe('grep command', () => {
     expect(q.keywordsToSearch).toBeUndefined();
   });
 
+  it('uses --limit as the GitHub code page size for JSON and rendered output', async () => {
+    await run(['useState', 'facebook/react'], { limit: '2', json: true });
+
+    expect(lastQuery().limit).toBe(2);
+  });
+
+  it('lets --page-size override --limit for the underlying GitHub code query', async () => {
+    await run(['useState', 'facebook/react'], {
+      limit: '2',
+      'page-size': '5',
+      json: true,
+    });
+
+    expect(lastQuery().limit).toBe(5);
+  });
+
   it('requires keywords', async () => {
     await run([]);
     expect(executeDirectTool).not.toHaveBeenCalled();
@@ -162,6 +178,29 @@ describe('grep command', () => {
       matchContentLength: 200,
       maxFiles: 5,
       matchPage: 2,
+    });
+  });
+
+  it('uses --limit as the local maxFiles and page size when --max-files/--page-size are absent', async () => {
+    await run(['needle', 'src'], { limit: '2', json: true });
+
+    expect(lastQuery()).toMatchObject({
+      maxFiles: 2,
+      itemsPerPage: 2,
+    });
+  });
+
+  it('lets explicit local --max-files and --page-size override --limit', async () => {
+    await run(['needle', 'src'], {
+      limit: '2',
+      'max-files': '4',
+      'page-size': '5',
+      json: true,
+    });
+
+    expect(lastQuery()).toMatchObject({
+      maxFiles: 4,
+      itemsPerPage: 5,
     });
   });
 

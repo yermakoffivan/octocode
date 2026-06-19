@@ -45,6 +45,7 @@ interface HistoryOpts {
   author?: string;
   includeDiff?: boolean;
   page?: number;
+  pageSize?: number;
 }
 
 function authorName(a: CommitAuthor | string | undefined): string {
@@ -90,6 +91,7 @@ async function fetchCommits(
         author: opts.author,
         includeDiff: opts.includeDiff || undefined,
         page: opts.page ?? 1,
+        perPage: opts.pageSize,
         mainResearchGoal: 'Research commit history',
         researchGoal: `Commit history for ${owner}/${repo}${opts.path ? '/' + opts.path : ''}`,
         reasoning: 'CLI history command',
@@ -171,7 +173,7 @@ export const historyCommand: CLICommand = {
   description:
     'Commit history for a GitHub repo, directory, or file — who changed what, when (with the #PR → deep-read chain)',
   usage:
-    'history <owner/repo[/path][@branch]> [--since <iso>] [--until <iso>] [--author <name>] [--branch <ref>] [--diff] [--limit <n>] [--page <n>] [--json]',
+    'history <owner/repo[/path][@branch]> [--since <iso>] [--until <iso>] [--author <name>] [--branch <ref>] [--diff] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'since',
@@ -201,12 +203,17 @@ export const historyCommand: CLICommand = {
     {
       name: 'limit',
       hasValue: true,
-      description: 'Max commits to show in rendered output (default: 20)',
+      description: 'Max commits to return/show (default: 20)',
     },
     {
       name: 'page',
       hasValue: true,
       description: 'Result page (default: 1)',
+    },
+    {
+      name: 'page-size',
+      hasValue: true,
+      description: 'Results per page (defaults to --limit)',
     },
     { name: 'json', description: 'Output raw JSON results' },
   ],
@@ -249,7 +256,9 @@ export const historyCommand: CLICommand = {
     const rawLimit = getString(options, 'limit');
     const limit = rawLimit ? parseInt(rawLimit, 10) : 20;
     const rawPage = getString(options, 'page');
+    const rawPageSize = getString(options, 'page-size');
     const page = rawPage ? parseInt(rawPage, 10) : undefined;
+    const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : limit;
     const showDiff = getBool(options, 'diff');
 
     if (!jsonOutput) {
@@ -267,6 +276,7 @@ export const historyCommand: CLICommand = {
         author: getString(options, 'author') || undefined,
         includeDiff: showDiff,
         page,
+        pageSize,
       });
       if (jsonOutput) {
         console.log(JSON.stringify(sc, null, 2));

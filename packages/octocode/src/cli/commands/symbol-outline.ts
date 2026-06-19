@@ -252,7 +252,15 @@ export async function outlineSymbols(
   const extensions = parseExtensions(getString(options, 'ext'));
   const limit = parsePositiveInt(getString(options, 'limit'), 10);
   const depth = parsePositiveInt(getString(options, 'depth'), 4);
-  const pageSize = parsePositiveInt(getString(options, 'page-size'), 40);
+  // An outline should show the whole file, not a 40-symbol slice — otherwise
+  // symbols that sort late (e.g. functions after a block of interface
+  // properties) fall onto page 2 and `--kind` filtering, which runs over the
+  // returned page, silently misses them. Pull a generous page; widen further
+  // when a kind filter is active so the filter sees every symbol.
+  const requestedPageSize = parsePositiveInt(getString(options, 'page-size'), 200);
+  const pageSize = kindFilter
+    ? Math.max(requestedPageSize, 1000)
+    : requestedPageSize;
 
   const resolved = path.resolve(target);
   if (!existsSync(resolved)) {

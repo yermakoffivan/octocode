@@ -649,7 +649,7 @@ export const prCommand: CLICommand = {
     {
       name: 'limit',
       hasValue: true,
-      description: 'Max PRs to show in list mode (default: 10)',
+      description: 'Max PRs to return/show in list mode (default: 10)',
     },
     {
       name: 'patches',
@@ -699,7 +699,7 @@ export const prCommand: CLICommand = {
     {
       name: 'page-size',
       hasValue: true,
-      description: 'Results per page (default: server default)',
+      description: 'Results per page (defaults to --limit)',
     },
     {
       name: 'json',
@@ -752,7 +752,7 @@ export const prCommand: CLICommand = {
     const rawPage = getString(options, 'page');
     const rawPageSize = getString(options, 'page-size');
     const page = rawPage ? parseInt(rawPage, 10) : undefined;
-    const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : undefined;
+    const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : limit;
 
     const modeLabel = isViewMode
       ? `PR #${target.prNumber} in ${target.owner}/${target.repo}`

@@ -119,7 +119,8 @@ impl LanguageExt for AgLanguage {
 fn expando_for_ext(ext: &str) -> char {
     match ext {
         // `$` is a valid identifier character → no substitution needed.
-        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "java" | "sh" | "bash" | "zsh" => '$',
+        "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs" | "java" | "sh" | "bash"
+        | "zsh" => '$',
         // C / C++ accept this CJK code point as an identifier start.
         "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => '\u{10000}',
         // HTML: tree-sitter-html's tagName scanner uses locale-dependent
@@ -765,6 +766,52 @@ mod tests {
     fn scala_extensions_are_supported() {
         let exts = supported_extensions();
         for ext in ["scala", "sc", "sbt"] {
+            assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
+        }
+    }
+
+    // ── config grammars (JSON / YAML / TOML) + extension aliases ──────────────
+
+    #[test]
+    fn json_rule_matches_pairs() {
+        let src = "{\n  \"a\": 1,\n  \"b\": 2\n}\n";
+        let rule = "rule:\n  kind: pair\n";
+        let matches = search(src, "json", None, Some(rule)).expect("json rule search");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn toml_rule_matches_pairs() {
+        let src = "a = 1\nb = 2\n";
+        let rule = "rule:\n  kind: pair\n";
+        let matches = search(src, "toml", None, Some(rule)).expect("toml rule search");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn yaml_rule_matches_block_mapping_pairs() {
+        let src = "a: 1\nb: 2\n";
+        let rule = "rule:\n  kind: block_mapping_pair\n";
+        let matches = search(src, "yaml", None, Some(rule)).expect("yaml rule search");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn mts_uses_typescript_grammar_and_dollar_expando() {
+        // `.mts` must resolve to the TS entry (expando `$`, not the µ fallback).
+        let src = "const a = foo(bar);\nconst b = foo(baz);\n";
+        let matches = run_pattern(src, "mts", "foo($X)");
+        assert_eq!(matches.len(), 2);
+        assert_eq!(
+            matches[0].metavars.get("X").map(Vec::as_slice),
+            Some(&["bar".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn config_and_alias_extensions_are_supported() {
+        let exts = supported_extensions();
+        for ext in ["json", "jsonc", "yaml", "yml", "toml", "mts", "cts", "pyi"] {
             assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
         }
     }

@@ -416,7 +416,7 @@ export const grepCommand: CLICommand = {
     {
       name: 'limit',
       hasValue: true,
-      description: 'Max files to show in rendered output (default: 10)',
+      description: 'Max files to return/show (default: 10)',
     },
     {
       name: 'page',
@@ -426,7 +426,7 @@ export const grepCommand: CLICommand = {
     {
       name: 'page-size',
       hasValue: true,
-      description: 'Results per page (default: server default)',
+      description: 'Results per page (defaults to --limit)',
     },
     {
       name: 'branch',
@@ -491,7 +491,7 @@ export const grepCommand: CLICommand = {
           contextLines: ctxS ? parseInt(ctxS, 10) : undefined,
           maxMatchesPerFile: maxS ? parseInt(maxS, 10) : undefined,
           page: pageS ? parseInt(pageS, 10) : undefined,
-          pageSize: pageSizeS ? parseInt(pageSizeS, 10) : undefined,
+          pageSize: pageSizeS ? parseInt(pageSizeS, 10) : limitS,
         });
         if (jsonOutput) {
           console.log(JSON.stringify(sc, null, 2));
@@ -522,7 +522,7 @@ export const grepCommand: CLICommand = {
     const rawMaxFiles = getString(options, 'max-files');
     const rawMatchPage = getString(options, 'match-page');
     const page = rawPage ? parseInt(rawPage, 10) : undefined;
-    const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : undefined;
+    const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : limit;
     const contextLines = rawContextLines
       ? parseInt(rawContextLines, 10)
       : undefined;
@@ -632,7 +632,7 @@ export const grepCommand: CLICommand = {
           multiline: getBool(options, 'multiline'),
           multilineDotall: getBool(options, 'multiline-dotall'),
           matchContentLength,
-          maxFiles,
+          maxFiles: maxFiles ?? limit,
           matchPage,
           page,
           pageSize,
