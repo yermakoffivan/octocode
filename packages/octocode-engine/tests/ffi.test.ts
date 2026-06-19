@@ -373,43 +373,16 @@ def top():
     expect(out).toBeNull();
   });
 
-  it('extracts Markdown document outlines', () => {
-    const src = `---
-title: Guide
----
-
-# Project
-
-Intro with [Docs](https://example.com/docs) and [API][api].
-
-## Install ##
-
-- yarn install
-
-\`\`\`ts
-export function hidden() {
-  return 1;
-}
-\`\`\`
-
-API
-===
-
-[api]: ./api.md
-`;
-    const out = addon!.extractSignatures(src, 'README.md');
-    expect(out).not.toBeNull();
-    expect(out!).toContain('frontmatter: title');
-    expect(out!).toContain('# Project');
-    expect(out!).toContain(
-      'links: [Docs](https://example.com/docs), [API][api]'
-    );
-    expect(out!).toContain('## Install');
-    expect(out!).toContain('- yarn install');
-    expect(out!).toContain('code fence: ts');
-    expect(out!).toContain('# API');
-    expect(out!).toContain('link ref: [api]: ./api.md');
-    expect(out!).not.toContain('hidden');
+  it('returns null for languages without a tree-sitter grammar (no regex fallback)', () => {
+    // Signature extraction is tree-sitter only — Markdown, Lua, SQL, Ruby, etc.
+    // have no wired grammar and therefore produce no outline.
+    expect(addon!.extractSignatures('# Title\n\nText\n', 'README.md')).toBeNull();
+    expect(
+      addon!.extractSignatures('local x = 1\nfunction f() return x end\n', 'a.lua')
+    ).toBeNull();
+    expect(
+      addon!.extractSignatures('CREATE TABLE t (id INT);\n', 'a.sql')
+    ).toBeNull();
   });
 });
 
@@ -716,14 +689,20 @@ describe('SIGNATURES_ONLY_HINT', () => {
 });
 
 describe('getSupportedSignatureExtensions', () => {
-  it('returns an array including ts and py', () => {
+  it('returns tree-sitter languages only (no heuristic-covered extensions)', () => {
     if (!addon) return;
     const exts = addon.getSupportedSignatureExtensions();
+    // Tree-sitter grammars with a function-body query.
     expect(exts).toContain('ts');
     expect(exts).toContain('py');
     expect(exts).toContain('rs');
-    expect(exts).toContain('md');
-    expect(exts).toContain('markdown');
+    // Structural-only grammars and former heuristic languages are excluded.
+    expect(exts).not.toContain('md');
+    expect(exts).not.toContain('markdown');
+    expect(exts).not.toContain('lua');
+    expect(exts).not.toContain('sql');
+    expect(exts).not.toContain('html');
+    expect(exts).not.toContain('scala');
   });
 });
 
@@ -1024,6 +1003,12 @@ describe('extractMatchingLines', () => {
       isRegex: true,
     });
     expect(r.matchCount).toBe(2);
+  });
+
+  it('throws on an invalid regex instead of returning an empty success', () => {
+    expect(() =>
+      addon!.extractMatchingLines('abc\n', '[', { isRegex: true })
+    ).toThrow();
   });
 
   it('context lines included', () => {

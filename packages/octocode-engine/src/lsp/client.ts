@@ -202,7 +202,10 @@ export class LSPClient {
     );
   }
 
-  async closeDocument(_filePath: string): Promise<void> {
-    return Promise.resolve();
+  async closeDocument(filePath: string): Promise<void> {
+    // Drives the native `textDocument/didClose` and clears the document's
+    // version state, so a later openDocument starts a fresh didOpen. A no-op
+    // here leaves the server holding stale in-memory documents forever.
+    await this.nativeClient.closeDocument?.(filePath);
   }
 }

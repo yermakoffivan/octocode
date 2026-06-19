@@ -8,6 +8,7 @@ export declare class NativeLspClient {
   hasCapability(capability: string): boolean
   getRecentStderr(): Array<string>
   openDocument(filePath: string, content: string): Promise<void>
+  closeDocument(filePath: string): Promise<void>
   getDefinition(filePath: string, line: number, character: number): Promise<Array<JsCodeSnippet>>
   getReferences(filePath: string, line: number, character: number, includeDeclaration?: boolean | undefined | null): Promise<Array<JsCodeSnippet>>
   getHover(filePath: string, line: number, character: number): Promise<any>

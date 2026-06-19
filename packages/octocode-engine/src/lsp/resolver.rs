@@ -342,12 +342,31 @@ fn hit_for(line: &str, line_index: usize, character: usize, line_offset: i32) ->
     JsResolvedSymbol {
         position: JsExactPosition {
             line: line_index as u32,
-            character: character as u32,
+            // `character` arrives as a BYTE offset within `line` (tree-sitter
+            // columns and `str::find`/`match_indices` are byte-based). LSP
+            // `character` is UTF-16 code units, so convert — otherwise any line
+            // with non-ASCII before the symbol mis-positions the cursor.
+            character: byte_offset_to_utf16(line, character),
         },
         found_at_line: line_index as u32 + 1,
         line_offset,
         line_content: line.to_owned(),
     }
+}
+
+/// Convert a byte offset within `line` to a UTF-16 code-unit offset (the LSP
+/// `character` unit). Counts every char whose start byte precedes `byte_offset`.
+fn byte_offset_to_utf16(line: &str, byte_offset: usize) -> u32 {
+    let mut bytes = 0usize;
+    let mut utf16 = 0u32;
+    for ch in line.chars() {
+        if bytes >= byte_offset {
+            break;
+        }
+        bytes += ch.len_utf8();
+        utf16 += ch.len_utf16() as u32;
+    }
+    utf16
 }
 
 fn looks_like_declaration(line: &str, symbol_name: &str) -> bool {
@@ -460,8 +479,39 @@ fn strip_line_comment(line: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_position_with_path;
+    use super::{byte_offset_to_utf16, resolve_position_with_path};
     use crate::lsp::types::JsFuzzyPosition;
+
+    #[test]
+    fn byte_offset_converts_to_utf16_character() {
+        // 'é' = 2 UTF-8 bytes / 1 UTF-16 unit: "target" starts at byte 8, char 7.
+        assert_eq!(byte_offset_to_utf16("const étarget = 1;", 8), 7);
+        // '🌍' = 4 UTF-8 bytes / 2 UTF-16 units (surrogate pair): byte 10, char 8.
+        assert_eq!(byte_offset_to_utf16("const 🌍target = 1;", 10), 8);
+        assert_eq!(byte_offset_to_utf16("ascii only", 6), 6);
+        assert_eq!(byte_offset_to_utf16("", 0), 0);
+    }
+
+    fn resolve_char(file_name: &str, source: &str, symbol_name: &str, line_hint: u32) -> u32 {
+        resolve_position_with_path(
+            file_name,
+            source,
+            &JsFuzzyPosition {
+                symbol_name: symbol_name.to_owned(),
+                line_hint: Some(line_hint),
+                order_hint: None,
+            },
+        )
+        .expect("must resolve")
+        .position
+        .character
+    }
+
+    #[test]
+    fn resolves_utf16_character_for_non_ascii_prefix() {
+        // 'é' before the symbol → LSP character must be UTF-16 (7), not byte (8).
+        assert_eq!(resolve_char("demo.ts", "const étarget = 1;\n", "target", 1), 7);
+    }
 
     fn resolve(file_name: &str, source: &str, symbol_name: &str, line_hint: u32) -> u32 {
         let result = resolve_position_with_path(

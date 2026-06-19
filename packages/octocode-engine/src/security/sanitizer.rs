@@ -4,13 +4,15 @@ use super::types::SanitizationResult;
 const MAX_CONTENT_SIZE: usize = 10_000_000;
 
 pub(crate) fn sanitize_content(content: &str, file_path: Option<&str>) -> SanitizationResult {
+    // Byte-based cap (the JS fallback uses Buffer.byteLength) so the same content
+    // is redacted identically whether or not the native addon is available.
     if content.len() > MAX_CONTENT_SIZE {
         return SanitizationResult {
             content: "[CONTENT-REDACTED-SIZE-LIMIT]".to_string(),
             has_secrets: true,
             secrets_detected: vec!["content-size-exceeded".to_string()],
             warnings: vec![format!(
-                "Content exceeds {} character limit — redacted for safety",
+                "Content exceeds {} byte limit — redacted for safety",
                 MAX_CONTENT_SIZE
             )],
         };

@@ -326,12 +326,14 @@ fn matches_permissions(metadata: &fs::Metadata, query: &CompiledQuery) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
     let mode = metadata.permissions().mode() & 0o777;
-    if query
-        .permissions
-        .as_ref()
-        .is_some_and(|expected| format!("{mode:03o}") != expected.trim_start_matches('0'))
-    {
-        return false;
+    if let Some(expected) = query.permissions.as_ref() {
+        // Compare octal *values*, not strings. The old `trim_start_matches('0')`
+        // turned "000" into "" (so a real 000 file could never match) and also
+        // mishandled forms like "0644"/"0o644". Parse both and compare numbers.
+        let expected_mode = u32::from_str_radix(expected.trim().trim_start_matches("0o"), 8).ok();
+        if expected_mode != Some(mode) {
+            return false;
+        }
     }
     if query.executable && mode & 0o111 == 0 {
         return false;

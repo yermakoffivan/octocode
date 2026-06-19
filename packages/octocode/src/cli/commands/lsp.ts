@@ -47,7 +47,7 @@ function printUsageError(message: string, jsonOutput: boolean): void {
       `    grep "runCLI" packages/octocode/src --type ts\n` +
       `    lsp packages/octocode/src/index.ts --type definition --symbol runCLI --line 10\n` +
       `    lsp packages/octocode/src/cli/index.ts --type hover --symbol runCLI --line 73\n` +
-      `    ${dim('# for a file/dir outline, use: symbols packages/octocode/src/cli/index.ts')}\n`
+      `    ${dim('# for a file/dir outline, use: ls --symbols packages/octocode/src/cli/index.ts')}\n`
   );
 }
 

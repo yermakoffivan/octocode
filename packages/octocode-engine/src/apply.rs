@@ -3,7 +3,7 @@ use crate::config::{indentation_sensitive_names, minify_config};
 use crate::file_extension::get_extension_internal;
 use crate::minifier::{minify_content_sync_inner, MAX_SIZE};
 use crate::strategies::{
-    minify_code_core, minify_css_quality, minify_general_core, minify_js_oxc,
+    minify_code_core, minify_css_quality, minify_embedded_web, minify_general_core, minify_js_oxc,
     minify_json_readable_inner, minify_markdown_core,
 };
 
@@ -50,6 +50,14 @@ pub fn apply_content_view_minification_inner(content: &str, file_path: &str) -> 
         // P2: CSS / SCSS / LESS content-view: use lightningcss (much better than blank-line collapse)
         if matches!(ext.as_str(), "css" | "scss" | "less" | "sass") {
             return minify_css_quality(content);
+        }
+
+        // HTML / Vue / Svelte content-view: keep the markup readable but minify
+        // the embedded <style> (lightningcss) and <script> (oxc) blocks where
+        // the compressible bytes actually live. A generic comment-strip barely
+        // touches these files (benchmark: ~0% content-view cut).
+        if matches!(ext.as_str(), "html" | "htm" | "vue" | "svelte") {
+            return minify_embedded_web(content, file_path);
         }
 
         // JS/TS: use OXC without mangling — preserves names for agent readability
@@ -171,6 +179,36 @@ mod tests {
             "lightningcss must strip 0px: '{out}'"
         );
         assert!(!out.contains("0px"), "0px should become 0: '{out}'");
+    }
+
+    // ── HTML / Vue / Svelte embedded content view ────────────────────────────
+    #[test]
+    fn html_content_view_minifies_embedded_style_and_script_and_keeps_markup() {
+        let src = "<!doctype html>\n<html>\n<head>\n  <!-- nav styles -->\n  <style>\n    .card {\n      color: red;\n      padding: 0px;\n    }\n  </style>\n</head>\n<body>\n  <h1>Dashboard</h1>\n  <script>\n    function greet(name) {\n      // say hello\n      console.log(\"hi \" + name);\n    }\n  </script>\n</body>\n</html>\n";
+        let out = apply_content_view_minification_inner(src, "page.html");
+        assert!(out.len() < src.len(), "HTML embedded view must compress");
+        assert!(out.contains("<h1>Dashboard</h1>"), "markup preserved: {out}");
+        assert!(!out.contains("nav styles"), "HTML comment dropped: {out}");
+        assert!(!out.contains("// say hello"), "JS comment dropped: {out}");
+        assert!(out.contains("greet"), "JS identifiers preserved: {out}");
+    }
+
+    #[test]
+    fn vue_sfc_content_view_minifies_ts_script_and_style() {
+        let src = "<template>\n  <section id=\"app\">{{ title }}</section>\n</template>\n\n<style scoped>\n.title {\n  font-weight: bold;\n  margin: 0px;\n}\n</style>\n\n<script lang=\"ts\">\nexport default {\n  data(): { title: string } {\n    // initial state\n    return { title: \"Hi\" };\n  },\n};\n</script>\n";
+        let out = apply_content_view_minification_inner(src, "App.vue");
+        assert!(out.len() < src.len(), "Vue SFC view must compress: {out}");
+        assert!(out.contains("id=\"app\""), "template preserved: {out}");
+        assert!(!out.contains("initial state"), "TS comment dropped: {out}");
+    }
+
+    #[test]
+    fn svelte_external_script_left_intact() {
+        let src = "<script src=\"/vendor.js\"></script>\n<h1>Title</h1>\n<!-- footer -->\n<p>Body</p>\n";
+        let out = apply_content_view_minification_inner(src, "Page.svelte");
+        assert!(out.contains("src=\"/vendor.js\""), "external script kept: {out}");
+        assert!(!out.contains("footer"), "comment dropped: {out}");
+        assert!(out.contains("<h1>Title</h1>"));
     }
 
     // ── size cap ──────────────────────────────────────────────────────────────

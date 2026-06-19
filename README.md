@@ -226,12 +226,10 @@ Auto-route local paths to local tools and `owner/repo[/path]` targets to GitHub 
 
 | Command | Use it for |
 |---------|------------|
-| `octocode ls <path\|owner/repo>` | Browse local or GitHub structure |
-| `octocode cat <path\|owner/repo/path>` | Read a file, symbol skeleton, line range, or matched slice |
-| `octocode grep <term> <path\|owner/repo>` | Search local code with ripgrep or external GitHub code |
-| `octocode ast <pattern> [path]` | Run local AST structural search |
+| `octocode ls <path\|owner/repo>` | Browse local or GitHub structure; a file (or `--symbols`) shows a symbol outline |
+| `octocode cat <path\|owner/repo/path>` | Read a file, symbol skeleton (`--mode symbols`), line range, or matched slice |
+| `octocode grep <term> <path\|owner/repo>` | Text/regex search, or AST structural search with `--pattern` / `--rule` (local) |
 | `octocode find <query> [path\|owner/repo]` | Find files by name, path, metadata, or content |
-| `octocode symbols <file\|path>` | Get a semantic symbol outline |
 | `octocode lsp <file> --type <type>` | Trace definitions, references, callers, callees, hover, and types |
 | `octocode pr <owner/repo[#N]\|PR-URL>` | Search or deep-read pull requests |
 | `octocode history <owner/repo[/path]>` | Inspect commit history for a repo, directory, or file |
@@ -304,7 +302,7 @@ The same tool implementations run over MCP and CLI.
 
 | Tool | What it does |
 |------|--------------|
-| `lspGetSemantics` | Typed semantic navigation. Raw tools support `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored queries only; use `symbols` for `documentSymbols`. Supports semantic navigation through installed language servers — see the [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md). |
+| `lspGetSemantics` | Typed semantic navigation. Raw tools support `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored queries only; use `ls --symbols` for `documentSymbols`. Supports semantic navigation through installed language servers — see the [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md). |
 
 **References**
 - [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
@@ -316,33 +314,65 @@ The same tool implementations run over MCP and CLI.
 
 ## Language Support
 
-Three independent code-intelligence axes. **Structural AST** (`localSearchCode mode:"structural"` / `ast`) and **signature outlines** (`minify:"symbols"`) run natively in the Rust engine with no external tooling. **LSP** semantic navigation (`lspGetSemantics` / `lsp` / `symbols`) spawns the language server named below — it must be installed and on `PATH` (override per language with `OCTOCODE_<LANG>_SERVER_PATH`).
+Four code-intelligence axes, three of them native to the Rust engine with **no external tooling**:
+
+- **Structural AST** — `localSearchCode mode:"structural"` (`pattern` / `rule`). Tree-sitter, native.
+- **Signature outline** — `minify:"symbols"`. **Real tree-sitter parsing only** — no regex/heuristic guessing. Available for the languages with a wired grammar (the **Native code intelligence** table below); every other file type returns the real file. An anti-growth guard also returns the real file whenever a skeleton would not be smaller than the source, so symbols never inflate output.
+- **Content-view minification** — `minify:"standard"` (default). Native comment/whitespace stripping for **70+ languages and config formats** (full list below). HTML/Vue/Svelte additionally get an *embedded-language* view: the `<style>` (lightningcss) and `<script>` (oxc) blocks are minified while the markup stays readable.
+- **LSP** semantic navigation — `lspGetSemantics` / `lsp` / `ls --symbols`. Spawns the language server named below; it must be installed and on `PATH` (override per language with `OCTOCODE_<LANG>_SERVER_PATH`).
+
+### Native code intelligence (tree-sitter AST + LSP)
 
 | Language | Extensions | Structural AST | LSP server | Signature outline |
 |----------|------------|:--------------:|------------|-------------------|
-| TypeScript | `.ts .tsx .mts .cts` | ✅ | `typescript-language-server` ² | tree-sitter |
-| JavaScript | `.js .jsx .mjs .cjs` | ✅ | `typescript-language-server` ² | tree-sitter |
-| Python | `.py .pyi` | ✅ | `pylsp` | tree-sitter |
-| Go | `.go` | ✅ | `gopls` | tree-sitter |
-| Rust | `.rs` | ✅ | `rust-analyzer` | tree-sitter |
-| Java | `.java` | ✅ | `jdtls` | tree-sitter |
-| C | `.c .h` | ✅ ¹ | `clangd` | tree-sitter |
-| C++ | `.cpp .cc .cxx .hpp` | ✅ ¹ | `clangd` | tree-sitter |
-| C# | `.cs` | ✅ | `csharp-ls` | tree-sitter |
-| Shell | `.sh .bash .zsh` | ✅ | `bash-language-server` | tree-sitter |
-| HTML | `.html .htm` | ✅ | `vscode-html-language-server` | heuristic |
-| CSS | `.css` | ✅ | `vscode-css-language-server` | heuristic |
-| SCSS | `.scss` | ✅ | `vscode-css-language-server` | heuristic |
-| LESS | `.less` | ✅ | `vscode-css-language-server` | heuristic |
-| Scala | `.scala .sc .sbt` | ✅ | — | heuristic |
-| JSON | `.json .jsonc` | — | `vscode-json-language-server` | — |
-| YAML | `.yaml .yml` | — | `yaml-language-server` | — |
-| TOML | `.toml` | — | `taplo` | — |
+| TypeScript / React | `.ts .tsx .mts .cts` | ✅ | `typescript-language-server` ² | ✅ tree-sitter |
+| JavaScript / JSX | `.js .jsx .mjs .cjs` | ✅ | `typescript-language-server` ² | ✅ tree-sitter |
+| Python | `.py .pyi` | ✅ | `pylsp` | ✅ tree-sitter |
+| Go | `.go` | ✅ | `gopls` | ✅ tree-sitter |
+| Rust | `.rs` | ✅ | `rust-analyzer` | ✅ tree-sitter |
+| Java | `.java` | ✅ | `jdtls` | ✅ tree-sitter |
+| C | `.c .h` | ✅ ¹ | `clangd` | ✅ tree-sitter |
+| C++ | `.cpp .cc .cxx .hpp .hh .hxx` | ✅ ¹ | `clangd` | ✅ tree-sitter |
+| C# | `.cs` | ✅ | `csharp-ls` | ✅ tree-sitter |
+| Shell | `.sh .bash .zsh` | ✅ | `bash-language-server` | ✅ tree-sitter |
+| HTML | `.html .htm` | ✅ | `vscode-html-language-server` | — ³ |
+| CSS | `.css` | ✅ | `vscode-css-language-server` | — |
+| SCSS | `.scss` | ✅ | `vscode-css-language-server` | — |
+| LESS | `.less` | ✅ | `vscode-css-language-server` | — |
+| Scala | `.scala .sc .sbt` | ✅ | — | — |
+| JSON | `.json .jsonc` | ✅ | `vscode-json-language-server` | — ⁴ |
+| YAML | `.yaml .yml` | ✅ | `yaml-language-server` | — ⁴ |
+| TOML | `.toml` | ✅ | `taplo` | — ⁴ |
 
-Heuristic-signature outlines only (no AST/LSP): **Kotlin, Ruby, PHP, Swift, SQL, Vue, Svelte, Elixir, Erlang, Haskell, Lua, Markdown**.
+`.tsx`/`.jsx` (React) and `.mts`/`.cts`/`.pyi` parse as first-class members of their language. The markup/style/config grammars (HTML, CSS, SCSS, LESS, Scala, JSON, YAML, TOML) power structural `rule` queries (e.g. `kind: pair` over manifests, CI workflows, and k8s/compose files) but have no function-body concept, so they produce no signature outline.
+
+> **Signature outlines are tree-sitter only.** Languages without a wired grammar — Kotlin, Ruby, PHP, Swift, SQL, Vue, Svelte, Elixir, Erlang, Haskell, Lua, Clojure, Visual Basic, GraphQL, Protobuf, Markdown, … — do **not** get a `minify:"symbols"` outline (the engine returns the real file). They still get full content-view minification below. This is deliberate: outlines come from a real parse tree, never from regex heuristics.
+
+### Content-view minification (comment/whitespace stripping)
+
+Every file type below gets native `minify:"standard"` density reduction. HTML/Vue/Svelte get the embedded-language view ³. Anything not listed (and any unknown/binary file) is returned unchanged.
+
+```
+JS/TS        js jsx mjs cjs ts tsx
+Web/markup   html htm xml svg vue svelte xsl xslt
+Templates    hbs handlebars ejs pug jade mustache twig jinja jinja2 erb haml slim
+Styles       css scss less sass styl
+Data/config  json jsonc json5 yaml yml toml ini conf config env properties csv
+             tf tfvars cfg gitignore dockerignore star bzl cmake
+             (+ Makefile, Dockerfile, Procfile, Justfile, Rakefile, Gemfile, …)
+Systems      go java c h cpp hpp cc cxx cs rs rust swift kt kotlin scala dart
+             groovy gradle mm zig v pas adb ads f for f90 f95 f03 f08 nix jl
+Scripting    py coffee nim php rb perl pl pm sh bash zsh fish ps1 psm1 psd1 awk r lua
+Query/IDL    sql tsql plsql graphql gql proto
+Functional   fs fsx hs lhs elm lisp lsp scm rkt clj cljs ex exs erl hrl
+Hardware/asm vhd vhdl asm nasm wat wast
+Docs/text    md markdown rst txt log
+```
 
 ¹ C/C++ structural **`rule`** queries (e.g. `kind: call_expression`) work fully; a bare call-shaped **`pattern`** can hit tree-sitter's declaration-vs-call ambiguity (upstream ast-grep behavior) — prefer a `rule` with `kind` to match calls.
 ² JavaScript/TypeScript also have a native (oxc) symbol/same-file-reference fast path that works with **no server installed** (syntax-only, no type inference); set `OCTOCODE_TS_SERVER_PATH` to a `tsgo` binary to opt into Microsoft's native TS backend.
+³ HTML/Vue/Svelte content view keeps the markup readable while minifying embedded `<style>` (lightningcss) and `<script>` (oxc) blocks — that is where the compressible bytes live.
+⁴ Data/config formats have no code signatures, so `minify:"symbols"` is a no-op; use structural `rule` queries instead.
 
 ---
 
@@ -466,7 +496,7 @@ Session persistence"]
 ────────────────────────
 Secret detection + sanitization
 Path + command validation
-Minification - 55+ languages
+Minification - 70+ languages
 Semantic signatures
 Structural AST search
 Ripgrep JSON parser

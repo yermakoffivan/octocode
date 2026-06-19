@@ -50,7 +50,7 @@ const RS_BODY_QUERY: &str = r#"[
 
 const JAVA_BODY_QUERY: &str = r#"[
   (method_declaration      body: (block) @body)
-  (constructor_declaration body: (block) @body)
+  (constructor_declaration body: (constructor_body) @body)
   (lambda_expression       body: (block) @body)
 ]"#;
 
@@ -264,6 +264,18 @@ pub fn all_entries() -> &'static [LanguageEntry] {
 pub fn supported_extensions() -> Vec<&'static str> {
     LANGUAGE_TABLE
         .iter()
+        .flat_map(|e| e.extensions.iter().copied())
+        .collect()
+}
+
+/// Extensions that produce a signature outline: tree-sitter grammars with a
+/// non-empty `body_query`. Excludes structural-search-only grammars
+/// (HTML/CSS/SCSS/LESS/Scala/JSON/YAML/TOML), which have no function bodies to
+/// strip and therefore no outline.
+pub fn signature_extensions() -> Vec<&'static str> {
+    LANGUAGE_TABLE
+        .iter()
+        .filter(|e| !e.body_query.is_empty())
         .flat_map(|e| e.extensions.iter().copied())
         .collect()
 }

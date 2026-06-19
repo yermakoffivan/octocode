@@ -122,13 +122,15 @@ function sanitizeWithJsFallback(
   content: string,
   filePath: string | null
 ): NativeSanitizationResult {
-  if (content.length > MAX_CONTENT_SIZE) {
+  // Byte length (UTF-8) to match the native path's `content.len()` — otherwise
+  // large multibyte content is redacted by native but not by this fallback.
+  if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT_SIZE) {
     return {
       content: CONTENT_SIZE_PLACEHOLDER,
       hasSecrets: true,
       secretsDetected: [CONTENT_SIZE_EXCEEDED],
       warnings: [
-        `Content exceeds ${MAX_CONTENT_SIZE} character limit — redacted for safety`,
+        `Content exceeds ${MAX_CONTENT_SIZE} byte limit — redacted for safety`,
       ],
     };
   }

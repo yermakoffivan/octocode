@@ -361,10 +361,10 @@ pub fn strip_python_docstrings(content: String) -> String {
 
 // ── Signature extraction ──────────────────────────────────────────────────────
 
-/// Structural skeleton with an `NNN| ` line-number gutter: tree-sitter for
-/// configured parser-backed languages, document outlines for Markdown,
-/// heuristics for the rest. Returns `null` for data, config, unsupported
-/// prose formats, and content above the 1MB guard.
+/// Structural skeleton with an `NNN| ` line-number gutter, produced purely by
+/// tree-sitter parsing (no regex heuristics). Returns `null` for data/config
+/// formats, any language without a wired grammar, content above the 1MB guard,
+/// and any skeleton that would not be smaller than the source.
 #[napi(js_name = "extractSignatures")]
 pub fn extract_signatures(content: String, file_path: String) -> Option<String> {
     signatures::extract_signatures_inner(&content, &file_path)
@@ -458,11 +458,11 @@ pub fn get_supported_structural_extensions() -> Vec<String> {
 /// Returns a sorted list of JS char offsets (UTF-16 code units) where
 /// top-level semantic blocks begin in `content`.
 ///
-/// **Tree-sitter** (exact AST): `ts tsx js jsx mjs cjs py go rs java c h sh bash zsh`
-/// **Heuristic** (pattern-based): `cpp hpp cc cxx cs kt kotlin scala rb php swift
-///   css scss less html htm sql vue svelte ex exs hs lhs md lua` + 10 more
-/// **Returns `[]`** for data/config files (`json yaml toml ini csv xml …`),
-///   plain text, and files above the 1 MB guard.
+/// **Tree-sitter only** (exact AST): `ts tsx js jsx mjs cjs mts cts py pyi go rs
+///   java c h cpp cc cxx hpp hh hxx cs sh bash zsh`. Languages without a wired
+/// grammar and structural-only grammars (HTML/CSS/Scala/JSON/YAML/TOML) return
+/// `[]` — there is no regex/heuristic fallback. Also `[]` for data/config files,
+/// plain text, and files above the 1 MB guard.
 ///
 /// Char offsets match JavaScript `string.substring()` — pass them directly to
 /// JavaScript string slicing without conversion.
@@ -471,39 +471,16 @@ pub fn get_semantic_boundary_offsets(content: String, file_path: String) -> Vec<
     signatures::get_semantic_boundary_offsets_inner(&content, &file_path)
 }
 
-/// Returns all extensions that have signature extraction support
-/// (tree-sitter languages + heuristic-covered languages).
+/// Returns all extensions that have signature-outline support. This is exactly
+/// the set of tree-sitter grammars with a function-body query (no regex
+/// heuristics): structural-only grammars (HTML/CSS/Scala/JSON/YAML/TOML) are
+/// excluded because they produce no outline.
 #[napi(js_name = "getSupportedSignatureExtensions")]
 pub fn get_supported_signature_extensions() -> Vec<String> {
-    // Tree-sitter covered
-    let mut exts: Vec<String> = signatures::languages::supported_extensions()
+    let mut exts: Vec<String> = signatures::languages::signature_extensions()
         .into_iter()
         .map(|s| s.to_owned())
         .collect();
-
-    // Heuristic-covered extensions (matching heuristic.rs extract_heuristic routes)
-    const HEURISTIC_ONLY: &[&str] = &[
-        "cpp", "hpp", "cc", "cxx", // C++ family; heuristic path when grammar disabled
-        "cs",  // C#; heuristic path when grammar disabled
-        "kt", "kotlin", "scala", // JVM family
-        "rb",    // Ruby
-        "php",   // PHP
-        "swift", // Swift
-        "css", "scss", "less", // CSS family
-        "html", "htm", // HTML
-        "sql", "tsql", "plsql", // SQL
-        "vue", "svelte", // SFC components
-        "ex", "exs", // Elixir
-        "hs", "lhs", // Haskell
-        "md", "markdown", // Markdown document outline
-        "lua",      // Lua
-        "erl", "hrl", // Erlang
-    ];
-    for ext in HEURISTIC_ONLY {
-        if !exts.iter().any(|e| e == ext) {
-            exts.push(ext.to_string());
-        }
-    }
     exts.sort();
     exts
 }
@@ -678,8 +655,25 @@ pub fn extract_matching_lines(
     content: String,
     pattern: String,
     options: Option<ExtractMatchingLinesOptions>,
-) -> ExtractMatchingLinesResult {
-    line_extractor::extract_matching_lines_inner(&content, &pattern, options)
+) -> Result<ExtractMatchingLinesResult> {
+    // A `isRegex: true` query with an uncompilable pattern must surface as an
+    // error, not a silent empty-match success that hides the bad query.
+    let is_regex = options.as_ref().and_then(|o| o.is_regex).unwrap_or(false);
+    if is_regex && !pattern.is_empty() {
+        let case_sensitive = options
+            .as_ref()
+            .and_then(|o| o.case_sensitive)
+            .unwrap_or(false);
+        regex::RegexBuilder::new(&pattern)
+            .case_insensitive(!case_sensitive)
+            .build()
+            .map_err(|err| {
+                Error::new(Status::InvalidArg, format!("invalid regex pattern: {err}"))
+            })?;
+    }
+    Ok(line_extractor::extract_matching_lines_inner(
+        &content, &pattern, options,
+    ))
 }
 
 // ── Unified diff parser / filter ──────────────────────────────────────────────
@@ -787,10 +781,19 @@ mod tests {
     }
 
     #[test]
-    fn supported_signature_extensions_are_sorted_and_complete() {
+    fn supported_signature_extensions_are_tree_sitter_only_and_sorted() {
         let exts = get_supported_signature_extensions();
-        for required in ["ts", "py", "rs", "vue", "svelte", "md", "markdown"] {
+        // Tree-sitter grammars with a function-body query.
+        for required in ["ts", "py", "rs", "go", "java"] {
             assert!(exts.iter().any(|e| e == required), "missing {required}");
+        }
+        // Former heuristic / structural-only languages must be absent — signature
+        // extraction is tree-sitter only, with no regex fallback.
+        for absent in ["vue", "svelte", "md", "markdown", "lua", "sql", "html", "scala"] {
+            assert!(
+                !exts.iter().any(|e| e == absent),
+                "{absent} must not have a signature outline (no grammar / structural-only)"
+            );
         }
         let mut sorted = exts.clone();
         sorted.sort();

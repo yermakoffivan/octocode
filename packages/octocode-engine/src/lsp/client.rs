@@ -33,6 +33,10 @@ pub struct NativeLspClient {
     stderr_lines: Arc<StdMutex<VecDeque<String>>>,
     capabilities: StdMutex<Option<Value>>,
     progress: Arc<ProgressTracker>,
+    /// Open-document lifecycle state: `uri -> last sent version`. Drives the
+    /// LSP `didOpen` (once) → `didChange` (incrementing version) → `didClose`
+    /// protocol so servers never see a second `didOpen` for the same document.
+    open_docs: StdMutex<HashMap<String, i32>>,
 }
 
 #[napi]
@@ -47,6 +51,7 @@ impl NativeLspClient {
             stderr_lines: Arc::new(StdMutex::new(VecDeque::new())),
             capabilities: StdMutex::new(None),
             progress: ProgressTracker::new(),
+            open_docs: StdMutex::new(HashMap::new()),
         }
     }
 
@@ -64,6 +69,9 @@ impl NativeLspClient {
         }
         if let Ok(mut capabilities) = self.capabilities.lock() {
             *capabilities = None;
+        }
+        if let Ok(mut open_docs) = self.open_docs.lock() {
+            open_docs.clear();
         }
 
         let mut command = tokio::process::Command::new(&self.config.command);
@@ -162,6 +170,9 @@ impl NativeLspClient {
         if let Ok(mut capabilities) = self.capabilities.lock() {
             *capabilities = None;
         }
+        if let Ok(mut open_docs) = self.open_docs.lock() {
+            open_docs.clear();
+        }
         Ok(())
     }
 
@@ -191,21 +202,78 @@ impl NativeLspClient {
             .unwrap_or_default()
     }
 
+    /// Sync a document's in-memory content to the server, honoring the LSP
+    /// document lifecycle: the FIRST sync of a URI sends `textDocument/didOpen`
+    /// (version 1); every subsequent sync sends `textDocument/didChange` with an
+    /// incremented version and a full-document content change. Re-sending
+    /// `didOpen` (as before) is ignored or rejected by many servers and can make
+    /// changed content resolve against the stale original.
     #[napi]
     pub async fn open_document(&self, file_path: String, content: String) -> Result<()> {
-        let language_id = crate::lsp::config::detect_language_id(file_path.clone())
-            .or_else(|| self.config.language_id.clone())
-            .unwrap_or_else(|| "plaintext".to_owned());
-        let params = json!({
-            "textDocument": {
-                "uri": path_to_uri(&file_path)?,
-                "languageId": language_id,
-                "version": 1,
-                "text": content
-            }
-        });
+        let uri = path_to_uri(&file_path)?;
+
+        // Acquire the connection FIRST: if the client isn't started this fails
+        // without mutating `open_docs`, so a doc is never marked open when its
+        // didOpen/didChange was never actually sent.
         let connection = self.connection_handle().await?;
-        connection.notify("textDocument/didOpen", params).await
+
+        // Decide didOpen-vs-didChange and reserve the version under the lock,
+        // then release it before awaiting the notify (never hold a std mutex
+        // across an await).
+        let next_version = {
+            let mut open_docs = self
+                .open_docs
+                .lock()
+                .map_err(|_| Error::new(Status::GenericFailure, "open_docs lock poisoned"))?;
+            let version = open_docs.get(&uri).copied().unwrap_or(0) + 1;
+            open_docs.insert(uri.clone(), version);
+            version
+        };
+
+        if next_version == 1 {
+            let language_id = crate::lsp::config::detect_language_id(file_path.clone())
+                .or_else(|| self.config.language_id.clone())
+                .unwrap_or_else(|| "plaintext".to_owned());
+            let params = json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language_id,
+                    "version": next_version,
+                    "text": content
+                }
+            });
+            connection.notify("textDocument/didOpen", params).await
+        } else {
+            let params = json!({
+                "textDocument": { "uri": uri, "version": next_version },
+                "contentChanges": [{ "text": content }]
+            });
+            connection.notify("textDocument/didChange", params).await
+        }
+    }
+
+    /// Close a previously opened document (`textDocument/didClose`) and forget
+    /// its version, so a later `open_document` starts a fresh `didOpen`.
+    #[napi]
+    pub async fn close_document(&self, file_path: String) -> Result<()> {
+        let uri = path_to_uri(&file_path)?;
+        let was_open = {
+            let mut open_docs = self
+                .open_docs
+                .lock()
+                .map_err(|_| Error::new(Status::GenericFailure, "open_docs lock poisoned"))?;
+            open_docs.remove(&uri).is_some()
+        };
+        if !was_open {
+            return Ok(());
+        }
+        let connection = self.connection_handle().await?;
+        connection
+            .notify(
+                "textDocument/didClose",
+                json!({ "textDocument": { "uri": uri } }),
+            )
+            .await
     }
 
     #[napi]
@@ -535,10 +603,14 @@ async fn snippet_from_location_like(
     };
     let range = parse_range(range_value)?;
     let file_path = uri_to_path(uri)?;
-    let content = content_cache
-        .read_range_content(&file_path, &range)
-        .await
-        .unwrap_or_default();
+    // A read failure here is real evidence ("target file is missing/unreadable/
+    // generated"), not "no useful definition". Surface it as explicit content
+    // instead of an empty string so callers don't misread it — and keep the
+    // request resilient (one bad target must not drop the other locations).
+    let content = match content_cache.read_range_content(&file_path, &range).await {
+        Ok(text) => text,
+        Err(err) => format!("[content unavailable — could not read {uri}: {err}]"),
+    };
     Ok(Some(JsCodeSnippet {
         uri: uri.to_owned(),
         range,
@@ -600,21 +672,48 @@ async fn cleanup_failed_start(child: &mut Child, stderr_task: Option<JoinHandle<
 }
 
 fn parse_position(value: &Value) -> Result<JsExactPosition> {
+    // Required, numeric fields. Coercing a missing/malformed line or character
+    // to 0 silently mis-positions snippets and masks protocol/server corruption,
+    // so validate and surface InvalidArg instead.
+    let line = value
+        .get("line")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| Error::new(Status::InvalidArg, "LSP position missing numeric 'line'"))?;
+    let character = value.get("character").and_then(Value::as_u64).ok_or_else(|| {
+        Error::new(Status::InvalidArg, "LSP position missing numeric 'character'")
+    })?;
     Ok(JsExactPosition {
-        line: value.get("line").and_then(Value::as_u64).unwrap_or(0) as u32,
-        character: value.get("character").and_then(Value::as_u64).unwrap_or(0) as u32,
+        line: line as u32,
+        character: character as u32,
     })
 }
 
+/// Slice `content` to an LSP range, returning whole lines for snippet context.
+/// LSP ranges are **end-exclusive**: a range ending at `{line: N, character: 0}`
+/// stops at the end of line `N-1` and must not include line `N`. When
+/// `end.character > 0` the end line is partially covered, so it is included
+/// (whole-line — column truncation would shrink a single-line definition
+/// snippet down to the bare identifier).
 fn slice_range_content(content: &str, range: &JsRange) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let start = range.start.line as usize;
-    let end = range.end.line as usize;
     if start >= lines.len() {
         return String::new();
     }
-    let end_inclusive = end.min(lines.len().saturating_sub(1));
-    lines[start..=end_inclusive].join("\n")
+    let end = range.end.line as usize;
+    let last_inclusive = if range.end.character == 0 {
+        match end.checked_sub(1) {
+            Some(v) => v,
+            None => return String::new(),
+        }
+    } else {
+        end
+    };
+    let last_inclusive = last_inclusive.min(lines.len().saturating_sub(1));
+    if last_inclusive < start {
+        return String::new();
+    }
+    lines[start..=last_inclusive].join("\n")
 }
 
 #[cfg(test)]
@@ -720,6 +819,9 @@ mod tests {
         });
     }
 
+    /// Build a range covering whole lines `start_line..=end_line` *inclusive*.
+    /// LSP ranges are end-exclusive, so the end is the start of the line after
+    /// `end_line`.
     fn range(start_line: u32, end_line: u32) -> JsRange {
         JsRange {
             start: JsExactPosition {
@@ -727,10 +829,53 @@ mod tests {
                 character: 0,
             },
             end: JsExactPosition {
-                line: end_line,
+                line: end_line + 1,
                 character: 0,
             },
         }
+    }
+
+    #[test]
+    fn parse_position_requires_numeric_line_and_character() {
+        assert!(parse_position(&json!({"line": 3, "character": 7})).is_ok());
+        assert!(parse_position(&json!({"line": 3})).is_err());
+        assert!(parse_position(&json!({"character": 7})).is_err());
+        assert!(parse_position(&json!({"line": "x", "character": 1})).is_err());
+    }
+
+    #[test]
+    fn slice_range_excludes_end_line_when_end_character_is_zero() {
+        // LSP end-exclusive: {start:{0,0}, end:{2,0}} covers lines 0–1 only.
+        let content = "line0\nline1\nline2\nline3\n";
+        let r = JsRange {
+            start: JsExactPosition {
+                line: 0,
+                character: 0,
+            },
+            end: JsExactPosition {
+                line: 2,
+                character: 0,
+            },
+        };
+        assert_eq!(slice_range_content(content, &r), "line0\nline1");
+    }
+
+    #[test]
+    fn slice_range_includes_end_line_when_end_character_positive() {
+        // A single-line range keeps the whole line (snippet context), not just
+        // the [start.character, end.character) span.
+        let content = "alpha\nbeta\n";
+        let r = JsRange {
+            start: JsExactPosition {
+                line: 1,
+                character: 2,
+            },
+            end: JsExactPosition {
+                line: 1,
+                character: 4,
+            },
+        };
+        assert_eq!(slice_range_content(content, &r), "beta");
     }
 
     fn temp_file(name: &str) -> PathBuf {

@@ -1,5 +1,4 @@
 pub mod extractor;
-pub mod heuristic;
 pub mod js_oxc;
 pub mod languages;
 pub mod renderer;
@@ -14,12 +13,13 @@ pub const SIGNATURES_ONLY_HINT: &str = concat!(
 );
 
 /// Returns `(1-based line number, text)` pairs for every line that starts a
-/// top-level semantic block.  Same tree-sitter / heuristic dispatch as
-/// `extract_signatures_inner` but skips the renderer — callers get the raw
-/// list so they can map line numbers to char offsets without string parsing.
+/// top-level semantic block. Tree-sitter only — same dispatch as
+/// `extract_signatures_inner` but skips the renderer, so callers can map line
+/// numbers to char offsets without string parsing.
 ///
 /// Returns an empty Vec for data/config files (`NO_SYMBOL_EXTS`), files above
-/// the 1 MB guard, and any language where extraction yields nothing.
+/// the 1 MB guard, and any language without a tree-sitter grammar (there is no
+/// regex/heuristic fallback — only real AST parsing produces boundaries).
 pub fn extract_boundary_lines_inner(content: &str, file_path: &str) -> Vec<(usize, String)> {
     if content.len() > crate::minifier::MAX_SIZE {
         return Vec::new();
@@ -33,20 +33,17 @@ pub fn extract_boundary_lines_inner(content: &str, file_path: &str) -> Vec<(usiz
         if NO_SYMBOL_EXTS.contains(&ext.as_str()) {
             return Vec::new();
         }
-        // tree-sitter path (highest accuracy). Entries with an empty body_query
-        // are structural-search-only grammars (HTML/CSS/SCSS/LESS) — skip them
-        // here so they fall through to the heuristic outline.
-        if let Some(entry) = languages::find_entry(&ext).filter(|e| !e.body_query.is_empty()) {
-            let cfg = LangExtractConfig {
-                language: entry.language.clone(),
-                body_query: entry.body_query,
-            };
-            if let Some(kept) = extract(content, &cfg) {
-                return kept;
-            }
-        }
-        // Heuristic path (30+ languages)
-        heuristic::extract_heuristic(content, &ext).unwrap_or_default()
+        // Tree-sitter is the ONLY signature path. Grammars wired for structural
+        // search only (empty body_query: HTML/CSS/SCSS/LESS/Scala/config) and
+        // languages with no grammar produce no boundaries.
+        let Some(entry) = languages::find_entry(&ext).filter(|e| !e.body_query.is_empty()) else {
+            return Vec::new();
+        };
+        let cfg = LangExtractConfig {
+            language: entry.language.clone(),
+            body_query: entry.body_query,
+        };
+        extract(content, &cfg).unwrap_or_default()
     }))
     .unwrap_or_default()
 }
@@ -255,14 +252,9 @@ pub fn extract_signatures_inner(content: &str, file_path: &str) -> Option<String
 
 /// Extensions where symbol extraction has no semantic value:
 /// data/config formats have key-value pairs, not code signatures;
-/// most prose formats have no reliable navigation anchors.
-///
-/// Code languages whose heuristic sometimes fails to compress (Lua, Erlang,
-/// Clojure, VB, config-shaped `.cjs`/`.mjs`) are NOT listed here — they are
-/// handled content-by-content by the universal anti-growth guard in
-/// `extract_signatures_inner`: a skeleton is only returned when it is actually
-/// smaller than the source, so a well-structured Lua module still gets an
-/// outline while a body-heavy one falls back to the real file.
+/// most prose formats have no reliable navigation anchors. These short-circuit
+/// to None before the tree-sitter lookup (some have grammars wired for
+/// structural search, but their outline would be noise).
 const NO_SYMBOL_EXTS: &[&str] = &[
     // Data / config — no code signatures whatsoever
     "json",
@@ -288,43 +280,22 @@ const NO_SYMBOL_EXTS: &[&str] = &[
 ];
 
 fn extract_by_ext(content: &str, ext: &str) -> Option<String> {
-    // P0: never extract symbols for formats with no code signatures
+    // Data/config formats have no code signatures.
     if NO_SYMBOL_EXTS.contains(&ext) {
         return None;
     }
 
-    // ── tree-sitter path (top-10 languages) ─────────────────────────────────
-    // Structural-search-only grammars (empty body_query) are skipped here and
-    // handled by the heuristic path below.
-    if let Some(entry) = languages::find_entry(ext).filter(|e| !e.body_query.is_empty()) {
-        let cfg = LangExtractConfig {
-            language: entry.language.clone(),
-            body_query: entry.body_query,
-        };
-        // Prefer tree-sitter; use the centralized heuristic extractor when it
-        // cannot produce a skeleton for this input.
-        if let Some(kept) = extract(content, &cfg) {
-            return renderer::render_skeleton(&kept, entry.comment_style);
-        }
-    }
-
-    // ── heuristic path (all other supported languages + parser misses) ───────
-    let comment_style = comment_style_for(ext);
-    let kept = heuristic::extract_heuristic(content, ext)?;
-    renderer::render_skeleton(&kept, comment_style)
-}
-
-fn comment_style_for(ext: &str) -> &'static str {
-    match ext {
-        "py" | "rb" | "sh" | "bash" | "zsh" | "fish" | "coffee" | "r" | "nim" | "jl" | "pl"
-        | "pm" | "ex" | "exs" | "cr" | "pp" => "hash",
-        "hs" | "lhs" | "lua" | "erl" | "hrl" => "hash",
-        "html" | "htm" | "vue" | "svelte" => "html",
-        "sql" | "tsql" | "plsql" => "sql",
-        "php" => "c-hash",
-        "md" | "markdown" => "none",
-        _ => "c",
-    }
+    // Tree-sitter is the ONLY signature path — real AST parsing, no regex
+    // heuristics. Grammars wired for structural search only (empty body_query:
+    // HTML/CSS/SCSS/LESS/Scala/config) and any language without a grammar return
+    // None, and the caller falls back to the standard/none view of the file.
+    let entry = languages::find_entry(ext).filter(|e| !e.body_query.is_empty())?;
+    let cfg = LangExtractConfig {
+        language: entry.language.clone(),
+        body_query: entry.body_query,
+    };
+    let kept = extract(content, &cfg)?;
+    renderer::render_skeleton(&kept, entry.comment_style)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -454,79 +425,43 @@ mod tests {
     }
 
     #[test]
-    fn markdown_skeleton_keeps_headings_links_and_list_items() {
-        let src = r#"---
-title: Guide
-draft: false
----
-
-# Project
-
-Intro with [Docs](https://example.com/docs) and [API][api].
-
-## Install ##
-
-- yarn install
-* cargo test
-
-```ts
-export function hidden() {
-  return 1;
-}
-```
-
-Details that should not be part of the outline.
-
-API
-===
-
-[api]: ./api.md
-"#;
-        let s = extract(src, "README.md").expect("markdown must extract");
-        assert!(s.contains("frontmatter: title"));
-        assert!(s.contains("# Project"));
-        assert!(s.contains("links: [Docs](https://example.com/docs), [API][api]"));
-        assert!(s.contains("## Install"));
-        assert!(s.contains("- yarn install"));
-        assert!(s.contains("* cargo test"));
-        assert!(s.contains("code fence: ts"));
-        assert!(s.contains("# API"));
-        assert!(s.contains("link ref: [api]: ./api.md"));
-        assert!(!s.contains("hidden"));
-        assert!(!s.contains("Details that should not"));
+    fn languages_without_a_grammar_return_none() {
+        // Tree-sitter is the only signature path. Languages that used to be
+        // covered by the (now-deleted) regex heuristics — Lua, Erlang, SQL,
+        // Ruby, PHP, Kotlin, Markdown, GraphQL, Proto, … — have no wired grammar,
+        // so they produce no outline and the caller shows the real file instead.
+        for (content, path) in &[
+            ("local x = 1\nfunction f() return x end\n", "a.lua"),
+            ("-module(d).\nrev(L) -> L.\n", "a.erl"),
+            ("CREATE TABLE t (id INT);\n", "a.sql"),
+            ("def greet\n  puts 'hi'\nend\n", "a.rb"),
+            ("# Title\n\nText\n", "README.md"),
+            ("type Query { user: User }\n", "schema.graphql"),
+        ] {
+            assert!(
+                extract(content, path).is_none(),
+                "{path}: no grammar → must return None (no regex fallback)"
+            );
+        }
     }
 
     #[test]
     fn skeleton_never_grows_beyond_source() {
-        // Languages whose heuristic falls through to the generic extractor and
-        // historically returned a skeleton >= source (benchmark: cjs/mjs/lua/
-        // erl/clj/vb all had negative symbol cuts). The anti-growth guard must
-        // either suppress these (None) or, if it does return a skeleton, that
-        // skeleton must be smaller than the source — never larger. Use
-        // realistically sized inputs so the verdict reflects real compression,
-        // not per-line gutter noise on a handful of lines.
-        let lua = "local Path = {}\nPath.__index = Path\n".to_string()
-            + &"function Path:exists()\n  local stat = vim.loop.fs_stat(self.filename)\n  return stat ~= nil\nend\n".repeat(40)
-            + "return Path\n";
-        let erl = "-module(demo).\n-export([rev/1]).\n".to_string()
-            + &"rev(List) -> rev(List, []).\nrev([], Acc) -> Acc;\nrev([H | T], Acc) -> rev(T, [H | Acc]).\n".repeat(40);
+        // The anti-growth guard: a tree-sitter language whose file barely
+        // compresses (a config-shaped `.cjs` that is one big object literal with
+        // no function bodies to drop) must return None rather than an outline
+        // that is not smaller than the source. Use a realistically sized input so
+        // the verdict reflects real compression, not per-line gutter noise.
         let cjs = "module.exports = {\n".to_string()
             + &"  presets: [['@babel/preset-env', { targets: { node: 'current' } }]],\n  plugins: ['@babel/plugin-transform-runtime'],\n".repeat(40)
             + "};\n";
-        let cases: &[(&str, &str)] = &[
-            (lua.as_str(), "path.lua"),
-            (erl.as_str(), "lists.erl"),
-            (cjs.as_str(), "babel.config.cjs"),
-        ];
-        for (content, path) in cases {
-            if let Some(skeleton) = extract(content, path) {
-                assert!(
-                    skeleton.len() < content.len(),
-                    "{path}: skeleton ({} bytes) must be smaller than source ({} bytes)",
-                    skeleton.len(),
-                    content.len()
-                );
-            }
+        if let Some(skeleton) = extract(&cjs, "babel.config.cjs") {
+            assert!(
+                skeleton.len() < cjs.len(),
+                "skeleton ({} bytes) must be smaller than source ({} bytes)",
+                skeleton.len(),
+                cjs.len()
+            );
         }
     }
 
@@ -541,15 +476,8 @@ API
     }
 
     #[test]
-    fn code_formats_still_extract_despite_denylist() {
-        // SQL and TS are NOT in NO_SYMBOL_EXTS, so a body-bearing source that the
-        // skeleton can genuinely compress must still extract. (One-liners that
-        // drop nothing now correctly return None via the anti-growth guard — the
-        // outline would be identical to the file, so it carries no value.)
-        let sql = "CREATE PROCEDURE refresh_totals()\nBEGIN\n".to_string()
-            + &"  UPDATE totals SET amount = amount + 1 WHERE active = 1;\n  INSERT INTO audit (msg) VALUES ('refreshed');\n".repeat(20)
-            + "END;\n";
-        assert!(extract(&sql, "schema.sql").is_some());
+    fn tree_sitter_code_extracts_and_drops_bodies() {
+        // A body-bearing source in a tree-sitter language compresses and extracts.
         assert!(extract(
             "export function add(a: number, b: number): number {\n  const sum = a + b;\n  return sum;\n}\n",
             "math.ts"
@@ -651,27 +579,6 @@ API
                 excluded_markers: &[],
             },
             BoundaryFixture {
-                name: "HTML",
-                path: "fixture.html",
-                source: "<!doctype html>\n<html>\n<head>\n  <meta name=\"viewport\" content=\"width=device-width\">\n  <link href=\"/app.css\" rel=\"stylesheet\">\n</head>\n<body>\n  <h1>Dashboard</h1>\n  <section id=\"reports\">\n    <p>Ready</p>\n  </section>\n  <script src=\"/app.js\"></script>\n</body>\n</html>\n",
-                markers: &[
-                    "<!doctype html",
-                    "  <meta name",
-                    "  <link href",
-                    "  <h1>",
-                    "  <section id",
-                    "  <script src",
-                ],
-                excluded_markers: &[],
-            },
-            BoundaryFixture {
-                name: "CSS",
-                path: "fixture.css",
-                source: ":root {\n  --gap: 1rem;\n}\n\n.card,\n.panel {\n  color: red;\n}\n\n@media (min-width: 40rem) {\n  .grid {\n    display: grid;\n  }\n}\n",
-                markers: &[":root {", ".panel {", "@media"],
-                excluded_markers: &["  --gap", "  .grid {"],
-            },
-            BoundaryFixture {
                 name: "Python",
                 path: "fixture.py",
                 source: "class Service:\n    def run(self):\n        return 1\n\ndef top_level():\n    return Service()\n",
@@ -697,26 +604,6 @@ API
                 path: "Fixture.java",
                 source: "public class Fixture {\n    public Fixture() {\n    }\n\n    public void handle() {\n        System.out.println(\"ok\");\n    }\n}\n",
                 markers: &["public class Fixture", "    public Fixture", "    public void handle"],
-                excluded_markers: &[],
-            },
-            BoundaryFixture {
-                name: "Kotlin",
-                path: "Fixture.kt",
-                source: "class Calculator {\n    fun add(): Int {\n        return 1\n    }\n\n    private fun multiply() = 2\n\n    companion object {\n        const val PI = 3.14\n    }\n}\n",
-                markers: &["class Calculator", "    fun add", "    companion object"],
-                excluded_markers: &["        const val PI"],
-            },
-            BoundaryFixture {
-                name: "Scala",
-                path: "Fixture.scala",
-                source: "package example\n\ncase class User(id: String)\n\nobject Service {\n  def load(id: String): User = {\n    User(id)\n  }\n\n  val value: Int = 1\n}\n",
-                markers: &[
-                    "package example",
-                    "case class User",
-                    "object Service",
-                    "  def load",
-                    "  val value",
-                ],
                 excluded_markers: &[],
             },
             BoundaryFixture {

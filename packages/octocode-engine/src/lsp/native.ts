@@ -9,6 +9,7 @@ export type NativeLspClientBinding = {
   hasCapability?(capability: string): boolean;
   getRecentStderr?(): string[];
   openDocument(filePath: string, content: string): Promise<void>;
+  closeDocument?(filePath: string): Promise<void>;
   getDefinition(
     filePath: string,
     line: number,
