@@ -39,13 +39,13 @@
     "node": ">=20.12.0"
   },
   "scripts": {
-    "build": "yarn lint && node build.mjs",
-    "build:dev": "node build.mjs",
+    "build": "yarn readme:sync && yarn lint && node build.mjs",
+    "build:dev": "yarn readme:sync && node build.mjs",
     "clean": "rm -rf out/",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "postpack": "rm -rf ./skills",
-    "prepack": "node scripts/check-no-workspace-protocol.mjs && node scripts/prepack.mjs",
+    "prepack": "yarn readme:sync && node scripts/check-no-workspace-protocol.mjs && node scripts/prepack.mjs",
     "prepublishOnly": "node scripts/check-no-workspace-protocol.mjs",
     "start": "node ./out/octocode.js",
     "test": "vitest run --coverage",
@@ -56,15 +56,16 @@
     "validate:mcp:json": "npx tsx scripts/validate-mcp-registry.ts --json",
     "validate:skills": "npx tsx scripts/validate-skills-marketplace.ts",
     "validate:skills:json": "npx tsx scripts/validate-skills-marketplace.ts --json",
-    "verify": "yarn lint && yarn typecheck && yarn test && yarn validate:mcp && yarn validate:skills"
+    "verify": "yarn lint && yarn typecheck && yarn test && yarn validate:mcp && yarn validate:skills",
+    "readme:sync": "node ../../scripts/sync-package-readmes.mjs ."
   },
   "dependencies": {
     "@inquirer/prompts": "^8.1.0",
+    "@octocodeai/octocode-core": "16.4.0",
     "@octocodeai/octocode-tools-core": "workspace:*",
     "@octokit/auth-oauth-device": "^8.0.3",
     "@octokit/oauth-methods": "^6.0.2",
     "@octokit/request": "^10.0.7",
-    "octocode-shared": "workspace:*",
     "open": "^11.0.0"
   },
   "devDependencies": {

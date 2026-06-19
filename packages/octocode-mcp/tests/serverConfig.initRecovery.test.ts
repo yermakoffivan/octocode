@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockGetConfigSync = vi.hoisted(() => vi.fn());
 const mockInvalidateConfigCache = vi.hoisted(() => vi.fn());
 
-vi.mock('octocode-shared', async () => {
+vi.mock('@octocodeai/octocode-tools-core/config', async () => {
   const actual =
-    await vi.importActual<typeof import('octocode-shared')>('octocode-shared');
+    await vi.importActual<typeof import('@octocodeai/octocode-tools-core/config')>('@octocodeai/octocode-tools-core/config');
 
   return {
     ...actual,

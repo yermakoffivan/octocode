@@ -13,6 +13,7 @@ export type {
   JsonInput,
   RipgrepParseOptions,
   RipgrepParseResult,
+  RipgrepSearchOptions,
   SliceContentOptions,
   SliceContentResult,
   StructuralMatch,
@@ -137,6 +138,12 @@ export const contextUtils = {
     options?: NativeContextUtils.RipgrepParseOptions | null
   ): NativeContextUtils.RipgrepParseResult {
     return loadNative().parseRipgrepJson(stdout, options);
+  },
+
+  searchRipgrep(
+    options: NativeContextUtils.RipgrepSearchOptions
+  ): Promise<NativeContextUtils.RipgrepParseResult> {
+    return loadNative().searchRipgrep(options);
   },
 
   queryFileSystem(

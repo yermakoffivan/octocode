@@ -1,4 +1,3 @@
-import { checkCommandAvailability } from '../../utils/exec/commandAvailability.js';
 import type { RipgrepQuery as LocalRipgrepQuery } from './scheme.js';
 
 type RipgrepQuery = LocalRipgrepQuery;
@@ -7,7 +6,6 @@ import { LOCAL_TOOL_ERROR_CODES } from '../../errors/localToolErrors.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-types';
 import { executeRipgrepSearchInternal } from './ripgrepExecutor.js';
-import { executeGrepFallbackSearch } from './grepFallbackExecutor.js';
 import { searchContentStructural } from './structuralSearch.js';
 
 function applyWorkflowMode(query: RipgrepQuery): RipgrepQuery {
@@ -39,15 +37,9 @@ export async function searchContentRipgrep(
   }
 
   try {
-    const rgAvailability = await checkCommandAvailability('rg');
-
-    if (!rgAvailability.available) {
-      return await executeGrepFallbackSearch(
-        configuredQuery,
-        rgAvailability.error
-      );
-    }
-
+    // Ripgrep runs in-process inside the native engine, which is always present
+    // (it is the core dependency) — so there is no binary-availability check and
+    // no grep fallback any more.
     return await executeRipgrepSearchInternal(configuredQuery);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

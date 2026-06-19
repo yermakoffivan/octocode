@@ -437,6 +437,17 @@ export interface ParsedPatchLine {
  */
 export declare function parseRipgrepJson(stdout: string, options?: RipgrepParseOptions | undefined | null): RipgrepParseResult
 
+/**
+ * Run ripgrep in-process: walk `path`, search every file with ripgrep's own
+ * engine, and return the same `{ files, stats }` shape the `--json` parser
+ * produced. Replaces shelling out to an `rg` binary (and the `@vscode/ripgrep`
+ * bundle) — octocode is now its own source of ripgrep.
+ *
+ * Runs on the libuv thread pool so the filesystem walk never blocks the event
+ * loop, mirroring the old async `spawn` of `rg`.
+ */
+export declare function searchRipgrep(options: RipgrepSearchOptions): Promise<RipgrepParseResult>
+
 export declare const enum PatchLineType {
   Addition = 'Addition',
   Deletion = 'Deletion',
@@ -499,6 +510,61 @@ export interface RipgrepParseResult {
 export interface RipgrepPatternValidationResult {
   valid: boolean
   error?: string
+}
+
+/**
+ * Options for the in-process ripgrep search (`searchRipgrep`). Field semantics
+ * mirror the ripgrep CLI flags the old `RipgrepCommandBuilder` emitted.
+ */
+export interface RipgrepSearchOptions {
+  /** Search root: a directory (recursive) or a single file. */
+  path: string
+  /** The search pattern (rg's positional pattern / `keywords`). */
+  pattern: string
+  /** Treat the pattern as a literal string, not a regex (`-F`). */
+  fixedString?: boolean
+  /** Use the PCRE2 engine for lookaround/backreferences (`-P`). */
+  perlRegex?: boolean
+  /** Case-sensitive match (`-s`). Wins over `caseInsensitive`. */
+  caseSensitive?: boolean
+  /** Case-insensitive match (`-i`). Default is smart-case (`-S`). */
+  caseInsensitive?: boolean
+  /** Match whole words only (`-w`). */
+  wholeWord?: boolean
+  /** Invert: report non-matching lines (`-v`). */
+  invertMatch?: boolean
+  /** Multi-line mode: `.` and the pattern may span lines (`-U`). */
+  multiline?: boolean
+  /** In multi-line mode, let `.` match newlines (`--multiline-dotall`). */
+  multilineDotall?: boolean
+  /** List only the paths of files that contain a match (`-l`). */
+  filesOnly?: boolean
+  /** List only the paths of files with no match (`--files-without-match`). */
+  filesWithoutMatch?: boolean
+  /** Per-file count of matching lines (`-c`). */
+  countLinesPerFile?: boolean
+  /** Per-file count of individual matches (`--count-matches`). */
+  countMatchesPerFile?: boolean
+  /** Context lines around each match (`-C`). */
+  contextLines?: number
+  /** Restrict to a ripgrep file type, e.g. `ts`, `py` (`-t`). */
+  langType?: string
+  /** Include globs (`-g <glob>`). */
+  include?: Array<string>
+  /** Exclude globs (`-g !<glob>`). */
+  exclude?: Array<string>
+  /** Exclude directories (`-g !<dir>/`). */
+  excludeDir?: Array<string>
+  /** Do not honor .gitignore/.ignore/etc. (`--no-ignore`). */
+  noIgnore?: boolean
+  /** Search hidden files and directories (`--hidden`). */
+  hidden?: boolean
+  /** Sort key: `path` (default), `modified`, `accessed`, or `created`. */
+  sort?: string
+  /** Reverse the sort order (`--sortr`). */
+  sortReverse?: boolean
+  /** Max Unicode chars per assembled snippet (default 500). */
+  maxSnippetChars?: number
 }
 
 export interface RipgrepStats {
@@ -620,3 +686,27 @@ export interface YamlConversionConfig {
   sortKeys?: boolean
   keysPriority?: Array<string>
 }
+
+/** Result of secret detection + redaction over a string. */
+export interface SanitizationResult {
+  content: string
+  hasSecrets: boolean
+  secretsDetected: Array<string>
+  warnings: Array<string>
+}
+
+/**
+ * Detect and redact all secrets from `content`, returning the sanitized string
+ * with `[REDACTED-*]` placeholders plus detection metadata. `filePath` gates
+ * file-context patterns (e.g. Kubernetes/`.env` secrets).
+ */
+export declare function sanitizeContent(content: string, filePath?: string | undefined | null): SanitizationResult
+
+/**
+ * Mask secrets in place: every even-indexed char of a matched secret becomes
+ * `*`, preserving partial readability. File-context patterns are skipped.
+ */
+export declare function maskSensitiveData(text: string): string
+
+/** Number of loaded secret-detection patterns (testing / benchmarking). */
+export declare function patternCount(): number

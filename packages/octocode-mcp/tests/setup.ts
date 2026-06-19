@@ -154,7 +154,7 @@ const buildMockConfig = () => {
   };
 };
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/config', () => ({
   getConfigSync: vi.fn(() => buildMockConfig()),
   getConfig: vi.fn(async () => buildMockConfig()),
   _resetSessionState: vi.fn(() => {

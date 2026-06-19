@@ -1,6 +1,6 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { ContentSanitizer } from 'octocode-security';
-import { maskSensitiveData } from 'octocode-security/mask';
+import { ContentSanitizer } from '@octocodeai/octocode-engine/security';
+import { maskSensitiveData } from '@octocodeai/octocode-engine/mask';
 import { sanitizeStructuredContent } from '../../responses.js';
 
 export function sanitizeCallToolResult(result: CallToolResult): CallToolResult {

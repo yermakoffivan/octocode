@@ -1,6 +1,5 @@
 export * from './security/bridge.js';
 export * from './commands/BaseCommandBuilder.js';
-export * from './commands/RipgrepCommandBuilder.js';
 export * from './config.js';
 export * from './errors/domainErrors.js';
 export * from './errors/errorFactories.js';
@@ -75,10 +74,8 @@ export * from './tools/local_find_files/execution.js';
 export * from './tools/local_find_files/findFiles.js';
 export * from './tools/local_find_files/scheme.js';
 export * from './tools/local_ripgrep/execution.js';
-export * from './tools/local_ripgrep/grepFallbackExecutor.js';
 export * from './tools/local_ripgrep/patternValidation.js';
 export * from './tools/local_ripgrep/ripgrepExecutor.js';
-export * from './tools/local_ripgrep/ripgrepParser.js';
 export * from './tools/local_ripgrep/ripgrepResultBuilder.js';
 export * from './tools/local_ripgrep/scheme.js';
 export * from './tools/local_ripgrep/searchContentRipgrep.js';
@@ -123,9 +120,7 @@ export * from './utils/core/lines.js';
 export * from './utils/core/promise.js';
 export * from './utils/core/safeRegex.js';
 export * from './utils/environment/environmentDetection.js';
-export * from './utils/exec/commandAvailability.js';
 export * from './utils/exec/npm.js';
-export * from './utils/exec/ripgrepBinary.js';
 export * from './utils/exec/safe.js';
 export * from './utils/exec/spawn.js';
 export * from './utils/file/byteOffset.js';
@@ -239,34 +234,163 @@ export { hints as npmSearchHints } from './tools/package_search/hints.js';
 
 export { getDynamicHints as getDynamicToolHints } from './hints/dynamic.js';
 
-export { securityRegistry, ContentSanitizer } from 'octocode-security';
-export { maskSensitiveData } from 'octocode-security/mask';
-export { configureSecurity } from 'octocode-security/withSecurityValidation';
+export { securityRegistry, ContentSanitizer } from '@octocodeai/octocode-engine/security';
+export { maskSensitiveData } from '@octocodeai/octocode-engine/mask';
+export { configureSecurity } from '@octocodeai/octocode-engine/withSecurityValidation';
 
+export type {
+  OAuthToken,
+  StoredCredentials,
+  StoreResult,
+  DeleteResult,
+  CredentialsStore,
+  TokenSource,
+  GetCredentialsOptions,
+  ResolvedToken,
+  TokenWithRefreshResult,
+  ResolvedTokenWithRefresh,
+  RefreshResult,
+  FullTokenResolution,
+  GhCliTokenGetter,
+} from './shared/credentials/index.js';
 export {
-  getOctocodeDir,
-  paths,
-  getDirectorySizeBytes,
-  formatBytes,
-  isWindows,
-  isMac,
-  HOME,
-  getAppDataPath,
   storeCredentials,
   getCredentials,
   getCredentialsSync,
   deleteCredentials,
+  updateToken,
+  invalidateCredentialsCache,
+  getToken,
+  getTokenSync,
+  resolveToken,
+  getTokenWithRefresh,
+  resolveTokenWithRefresh,
+  refreshAuthToken,
+  resolveTokenFull,
+  resetTokenResolution,
+  listStoredHosts,
+  listStoredHostsSync,
+  hasCredentials,
+  hasCredentialsSync,
   isTokenExpired,
   isRefreshTokenExpired,
   getCredentialsFilePath,
+  readCredentialsStore,
+  encrypt,
+  decrypt,
+  ensureOctocodeDir,
+  OCTOCODE_DIR,
+  CREDENTIALS_FILE,
+  KEY_FILE,
+  ENV_TOKEN_VARS,
+  getTokenFromEnv,
   getEnvTokenSource,
   hasEnvToken,
-  resolveTokenFull,
-  refreshAuthToken,
-  getTokenWithRefresh,
   getGhCliToken,
-} from 'octocode-shared';
-export type { OAuthToken, StoredCredentials } from 'octocode-shared';
+} from './shared/credentials/index.js';
+export {
+  isWindows,
+  isMac,
+  isLinux,
+  HOME,
+  getAppDataPath,
+  getLocalAppDataPath,
+  getPlatformName,
+  getArchitecture,
+} from './shared/platform/index.js';
+export type {
+  ToolCharSavingsStats,
+  GitHubCacheHitStats,
+  StatsCounterMap,
+  SessionTotalUsageStats,
+  SessionStats,
+  PersistedSession,
+  PersistedStats,
+  SessionUpdateResult,
+  SessionOptions,
+} from './shared/session/index.js';
+export {
+  SESSION_FILE,
+  STATS_FILE,
+  getSessionId,
+  getOrCreateSession,
+  updateSessionStats,
+  resetSessionStats,
+  flushSession,
+  flushSessionSync,
+  deleteSession,
+  incrementToolCalls,
+  incrementErrors,
+  incrementRateLimits,
+  incrementRateLimitByProvider,
+  incrementGitHubCacheHits,
+  incrementGitHubCacheRateLimits,
+  incrementPackageRegistryFailures,
+  incrementToolCharSavings,
+  _resetSessionState,
+} from './shared/session/index.js';
+export type {
+  OctocodeConfig,
+  ResolvedConfig,
+  ValidationResult,
+  LoadConfigResult,
+  GitHubConfigOptions,
+  LocalConfigOptions,
+  ToolsConfigOptions,
+  NetworkConfigOptions,
+  TelemetryConfigOptions,
+  LspConfigOptions,
+  OutputConfigOptions,
+  OutputPaginationConfigOptions,
+  RequiredGitHubConfig,
+  RequiredLocalConfig,
+  RequiredToolsConfig,
+  RequiredNetworkConfig,
+  RequiredTelemetryConfig,
+  RequiredLspConfig,
+  RequiredOutputConfig,
+  RequiredOutputPaginationConfig,
+} from './shared/config/index.js';
+export {
+  CONFIG_SCHEMA_VERSION,
+  CONFIG_FILE_NAME,
+  DEFAULT_CONFIG,
+  DEFAULT_GITHUB_CONFIG,
+  DEFAULT_LOCAL_CONFIG,
+  DEFAULT_TOOLS_CONFIG,
+  DEFAULT_NETWORK_CONFIG,
+  DEFAULT_TELEMETRY_CONFIG,
+  DEFAULT_LSP_CONFIG,
+  DEFAULT_OUTPUT_CONFIG,
+  MIN_TIMEOUT,
+  MAX_TIMEOUT,
+  MIN_RETRIES,
+  MAX_RETRIES,
+  MIN_OUTPUT_DEFAULT_CHAR_LENGTH,
+  MAX_OUTPUT_DEFAULT_CHAR_LENGTH,
+  CONFIG_FILE_PATH,
+  loadConfig,
+  loadConfigSync,
+  configExists,
+  getConfigPath,
+  getOctocodeDir,
+  validateConfig,
+  getConfig,
+  getConfigSync,
+  reloadConfig,
+  resolveConfig,
+  resolveConfigSync,
+  invalidateConfigCache,
+  getConfigValue,
+  _resetConfigCache,
+  _getCacheState,
+  parseLoggingEnv,
+  OctocodeConfigSchema,
+} from './shared/config/index.js';
+export { createLogger, setLogHandler, _getLogHandler } from './shared/logger/index.js';
+export type { LogLevel, LogEntry } from './shared/logger/index.js';
+export { OCTOCODE_HOME, paths, ensureHome, ensureRepos, ensureLogs } from './shared/paths.js';
+export { getDirectorySizeBytes, formatBytes } from './shared/fs-utils.js';
 
 export { completeMetadata } from '@octocodeai/octocode-core';
 

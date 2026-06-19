@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { homedir } from 'node:os';
 import { join, basename } from 'node:path';
 import { createHash } from 'node:crypto';
-import { securityRegistry } from 'octocode-security/registry';
+import { securityRegistry } from '@octocodeai/octocode-engine/registry';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
   validateToolPath,

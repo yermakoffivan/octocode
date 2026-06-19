@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-export { isWindows, isMac, HOME, getAppDataPath } from 'octocode-shared';
+export { isWindows, isMac, HOME, getAppDataPath } from '@octocodeai/octocode-tools-core/platform';
 
-import { isWindows, isMac } from 'octocode-shared';
+import { isWindows, isMac } from '@octocodeai/octocode-tools-core/platform';
 
 const GIT_DIRS = new Set(['.git', '.svn', '.hg', '.bzr']);
 

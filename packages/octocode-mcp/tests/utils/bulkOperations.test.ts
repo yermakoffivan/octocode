@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { incrementToolCharSavings } from 'octocode-shared';
+import { incrementToolCharSavings } from '@octocodeai/octocode-tools-core/session';
 import { executeBulkOperation } from '../../../octocode-tools-core/src/utils/response/bulk.js';
 import { attachRawResponseChars } from '../../../octocode-tools-core/src/utils/response/charSavings.js';
 import type { QueryStatus } from '../../../octocode-tools-core/src/types/toolResults.js';

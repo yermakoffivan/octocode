@@ -69,7 +69,7 @@ export interface GitHubAuthStatus {
   error?: string;
 }
 
-export type { OAuthToken, StoredCredentials } from 'octocode-shared';
+export type { OAuthToken, StoredCredentials } from '@octocodeai/octocode-tools-core/credentials';
 
 export type TokenSource = 'octocode' | 'gh-cli' | 'env' | 'none';
 

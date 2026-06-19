@@ -16,7 +16,7 @@ export const nodeExternals = [
 // runtime rather than inlined into the bundle. mcp's only runtime deps are
 // @modelcontextprotocol/sdk and @octocodeai/octocode-tools-core.
 //
-// All other packages (octocode-security, octocode-shared, zod, …) are owned
+// All other packages (octocode-security, zod, …) are owned
 // by tools-core and declared in transitiveExternals below.
 export const bundledRuntimeDependencies = new Set([]);
 
@@ -33,8 +33,6 @@ export const transitiveExternals = [
   'octocode-security',
   'octocode-security/mask',
   'octocode-security/withSecurityValidation',
-  // octocode-shared is a plain TS library, but owned by tools-core
-  'octocode-shared',
   // @octocodeai/octocode-core — schemas, types, extra-types, outputs subpaths
   '@octocodeai/octocode-core',
   '@octocodeai/octocode-core/schemas',

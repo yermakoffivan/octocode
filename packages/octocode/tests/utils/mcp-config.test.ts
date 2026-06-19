@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/platform', () => ({
   isWindows: false,
   isMac: true,
   isLinux: false,

@@ -3,10 +3,10 @@
  * Pre-pack guard for octocode-mcp.
  *
  * Rust addons are distributed through npm optionalDependencies on
- * octocode-security and @octocodeai/octocode-engine.
+ * @octocodeai/octocode-engine.
  *
- * Ripgrep is resolved through the @vscode/ripgrep dependency for npm users.
- * Standalone Bun binaries still copy rg with build:bin:* scripts, but those
- * runtime files are not part of the octocode-mcp npm tarball.
+ * Ripgrep is no longer a separate dependency or bundled binary — it runs
+ * in-process inside the native engine (the `searchRipgrep` export), so there
+ * are no rg runtime files to ship.
  */
 console.error('✓ octocode-mcp prepack: npm runtime assets are dependency-owned.');

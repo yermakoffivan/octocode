@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { incrementRateLimits, updateSessionStats } from 'octocode-shared';
+import { incrementRateLimits, updateSessionStats } from '@octocodeai/octocode-tools-core/session';
 import {
   initializeSession,
   resetSessionManager,

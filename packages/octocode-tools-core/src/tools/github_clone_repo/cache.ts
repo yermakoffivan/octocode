@@ -10,7 +10,7 @@ import {
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { CloneCacheMeta, CacheSource } from './types.js';
-import { getDirectorySizeBytes } from 'octocode-shared';
+import { getDirectorySizeBytes } from '../../shared/index.js';
 
 const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 

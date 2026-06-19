@@ -7,7 +7,7 @@ import {
   QuickResult,
   StatusEmoji,
 } from '../../octocode-tools-core/src/responses.js';
-import { getConfigSync } from 'octocode-shared';
+import { getConfigSync } from '@octocodeai/octocode-tools-core/config';
 
 describe('responses.branches', () => {
   describe('createRoleBasedResult - system block combinations', () => {

@@ -8,7 +8,7 @@ import {
   incrementGitHubCacheRateLimits,
   updateSessionStats,
   type PersistedSession,
-} from 'octocode-shared';
+} from './shared/index.js';
 import type {
   SessionData,
   ToolCallData,

@@ -9,6 +9,8 @@ mod lsp;
 mod minifier;
 mod ripgrep_parser;
 mod ripgrep_pattern;
+mod ripgrep_search;
+mod security;
 mod signatures;
 mod strategies;
 mod structural;
@@ -22,8 +24,8 @@ use lsp::types::{JsFuzzyPosition, JsLanguageServerConfig, JsResolvedSymbol};
 use types::{
     ExtractMatchingLinesOptions, ExtractMatchingLinesResult, FileSystemQueryOptions,
     FileSystemQueryResult, FileTypeMinifyConfig, FilterPatchOptions, GetExtensionOptions,
-    MinifyResult, RipgrepParseOptions, RipgrepParseResult, SliceContentOptions, SliceContentResult,
-    YamlConversionConfig,
+    MinifyResult, RipgrepParseOptions, RipgrepParseResult, RipgrepSearchOptions,
+    SliceContentOptions, SliceContentResult, YamlConversionConfig,
 };
 
 pub use lsp::client::NativeLspClient;
@@ -42,6 +44,28 @@ impl Task for MinifyContentTask {
             &self.content,
             &self.file_path,
         ))
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+pub struct SearchRipgrepTask {
+    options: Option<RipgrepSearchOptions>,
+}
+
+impl Task for SearchRipgrepTask {
+    type Output = RipgrepParseResult;
+    type JsValue = RipgrepParseResult;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        // `compute` runs on the libuv thread pool, so the filesystem walk never
+        // blocks the Node event loop. `options` is moved out on first (only) call.
+        let options = self.options.take().ok_or_else(|| {
+            Error::new(Status::GenericFailure, "search options already consumed")
+        })?;
+        ripgrep_search::search(options)
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
@@ -517,6 +541,20 @@ pub fn parse_ripgrep_json(
     ripgrep_parser::parse_ripgrep_json_inner(&stdout, options)
 }
 
+/// Run ripgrep in-process: walk `path`, search every file with ripgrep's own
+/// engine, and return the same `{ files, stats }` shape the `--json` parser
+/// produced. Replaces shelling out to an `rg` binary (and the `@vscode/ripgrep`
+/// bundle) — octocode is now its own source of ripgrep.
+///
+/// Runs on the libuv thread pool so the filesystem walk never blocks the event
+/// loop, mirroring the old async `spawn` of `rg`.
+#[napi(js_name = "searchRipgrep")]
+pub fn search_ripgrep(options: RipgrepSearchOptions) -> AsyncTask<SearchRipgrepTask> {
+    AsyncTask::new(SearchRipgrepTask {
+        options: Some(options),
+    })
+}
+
 #[napi(js_name = "validateRipgrepPattern")]
 pub fn validate_ripgrep_pattern(
     pattern: String,
@@ -608,6 +646,32 @@ pub fn extract_matching_lines(
 #[napi(js_name = "filterPatch")]
 pub fn filter_patch(patch: String, options: Option<FilterPatchOptions>) -> String {
     diff_parser::filter_patch_inner(&patch, options)
+}
+
+// ── Secret detection & sanitization (merged from octocode-security) ───────────
+
+/// Detect and redact all secrets from `content`, returning the sanitized string
+/// with `[REDACTED-*]` placeholders plus detection metadata. `file_path` gates
+/// file-context patterns (e.g. Kubernetes/`.env` secrets).
+#[napi(js_name = "sanitizeContent")]
+pub fn sanitize_content(
+    content: String,
+    file_path: Option<String>,
+) -> security::types::SanitizationResult {
+    security::sanitizer::sanitize_content(&content, file_path.as_deref())
+}
+
+/// Mask secrets in place: every even-indexed char of a matched secret becomes
+/// `*`, preserving partial readability. File-context patterns are skipped.
+#[napi(js_name = "maskSensitiveData")]
+pub fn mask_sensitive_data(text: String) -> String {
+    security::detector::mask_text(text)
+}
+
+/// Number of loaded secret-detection patterns (testing / benchmarking).
+#[napi(js_name = "patternCount")]
+pub fn pattern_count() -> u32 {
+    security::patterns::PATTERNS.len() as u32
 }
 
 // ── Tests — FFI-boundary glue only ───────────────────────────────────────────

@@ -2,7 +2,7 @@ import { open, readFile, stat } from 'fs/promises';
 import { getHints } from '../../hints/index.js';
 import { extractMatchingLines } from './contentExtractor.js';
 import { contextUtils } from '../../utils/contextUtils.js';
-import { ContentSanitizer } from 'octocode-security/contentSanitizer';
+import { ContentSanitizer } from '@octocodeai/octocode-engine/contentSanitizer';
 import {
   applyPagination,
   createPaginationInfo,

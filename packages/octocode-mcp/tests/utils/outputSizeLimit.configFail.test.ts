@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/config', () => ({
   getConfigSync: vi.fn(() => {
     throw new Error('config unavailable');
   }),

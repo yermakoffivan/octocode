@@ -1,6 +1,6 @@
 # Credentials Architecture
 
-`octocode-shared/credentials` is the shared GitHub auth layer for Octocode packages. It resolves tokens from environment variables, encrypted Octocode storage, and the GitHub CLI fallback.
+`@octocodeai/octocode-tools-core/credentials` is the shared GitHub auth layer for Octocode packages. It resolves tokens from environment variables, encrypted Octocode storage, and the GitHub CLI fallback.
 
 ## Token Resolution
 
@@ -104,4 +104,4 @@ Hostname normalization lowercases hostnames and strips protocol/trailing slash, 
 ## Related Documentation
 
 - [Session Persistence](https://github.com/bgauryy/octocode/blob/main/docs/mcp/SESSION.md)
-- [octocode-shared README](https://github.com/bgauryy/octocode/blob/main/packages/octocode-shared/README.md)
+- [Tools Core package](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/README.md)

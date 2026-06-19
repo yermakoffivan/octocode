@@ -1,5 +1,5 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { getDirectorySizeBytes } from 'octocode-shared';
+import { getDirectorySizeBytes } from '../../shared/index.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import type {

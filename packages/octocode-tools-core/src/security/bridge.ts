@@ -1,10 +1,10 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type { ToolResult } from 'octocode-security';
+import type { ToolResult } from '@octocodeai/octocode-engine/security';
 import {
   withSecurityValidation as _wsv,
   withBasicSecurityValidation as _wbsv,
-} from 'octocode-security';
+} from '@octocodeai/octocode-engine/security';
 
 export function withSecurityValidation<T extends Record<string, unknown>>(
   toolName: string,

@@ -9,7 +9,7 @@ import type { GitHubCodeSearchQuerySchema } from '@octocodeai/octocode-core/sche
 
 type GitHubCodeSearchQuery = z.infer<typeof GitHubCodeSearchQuerySchema>;
 import type { WithOptionalMeta } from '../types/execution.js';
-import { ContentSanitizer } from 'octocode-security/contentSanitizer';
+import { ContentSanitizer } from '@octocodeai/octocode-engine/contentSanitizer';
 import { contextUtils } from '../utils/contextUtils.js';
 import { getOctokit } from './client.js';
 import { handleGitHubAPIError, isNoResultsSearchError } from './errors.js';

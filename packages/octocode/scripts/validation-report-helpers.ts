@@ -1,4 +1,4 @@
-import { resolveTokenFull } from 'octocode-shared';
+import { resolveTokenFull } from '@octocodeai/octocode-tools-core/credentials';
 
 export type ValidationStatus = 'valid' | 'invalid' | 'error' | 'warning';
 

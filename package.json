@@ -13,8 +13,8 @@
   },
   "scripts": {
     "build": "yarn prepublish && node ./scripts/workspace-health.mjs run build",
-    "build:native:all": "yarn workspace octocode-security build:all && yarn workspace @octocodeai/octocode-engine build:all",
-    "platforms:check": "yarn workspace octocode-security platforms:check && yarn workspace @octocodeai/octocode-engine platforms:check",
+    "build:native:all": "yarn workspace @octocodeai/octocode-engine build:all",
+    "platforms:check": "yarn workspace @octocodeai/octocode-engine platforms:check",
     "build:publish": "yarn prepublish && yarn build:native:all && yarn platforms:check && yarn workspace octocode-mcp build:publish",
     "docs:verify": "node ./scripts/docs-verify.mjs",
     "health:check": "node ./scripts/workspace-health.mjs check",
@@ -33,7 +33,8 @@
     "test:quiet": "yarn workspaces foreach -Apt run test:quiet",
     "typecheck": "node ./scripts/workspace-health.mjs run typecheck",
     "verify": "node ./scripts/workspace-health.mjs verify",
-    "prepublish": "cp README.md packages/octocode-mcp/README.md && cp README.md packages/octocode/README.md"
+    "prepublish": "yarn readme:sync",
+    "readme:sync": "node ./scripts/sync-package-readmes.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
@@ -49,7 +50,6 @@
   "workspaces": [
     "skills/*",
     "packages/*",
-    "packages/octocode-engine/npm/*",
-    "packages/octocode-security/npm/*"
+    "packages/octocode-engine/npm/*"
   ]
 }

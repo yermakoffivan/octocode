@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { incrementGitHubCacheHits } from 'octocode-shared';
+import { incrementGitHubCacheHits } from '@octocodeai/octocode-tools-core/session';
 import {
   generateCacheKey,
   withDataCache,

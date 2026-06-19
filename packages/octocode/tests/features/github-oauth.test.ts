@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TokenSource } from 'octocode-shared';
+import type { TokenSource } from '@octocodeai/octocode-tools-core/credentials';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn().mockReturnValue(false),

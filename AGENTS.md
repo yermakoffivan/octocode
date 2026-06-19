@@ -13,11 +13,11 @@
 - [Key References](#key-references)
 
 **Packages**
-- [`octocode-mcp`](#package-octocode-mcp) — MCP server (13 tools)
-- [`octocode`](#package-octocode) — CLI installer + tool runner
-- [`octocode-shared`](#package-octocode-shared) — Credentials, sessions, platform
-- [`octocode-vscode`](#package-octocode-vscode) — VS Code extension
-- [`octocode-security-utils`](#package-octocode-security-utils) — Security utilities
+- [`octocode`](#package-octocode) — CLI installer + direct tool runner
+- [`octocode-mcp`](#package-octocode-mcp) — MCP server interface
+- [`@octocodeai/octocode-engine`](#package-octocodeai-octocode-engine) — Rust native engine
+- [`@octocodeai/octocode-tools-core`](#package-octocodeai-octocode-tools-core-shared-interfaces) — Core tool implementations plus credentials, sessions, platform
+- [`octocode-mcp-vscode`](#package-octocode-mcp-vscode) — VS Code extension
 
 ---
 
@@ -52,11 +52,11 @@ All links in documentation files (`docs/`, package READMEs) **MUST** use absolut
 ```
 octocode-mcp/
 ├── packages/
-│   ├── octocode-mcp/             # MCP server: GitHub, local tools, LSP
-│   ├── octocode/             # CLI installer, tool runner, skills marketplace
-│   ├── octocode-vscode/          # VS Code extension (OAuth, multi-editor MCP install)
-│   ├── octocode-shared/          # Shared utilities (credentials, platform, session)
-│   └── octocode-security-utils/  # Standalone security utilities (no AGENTS section)
+│   ├── octocode/                 # CLI/interface: direct tool runner, auth, install, skills
+│   ├── octocode-mcp/             # MCP server/interface for AI assistants
+│   ├── octocode-engine/          # @octocodeai/octocode-engine Rust native engine
+│   ├── octocode-tools-core/      # Core tool implementations + shared interfaces
+│   └── octocode-vscode/          # VS Code extension (OAuth, multi-editor MCP install)
 ├── skills/                       # AI agent skills (research, plan, roast, etc.)
 ├── docs/                         # ALL monorepo documentation (provider setup, references, workflows)
 └── package.json                  # Workspace root (yarn workspaces)
@@ -341,49 +341,69 @@ Tokens encrypted in `~/.octocode/` (AES-256-GCM). Never log tokens. Coverage: 90
 
 ---
 
-# Package: `octocode-shared`
+# Package: `@octocodeai/octocode-engine`
 
-Shared utilities for credentials, session persistence, and platform detection across Octocode packages. Consumers: `octocode`, `octocode-mcp`.
+Rust-based native engine for Octocode. It owns security scanning/sanitization, path and command validation helpers, context minification, signature extraction, structural search helpers, ripgrep parsing, diff filtering, YAML serialization, pagination offsets, and LSP support.
 
-Run commands from `packages/octocode-shared/`.
+Run commands from `packages/octocode-engine/`.
 
 ### Commands
 
 | Task | Command |
 |------|---------|
-| Build | `yarn build` (lint + tsc) · `yarn build:dev` · `yarn clean` |
-| Test | `yarn test` (coverage) · `yarn test:quiet` · `yarn test:watch` |
-| Lint / Typecheck | `yarn lint` · `yarn lint:fix` · `yarn typecheck` |
+| Build | `yarn build` |
+| Build (dev) | `yarn build:dev` |
+| Build TypeScript only | `yarn build:ts` |
+| Native builds | `yarn build:darwin-arm64` · `yarn build:darwin-x64` · `yarn build:linux-arm64-gnu` · `yarn build:linux-x64-gnu` · `yarn build:linux-x64-musl` · `yarn build:windows-x64` · `yarn build:all` |
+| Verify package | `yarn pack:check` · `yarn platforms:check` |
 
 ### Source layout
 
 ```
 src/
-├── index.ts                     # Package exports
-├── credentials/
-│   ├── index.ts
-│   ├── credentialEncryption.ts  # AES-256-GCM encryption + file I/O
-│   ├── storage.ts               # Encrypted storage
-│   └── types.ts
-├── platform/
-│   ├── index.ts
-│   └── platform.ts              # OS detection & paths
-└── session/
-    ├── index.ts
-    ├── storage.ts               # Deferred-write session storage
-    └── types.ts
+├── lib.rs                 # napi-rs Rust entry point
+└── security/              # security detector, sanitizer, validators, regex registry
+
+scripts/                   # prebuild/postbuild, generated patterns, package checks
+npm/                       # platform-specific optionalDependency packages
 ```
+
+### Package guidelines
+
+1. This is the only Rust native workspace package.
+2. Do not split these responsibilities back into separate workspace packages.
+3. Keep TypeScript wrappers thin over the native implementation.
+4. Keep platform package names aligned with `packages/octocode-engine/package.json` optionalDependencies.
+5. Security changes must preserve secret redaction and path/command validation contracts.
+
+### Safety (package)
+
+| Path | Access |
+|------|--------|
+| `packages/octocode-engine/src/`, `packages/octocode-engine/tests/` | ✅ FULL |
+| `packages/octocode-engine/scripts/` | ✅ FULL |
+| `*.json`, `*.config.*`, `Cargo.toml` | ⚠️ ASK |
+| `dist/`, `coverage/`, `node_modules/`, `target/` | ❌ NEVER |
+
+---
+
+# Package: `@octocodeai/octocode-tools-core` shared interfaces
+
+`@octocodeai/octocode-tools-core` owns both tool APIs and shared interfaces for credentials, session persistence, config, paths, and platform detection across `octocode` and `octocode-mcp`.
+
+Shared source lives under `packages/octocode-tools-core/src/shared/`; tests live under `packages/octocode-tools-core/tests/shared/`.
 
 ### Module exports (entry points)
 
 ```ts
-import { ... } from 'octocode-shared';
-import { ... } from 'octocode-shared/credentials';
-import { ... } from 'octocode-shared/platform';
-import { ... } from 'octocode-shared/session';
+import { ... } from '@octocodeai/octocode-tools-core';
+import { ... } from '@octocodeai/octocode-tools-core/credentials';
+import { ... } from '@octocodeai/octocode-tools-core/platform';
+import { ... } from '@octocodeai/octocode-tools-core/session';
+import { ... } from '@octocodeai/octocode-tools-core/config';
 ```
 
-Shared package behavior is documented in [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md) and [Session Persistence](https://github.com/bgauryy/octocode/blob/main/docs/mcp/SESSION.md).
+Shared behavior is documented in [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md) and [Session Persistence](https://github.com/bgauryy/octocode/blob/main/docs/mcp/SESSION.md).
 
 ### Credential storage
 
@@ -397,26 +417,6 @@ Key:    ~/.octocode/.key  (file-based, restrictive perms)
 - **Auto-refresh** for tokens with `refreshToken` (GitHub App tokens, 8h expiry); OAuth App tokens never expire
 - **In-memory cache**: 5-min TTL, invalidated on `storeCredentials` / `deleteCredentials` / `updateToken` / `refreshAuthToken`
 
-### Token resolution flow
-
-```
-resolveTokenFull(options)
-    ↓
-getTokenFromEnv()  → highest priority, NO refresh (user-managed)
-    1. OCTOCODE_TOKEN  2. GH_TOKEN  3. GITHUB_TOKEN
-    ↓
-getTokenWithRefresh(host)  → ONLY octocode tokens are refreshed
-    in-memory cache (5-min TTL) → file storage → auto-refresh via @octokit/oauth-methods
-    ↓
-getGhCliToken(host)  → fallback, gh manages its own refresh
-```
-
-| Token source | Auto-refresh? | Reason |
-|---|---|---|
-| Env vars | ❌ | User-managed |
-| Octocode credentials | ✅ if `refreshToken` present | GitHub App tokens |
-| `gh` CLI | ❌ | gh manages its own |
-
 ### Session storage
 
 ```
@@ -424,30 +424,27 @@ In-memory cache ↔ Deferred writes → ~/.octocode/session.json
 Flush triggers: timer, explicit flush, SIGINT/SIGTERM, beforeExit
 ```
 
-Tracks: `sessionId`, `createdAt`, `lastActiveAt`, `stats.{toolCalls, errors, rateLimits}`.
+Tracks: `sessionId`, `createdAt`, `lastActiveAt`, and additive usage stats.
 
 ### Package guidelines
 
-1. Minimal runtime dependencies (currently: `zod`, `@octokit/oauth-methods`, `@octokit/request`)
-2. Cross-platform (macOS, Linux, Windows)
-3. Type-safe exports — strict mode
-4. Security-first — every credential operation encrypts
-5. Performance — session writes deferred
-6. Minimal API surface — export only what consumers need
+1. `@octocodeai/octocode-tools-core` is the source of truth for CLI/MCP shared interfaces.
+2. Consumers should not import shared internals by relative path across package boundaries.
+3. Cross-platform (macOS, Linux, Windows).
+4. Security-first — every credential operation encrypts.
+5. Performance — session writes deferred.
 
 ### Safety (package)
 
 | Path | Access |
 |------|--------|
-| `src/`, `tests/` | ✅ FULL |
+| `packages/octocode-tools-core/src/`, `packages/octocode-tools-core/tests/` | ✅ FULL |
 | `*.json`, `*.config.*` | ⚠️ ASK |
 | `dist/`, `coverage/`, `node_modules/` | ❌ NEVER |
 
-Coverage: 90% required.
-
 ---
 
-# Package: `octocode-vscode`
+# Package: `octocode-mcp-vscode`
 
 VS Code extension: GitHub OAuth, MCP server install across editors (Cursor, Windsurf, Antigravity, Trae, Cline, Roo Code), token sync.
 
@@ -546,9 +543,3 @@ Update all detected MCP configs with GITHUB_TOKEN env
 - [ ] Token syncs to all detected MCP configs
 - [ ] MCP server starts and responds
 - [ ] Works in Cursor, Windsurf, VS Code
-
----
-
-# Package: `octocode-security-utils`
-
-Standalone security utilities. Self-contained — no special agent guidance beyond access rules and the root core methodology. See `packages/octocode-security-utils/README.md` for API details.

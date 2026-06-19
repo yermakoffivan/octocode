@@ -14,7 +14,7 @@ import {
   readAllClientConfigs,
   analyzeSyncState,
 } from '../../../src/features/sync.js';
-import { getDirectorySizeBytes, formatBytes } from 'octocode-shared';
+import { getDirectorySizeBytes, formatBytes } from '@octocodeai/octocode-tools-core/fs-utils';
 import { EXIT } from '../../../src/cli/exit-codes.js';
 
 const { mockPaths } = vi.hoisted(() => ({
@@ -25,8 +25,11 @@ const { mockPaths } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/paths', () => ({
   paths: mockPaths,
+}));
+
+vi.mock('@octocodeai/octocode-tools-core/fs-utils', () => ({
   getDirectorySizeBytes: vi.fn().mockReturnValue(1024),
   formatBytes: vi.fn((b: number) => `${b} B`),
 }));

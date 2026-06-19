@@ -1,7 +1,7 @@
 import type { GitHubFileContentApiResult } from '../tools/github_fetch_content/types.js';
 import { getOutputCharLimit } from '../utils/pagination/charLimit.js';
 import { GITHUB_FILE_CONTENT_DEFAULT_CHAR_LENGTH } from '../config.js';
-import { ContentSanitizer } from 'octocode-security/contentSanitizer';
+import { ContentSanitizer } from '@octocodeai/octocode-engine/contentSanitizer';
 import { contextUtils } from '../utils/contextUtils.js';
 import { countLines } from '../utils/core/lines.js';
 import { applyPagination } from '../utils/pagination/core.js';

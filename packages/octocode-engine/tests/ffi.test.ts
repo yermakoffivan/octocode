@@ -87,6 +87,7 @@ const MINIFIER_FUNCTION_EXPORTS = [
   'jsonToYamlString',
   'getMINIFY_CONFIG',
   'parseRipgrepJson',
+  'searchRipgrep',
   'validateRipgrepPattern',
   'queryFileSystem',
   'charToByteOffset',
@@ -454,6 +455,71 @@ describe('validateRipgrepPattern', () => {
   it('does not reject PCRE-only syntax with JavaScript RegExp rules', () => {
     const result = addon!.validateRipgrepPattern('(?<=foo)bar', false, true);
     expect(result.valid).toBe(true);
+  });
+});
+
+describe('searchRipgrep (in-process ripgrep)', () => {
+  it('finds matches with line/column and assembles snippets', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-rg-search-'));
+    try {
+      mkdirSync(join(root, 'src'), { recursive: true });
+      writeFileSync(join(root, 'src', 'a.ts'), 'const needle = 1;\nother\n');
+      writeFileSync(join(root, 'src', 'b.ts'), 'no match here\n');
+
+      const result = await addon!.searchRipgrep({
+        path: root,
+        pattern: 'needle',
+      });
+
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]!.path).toContain('a.ts');
+      expect(result.files[0]!.matchCount).toBe(1);
+      expect(result.files[0]!.matches[0]!.line).toBe(1);
+      expect(result.files[0]!.matches[0]!.value).toContain('needle');
+      expect(result.stats.filesMatched).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('honors langType, filesOnly and PCRE2 perlRegex', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-rg-modes-'));
+    try {
+      writeFileSync(join(root, 'a.ts'), 'foobar\n');
+      writeFileSync(join(root, 'b.py'), 'foobar\n');
+
+      const tsOnly = await addon!.searchRipgrep({
+        path: root,
+        pattern: 'foobar',
+        langType: 'ts',
+        filesOnly: true,
+      });
+      expect(tsOnly.files).toHaveLength(1);
+      expect(tsOnly.files[0]!.path).toContain('a.ts');
+      expect(tsOnly.files[0]!.matches).toHaveLength(0);
+
+      const lookahead = await addon!.searchRipgrep({
+        path: root,
+        pattern: 'foo(?=bar)',
+        perlRegex: true,
+        langType: 'ts',
+      });
+      expect(lookahead.files).toHaveLength(1);
+      expect(lookahead.files[0]!.matches[0]!.line).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns no files when nothing matches', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-rg-empty-'));
+    try {
+      writeFileSync(join(root, 'a.ts'), 'nothing relevant\n');
+      const result = await addon!.searchRipgrep({ path: root, pattern: 'absent' });
+      expect(result.files).toHaveLength(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

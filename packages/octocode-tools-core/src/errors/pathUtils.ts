@@ -1,1 +1,1 @@
-export { redactPath } from 'octocode-security/pathUtils';
+export { redactPath } from '@octocodeai/octocode-engine/pathUtils';

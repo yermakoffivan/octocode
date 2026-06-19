@@ -21,7 +21,7 @@ import { executeBulkOperation } from '../../../octocode-tools-core/src/utils/res
 import { sanitizeCallToolResult } from '@octocodeai/octocode-tools-core';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/config', () => ({
   getConfigSync: () => ({
     output: { format: 'yaml', pagination: { defaultCharLength: 2000 } },
   }),
@@ -29,9 +29,15 @@ vi.mock('octocode-shared', () => ({
     format: 'yaml',
     pagination: { defaultCharLength: 2000 },
   },
+}));
+
+vi.mock('@octocodeai/octocode-tools-core/credentials', () => ({
   resolveTokenFull: vi.fn(async () => null),
   getTokenFromEnv: vi.fn(() => null),
   getEnvTokenSource: vi.fn(() => null),
+}));
+
+vi.mock('@octocodeai/octocode-tools-core/session', () => ({
   getOrCreateSession: vi.fn(() => ({
     sessionId: '00000000-0000-4000-8000-000000000000',
     createdAt: new Date().toISOString(),

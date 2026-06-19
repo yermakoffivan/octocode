@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getOctocodeDir } from 'octocode-shared';
+import { getOctocodeDir } from '../../shared/index.js';
 import { resolveDefaultBranch } from '../../github/client.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {

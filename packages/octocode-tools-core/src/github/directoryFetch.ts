@@ -7,7 +7,7 @@ import {
   statSync,
 } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
-import { getOctocodeDir } from 'octocode-shared';
+import { getOctocodeDir } from '../shared/index.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { getOctokit } from './client.js';
 import type { GitHubDirectoryFileEntry } from '@octocodeai/octocode-core/extra-types';

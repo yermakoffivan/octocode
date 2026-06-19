@@ -4,23 +4,23 @@ import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-const securityMock = resolve(__dirname, 'tests/__mocks__/octocode-security.ts');
+const securityMock = resolve(__dirname, 'tests/__mocks__/octocode-engine-security.ts');
 const mcpPublicSource = resolve(__dirname, '../octocode-mcp/src/public.ts');
 
 export default defineConfig({
   resolve: {
     alias: {
       'octocode-mcp/public': mcpPublicSource,
-      // Redirect every octocode-security import to the test stub so
+      // Redirect every octocode-engine security import to the test stub so
       // vitest never tries to dlopen the native Rust binary.
-      'octocode-security/mask': securityMock,
-      'octocode-security/contentSanitizer': securityMock,
-      'octocode-security/pathValidator': securityMock,
-      'octocode-security/pathUtils': securityMock,
-      'octocode-security/commandValidator': securityMock,
-      'octocode-security/registry': securityMock,
-      'octocode-security/withSecurityValidation': securityMock,
-      'octocode-security': securityMock,
+      '@octocodeai/octocode-engine/mask': securityMock,
+      '@octocodeai/octocode-engine/contentSanitizer': securityMock,
+      '@octocodeai/octocode-engine/pathValidator': securityMock,
+      '@octocodeai/octocode-engine/pathUtils': securityMock,
+      '@octocodeai/octocode-engine/commandValidator': securityMock,
+      '@octocodeai/octocode-engine/registry': securityMock,
+      '@octocodeai/octocode-engine/withSecurityValidation': securityMock,
+      '@octocodeai/octocode-engine/security': securityMock,
     },
   },
   test: {

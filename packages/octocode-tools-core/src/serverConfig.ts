@@ -3,11 +3,11 @@ import {
   resolveTokenFull,
   getConfigSync,
   invalidateConfigCache,
-} from 'octocode-shared';
+} from './shared/index.js';
 import { version } from '../package.json';
 import type { ServerConfig, TokenSourceType } from './types/server.js';
 import { CONFIG_ERRORS } from './errors/domainErrors.js';
-import { maskSensitiveData } from 'octocode-security/mask';
+import { maskSensitiveData } from '@octocodeai/octocode-engine/mask';
 
 let config: ServerConfig | null = null;
 let initializationPromise: Promise<void> | null = null;

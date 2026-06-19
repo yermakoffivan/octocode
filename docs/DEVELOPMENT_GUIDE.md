@@ -38,10 +38,11 @@
 
 | Package | Key Commands |
 |---------|--------------|
-| `octocode-mcp` | `yarn mcp:package`, `yarn mcp:contracts`, `yarn debug`, `yarn build:watch` |
 | `octocode` | `yarn start`, `yarn validate:mcp`, `yarn validate:skills` |
-| `octocode-vscode` | `yarn package`, `yarn publish` |
-| `octocode-shared` | `yarn shared:package`, `yarn typecheck` |
+| `octocode-mcp` | `yarn mcp:package`, `yarn mcp:contracts`, `yarn debug`, `yarn build:watch` |
+| `@octocodeai/octocode-engine` | `yarn build`, `yarn build:dev`, `yarn build:all`, `yarn platforms:check` |
+| `@octocodeai/octocode-tools-core` | `yarn verify`, `yarn typecheck` |
+| `octocode-mcp-vscode` | `yarn package`, `yarn publish` |
 
 #### Linux & File Operations
 
@@ -73,7 +74,7 @@
 ### Dependencies
 
 - **Node.js**: >= 20.0.0
-- **VS Code**: `octocode-vscode` requires >= 1.85.0
+- **VS Code**: `octocode-mcp-vscode` requires >= 1.85.0
 - **Core**: `@modelcontextprotocol/sdk` (^1.29.0), `zod`, `vitest`, `typescript`
 - **LSP**: `typescript-language-server`, `vscode-languageserver-protocol`
 
@@ -89,9 +90,10 @@
 |---------|------|---------|-------------------------------|
 | `octocode-mcp` | Package gate | `yarn mcp:package` | Shipping runtime code, startup/config contracts, provider execution, response envelopes, or declared user flows regress. |
 | `octocode-mcp` | Contract suite | `yarn mcp:contracts` | You need the fast deterministic contract signal while iterating locally. |
-| `octocode-shared` | Package gate | `yarn shared:package` | Shared config, credential, platform, or session boundaries regress. |
+| `@octocodeai/octocode-engine` | Native engine gate | `yarn build && yarn pack:check` | Rust native engine wrappers, generated security patterns, or platform package contracts regress. |
+| `@octocodeai/octocode-tools-core` | Package gate | `yarn verify` | Shared config, credential, platform, session, or tool-core boundaries regress. |
 
-For package-specific references, see the consolidated [docs index](https://github.com/bgauryy/octocode/blob/main/docs/README.md) — `octocode-shared` API/credentials/session docs and `octocode` reference all live there.
+For package-specific references, see the consolidated [docs index](https://github.com/bgauryy/octocode/blob/main/docs/README.md) — tools-core API/credentials/session docs and `octocode` reference all live there.
 
 ### Structure
 ```

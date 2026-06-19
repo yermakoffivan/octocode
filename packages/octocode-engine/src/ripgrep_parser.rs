@@ -84,20 +84,20 @@ enum RgMessage {
 
 // ── intermediate state ────────────────────────────────────────────────────────
 
-struct RawMatch {
-    line_text: String,
-    line_number: u32,
-    column: u32,
+pub(crate) struct RawMatch {
+    pub(crate) line_text: String,
+    pub(crate) line_number: u32,
+    pub(crate) column: u32,
 }
 
-struct FileEntry {
-    raw_matches: Vec<RawMatch>,
+pub(crate) struct FileEntry {
+    pub(crate) raw_matches: Vec<RawMatch>,
     /// line_number → context text
-    contexts: HashMap<u32, String>,
+    pub(crate) contexts: HashMap<u32, String>,
 }
 
 impl FileEntry {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             raw_matches: Vec::new(),
             contexts: HashMap::new(),
@@ -109,7 +109,7 @@ impl FileEntry {
 
 /// Strips a single trailing `\r\n` or `\n` from a line, matching ripgrep's
 /// included newline in the `lines.text` field.
-fn strip_trailing_newline(s: &str) -> &str {
+pub(crate) fn strip_trailing_newline(s: &str) -> &str {
     s.strip_suffix("\r\n")
         .or_else(|| s.strip_suffix('\n'))
         .unwrap_or(s)
@@ -117,7 +117,7 @@ fn strip_trailing_newline(s: &str) -> &str {
 
 /// Truncates a string to at most `max_chars` Unicode scalar values, appending
 /// `...` when truncated. Avoids `[...value]` spread allocation from JS.
-fn truncate_unicode(s: &str, max_chars: usize) -> String {
+pub(crate) fn truncate_unicode(s: &str, max_chars: usize) -> String {
     if max_chars == 0 {
         return String::new();
     }
@@ -156,11 +156,56 @@ fn entry_for_path<'a>(
     }
 }
 
-fn push_joined_line(out: &mut String, line: &str) {
+pub(crate) fn push_joined_line(out: &mut String, line: &str) {
     if !out.is_empty() {
         out.push('\n');
     }
     out.push_str(line);
+}
+
+/// Assembles a single file's matches into the final `RipgrepFile`, joining each
+/// match line with its surrounding `context_lines` and truncating the resulting
+/// snippet to `max_snippet` chars. Shared by the `--json` parser and the native
+/// in-process searcher so both produce byte-identical output.
+pub(crate) fn assemble_file(
+    path: String,
+    entry: &FileEntry,
+    context_lines: u32,
+    max_snippet: usize,
+) -> RipgrepFile {
+    let matches: Vec<RipgrepMatch> = entry
+        .raw_matches
+        .iter()
+        .map(|m| {
+            let mut joined = String::new();
+            for i in (1..=context_lines).rev() {
+                if let Some(ctx) = entry.contexts.get(&m.line_number.saturating_sub(i)) {
+                    push_joined_line(&mut joined, ctx);
+                }
+            }
+            push_joined_line(&mut joined, &m.line_text);
+            for i in 1..=context_lines {
+                if let Some(ctx) = entry.contexts.get(&m.line_number.saturating_add(i)) {
+                    push_joined_line(&mut joined, ctx);
+                }
+            }
+
+            let value = truncate_unicode(&joined, max_snippet);
+
+            RipgrepMatch {
+                line: m.line_number,
+                column: m.column,
+                value,
+            }
+        })
+        .collect();
+
+    let match_count = matches.len() as u32;
+    RipgrepFile {
+        path,
+        match_count,
+        matches,
+    }
 }
 
 pub(crate) fn parse_ripgrep_json_inner(
@@ -230,39 +275,7 @@ pub(crate) fn parse_ripgrep_json_inner(
         .into_iter()
         .filter_map(|path| {
             let entry = file_map.remove(&path)?;
-            let matches: Vec<RipgrepMatch> = entry
-                .raw_matches
-                .iter()
-                .map(|m| {
-                    let mut joined = String::new();
-                    for i in (1..=context_lines).rev() {
-                        if let Some(ctx) = entry.contexts.get(&m.line_number.saturating_sub(i)) {
-                            push_joined_line(&mut joined, ctx);
-                        }
-                    }
-                    push_joined_line(&mut joined, &m.line_text);
-                    for i in 1..=context_lines {
-                        if let Some(ctx) = entry.contexts.get(&m.line_number.saturating_add(i)) {
-                            push_joined_line(&mut joined, ctx);
-                        }
-                    }
-
-                    let value = truncate_unicode(&joined, max_snippet);
-
-                    RipgrepMatch {
-                        line: m.line_number,
-                        column: m.column,
-                        value,
-                    }
-                })
-                .collect();
-
-            let match_count = matches.len() as u32;
-            Some(RipgrepFile {
-                path,
-                match_count,
-                matches,
-            })
+            Some(assemble_file(path, &entry, context_lines, max_snippet))
         })
         .collect();
 

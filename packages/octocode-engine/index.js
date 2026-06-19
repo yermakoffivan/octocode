@@ -33,6 +33,7 @@ export const MINIFY_CONFIG = nativeBinding.MINIFY_CONFIG
 export const SUPPORTED_SIGNATURE_EXTENSIONS = nativeBinding.SUPPORTED_SIGNATURE_EXTENSIONS
 export const SUPPORTED_STRUCTURAL_EXTENSIONS = nativeBinding.SUPPORTED_STRUCTURAL_EXTENSIONS
 export const parseRipgrepJson = nativeBinding.parseRipgrepJson
+export const searchRipgrep = nativeBinding.searchRipgrep
 export const validateRipgrepPattern = nativeBinding.validateRipgrepPattern
 export const queryFileSystem = nativeBinding.queryFileSystem
 export const charToByteOffset = nativeBinding.charToByteOffset
@@ -54,5 +55,8 @@ export const safeReadFile = nativeBinding.safeReadFile
 export const validateLspServerPath = nativeBinding.validateLspServerPath
 export const convertSymbolKind = nativeBinding.convertSymbolKind
 export const toLspSymbolKind = nativeBinding.toLspSymbolKind
+export const sanitizeContent = nativeBinding.sanitizeContent
+export const maskSensitiveData = nativeBinding.maskSensitiveData
+export const patternCount = nativeBinding.patternCount
 
 export default nativeBinding

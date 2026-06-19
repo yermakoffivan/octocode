@@ -390,50 +390,89 @@ Octocode is a layered system: the MCP server and CLI share one TypeScript tool c
 graph TB
     subgraph Clients["User Interfaces"]
         direction LR
-        MC["🤖 MCP Clients\n──────────────\nClaude · Cursor · Windsurf\nCodex · Kiro · Gemini CLI..."]
-        CLI["🖥️  Terminal / CI\n──────────────\noctocode CLI"]
-        VSC["🧩 VS Code Extension\n──────────────\nGitHub OAuth\nMCP install + server controls"]
+        MC["🤖 MCP Clients
+──────────────
+Claude · Cursor · Windsurf
+Codex · Kiro · Gemini CLI..."]
+        CLI["🖥️  Terminal / CI
+──────────────
+octocode CLI"]
+        VSC["🧩 VS Code Extension
+──────────────
+GitHub OAuth
+MCP install + server controls"]
     end
 
     subgraph TS["TypeScript Layer"]
         direction TB
-        MCP["octocode-mcp\n────────────────────────\nMCP server (stdio transport)\nTool registration · Lifecycle\nStartup / shutdown handling"]
-        CLIBIN["octocode\n────────────────────────\nRaw tool runner  ( tools )\nAuth · Install · Skills\nMCP marketplace · Cache"]
-        CORE["@octocodeai/octocode-tools-core\n────────────────────────\n13 tool implementations\nGitHub client + Providers\nHints · Pagination · Session\nSecurity bridge"]
-        SHARED["octocode-shared\n────────────────────────\nAES-256-GCM credentials\nToken resolution chain\nSession persistence"]
+        MCP["octocode-mcp
+────────────────────────
+MCP server (stdio transport)
+Tool registration · Lifecycle
+Startup / shutdown handling"]
+        CLIBIN["octocode
+────────────────────────
+Raw tool runner  ( tools )
+Auth · Install · Skills
+MCP marketplace · Cache"]
+        CORE["@octocodeai/octocode-tools-core
+────────────────────────
+Core tool implementations
+GitHub client + Providers
+Hints · Pagination · Session
+Security bridge"]
+        SHARED["tools-core shared interfaces
+────────────────────────
+AES-256-GCM credentials
+Token resolution chain
+Session persistence"]
     end
 
-    subgraph Rust["🦀 Rust Native Addons  ( napi-rs → .node binaries )"]
+    subgraph Rust["🦀 Rust Native Addon  ( napi-rs → .node binaries )"]
         direction TB
-        SEC["octocode-security\n────────────────────────\n200+ secret patterns\nRust RegexSet · detector\nContent sanitizer\nPath + command validator"]
-        CTX["@octocodeai/octocode-engine\n────────────────────────\nMinification - 55+ languages\nSemantic signatures\nStructural AST search\nRipgrep JSON parser\nDiff filter · YAML serialize\nUTF-8 / UTF-16 offsets"]
-        LSP["/octocode-engine\n────────────────────────\nNative LSP client (JSON-RPC)\nLanguage server lifecycle\nCall hierarchy traversal\nSymbol anchoring + pooling"]
+        ENGINE["@octocodeai/octocode-engine
+────────────────────────
+Secret detection + sanitization
+Path + command validation
+Minification - 55+ languages
+Semantic signatures
+Structural AST search
+Ripgrep JSON parser
+Diff filter · YAML serialize
+UTF-8 / UTF-16 offsets
+LSP support"]
     end
 
     subgraph Ext["External"]
         direction LR
-        GH["GitHub API\n(Octokit)"]
-        LS["Language Servers\ntsserver · clangd\npylsp · rust-analyzer\ngopls · ..."]
-        FS["Local Filesystem\n+ ripgrep binary"]
+        GH["GitHub API
+(Octokit)"]
+        LS["Language Servers
+tsserver · clangd
+pylsp · rust-analyzer
+gopls · ..."]
+        FS["Local Filesystem
++ ripgrep binary"]
     end
 
-    MC -- "MCP protocol\n(JSON-RPC / stdio)" --> MCP
+    MC -- "MCP protocol
+(JSON-RPC / stdio)" --> MCP
     CLI --> CLIBIN
     VSC -- "configures / starts" --> MCP
     MCP --> CORE
     CLIBIN --> CORE
-    CORE --> SEC
-    CORE --> CTX
-    CORE --> LSP
+    CORE --> ENGINE
     CORE --> SHARED
     CORE --> GH
     CORE --> FS
-    LSP --> LS
+    ENGINE --> LS
 
     style Rust fill:#1a1a2e,stroke:#e75d2a,color:#fff
     style TS fill:#0d1b2a,stroke:#4a90d9,color:#fff
     style Clients fill:#0f2027,stroke:#56ab2f,color:#fff
     style Ext fill:#1c1c1c,stroke:#888,color:#ccc
+```
+
 ```
 
 ### Request Flow
@@ -446,62 +485,59 @@ sequenceDiagram
     participant Client as AI Assistant / CLI
     participant MCP as octocode-mcp<br/>(MCP server)
     participant Bridge as Security Bridge<br/>(octocode-tools-core)
-    participant RustSec as octocode-security<br/>🦀 Rust
+    participant RustEngine as @octocodeai/octocode-engine<br/>🦀 Rust
     participant Tool as Tool Implementation<br/>(octocode-tools-core)
-    participant RustCtx as octocode-engine<br/>🦀 Rust
-    participant RustLsp as /octocode-engine<br/>🦀 Rust
     participant Ext as GitHub API / FS / LSP server
 
     Client->>MCP: tool call (name, args)
     MCP->>Bridge: withSecurityValidation(toolName, handler)
-    Bridge->>RustSec: sanitize inputs - detect & redact secrets
-    RustSec-->>Bridge: sanitized args + warning flags
+    Bridge->>RustEngine: sanitize inputs - detect & redact secrets
+    RustEngine-->>Bridge: sanitized args + warning flags
     Bridge->>Tool: execute(sanitizedArgs)
 
     alt GitHub tool
         Tool->>Ext: Octokit request
         Ext-->>Tool: raw GitHub response
     else Local file tool
-        Tool->>RustCtx: slice / minify / parse ripgrep JSON
-        RustCtx-->>Tool: shaped content
+        Tool->>RustEngine: slice / minify / parse ripgrep JSON
+        RustEngine-->>Tool: shaped content
     else LSP tool
-        Tool->>RustLsp: semantic request (definition / refs / callers...)
-        RustLsp->>Ext: JSON-RPC to language server
-        Ext-->>RustLsp: LSP response
-        RustLsp-->>Tool: typed code snippets
+        Tool->>RustEngine: semantic request (definition / refs / callers...)
+        RustEngine->>Ext: JSON-RPC to language server
+        Ext-->>RustEngine: LSP response
+        RustEngine-->>Tool: typed code snippets
     end
 
     Tool-->>Bridge: raw result
-    Bridge->>RustSec: sanitize output - redact any leaked secrets
-    Bridge->>RustCtx: YAML serialize + paginate response
-    RustCtx-->>Bridge: compact, paginated output
+    Bridge->>RustEngine: sanitize output - redact any leaked secrets
+    Bridge->>RustEngine: YAML serialize + paginate response
+    RustEngine-->>Bridge: compact, paginated output
     Bridge-->>MCP: CallToolResult { content, structuredContent }
     MCP-->>Client: response with hints[] for next call
 ```
 
+```
+
 ### Why Rust
 
-Each Rust package solves a specific bottleneck that JavaScript cannot handle cheaply at agent workload scale:
+The Rust engine owns the CPU-heavy paths that JavaScript cannot handle cheaply at agent workload scale:
 
 | Package | What Rust buys here |
 |---------|---------------------|
-| **octocode-security** | `RegexSet` compiles 200+ secret patterns into a single linear-time automaton. Matching a 500 KB chunk costs ~10 ms regardless of pattern count; a JS loop over 200 regexes would take 10-50×. |
-| **octocode-engine** | Zero-copy comment stripping and minification across 55 languages runs on every file read. Async napi `Task` keeps the Node.js event loop unblocked while multi-MB files are processed. Structural (AST) search and UTF-8↔UTF-16 offset conversion are similarly allocation-heavy. |
-| **/octocode-engine** | The LSP client owns a long-lived child process (the language server) and a bidirectional async stdio pipe. Tokio drives the I/O concurrently, retries `ContentModified` errors, and drains stderr into a ring buffer - none of which map cleanly onto a single-threaded JS runtime. |
+| **@octocodeai/octocode-engine** | One native engine handles `RegexSet` secret detection, content sanitization helpers, path and command validation, comment stripping and minification, signature extraction, structural search helpers, ripgrep output parsing, diff filtering, YAML serialization, pagination offsets, and LSP support. Keeping these in one Rust package avoids duplicate native loaders while keeping Node.js event loops unblocked. |
 
-All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-arm64, linux-x64, linux-x64-musl, win32-x64). No Rust toolchain is needed at runtime.
+The engine ships as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-arm64, linux-x64, linux-x64-musl, win32-x64). No Rust toolchain is needed at runtime.
 
 ### Packages
 
+Only these workspace packages are part of the monorepo:
+
 | Directory | npm package | Purpose |
 |-----------|-------------|---------|
-| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server that registers the Octocode tool catalog for AI assistants. |
-| [`packages/octocode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode) | `octocode` | Agent-first terminal interface: raw tool runner (`tools`), `context`, auth, install, status, token, and skills workflows. |
-| [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Shared tool catalog and implementations for GitHub, local filesystem, package search, and LSP flows. |
-| [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `@octocodeai/octocode-engine` | Rust-backed context engine for minification, signatures, pagination offsets, ripgrep parsing, diff filtering, and YAML output. |
-| [`packages/octocode-security`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-security) | `octocode-security` | Rust-backed secret detection plus TypeScript path, command, input, and tool security utilities. |
-| [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `/octocode-engine` | Rust-native LSP runtime for language detection, server config, JSON-RPC, symbol anchoring, pooled clients, and semantic navigation. |
-| [`packages/octocode-shared`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-shared) | `octocode-shared` | Shared credentials, token resolution, session persistence, and platform utilities. |
+| [`packages/octocode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode) | `octocode` | CLI/interface package: direct tool runner, auth, install, status, token, MCP marketplace, cache, and skills workflows. |
+| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server/interface package that registers the Octocode tool catalog for AI assistants. |
+| [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `@octocodeai/octocode-engine` | Rust-based native engine for security scanning/sanitization, minification, signatures, pagination offsets, ripgrep parsing, diff filtering, YAML output, and LSP support. |
+| [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Core tool implementations and shared credentials, token resolution, session persistence, config, and platform utilities. |
 | [`packages/octocode-vscode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-vscode) | `octocode-mcp-vscode` | VS Code extension for GitHub OAuth and multi-editor MCP installation. |
 
 ---

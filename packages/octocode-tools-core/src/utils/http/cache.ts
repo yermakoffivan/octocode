@@ -1,6 +1,6 @@
 import NodeCache from 'node-cache';
 import crypto from 'crypto';
-import { incrementGitHubCacheHits } from 'octocode-shared';
+import { incrementGitHubCacheHits } from '../../shared/index.js';
 import type { CacheStats } from '../core/types.js';
 
 const VERSION = 'v1';

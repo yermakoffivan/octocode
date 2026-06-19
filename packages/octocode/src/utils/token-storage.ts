@@ -12,4 +12,4 @@ export {
   refreshAuthToken,
   getTokenWithRefresh,
   getGhCliToken,
-} from 'octocode-shared';
+} from '@octocodeai/octocode-tools-core/credentials';

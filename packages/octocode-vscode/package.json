@@ -119,7 +119,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "yarn esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "build": "yarn readme:sync && yarn esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
     "compile": "npm run build",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
@@ -130,7 +130,9 @@
     "typecheck": "tsc --noEmit",
     "verify": "yarn lint && yarn typecheck && yarn test && yarn build",
     "vscode:prepublish": "npm run build",
-    "watch": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --watch"
+    "watch": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --watch",
+    "readme:sync": "node ../../scripts/sync-package-readmes.mjs .",
+    "prepack": "yarn readme:sync"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",

@@ -31,6 +31,16 @@ lsp-types   = "0.97"
 url         = "2"
 which       = "8"
 
+# ── ripgrep, as a library ─────────────────────────────────────────────────────
+# We run the search in-process instead of shelling out to an `rg` binary, so
+# octocode is its own source of ripgrep. `grep` is ripgrep's own engine
+# (grep-searcher + grep-regex + grep-matcher + grep-printer); the `pcre2`
+# feature pulls grep-pcre2 for `-P` (lookaround/backrefs), with libpcre2
+# vendored & compiled from source (no system dependency). `ignore` provides the
+# gitignore-aware walker plus the `-g` override globs and `-t` type definitions.
+grep   = { version = "0.3", features = ["pcre2"] }
+ignore = "0.4"
+
 # ── high-quality CSS / HTML minifiers ────────────────────────────────────────
 lightningcss = { version = "1.0.0-alpha.71", default-features = false }
 minify-html  = { version = "0.18", default-features = false }

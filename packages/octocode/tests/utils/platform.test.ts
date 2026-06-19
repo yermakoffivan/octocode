@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/platform', () => ({
   isWindows: false,
   isMac: true,
   isLinux: false,
@@ -29,34 +29,34 @@ describe('Platform Utilities', () => {
     vi.clearAllMocks();
   });
 
-  describe('Platform Detection (re-exports from octocode-shared)', () => {
-    it('should re-export platform detection from octocode-shared', async () => {
+  describe('Platform Detection (re-exports from @octocodeai/octocode-tools-core)', () => {
+    it('should re-export platform detection from @octocodeai/octocode-tools-core', async () => {
       const { isMac, isWindows, HOME } =
         await import('../../src/utils/platform.js');
-      const { isLinux } = await import('octocode-shared');
+      const { isLinux } = await import('@octocodeai/octocode-tools-core/platform');
       expect(isMac).toBe(true);
       expect(isWindows).toBe(false);
       expect(isLinux).toBe(false);
       expect(HOME).toBe('/Users/test');
     });
 
-    it('should expose getPlatformName from octocode-shared', async () => {
-      const { getPlatformName } = await import('octocode-shared');
+    it('should expose getPlatformName from @octocodeai/octocode-tools-core', async () => {
+      const { getPlatformName } = await import('@octocodeai/octocode-tools-core/platform');
       expect(getPlatformName()).toBe('macOS');
     });
 
-    it('should expose getArchitecture from octocode-shared', async () => {
-      const { getArchitecture } = await import('octocode-shared');
+    it('should expose getArchitecture from @octocodeai/octocode-tools-core', async () => {
+      const { getArchitecture } = await import('@octocodeai/octocode-tools-core/platform');
       expect(getArchitecture()).toBe('arm64');
     });
 
-    it('should re-export getAppDataPath from octocode-shared', async () => {
+    it('should re-export getAppDataPath from @octocodeai/octocode-tools-core', async () => {
       const { getAppDataPath } = await import('../../src/utils/platform.js');
       expect(getAppDataPath()).toBe('/Users/test');
     });
 
-    it('should expose getLocalAppDataPath from octocode-shared', async () => {
-      const { getLocalAppDataPath } = await import('octocode-shared');
+    it('should expose getLocalAppDataPath from @octocodeai/octocode-tools-core', async () => {
+      const { getLocalAppDataPath } = await import('@octocodeai/octocode-tools-core/platform');
       expect(getLocalAppDataPath()).toBe('/Users/test');
     });
   });
@@ -332,7 +332,7 @@ describe('Platform Utilities', () => {
   describe('openFile cross-platform defaults', () => {
     it('should use cmd /c start on Windows', async () => {
       vi.resetModules();
-      vi.doMock('octocode-shared', () => ({
+      vi.doMock('@octocodeai/octocode-tools-core/platform', () => ({
         isWindows: true,
         isMac: false,
         isLinux: false,
@@ -369,7 +369,7 @@ describe('Platform Utilities', () => {
 
     it('should use xdg-open on Linux', async () => {
       vi.resetModules();
-      vi.doMock('octocode-shared', () => ({
+      vi.doMock('@octocodeai/octocode-tools-core/platform', () => ({
         isWindows: false,
         isMac: false,
         isLinux: true,

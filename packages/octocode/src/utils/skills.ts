@@ -24,7 +24,7 @@ import {
   readFileContent,
 } from './fs.js';
 import { HOME, isWindows, getAppDataPath } from './platform.js';
-import { paths } from 'octocode-shared';
+import { paths } from '@octocodeai/octocode-tools-core/paths';
 import { trySafe } from './try-safe.js';
 import { parseSkillFrontmatter } from './parsers/frontmatter.js';
 import { z } from '@octocodeai/octocode-tools-core/zod';

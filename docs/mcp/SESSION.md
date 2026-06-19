@@ -1,6 +1,6 @@
 # Session Persistence
 
-`octocode-shared/session` keeps lightweight runtime identity and usage stats across Octocode runs. It is intentionally small: one in-memory session, deferred disk writes, and synchronous flush on process exit.
+`@octocodeai/octocode-tools-core/session` keeps lightweight runtime identity and usage stats across Octocode runs. It is intentionally small: one in-memory session, deferred disk writes, and synchronous flush on process exit.
 
 ## Storage
 
@@ -74,4 +74,4 @@ Testing helper: `_resetSessionState()` clears cache, timer, and exit handlers.
 ## Related Documentation
 
 - [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md)
-- [octocode-shared README](https://github.com/bgauryy/octocode/blob/main/packages/octocode-shared/README.md)
+- [Tools Core package](https://github.com/bgauryy/octocode/blob/main/packages/octocode-tools-core/README.md)

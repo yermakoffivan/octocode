@@ -1,5 +1,5 @@
 import path from 'path';
-import { pathValidator } from 'octocode-security/pathValidator';
+import { pathValidator } from '@octocodeai/octocode-engine/pathValidator';
 import { ToolErrors } from '../../errors/errorFactories.js';
 import type { BaseQueryLocal } from '@octocodeai/octocode-core/extra-types';
 type PartialBaseQueryLocal = Partial<BaseQueryLocal>;
@@ -7,7 +7,7 @@ import {
   createErrorResult,
   type UnifiedErrorResult,
 } from '../response/error.js';
-import { getConfigSync } from 'octocode-shared';
+import { getConfigSync } from '../../shared/index.js';
 
 type LocalErrorResult = UnifiedErrorResult;
 

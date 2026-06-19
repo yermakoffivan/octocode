@@ -55,6 +55,70 @@ pub struct RipgrepParseResult {
     pub stats: RipgrepStats,
 }
 
+/// Options for the in-process ripgrep search (`searchRipgrep`). Field semantics
+/// mirror the ripgrep CLI flags the old `RipgrepCommandBuilder` emitted, so the
+/// search behaves identically to shelling out to `rg`.
+#[napi(object)]
+#[derive(Debug, Clone, Default)]
+pub struct RipgrepSearchOptions {
+    /// Search root: a directory (recursive) or a single file.
+    pub path: String,
+    /// The search pattern (rg's positional pattern / `keywords`).
+    pub pattern: String,
+
+    // ── match flags ──────────────────────────────────────────────────────────
+    /// Treat the pattern as a literal string, not a regex (`-F`).
+    pub fixed_string: Option<bool>,
+    /// Use the PCRE2 engine for lookaround/backreferences (`-P`).
+    pub perl_regex: Option<bool>,
+    /// Case-sensitive match (`-s`). Wins over `case_insensitive`.
+    pub case_sensitive: Option<bool>,
+    /// Case-insensitive match (`-i`). Default is smart-case (`-S`).
+    pub case_insensitive: Option<bool>,
+    /// Match whole words only (`-w`).
+    pub whole_word: Option<bool>,
+    /// Invert: report non-matching lines (`-v`).
+    pub invert_match: Option<bool>,
+    /// Multi-line mode: `.` and the pattern may span lines (`-U`).
+    pub multiline: Option<bool>,
+    /// In multi-line mode, let `.` match newlines (`--multiline-dotall`).
+    pub multiline_dotall: Option<bool>,
+
+    // ── output modes (mutually exclusive; first set wins, matching the CLI) ───
+    /// List only the paths of files that contain a match (`-l`).
+    pub files_only: Option<bool>,
+    /// List only the paths of files with no match (`--files-without-match`).
+    pub files_without_match: Option<bool>,
+    /// Per-file count of matching lines (`-c`).
+    pub count_lines_per_file: Option<bool>,
+    /// Per-file count of individual matches (`--count-matches`).
+    pub count_matches_per_file: Option<bool>,
+
+    // ── filters ──────────────────────────────────────────────────────────────
+    /// Context lines around each match (`-C`).
+    pub context_lines: Option<u32>,
+    /// Restrict to a ripgrep file type, e.g. `ts`, `py` (`-t`).
+    pub lang_type: Option<String>,
+    /// Include globs (`-g <glob>`).
+    pub include: Option<Vec<String>>,
+    /// Exclude globs (`-g !<glob>`).
+    pub exclude: Option<Vec<String>>,
+    /// Exclude directories (`-g !<dir>/`).
+    pub exclude_dir: Option<Vec<String>>,
+    /// Do not honor .gitignore/.ignore/etc. (`--no-ignore`).
+    pub no_ignore: Option<bool>,
+    /// Search hidden files and directories (`--hidden`).
+    pub hidden: Option<bool>,
+
+    // ── ordering & result shaping ────────────────────────────────────────────
+    /// Sort key: `path` (default), `modified`, `accessed`, or `created`.
+    pub sort: Option<String>,
+    /// Reverse the sort order (`--sortr`).
+    pub sort_reverse: Option<bool>,
+    /// Max Unicode chars per assembled snippet (default 500).
+    pub max_snippet_chars: Option<u32>,
+}
+
 // ── filesystem query types ───────────────────────────────────────────────────
 
 #[napi(object)]

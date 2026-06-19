@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('octocode-shared', async importOriginal => {
-  const actual = await importOriginal<typeof import('octocode-shared')>();
+vi.mock('@octocodeai/octocode-tools-core/session', async importOriginal => {
+  const actual = await importOriginal<typeof import('@octocodeai/octocode-tools-core/session')>();
   return {
     ...actual,
     getOrCreateSession: vi.fn(() => ({

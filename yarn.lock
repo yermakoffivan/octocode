@@ -1938,12 +1938,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core":
-  version: 16.2.1
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=d85ac3&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
+"@octocodeai/octocode-core@npm:16.4.0":
+  version: 16.4.0
+  resolution: "@octocodeai/octocode-core@npm:16.4.0"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/97740887b48748265615f69e74d448b0467da363febe91f96b7b9d61b21aabe15e01223800a26cb2748500c2b221b65aaa07ac6383ceab7af9921620cfb146b0
+  checksum: 10c0/2ec73c0d8f3e5ef05f9aee9fff7e0c27704df0686cca5bf329bd66edf715cbb51ae3e894c8fd386aea7e3798f867127521e41f4249c572f9271e68128104b7f8
   languageName: node
   linkType: hard
 
@@ -1996,6 +1996,7 @@ __metadata:
     "@octocodeai/octocode-engine-win32-x64-msvc": "npm:16.3.0"
     "@types/node": "npm:^25.9.3"
     "@vitest/coverage-v8": "npm:^4.0.16"
+    esbuild: "npm:^0.28.1"
     typescript: "npm:^5.9.3"
     vitest: "npm:^4.0.16"
     zod: "npm:^4.3.6"
@@ -2020,20 +2021,19 @@ __metadata:
   resolution: "@octocodeai/octocode-tools-core@workspace:packages/octocode-tools-core"
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
-    "@octocodeai/octocode-core": "file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core"
+    "@octocodeai/octocode-core": "npm:16.4.0"
     "@octocodeai/octocode-engine": "workspace:*"
     "@octokit/core": "npm:^7.0.6"
+    "@octokit/oauth-methods": "npm:^6.0.2"
     "@octokit/openapi-types": "npm:^27.0.0"
     "@octokit/plugin-rest-endpoint-methods": "npm:^17.0.0"
     "@octokit/plugin-throttling": "npm:^11.0.3"
+    "@octokit/request": "npm:^10.0.10"
     "@types/node": "npm:^25.9.3"
     "@vitest/coverage-v8": "npm:^4.0.16"
-    "@vscode/ripgrep": "npm:^1.18.0"
     esbuild: "npm:^0.28.1"
     eslint: "npm:^9.18.0"
     node-cache: "npm:^5.1.2"
-    octocode-security: "workspace:*"
-    octocode-shared: "workspace:*"
     octokit: "npm:^5.0.5"
     typescript: "npm:^5.9.3"
     vitest: "npm:^4.0.16"
@@ -2283,6 +2283,20 @@ __metadata:
   dependencies:
     "@octokit/types": "npm:^16.0.0"
   checksum: 10c0/62b90a54545c36a30b5ffdda42e302c751be184d85b68ffc7f1242c51d7ca54dbd185b7d0027b491991776923a910c85c9c51269fe0d86111bac187507a5abc4
+  languageName: node
+  linkType: hard
+
+"@octokit/request@npm:^10.0.10":
+  version: 10.0.10
+  resolution: "@octokit/request@npm:10.0.10"
+  dependencies:
+    "@octokit/endpoint": "npm:^11.0.3"
+    "@octokit/request-error": "npm:^7.0.2"
+    "@octokit/types": "npm:^16.0.0"
+    content-type: "npm:^2.0.0"
+    json-with-bigint: "npm:^3.5.3"
+    universal-user-agent: "npm:^7.0.2"
+  checksum: 10c0/1d93f508dbc903282d92558168736c6d1a8c04c511e6d7ebe67594c4cfe93f711d67b5628e9f4e8f194c7ef124e066196308e638e93ad33c73ceb0f4b4398eae
   languageName: node
   linkType: hard
 
@@ -3181,30 +3195,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vitest/coverage-v8@npm:^4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/coverage-v8@npm:4.1.8"
-  dependencies:
-    "@bcoe/v8-coverage": "npm:^1.0.2"
-    "@vitest/utils": "npm:4.1.8"
-    ast-v8-to-istanbul: "npm:^1.0.0"
-    istanbul-lib-coverage: "npm:^3.2.2"
-    istanbul-lib-report: "npm:^3.0.1"
-    istanbul-reports: "npm:^3.2.0"
-    magicast: "npm:^0.5.2"
-    obug: "npm:^2.1.1"
-    std-env: "npm:^4.0.0-rc.1"
-    tinyrainbow: "npm:^3.1.0"
-  peerDependencies:
-    "@vitest/browser": 4.1.8
-    vitest: 4.1.8
-  peerDependenciesMeta:
-    "@vitest/browser":
-      optional: true
-  checksum: 10c0/e3419115fa413e19bda5edd72c8394b255d418af75278b2cd74341257399f8e5921f78b966a547ba8d67ac8268ccdd5af019230084cc1b9a3fc8fae8283ae76b
-  languageName: node
-  linkType: hard
-
 "@vitest/expect@npm:4.1.2":
   version: 4.1.2
   resolution: "@vitest/expect@npm:4.1.2"
@@ -3216,20 +3206,6 @@ __metadata:
     chai: "npm:^6.2.2"
     tinyrainbow: "npm:^3.1.0"
   checksum: 10c0/e238c833b5555d31b074545807956d5e874a1ef725525ecc99f1885b71b230b2127d40d8d142a7253666b8565d5806723853e85e0e99265520ec7506fdc5890c
-  languageName: node
-  linkType: hard
-
-"@vitest/expect@npm:4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/expect@npm:4.1.8"
-  dependencies:
-    "@standard-schema/spec": "npm:^1.1.0"
-    "@types/chai": "npm:^5.2.2"
-    "@vitest/spy": "npm:4.1.8"
-    "@vitest/utils": "npm:4.1.8"
-    chai: "npm:^6.2.2"
-    tinyrainbow: "npm:^3.1.0"
-  checksum: 10c0/f7bf6c720d2427c3bd0b35472ebd84d963be7d09ecf52a0fb05e8c4d5d0c9ee164a8c28eee6360947be1b245b47faefab54560cb98e5cb678c1c1074260b9149
   languageName: node
   linkType: hard
 
@@ -3252,40 +3228,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vitest/mocker@npm:4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/mocker@npm:4.1.8"
-  dependencies:
-    "@vitest/spy": "npm:4.1.8"
-    estree-walker: "npm:^3.0.3"
-    magic-string: "npm:^0.30.21"
-  peerDependencies:
-    msw: ^2.4.9
-    vite: ^6.0.0 || ^7.0.0 || ^8.0.0
-  peerDependenciesMeta:
-    msw:
-      optional: true
-    vite:
-      optional: true
-  checksum: 10c0/f8cb2b8b55dc2cba0b2399aeee528b0187042f22cbc2d50a4fd6141f5aa246ebc41700f45dd1d73eca44ddfb57dcde48b2eb317bfbb1198f5ab2cc4fd04b2ea0
-  languageName: node
-  linkType: hard
-
 "@vitest/pretty-format@npm:4.1.2":
   version: 4.1.2
   resolution: "@vitest/pretty-format@npm:4.1.2"
   dependencies:
     tinyrainbow: "npm:^3.1.0"
   checksum: 10c0/6f57519c707e6a3d1ff8630ca87ce78fda9bf7bb33f6e4a0c775a8b510f2a6cee109849e2cdb736b0280681c567bd03e4cff724cbf0962950c9ff81377f0b2bc
-  languageName: node
-  linkType: hard
-
-"@vitest/pretty-format@npm:4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/pretty-format@npm:4.1.8"
-  dependencies:
-    tinyrainbow: "npm:^3.1.0"
-  checksum: 10c0/553c456692a4b9ae13cd116c234c74b4495e0f1a0d5c51ffc3fab8ea085e3550769967e29db79bdac0cf127b1bf88b7f70bfba3dcc72be6bddf834433e30cc91
   languageName: node
   linkType: hard
 
@@ -3296,16 +3244,6 @@ __metadata:
     "@vitest/utils": "npm:4.1.2"
     pathe: "npm:^2.0.3"
   checksum: 10c0/35654a87bd27983443adc24d68529d624f7d70e0386176741dc5bcc4188b86a70af2c512405d7e97aa45c16d83e1c8566c1f99c8440430f95557275f18612d21
-  languageName: node
-  linkType: hard
-
-"@vitest/runner@npm:4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/runner@npm:4.1.8"
-  dependencies:
-    "@vitest/utils": "npm:4.1.8"
-    pathe: "npm:^2.0.3"
-  checksum: 10c0/706808a4b7b95ea9a9268fc152dd39e15a9a754f37c7990aea167486a9094caa913dae454771ae02c18dccfabd667f8cc38eed33a1307a79d32a89878b5bcce1
   languageName: node
   linkType: hard
 
@@ -3321,29 +3259,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vitest/snapshot@npm:4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/snapshot@npm:4.1.8"
-  dependencies:
-    "@vitest/pretty-format": "npm:4.1.8"
-    "@vitest/utils": "npm:4.1.8"
-    magic-string: "npm:^0.30.21"
-    pathe: "npm:^2.0.3"
-  checksum: 10c0/ba4c32112491d42d24986f921c50ede5edbdb4b7eafa16c72cf8d2c9ecc44121fdb3d9365236747a9841f0d6776affc6457470fcbb082df9dbc28c24792a0c6d
-  languageName: node
-  linkType: hard
-
 "@vitest/spy@npm:4.1.2":
   version: 4.1.2
   resolution: "@vitest/spy@npm:4.1.2"
   checksum: 10c0/2b5888d536d3e2083c5f8939763e6d780c2c03cc60e1ab45f9d04eacf14467acb9724cae1c4778e4c06426d49d04517e190122882953054a4b13fda44780bb14
-  languageName: node
-  linkType: hard
-
-"@vitest/spy@npm:4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/spy@npm:4.1.8"
-  checksum: 10c0/3c10c0325a09d16bc0e77c0be96c47c15416186e33332880c0d1dd0a51d51a866091067b81f2a2ef6fb422a7760e6cf15c04d91a0eca4d59f62e8c8401fa53fc
   languageName: node
   linkType: hard
 
@@ -3372,146 +3291,6 @@ __metadata:
     convert-source-map: "npm:^2.0.0"
     tinyrainbow: "npm:^3.1.0"
   checksum: 10c0/d96475e0703b6e5208c6c0f570c1235278cbac3f3913a9aa4203a3e617c9eaca85a184bfd5d13cf366b84754df787ab8bc85242c5e0c63105ee7176c186a2136
-  languageName: node
-  linkType: hard
-
-"@vitest/utils@npm:4.1.8":
-  version: 4.1.8
-  resolution: "@vitest/utils@npm:4.1.8"
-  dependencies:
-    "@vitest/pretty-format": "npm:4.1.8"
-    convert-source-map: "npm:^2.0.0"
-    tinyrainbow: "npm:^3.1.0"
-  checksum: 10c0/acda9d3d640c1ebc81afb358ac30589d7d7d583af81e2d09419f0af9cbe41f3ce0b90527326943bf0da51614be5fc31afcd32259f6beb32b3417999d6ef380f3
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-darwin-arm64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-darwin-arm64@npm:1.18.0"
-  conditions: os=darwin & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-darwin-x64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-darwin-x64@npm:1.18.0"
-  conditions: os=darwin & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-linux-arm64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-linux-arm64@npm:1.18.0"
-  conditions: os=linux & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-linux-arm@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-linux-arm@npm:1.18.0"
-  conditions: os=linux & cpu=arm
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-linux-ia32@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-linux-ia32@npm:1.18.0"
-  conditions: os=linux & cpu=ia32
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-linux-ppc64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-linux-ppc64@npm:1.18.0"
-  conditions: os=linux & cpu=ppc64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-linux-riscv64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-linux-riscv64@npm:1.18.0"
-  conditions: os=linux & cpu=riscv64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-linux-s390x@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-linux-s390x@npm:1.18.0"
-  conditions: os=linux & cpu=s390x
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-linux-x64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-linux-x64@npm:1.18.0"
-  conditions: os=linux & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-win32-arm64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-win32-arm64@npm:1.18.0"
-  conditions: os=win32 & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-win32-ia32@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-win32-ia32@npm:1.18.0"
-  conditions: os=win32 & cpu=ia32
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep-win32-x64@npm:1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep-win32-x64@npm:1.18.0"
-  conditions: os=win32 & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@vscode/ripgrep@npm:^1.18.0":
-  version: 1.18.0
-  resolution: "@vscode/ripgrep@npm:1.18.0"
-  dependencies:
-    "@vscode/ripgrep-darwin-arm64": "npm:1.18.0"
-    "@vscode/ripgrep-darwin-x64": "npm:1.18.0"
-    "@vscode/ripgrep-linux-arm": "npm:1.18.0"
-    "@vscode/ripgrep-linux-arm64": "npm:1.18.0"
-    "@vscode/ripgrep-linux-ia32": "npm:1.18.0"
-    "@vscode/ripgrep-linux-ppc64": "npm:1.18.0"
-    "@vscode/ripgrep-linux-riscv64": "npm:1.18.0"
-    "@vscode/ripgrep-linux-s390x": "npm:1.18.0"
-    "@vscode/ripgrep-linux-x64": "npm:1.18.0"
-    "@vscode/ripgrep-win32-arm64": "npm:1.18.0"
-    "@vscode/ripgrep-win32-ia32": "npm:1.18.0"
-    "@vscode/ripgrep-win32-x64": "npm:1.18.0"
-  dependenciesMeta:
-    "@vscode/ripgrep-darwin-arm64":
-      optional: true
-    "@vscode/ripgrep-darwin-x64":
-      optional: true
-    "@vscode/ripgrep-linux-arm":
-      optional: true
-    "@vscode/ripgrep-linux-arm64":
-      optional: true
-    "@vscode/ripgrep-linux-ia32":
-      optional: true
-    "@vscode/ripgrep-linux-ppc64":
-      optional: true
-    "@vscode/ripgrep-linux-riscv64":
-      optional: true
-    "@vscode/ripgrep-linux-s390x":
-      optional: true
-    "@vscode/ripgrep-linux-x64":
-      optional: true
-    "@vscode/ripgrep-win32-arm64":
-      optional: true
-    "@vscode/ripgrep-win32-ia32":
-      optional: true
-    "@vscode/ripgrep-win32-x64":
-      optional: true
-  checksum: 10c0/163b64cbc864888392616d28df6ff1cbf3c10078f218d2a1f070c25b42cf20c7013b7bf4bbd87a0235d6379d01d17a9a3a7bdb310cb35f1f2d0977418739742d
   languageName: node
   linkType: hard
 
@@ -7057,7 +6836,6 @@ __metadata:
     "@types/node": "npm:^25.9.3"
     "@vitest/coverage-v8": "npm:^4.0.16"
     "@vitest/ui": "npm:^4.0.16"
-    "@vscode/ripgrep": "npm:^1.18.0"
     esbuild: "npm:^0.28.1"
     eslint: "npm:^9.18.0"
     octokit: "npm:^5.0.5"
@@ -7098,7 +6876,6 @@ __metadata:
     express: "npm:^4.21.2"
     js-yaml: "npm:^4.1.1"
     octocode-mcp: "workspace:*"
-    octocode-shared: "workspace:^"
     supertest: "npm:^7.2.2"
     tsdown: "npm:^0.18.3"
     tsx: "npm:^4.21.0"
@@ -7111,101 +6888,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"octocode-security-darwin-arm64@npm:16.3.0, octocode-security-darwin-arm64@workspace:packages/octocode-security/npm/darwin-arm64":
-  version: 0.0.0-use.local
-  resolution: "octocode-security-darwin-arm64@workspace:packages/octocode-security/npm/darwin-arm64"
-  languageName: unknown
-  linkType: soft
-
-"octocode-security-darwin-x64@npm:16.3.0, octocode-security-darwin-x64@workspace:packages/octocode-security/npm/darwin-x64":
-  version: 0.0.0-use.local
-  resolution: "octocode-security-darwin-x64@workspace:packages/octocode-security/npm/darwin-x64"
-  languageName: unknown
-  linkType: soft
-
-"octocode-security-linux-arm64-gnu@npm:16.3.0, octocode-security-linux-arm64-gnu@workspace:packages/octocode-security/npm/linux-arm64-gnu":
-  version: 0.0.0-use.local
-  resolution: "octocode-security-linux-arm64-gnu@workspace:packages/octocode-security/npm/linux-arm64-gnu"
-  languageName: unknown
-  linkType: soft
-
-"octocode-security-linux-x64-gnu@npm:16.3.0, octocode-security-linux-x64-gnu@workspace:packages/octocode-security/npm/linux-x64-gnu":
-  version: 0.0.0-use.local
-  resolution: "octocode-security-linux-x64-gnu@workspace:packages/octocode-security/npm/linux-x64-gnu"
-  languageName: unknown
-  linkType: soft
-
-"octocode-security-linux-x64-musl@npm:16.3.0, octocode-security-linux-x64-musl@workspace:packages/octocode-security/npm/linux-x64-musl":
-  version: 0.0.0-use.local
-  resolution: "octocode-security-linux-x64-musl@workspace:packages/octocode-security/npm/linux-x64-musl"
-  languageName: unknown
-  linkType: soft
-
-"octocode-security-win32-x64-msvc@npm:16.3.0, octocode-security-win32-x64-msvc@workspace:packages/octocode-security/npm/win32-x64-msvc":
-  version: 0.0.0-use.local
-  resolution: "octocode-security-win32-x64-msvc@workspace:packages/octocode-security/npm/win32-x64-msvc"
-  languageName: unknown
-  linkType: soft
-
-"octocode-security@workspace:*, octocode-security@workspace:packages/octocode-security":
-  version: 0.0.0-use.local
-  resolution: "octocode-security@workspace:packages/octocode-security"
-  dependencies:
-    "@eslint/js": "npm:^9.35.0"
-    "@napi-rs/cli": "npm:^3.7.1"
-    "@types/node": "npm:^25.9.3"
-    "@vitest/coverage-v8": "npm:^4.1.8"
-    esbuild: "npm:^0.28.1"
-    eslint: "npm:^9.18.0"
-    eslint-config-prettier: "npm:^10.1.8"
-    eslint-plugin-prettier: "npm:^5.5.4"
-    octocode-security-darwin-arm64: "npm:16.3.0"
-    octocode-security-darwin-x64: "npm:16.3.0"
-    octocode-security-linux-arm64-gnu: "npm:16.3.0"
-    octocode-security-linux-x64-gnu: "npm:16.3.0"
-    octocode-security-linux-x64-musl: "npm:16.3.0"
-    octocode-security-win32-x64-msvc: "npm:16.3.0"
-    prettier: "npm:^3.6.2"
-    typescript: "npm:^5.9.3"
-    typescript-eslint: "npm:^8.52.0"
-    vitest: "npm:^4.1.8"
-  dependenciesMeta:
-    octocode-security-darwin-arm64:
-      optional: true
-    octocode-security-darwin-x64:
-      optional: true
-    octocode-security-linux-arm64-gnu:
-      optional: true
-    octocode-security-linux-x64-gnu:
-      optional: true
-    octocode-security-linux-x64-musl:
-      optional: true
-    octocode-security-win32-x64-msvc:
-      optional: true
-  languageName: unknown
-  linkType: soft
-
-"octocode-shared@workspace:*, octocode-shared@workspace:^, octocode-shared@workspace:packages/octocode-shared":
-  version: 0.0.0-use.local
-  resolution: "octocode-shared@workspace:packages/octocode-shared"
-  dependencies:
-    "@octokit/oauth-methods": "npm:^6.0.2"
-    "@octokit/request": "npm:^10.0.7"
-    "@types/node": "npm:^25.9.3"
-    "@vitest/coverage-v8": "npm:^4.0.16"
-    esbuild: "npm:^0.28.1"
-    eslint: "npm:^9.18.0"
-    typescript: "npm:^5.9.3"
-    vitest: "npm:^4.0.16"
-    zod: "npm:^4.3.6"
-  languageName: unknown
-  linkType: soft
-
 "octocode@workspace:packages/octocode":
   version: 0.0.0-use.local
   resolution: "octocode@workspace:packages/octocode"
   dependencies:
     "@inquirer/prompts": "npm:^8.1.0"
+    "@octocodeai/octocode-core": "npm:16.4.0"
     "@octocodeai/octocode-tools-core": "workspace:*"
     "@octokit/auth-oauth-device": "npm:^8.0.3"
     "@octokit/oauth-methods": "npm:^6.0.2"
@@ -7214,7 +6902,6 @@ __metadata:
     "@vitest/coverage-v8": "npm:^4.0.16"
     esbuild: "npm:^0.28.1"
     eslint: "npm:^9.18.0"
-    octocode-shared: "workspace:*"
     open: "npm:^11.0.0"
     tsx: "npm:^4.21.0"
     vitest: "npm:^4.0.16"
@@ -9169,74 +8856,6 @@ __metadata:
   bin:
     vitest: vitest.mjs
   checksum: 10c0/061fdd0319ba533c926b139b9377a7dbf91e63d815d86fe318a207bd19842b74ca6f6402ea61b26ed9d2924306bdb4d0b13f69c29e2a2a89b3b67602bcccb54c
-  languageName: node
-  linkType: hard
-
-"vitest@npm:^4.1.8":
-  version: 4.1.8
-  resolution: "vitest@npm:4.1.8"
-  dependencies:
-    "@vitest/expect": "npm:4.1.8"
-    "@vitest/mocker": "npm:4.1.8"
-    "@vitest/pretty-format": "npm:4.1.8"
-    "@vitest/runner": "npm:4.1.8"
-    "@vitest/snapshot": "npm:4.1.8"
-    "@vitest/spy": "npm:4.1.8"
-    "@vitest/utils": "npm:4.1.8"
-    es-module-lexer: "npm:^2.0.0"
-    expect-type: "npm:^1.3.0"
-    magic-string: "npm:^0.30.21"
-    obug: "npm:^2.1.1"
-    pathe: "npm:^2.0.3"
-    picomatch: "npm:^4.0.3"
-    std-env: "npm:^4.0.0-rc.1"
-    tinybench: "npm:^2.9.0"
-    tinyexec: "npm:^1.0.2"
-    tinyglobby: "npm:^0.2.15"
-    tinyrainbow: "npm:^3.1.0"
-    vite: "npm:^6.0.0 || ^7.0.0 || ^8.0.0"
-    why-is-node-running: "npm:^2.3.0"
-  peerDependencies:
-    "@edge-runtime/vm": "*"
-    "@opentelemetry/api": ^1.9.0
-    "@types/node": ^20.0.0 || ^22.0.0 || >=24.0.0
-    "@vitest/browser-playwright": 4.1.8
-    "@vitest/browser-preview": 4.1.8
-    "@vitest/browser-webdriverio": 4.1.8
-    "@vitest/coverage-istanbul": 4.1.8
-    "@vitest/coverage-v8": 4.1.8
-    "@vitest/ui": 4.1.8
-    happy-dom: "*"
-    jsdom: "*"
-    vite: ^6.0.0 || ^7.0.0 || ^8.0.0
-  peerDependenciesMeta:
-    "@edge-runtime/vm":
-      optional: true
-    "@opentelemetry/api":
-      optional: true
-    "@types/node":
-      optional: true
-    "@vitest/browser-playwright":
-      optional: true
-    "@vitest/browser-preview":
-      optional: true
-    "@vitest/browser-webdriverio":
-      optional: true
-    "@vitest/coverage-istanbul":
-      optional: true
-    "@vitest/coverage-v8":
-      optional: true
-    "@vitest/ui":
-      optional: true
-    happy-dom:
-      optional: true
-    jsdom:
-      optional: true
-    vite:
-      optional: false
-  bin:
-    vitest: vitest.mjs
-  checksum: 10c0/f459c500f8818c7a2318cd23228b4e5c0b5efb25bf8e5cb7f116c6d26e51482b2f800a8bb19837c0b5f0d05c51519edbf502bc8ceb5bd86868e8facf1d2c498e
   languageName: node
   linkType: hard
 

@@ -1,5 +1,5 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types';
-import { incrementToolCharSavings } from 'octocode-shared';
+import { incrementToolCharSavings } from '../../shared/index.js';
 import { executeWithErrorIsolation } from '../core/promise.js';
 import {
   createResponseFormat,

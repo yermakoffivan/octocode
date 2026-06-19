@@ -86,7 +86,7 @@ export default tseslint.config(
   },
 
   {
-    files: ['packages/octocode-shared/src/**/*.ts', 'packages/octocode-shared/tests/**/*.ts'],
+    files: ['packages/octocode-tools-core/src/shared/**/*.ts', 'packages/octocode-tools-core/tests/shared/**/*.ts'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
       'no-console': 'off',

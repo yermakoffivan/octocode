@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild';
 import { builtinModules } from 'module';
-import { chmodSync, copyFileSync, readFileSync, writeFileSync } from 'fs';
+import { chmodSync, readFileSync, writeFileSync } from 'fs';
 import { rm } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -9,12 +9,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
-const rootReadmePath = resolve(__dirname, '..', '..', 'README.md');
-const packageReadmePath = resolve(__dirname, 'README.md');
-
-copyFileSync(rootReadmePath, packageReadmePath);
-console.log('✓ README.md synced from repository root');
-
 const nodeExternals = [
   ...builtinModules,
   ...builtinModules.map((m) => `node:${m}`),
@@ -27,10 +21,17 @@ const runtimeExternals = Object.keys(pkg.dependencies ?? {});
 // directly but they must remain external so native .node binaries are resolved
 // at runtime by the package manager rather than bundled.
 const transitiveExternals = [
-  'octocode-shared',
-  'octocode-security',
   '@octocodeai/octocode-engine',
+  '@octocodeai/octocode-engine/security',
+  '@octocodeai/octocode-engine/mask',
+  '@octocodeai/octocode-engine/contentSanitizer',
+  '@octocodeai/octocode-engine/pathValidator',
+  '@octocodeai/octocode-engine/commandValidator',
+  '@octocodeai/octocode-engine/withSecurityValidation',
+  '@octocodeai/octocode-engine/registry',
+  '@octocodeai/octocode-engine/pathUtils',
   '@octocodeai/octocode-core',
+  '@octocodeai/octocode-core/cli',
   '@octocodeai/octocode-core/schemas',
   '@octocodeai/octocode-core/types',
   'zod',
