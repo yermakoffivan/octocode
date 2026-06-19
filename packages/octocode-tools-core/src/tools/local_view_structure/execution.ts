@@ -26,8 +26,11 @@ export async function executeViewStructure(
         query,
         contextMessage: 'localViewStructure execution failed',
         execute: async () => {
-          const parsed = safeParseOrError(LocalViewStructureQuerySchema, query);
-          if (!parsed.ok) {
+          const parsed = safeParseOrError<ViewStructureQuery>(
+            LocalViewStructureQuerySchema,
+            query
+          );
+          if (parsed.ok === false) {
             return parsed.error;
           }
           const result = await viewStructure(parsed.data);

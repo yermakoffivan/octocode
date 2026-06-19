@@ -47,7 +47,7 @@ export async function fetchMultipleGitHubFileContents(
         const parsed = safeParseOrError(FileContentQueryLocalSchema, query, {
           prefix: false,
         });
-        if (!parsed.ok) {
+        if (parsed.ok === false) {
           return parsed.error;
         }
 

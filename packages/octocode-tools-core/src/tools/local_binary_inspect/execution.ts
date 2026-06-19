@@ -25,8 +25,11 @@ export async function executeInspectBinary(
         query,
         contextMessage: 'localBinaryInspect execution failed',
         execute: async () => {
-          const parsed = safeParseOrError(LocalBinaryInspectQuerySchema, query);
-          if (!parsed.ok) {
+          const parsed = safeParseOrError<BinaryInspectQuery>(
+            LocalBinaryInspectQuerySchema,
+            query
+          );
+          if (parsed.ok === false) {
             return parsed.error;
           }
           const result = await inspectBinary(parsed.data);

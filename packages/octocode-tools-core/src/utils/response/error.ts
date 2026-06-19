@@ -169,8 +169,8 @@ interface SafeParseableSchema<T> {
 }
 
 export type SafeParseOutcome<T> =
-  | { ok: true; data: T; error?: never }
-  | { ok: false; data?: never; error: UnifiedErrorResult };
+  | { ok: true; data: T }
+  | { ok: false; error: UnifiedErrorResult };
 
 /**
  * Validate `input` against `schema`, returning either the parsed data or a

@@ -57,7 +57,7 @@ export async function searchMultipleGitHubPullRequests(
           GitHubPullRequestSearchQueryLocalSchema,
           query
         );
-        if (!parsed.ok) {
+        if (parsed.ok === false) {
           return parsed.error;
         }
 

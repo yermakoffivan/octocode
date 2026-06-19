@@ -24,8 +24,11 @@ export async function executeFetchContent(
         query,
         contextMessage: 'localGetFileContent execution failed',
         execute: async () => {
-          const parsed = safeParseOrError(LocalFetchContentQuerySchema, query);
-          if (!parsed.ok) {
+          const parsed = safeParseOrError<FetchContentQuery>(
+            LocalFetchContentQuerySchema,
+            query
+          );
+          if (parsed.ok === false) {
             return parsed.error;
           }
           const result = await fetchContent(parsed.data);

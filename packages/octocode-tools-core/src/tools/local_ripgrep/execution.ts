@@ -21,8 +21,11 @@ export async function executeRipgrepSearch(
         query,
         contextMessage: 'localSearchCode execution failed',
         execute: async () => {
-          const parsed = safeParseOrError(LocalRipgrepQuerySchema, query);
-          if (!parsed.ok) {
+          const parsed = safeParseOrError<RipgrepQuery>(
+            LocalRipgrepQuerySchema,
+            query
+          );
+          if (parsed.ok === false) {
             return parsed.error;
           }
           const result = await searchContentRipgrep(parsed.data);

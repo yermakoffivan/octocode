@@ -21,8 +21,11 @@ export async function executeFindFiles(
         query,
         contextMessage: 'localFindFiles execution failed',
         execute: async () => {
-          const parsed = safeParseOrError(LocalFindFilesQuerySchema, query);
-          if (!parsed.ok) {
+          const parsed = safeParseOrError<FindFilesQuery>(
+            LocalFindFilesQuerySchema,
+            query
+          );
+          if (parsed.ok === false) {
             return parsed.error;
           }
           const result = await findFiles(parsed.data);
