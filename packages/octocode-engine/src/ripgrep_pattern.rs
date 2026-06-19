@@ -7,7 +7,11 @@ pub struct RipgrepPatternValidationResult {
     pub error: Option<String>,
 }
 
-pub fn validate(pattern: &str, fixed_string: bool, perl_regex: bool) -> RipgrepPatternValidationResult {
+pub fn validate(
+    pattern: &str,
+    fixed_string: bool,
+    perl_regex: bool,
+) -> RipgrepPatternValidationResult {
     if pattern.is_empty() {
         return RipgrepPatternValidationResult {
             valid: false,

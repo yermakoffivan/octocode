@@ -59,17 +59,15 @@ mod tests {
         let file = src.join("index.ts");
         fs::write(&file, b"export {}").expect("write file");
 
-        let result = resolve_workspace_root_for_file(file.to_string_lossy().into_owned())
-            .expect("resolve");
+        let result =
+            resolve_workspace_root_for_file(file.to_string_lossy().into_owned()).expect("resolve");
 
         let _ = fs::remove_dir_all(&root);
         // Normalize both sides in case of symlink-resolved paths (macOS /var → /private/var).
         let resolved = PathBuf::from(&result)
             .canonicalize()
             .unwrap_or_else(|_| PathBuf::from(&result));
-        let expected = root
-            .canonicalize()
-            .unwrap_or(root);
+        let expected = root.canonicalize().unwrap_or(root);
         assert_eq!(resolved, expected);
     }
 
@@ -84,8 +82,8 @@ mod tests {
         let file = deep.join("file.rs");
         fs::write(&file, b"fn main() {}").expect("write file");
 
-        let result = resolve_workspace_root_for_file(file.to_string_lossy().into_owned())
-            .expect("resolve");
+        let result =
+            resolve_workspace_root_for_file(file.to_string_lossy().into_owned()).expect("resolve");
 
         let _ = fs::remove_dir_all(&root);
         let resolved = PathBuf::from(&result)

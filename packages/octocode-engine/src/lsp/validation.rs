@@ -238,6 +238,10 @@ mod tests {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod");
         let result = validate_lsp_server_path(path.to_string_lossy().into_owned());
         let _ = fs::remove_file(&path);
-        assert!(result.is_ok(), "executable file must be accepted: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "executable file must be accepted: {:?}",
+            result
+        );
     }
 }

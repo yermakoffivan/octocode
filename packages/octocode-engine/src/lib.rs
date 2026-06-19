@@ -18,9 +18,9 @@ mod types;
 mod utf8_offsets;
 mod yaml_utils;
 
+use lsp::types::{JsFuzzyPosition, JsLanguageServerConfig, JsResolvedSymbol};
 use napi::{bindgen_prelude::AsyncTask, Env, Error, Result, Status, Task};
 use napi_derive::napi;
-use lsp::types::{JsFuzzyPosition, JsLanguageServerConfig, JsResolvedSymbol};
 use types::{
     ExtractMatchingLinesOptions, ExtractMatchingLinesResult, FileSystemQueryOptions,
     FileSystemQueryResult, FileTypeMinifyConfig, FilterPatchOptions, GetExtensionOptions,
@@ -62,9 +62,10 @@ impl Task for SearchRipgrepTask {
     fn compute(&mut self) -> Result<Self::Output> {
         // `compute` runs on the libuv thread pool, so the filesystem walk never
         // blocks the Node event loop. `options` is moved out on first (only) call.
-        let options = self.options.take().ok_or_else(|| {
-            Error::new(Status::GenericFailure, "search options already consumed")
-        })?;
+        let options = self
+            .options
+            .take()
+            .ok_or_else(|| Error::new(Status::GenericFailure, "search options already consumed"))?;
         ripgrep_search::search(options)
     }
 
@@ -132,8 +133,7 @@ pub fn get_language_server_for_file(
 /// Check whether `command` is available on `PATH`.
 #[napi(js_name = "isCommandAvailable")]
 pub fn is_command_available(command: String) -> Result<bool> {
-    lsp::config::is_command_available(command)
-        .map_err(|e| Error::new(Status::GenericFailure, e))
+    lsp::config::is_command_available(command).map_err(|e| Error::new(Status::GenericFailure, e))
 }
 
 /// Read `file_path` from disk after canonicalizing it and confirming it is an
@@ -325,7 +325,7 @@ pub fn minify_css_core(content: String) -> String {
 }
 
 /// Lightweight HTML/XML cleanup (comment strip + whitespace). See
-/// `minifyHTMLQuality` for the minify-html-backed variant.
+/// `minifyHTMLQuality` for the style-aware built-in variant.
 #[napi(js_name = "minifyHTMLCore")]
 pub fn minify_html_core(content: String) -> String {
     strategies::minify_html_core(&content)
@@ -345,8 +345,8 @@ pub fn minify_css_quality(content: String) -> String {
     strategies::minify_css_quality(&content)
 }
 
-/// HTML minification via minify-html — parser-grade comment and whitespace
-/// removal.
+/// Style-aware HTML cleanup: strips comments, tightens whitespace, and minifies
+/// embedded `<style>` blocks through the existing CSS pipeline.
 #[napi(js_name = "minifyHTMLQuality")]
 pub fn minify_html_quality(content: String) -> String {
     strategies::minify_html_quality(&content)
@@ -435,9 +435,7 @@ pub fn structural_search(
     let outcome = std::panic::catch_unwind(|| {
         structural::search(&content, &ext, pattern.as_deref(), rule.as_deref())
     })
-    .unwrap_or_else(|_| {
-        Err("structural search failed on pathological input".to_string())
-    });
+    .unwrap_or_else(|_| Err("structural search failed on pathological input".to_string()));
     outcome.map_err(|message| Error::new(Status::InvalidArg, message))
 }
 
@@ -599,8 +597,7 @@ pub fn validate_ripgrep_pattern(
 /// keeping MCP response shaping in TypeScript.
 #[napi(js_name = "queryFileSystem")]
 pub fn query_file_system(options: FileSystemQueryOptions) -> Result<FileSystemQueryResult> {
-    fs_query::query_file_system_inner(options)
-        .map_err(|e| Error::new(Status::InvalidArg, e))
+    fs_query::query_file_system_inner(options).map_err(|e| Error::new(Status::InvalidArg, e))
 }
 
 // ── UTF-8 offset helpers ──────────────────────────────────────────────────────
@@ -789,7 +786,9 @@ mod tests {
         }
         // Former heuristic / structural-only languages must be absent — signature
         // extraction is tree-sitter only, with no regex fallback.
-        for absent in ["vue", "svelte", "md", "markdown", "lua", "sql", "html", "scala"] {
+        for absent in [
+            "vue", "svelte", "md", "markdown", "lua", "sql", "html", "scala",
+        ] {
             assert!(
                 !exts.iter().any(|e| e == absent),
                 "{absent} must not have a signature outline (no grammar / structural-only)"

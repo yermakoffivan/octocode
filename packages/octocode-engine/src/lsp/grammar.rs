@@ -21,8 +21,7 @@ impl GrammarSpec {
 /// Grammars are pre-built once at first use and reused for every subsequent
 /// `grammar_for_file` call. `Language` is `Clone + Send + Sync`, so storing it
 /// in a `LazyLock<HashMap>` is safe and avoids repeated FFI calls per lookup.
-static GRAMMAR_MAP: LazyLock<HashMap<&'static str, GrammarSpec>> =
-    LazyLock::new(init_grammar_map);
+static GRAMMAR_MAP: LazyLock<HashMap<&'static str, GrammarSpec>> = LazyLock::new(init_grammar_map);
 
 pub fn grammar_for_file(file_path: &str) -> Option<&'static GrammarSpec> {
     let ext = Path::new(file_path)

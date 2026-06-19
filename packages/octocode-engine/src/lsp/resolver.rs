@@ -510,7 +510,10 @@ mod tests {
     #[test]
     fn resolves_utf16_character_for_non_ascii_prefix() {
         // 'é' before the symbol → LSP character must be UTF-16 (7), not byte (8).
-        assert_eq!(resolve_char("demo.ts", "const étarget = 1;\n", "target", 1), 7);
+        assert_eq!(
+            resolve_char("demo.ts", "const étarget = 1;\n", "target", 1),
+            7
+        );
     }
 
     fn resolve(file_name: &str, source: &str, symbol_name: &str, line_hint: u32) -> u32 {

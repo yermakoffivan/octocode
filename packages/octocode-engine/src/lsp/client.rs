@@ -679,9 +679,15 @@ fn parse_position(value: &Value) -> Result<JsExactPosition> {
         .get("line")
         .and_then(Value::as_u64)
         .ok_or_else(|| Error::new(Status::InvalidArg, "LSP position missing numeric 'line'"))?;
-    let character = value.get("character").and_then(Value::as_u64).ok_or_else(|| {
-        Error::new(Status::InvalidArg, "LSP position missing numeric 'character'")
-    })?;
+    let character = value
+        .get("character")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            Error::new(
+                Status::InvalidArg,
+                "LSP position missing numeric 'character'",
+            )
+        })?;
     Ok(JsExactPosition {
         line: line as u32,
         character: character as u32,

@@ -42,18 +42,16 @@ pub fn minify_html_core(content: &str) -> String {
     s.trim().to_owned()
 }
 
-/// High-quality HTML minification via minify-html crate.
-/// Uses `minify_html_core` on error.
+/// Style-aware HTML cleanup without a heavyweight HTML minifier dependency.
+///
+/// Full HTML minification is deceptively semantic (inline whitespace, raw-text
+/// elements, optional tags, entity handling). For agent context we only need the
+/// low-risk wins: remove HTML comments, collapse ordinary whitespace, and reuse
+/// the existing CSS minifier inside `<style>` blocks.
 pub fn minify_html_quality(content: &str) -> String {
     std::panic::catch_unwind(|| {
-        use minify_html::{minify, Cfg};
-        let cfg = Cfg {
-            minify_css: true,
-            minify_js: false,
-            ..Cfg::default()
-        };
-        let out = minify(content.as_bytes(), &cfg);
-        String::from_utf8(out).unwrap_or_else(|_| minify_html_core(content))
+        let with_minified_styles = minify_style_blocks(content);
+        minify_html_core(&with_minified_styles)
     })
     .unwrap_or_else(|_| minify_html_core(content))
 }
@@ -87,13 +85,7 @@ static ATTR_LANG: LazyLock<Regex> = LazyLock::new(|| {
 /// original block text when it cannot handle the content.
 pub fn minify_embedded_web(content: &str, file_path: &str) -> String {
     // 1) Minify <style> inner content (lightningcss → CSS regex fallback).
-    let after_style = STYLE_BLOCK.replace_all(content, |caps: &regex::Captures| {
-        let (open, inner, close) = (&caps[1], &caps[2], &caps[3]);
-        if inner.trim().is_empty() {
-            return format!("{open}{inner}{close}");
-        }
-        format!("{open}{}{close}", minify_css_quality(inner).trim())
-    });
+    let after_style = minify_style_blocks(content);
 
     // 2) Minify <script> inner content (oxc, no mangle). External scripts
     //    (`src=`) and non-JS payloads (JSON, x-template, etc.) are left intact.
@@ -110,6 +102,18 @@ pub fn minify_embedded_web(content: &str, file_path: &str) -> String {
     // 3) Drop HTML comments, then collapse trailing whitespace + blank runs.
     let no_comments = HTML_COMMENT.replace_all(&after_script, "");
     collapse_blank_lines(&no_comments)
+}
+
+fn minify_style_blocks(content: &str) -> String {
+    STYLE_BLOCK
+        .replace_all(content, |caps: &regex::Captures| {
+            let (open, inner, close) = (&caps[1], &caps[2], &caps[3]);
+            if inner.trim().is_empty() {
+                return format!("{open}{inner}{close}");
+            }
+            format!("{open}{}{close}", minify_css_quality(inner).trim())
+        })
+        .into_owned()
 }
 
 /// True when a `<script>` open tag denotes inline JavaScript/TypeScript that is
@@ -174,4 +178,33 @@ fn collapse_blank_lines(s: &str) -> String {
         out.pop();
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::minify_html_quality;
+
+    #[test]
+    fn html_quality_strips_comments_and_minifies_style_blocks() {
+        let src = r#"
+            <html>
+              <head>
+                <!-- comment -->
+                <style>
+                  .btn {
+                    color: red;
+                    margin: 0px 0px;
+                  }
+                </style>
+              </head>
+              <body><h1>Hi</h1></body>
+            </html>
+        "#;
+
+        let out = minify_html_quality(src);
+
+        assert!(!out.contains("comment"));
+        assert!(out.contains("color:red"));
+        assert!(out.len() < src.len());
+    }
 }

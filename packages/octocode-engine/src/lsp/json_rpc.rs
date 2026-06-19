@@ -477,10 +477,7 @@ mod tests {
 
             let (mut server, client_reader) = duplex(4096);
             // Frame 1: length-less header block (should be skipped, not fatal).
-            server
-                .write_all(b"\r\n")
-                .await
-                .expect("write empty frame");
+            server.write_all(b"\r\n").await.expect("write empty frame");
             // Frame 2: a real response for id 7.
             let body = br#"{"jsonrpc":"2.0","id":7,"result":{"ok":true}}"#;
             server
@@ -660,7 +657,10 @@ mod tests {
             let elapsed = start.elapsed().as_millis();
             // Should wait ~the timeout (settle is capped at timeout_ms=150),
             // and must not run away to the full multi-second settle window.
-            assert!(elapsed < 1_000, "must not exceed caller timeout, got {elapsed} ms");
+            assert!(
+                elapsed < 1_000,
+                "must not exceed caller timeout, got {elapsed} ms"
+            );
         });
     }
 
@@ -708,7 +708,10 @@ mod tests {
             let start = Instant::now();
             tracker.wait_until_idle(300).await;
             let elapsed = start.elapsed().as_millis();
-            assert!(elapsed >= 200, "must wait at least ~timeout ms, got {elapsed} ms");
+            assert!(
+                elapsed >= 200,
+                "must wait at least ~timeout ms, got {elapsed} ms"
+            );
             assert!(elapsed < 3_000, "must not hang, got {elapsed} ms");
         });
     }

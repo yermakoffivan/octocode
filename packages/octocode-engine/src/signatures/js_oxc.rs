@@ -274,7 +274,10 @@ fn find_in_file_references_inner(
     spans.sort_by_key(|span| (span.start, span.end));
     spans.dedup_by_key(|span| (span.start, span.end));
 
-    let ranges: Vec<Range> = spans.into_iter().map(|span| line_index.range(span)).collect();
+    let ranges: Vec<Range> = spans
+        .into_iter()
+        .map(|span| line_index.range(span))
+        .collect();
     serde_json::to_string(&ranges).ok()
 }
 
@@ -597,7 +600,8 @@ mod tests {
 
     #[test]
     fn arrow_const_is_a_function_const_value_is_constant() {
-        let src = "export const handler = (req) => req;\nexport const MAX = 10;\nlet counter = 0;\n";
+        let src =
+            "export const handler = (req) => req;\nexport const MAX = 10;\nlet counter = 0;\n";
         let v = symbols(src, "h.js");
         let arr = v.as_array().unwrap();
         let handler = arr.iter().find(|s| s["name"] == "handler").unwrap();
@@ -639,8 +643,8 @@ mod tests {
     }
 
     fn refs(content: &str, path: &str, line: u32, character: u32) -> Value {
-        let json = find_in_file_references(content, path, line, character)
-            .expect("references expected");
+        let json =
+            find_in_file_references(content, path, line, character).expect("references expected");
         serde_json::from_str(&json).expect("valid json")
     }
 

@@ -3,8 +3,7 @@
 /// oxc symbols/references, the oxc minify fast path, and the
 /// `getSupportedJsTsExtensions` napi export all read this, so the set never
 /// drifts between modules.
-pub const JS_TS_EXTENSIONS: &[&str] =
-    &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+pub const JS_TS_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
 
 /// True when `ext` (lowercase, no leading dot) is a JS/TS family extension.
 pub fn is_js_ts_extension(ext: &str) -> bool {

@@ -41,8 +41,7 @@ fn minify_js_oxc_inner(content: &str, file_path: &str, mangle: bool) -> Option<S
 
     let parser_ret = Parser::new(&allocator, content, source_type).parse();
     // If plain-JS parse failed (e.g. Flow-annotated file with `import type`), retry as TS.
-    let parser_ret = if !parser_ret.diagnostics.is_empty() && matches!(ext.as_str(), "js" | "cjs")
-    {
+    let parser_ret = if !parser_ret.diagnostics.is_empty() && matches!(ext.as_str(), "js" | "cjs") {
         Parser::new(&allocator, content, SourceType::ts()).parse()
     } else {
         parser_ret
@@ -167,10 +166,11 @@ mod tests {
     /// is the class this finding targets.)
     #[test]
     fn minify_js_oxc_guard_converts_panic_to_none() {
-        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Option<String> {
-            panic!("simulated OXC ICE");
-        }))
-        .unwrap_or(None);
+        let caught =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Option<String> {
+                panic!("simulated OXC ICE");
+            }))
+            .unwrap_or(None);
         assert_eq!(caught, None, "catch_unwind must convert a panic into None");
     }
 

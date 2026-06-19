@@ -298,7 +298,10 @@ pub fn search_files(
     let include = options.include.unwrap_or_default();
     let exclude_dir = options.exclude_dir.unwrap_or_else(default_exclude_dirs);
     let max_files = options.max_files.map(|n| n as usize).unwrap_or(2_000);
-    let max_file_bytes = options.max_file_bytes.map(|n| n as u64).unwrap_or(1_000_000);
+    let max_file_bytes = options
+        .max_file_bytes
+        .map(|n| n as u64)
+        .unwrap_or(1_000_000);
     // #9: prefilter from a pattern's literal, or — when safe — from a rule's
     // positive root `pattern:` field.
     let anchor = match (pattern, rule) {
@@ -418,10 +421,19 @@ fn validate_query_shape(pattern: Option<&str>, rule: Option<&str>) -> Result<(),
 }
 
 fn default_exclude_dirs() -> Vec<String> {
-    ["node_modules", "dist", ".git", "build", "coverage", ".next", "out", "target"]
-        .into_iter()
-        .map(str::to_owned)
-        .collect()
+    [
+        "node_modules",
+        "dist",
+        ".git",
+        "build",
+        "coverage",
+        ".next",
+        "out",
+        "target",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
 }
 
 /// Compile the `include` patterns into a gitignore-style override set, rooted at
@@ -573,8 +585,14 @@ mod tests {
         let matches = run_pattern(src, "ts", "foo($X)");
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].start_line, 1);
-        assert_eq!(matches[0].metavars.get("X").map(Vec::as_slice), Some(&["bar".to_string()][..]));
-        assert_eq!(matches[1].metavars.get("X").map(Vec::as_slice), Some(&["baz".to_string()][..]));
+        assert_eq!(
+            matches[0].metavars.get("X").map(Vec::as_slice),
+            Some(&["bar".to_string()][..])
+        );
+        assert_eq!(
+            matches[1].metavars.get("X").map(Vec::as_slice),
+            Some(&["baz".to_string()][..])
+        );
     }
 
     #[test]
@@ -587,7 +605,15 @@ mod tests {
         // strip the commas.
         assert_eq!(
             matches[0].metavars.get("ARGS").map(Vec::as_slice),
-            Some(&["1".to_string(), ",".to_string(), "2".to_string(), ",".to_string(), "3".to_string()][..])
+            Some(
+                &[
+                    "1".to_string(),
+                    ",".to_string(),
+                    "2".to_string(),
+                    ",".to_string(),
+                    "3".to_string()
+                ][..]
+            )
         );
     }
 
@@ -599,7 +625,10 @@ mod tests {
         let matches = run_pattern(src, "js", "eval($X)");
         assert_eq!(matches.len(), 1, "only the real call site matches");
         assert_eq!(matches[0].start_line, 3);
-        assert_eq!(matches[0].metavars.get("X").map(Vec::as_slice), Some(&["real".to_string()][..]));
+        assert_eq!(
+            matches[0].metavars.get("X").map(Vec::as_slice),
+            Some(&["real".to_string()][..])
+        );
     }
 
     #[test]
@@ -608,7 +637,10 @@ mod tests {
         let src = "print(hello)\nprint(world)\n";
         let matches = run_pattern(src, "py", "print($X)");
         assert_eq!(matches.len(), 2);
-        assert_eq!(matches[0].metavars.get("X").map(Vec::as_slice), Some(&["hello".to_string()][..]));
+        assert_eq!(
+            matches[0].metavars.get("X").map(Vec::as_slice),
+            Some(&["hello".to_string()][..])
+        );
     }
 
     #[test]
@@ -623,9 +655,14 @@ mod tests {
         // KPI: a rule that plain patterns cannot express — `await` calls that
         // are `inside` a for-loop. `stopBy: end` walks all ancestors.
         let src = "async function f() {\n  for (const x of xs) {\n    await g(x);\n  }\n  await h();\n}\n";
-        let rule = "rule:\n  pattern: await $C\n  inside:\n    kind: for_in_statement\n    stopBy: end\n";
+        let rule =
+            "rule:\n  pattern: await $C\n  inside:\n    kind: for_in_statement\n    stopBy: end\n";
         let matches = search(src, "ts", None, Some(rule)).expect("rule search should succeed");
-        assert_eq!(matches.len(), 1, "only the await inside the for-loop matches");
+        assert_eq!(
+            matches.len(),
+            1,
+            "only the await inside the for-loop matches"
+        );
         assert_eq!(matches[0].start_line, 3);
     }
 
@@ -801,7 +838,10 @@ mod tests {
     fn markup_and_style_extensions_are_supported() {
         let exts = supported_extensions();
         for ext in ["html", "htm", "css", "scss", "less"] {
-            assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
+            assert!(
+                exts.iter().any(|e| e == ext),
+                "structural search must support .{ext}"
+            );
         }
     }
 
@@ -835,7 +875,10 @@ mod tests {
     fn scala_extensions_are_supported() {
         let exts = supported_extensions();
         for ext in ["scala", "sc", "sbt"] {
-            assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
+            assert!(
+                exts.iter().any(|e| e == ext),
+                "structural search must support .{ext}"
+            );
         }
     }
 
@@ -881,7 +924,10 @@ mod tests {
     fn config_and_alias_extensions_are_supported() {
         let exts = supported_extensions();
         for ext in ["json", "jsonc", "yaml", "yml", "toml", "mts", "cts", "pyi"] {
-            assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
+            assert!(
+                exts.iter().any(|e| e == ext),
+                "structural search must support .{ext}"
+            );
         }
     }
 
@@ -939,7 +985,11 @@ mod tests {
     #[test]
     fn search_files_prefilters_rule_by_inner_pattern() {
         let root = temp_root("ruleanchor");
-        fs::write(root.join("has.ts"), "async function f() {\n  await g();\n}\n").expect("has");
+        fs::write(
+            root.join("has.ts"),
+            "async function f() {\n  await g();\n}\n",
+        )
+        .expect("has");
         fs::write(root.join("none.ts"), "function f() {\n  return 1;\n}\n").expect("none");
 
         let result = search_files(StructuralSearchFilesOptions {
@@ -962,9 +1012,18 @@ mod tests {
 
     #[test]
     fn derive_rule_anchor_extracts_positive_pattern_but_bails_on_negation() {
-        assert_eq!(derive_rule_anchor("rule:\n  pattern: await $C\n"), Some("await"));
+        assert_eq!(
+            derive_rule_anchor("rule:\n  pattern: await $C\n"),
+            Some("await")
+        );
         // Negation / disjunction → no safe single literal.
-        assert_eq!(derive_rule_anchor("rule:\n  not:\n    pattern: await $C\n"), None);
-        assert_eq!(derive_rule_anchor("rule:\n  any:\n    - pattern: foo($X)\n"), None);
+        assert_eq!(
+            derive_rule_anchor("rule:\n  not:\n    pattern: await $C\n"),
+            None
+        );
+        assert_eq!(
+            derive_rule_anchor("rule:\n  any:\n    - pattern: foo($X)\n"),
+            None
+        );
     }
 }

@@ -286,9 +286,7 @@ fn build_result(
     sort_recs(opts, &mut recs);
 
     let context_lines = opts.context_lines.unwrap_or(0);
-    let max_snippet = opts
-        .max_snippet_chars
-        .unwrap_or(DEFAULT_MAX_SNIPPET_CHARS) as usize;
+    let max_snippet = opts.max_snippet_chars.unwrap_or(DEFAULT_MAX_SNIPPET_CHARS) as usize;
 
     let files_matched = recs.len() as u32;
     let total_submatches: u32 = recs.iter().map(|r| r.submatches).sum();
@@ -405,7 +403,8 @@ mod tests {
     impl TmpDir {
         fn new() -> Self {
             let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-            let dir = std::env::temp_dir().join(format!("octo-rg-test-{}-{id}", std::process::id()));
+            let dir =
+                std::env::temp_dir().join(format!("octo-rg-test-{}-{id}", std::process::id()));
             fs::create_dir_all(&dir).expect("create temp dir");
             TmpDir(dir)
         }
@@ -555,7 +554,10 @@ mod tests {
         o.context_lines = Some(1);
         let r = search(o).expect("ok");
         let v = &r.files[0].matches[0].value;
-        assert!(v.contains("before") && v.contains("match") && v.contains("after"), "{v}");
+        assert!(
+            v.contains("before") && v.contains("match") && v.contains("after"),
+            "{v}"
+        );
     }
 
     #[test]

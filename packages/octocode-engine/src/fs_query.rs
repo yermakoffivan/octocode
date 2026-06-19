@@ -90,16 +90,14 @@ impl CompiledQuery {
         let mut warnings = Vec::new();
         let name_globs = compile_globs(options.names.unwrap_or_default(), "names", &mut warnings);
         let path_glob = match options.path_pattern {
-            Some(pattern) => Some(
-                compile_glob(&pattern, "pathPattern")
-                    .map_err(|err| err.reason)?,
-            ),
+            Some(pattern) => Some(compile_glob(&pattern, "pathPattern").map_err(|err| err.reason)?),
             None => None,
         };
         let regex = match options.regex {
-            Some(pattern) => Some(Regex::new(&pattern).map_err(|err| {
-                format!("Invalid regex for local filesystem query: {err}")
-            })?),
+            Some(pattern) => Some(
+                Regex::new(&pattern)
+                    .map_err(|err| format!("Invalid regex for local filesystem query: {err}"))?,
+            ),
             None => None,
         };
 
@@ -465,9 +463,8 @@ fn parse_duration(raw: &str) -> Option<u64> {
 fn parse_size_option(value: Option<&str>, label: &str) -> Result<Option<u64>, String> {
     value
         .map(|raw| {
-            parse_size(raw).ok_or_else(|| {
-                format!("Invalid {label} value for local filesystem query: {raw}")
-            })
+            parse_size(raw)
+                .ok_or_else(|| format!("Invalid {label} value for local filesystem query: {raw}"))
         })
         .transpose()
 }

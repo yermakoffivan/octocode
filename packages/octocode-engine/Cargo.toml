@@ -41,9 +41,8 @@ which       = "8"
 grep   = { version = "0.3", features = ["pcre2"] }
 ignore = "0.4"
 
-# ── high-quality CSS / HTML minifiers ────────────────────────────────────────
+# ── high-quality CSS minifier ─────────────────────────────────────────────────
 lightningcss = { version = "1.0.0-alpha.71", default-features = false }
-minify-html  = { version = "0.18", default-features = false }
 
 # ── OXC — JS/TS AST minifier + native semantic (scopes/bindings/refs) ─────────
 oxc_allocator = "0.137"

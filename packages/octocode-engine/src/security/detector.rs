@@ -430,7 +430,9 @@ mod tests {
             "expected redaction, got: {}",
             result.sanitized
         );
-        assert!(result.secrets_detected.contains(&"awsAccessKeyId".to_string()));
+        assert!(result
+            .secrets_detected
+            .contains(&"awsAccessKeyId".to_string()));
     }
 
     #[test]
@@ -438,7 +440,11 @@ mod tests {
         let output = mask_text(FAKE_GH_TOKEN.to_string());
         // Must differ from input and preserve byte length.
         assert_ne!(output, FAKE_GH_TOKEN);
-        assert_eq!(output.len(), FAKE_GH_TOKEN.len(), "masking must not change byte length");
+        assert_eq!(
+            output.len(),
+            FAKE_GH_TOKEN.len(),
+            "masking must not change byte length"
+        );
         // Even-indexed chars (0, 2, 4, ...) in the matched region become '*';
         // odd-indexed chars are kept verbatim.
         let mut chars = output.chars();

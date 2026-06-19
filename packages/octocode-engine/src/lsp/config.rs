@@ -486,7 +486,9 @@ mod tests {
         assert!(command_is_tsgo("/usr/local/bin/tsgo"));
         assert!(command_is_tsgo("TSGO")); // case-insensitive
         assert!(!command_is_tsgo("typescript-language-server"));
-        assert!(!command_is_tsgo("/opt/node_modules/.bin/typescript-language-server"));
+        assert!(!command_is_tsgo(
+            "/opt/node_modules/.bin/typescript-language-server"
+        ));
         assert!(!command_is_tsgo("tsserver"));
     }
 

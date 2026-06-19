@@ -187,7 +187,10 @@ mod tests {
         let src = "<!doctype html>\n<html>\n<head>\n  <!-- nav styles -->\n  <style>\n    .card {\n      color: red;\n      padding: 0px;\n    }\n  </style>\n</head>\n<body>\n  <h1>Dashboard</h1>\n  <script>\n    function greet(name) {\n      // say hello\n      console.log(\"hi \" + name);\n    }\n  </script>\n</body>\n</html>\n";
         let out = apply_content_view_minification_inner(src, "page.html");
         assert!(out.len() < src.len(), "HTML embedded view must compress");
-        assert!(out.contains("<h1>Dashboard</h1>"), "markup preserved: {out}");
+        assert!(
+            out.contains("<h1>Dashboard</h1>"),
+            "markup preserved: {out}"
+        );
         assert!(!out.contains("nav styles"), "HTML comment dropped: {out}");
         assert!(!out.contains("// say hello"), "JS comment dropped: {out}");
         assert!(out.contains("greet"), "JS identifiers preserved: {out}");
@@ -204,9 +207,13 @@ mod tests {
 
     #[test]
     fn svelte_external_script_left_intact() {
-        let src = "<script src=\"/vendor.js\"></script>\n<h1>Title</h1>\n<!-- footer -->\n<p>Body</p>\n";
+        let src =
+            "<script src=\"/vendor.js\"></script>\n<h1>Title</h1>\n<!-- footer -->\n<p>Body</p>\n";
         let out = apply_content_view_minification_inner(src, "Page.svelte");
-        assert!(out.contains("src=\"/vendor.js\""), "external script kept: {out}");
+        assert!(
+            out.contains("src=\"/vendor.js\""),
+            "external script kept: {out}"
+        );
         assert!(!out.contains("footer"), "comment dropped: {out}");
         assert!(out.contains("<h1>Title</h1>"));
     }
