@@ -32,7 +32,7 @@ fn minify_js_oxc_inner(content: &str, file_path: &str, mangle: bool) -> Option<S
     let allocator = Allocator::default();
     let ext = crate::file_extension::get_extension_internal(file_path, true, "js");
     let source_type = match ext.as_str() {
-        "ts" => SourceType::ts(),
+        "ts" | "mts" | "cts" => SourceType::ts(),
         "tsx" => SourceType::tsx(),
         "jsx" => SourceType::jsx(),
         "mjs" => SourceType::mjs(),

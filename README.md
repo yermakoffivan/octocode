@@ -314,6 +314,38 @@ The same tool implementations run over MCP and CLI.
 
 ---
 
+## Language Support
+
+Three independent code-intelligence axes. **Structural AST** (`localSearchCode mode:"structural"` / `ast`) and **signature outlines** (`minify:"symbols"`) run natively in the Rust engine with no external tooling. **LSP** semantic navigation (`lspGetSemantics` / `lsp` / `symbols`) spawns the language server named below — it must be installed and on `PATH` (override per language with `OCTOCODE_<LANG>_SERVER_PATH`).
+
+| Language | Extensions | Structural AST | LSP server | Signature outline |
+|----------|------------|:--------------:|------------|-------------------|
+| TypeScript | `.ts .tsx .mts .cts` | ✅ | `typescript-language-server` ² | tree-sitter |
+| JavaScript | `.js .jsx .mjs .cjs` | ✅ | `typescript-language-server` ² | tree-sitter |
+| Python | `.py .pyi` | ✅ | `pylsp` | tree-sitter |
+| Go | `.go` | ✅ | `gopls` | tree-sitter |
+| Rust | `.rs` | ✅ | `rust-analyzer` | tree-sitter |
+| Java | `.java` | ✅ | `jdtls` | tree-sitter |
+| C | `.c .h` | ✅ ¹ | `clangd` | tree-sitter |
+| C++ | `.cpp .cc .cxx .hpp` | ✅ ¹ | `clangd` | tree-sitter |
+| C# | `.cs` | ✅ | `csharp-ls` | tree-sitter |
+| Shell | `.sh .bash .zsh` | ✅ | `bash-language-server` | tree-sitter |
+| HTML | `.html .htm` | ✅ | `vscode-html-language-server` | heuristic |
+| CSS | `.css` | ✅ | `vscode-css-language-server` | heuristic |
+| SCSS | `.scss` | ✅ | `vscode-css-language-server` | heuristic |
+| LESS | `.less` | ✅ | `vscode-css-language-server` | heuristic |
+| Scala | `.scala .sc .sbt` | ✅ | — | heuristic |
+| JSON | `.json .jsonc` | — | `vscode-json-language-server` | — |
+| YAML | `.yaml .yml` | — | `yaml-language-server` | — |
+| TOML | `.toml` | — | `taplo` | — |
+
+Heuristic-signature outlines only (no AST/LSP): **Kotlin, Ruby, PHP, Swift, SQL, Vue, Svelte, Elixir, Erlang, Haskell, Lua, Markdown**.
+
+¹ C/C++ structural **`rule`** queries (e.g. `kind: call_expression`) work fully; a bare call-shaped **`pattern`** can hit tree-sitter's declaration-vs-call ambiguity (upstream ast-grep behavior) — prefer a `rule` with `kind` to match calls.
+² JavaScript/TypeScript also have a native (oxc) symbol/same-file-reference fast path that works with **no server installed** (syntax-only, no type inference); set `OCTOCODE_TS_SERVER_PATH` to a `tsgo` binary to opt into Microsoft's native TS backend.
+
+---
+
 ## Security
 
 Octocode is designed for agent workflows where context can contain secrets and untrusted paths.

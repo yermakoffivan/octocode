@@ -98,7 +98,7 @@ fn dispatch_inner(content: &str, file_path: &str) -> DispatchResult {
 
     match cfg.strategy {
         "terser" | "conservative" => {
-            let out = if matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs") {
+            let out = if crate::file_extension::is_js_ts_extension(&ext) {
                 minify_js_oxc(content, file_path, true)
                     .unwrap_or_else(|| minify_javascript_core(content))
             } else {

@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 import type { CLICommand } from '../types.js';
 import { getBool, getString, posIntOption } from '../options.js';
 import { resolveRef, isGithubRef, refLabel } from '../routing.js';
@@ -5,6 +7,7 @@ import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
+import { outlineSymbols } from './symbol-outline.js';
 
 interface TreeEntry {
   dir?: string;
@@ -180,10 +183,21 @@ function listOpt(value: string): string[] | undefined {
 export const lsCommand: CLICommand = {
   name: 'ls',
   description:
-    'View directory structure for local paths and GitHub repositories, with filtering and sorting',
+    'Show structure at any zoom: a directory tree (local or GitHub), or a code symbol outline when the target is a file or you pass --symbols (local-only). One command for "what is in here" and "what does this file define".',
   usage:
-    'ls <path|github-ref> [--depth <n>] [--branch <ref>] [--pattern <glob>] [--ext <list>] [--sort name|size|time|extension] [--reverse] [--files-only] [--dirs-only] [--hidden] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+    'ls <path|github-ref> [--symbols] [--kind <kind>] [--depth <n>] [--branch <ref>] [--pattern <glob>] [--ext <list>] [--sort name|size|time|extension] [--reverse] [--files-only] [--dirs-only] [--hidden] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
+    {
+      name: 'symbols',
+      description:
+        'Show a semantic symbol outline (LSP) instead of a tree. Local-only. Auto-enabled when the target is a file. For a directory, outlines source files (filter with --ext, cap with --limit/--depth).',
+    },
+    {
+      name: 'kind',
+      hasValue: true,
+      description:
+        'Outline mode: filter symbols by kind, e.g. function, class, method',
+    },
     {
       name: 'depth',
       hasValue: true,
@@ -274,6 +288,29 @@ export const lsCommand: CLICommand = {
     const ref = resolveRef(target, branchOverride || undefined);
     const label = refLabel(ref);
     const isGh = isGithubRef(ref);
+
+    // ── Outline mode ─────────────────────────────────────────────────────────
+    // --symbols (explicit) or a local file target (implicit zoom-in) shows a
+    // semantic symbol outline instead of a tree. Local-only — LSP can't run on
+    // GitHub.
+    const wantSymbols = getBool(options, 'symbols');
+    if (wantSymbols && isGh) {
+      fail(
+        '--symbols is local-only — an LSP outline cannot run on GitHub. Clone the repo first, then `ls <path> --symbols`.'
+      );
+      return;
+    }
+    if (!isGh) {
+      const resolvedPath = path.resolve(ref.path);
+      const isFile = existsSync(resolvedPath) && statSync(resolvedPath).isFile();
+      if (wantSymbols || isFile) {
+        if (!jsonOutput) {
+          process.stderr.write(`  ${dim(`Outlining ${label} ...`)}\n`);
+        }
+        await outlineSymbols(ref.path, options);
+        return;
+      }
+    }
 
     if (isGh) {
       const localOnly = LOCAL_ONLY.find(name => options[name] !== undefined);

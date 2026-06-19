@@ -149,7 +149,11 @@ export async function showHelp(): Promise<void> {
 
     // ── Quick commands FIRST — the friendly, human-first surface ────────────
     `  ${c('green', bold('QUICK COMMANDS'))}  ${dim('smart shortcuts — auto-route local path vs owner/repo. Add --json for raw output.')}`,
-    quick('ls', '<path|owner/repo>', 'directory structure'),
+    quick(
+      'ls',
+      '<path|owner/repo>',
+      'directory tree; a file (or --symbols) shows a symbol outline'
+    ),
     quick(
       'cat',
       '<path|owner/repo/path>',
@@ -158,15 +162,13 @@ export async function showHelp(): Promise<void> {
     quick(
       'grep',
       '<keywords> <path|owner/repo>',
-      'text/regex search → file + line'
+      'text/regex search → file + line; --pattern/--rule for AST shape (local)'
     ),
     quick(
       'find',
       '<query> [path|owner/repo]',
       'find files by name/path/content'
     ),
-    quick('ast', '<pattern> [path]', 'code-shape search (ast-grep, local)'),
-    quick('symbols', '<file|dir>', 'outline of a file/dir (local)'),
     quick(
       'lsp',
       '<file> --type <type> --symbol <s> --line <n>',

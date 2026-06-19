@@ -392,7 +392,7 @@ pub fn extract_js_symbols(content: String, file_path: String) -> Option<String> 
 /// Rust and JS sides never drift.
 #[napi(js_name = "getSupportedJsTsExtensions")]
 pub fn get_supported_js_ts_extensions() -> Vec<String> {
-    signatures::js_oxc::JS_TS_EXTENSIONS
+    file_extension::JS_TS_EXTENSIONS
         .iter()
         .map(|ext| (*ext).to_owned())
         .collect()

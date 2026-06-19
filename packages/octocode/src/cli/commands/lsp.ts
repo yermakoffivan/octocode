@@ -11,7 +11,7 @@ import {
 } from './direct-tool-output.js';
 
 // Relational / identity queries only. For a file or directory outline
-// (documentSymbols) use the `symbols` command instead.
+// (documentSymbols) use `ls <file|dir> --symbols` instead.
 const LSP_TYPES = [
   'definition',
   'references',
@@ -318,7 +318,7 @@ export const lspCommand: CLICommand = {
     // rejected centrally before we get here).
     if (!symbolName && !lineHint) {
       printUsageError(
-        '--symbol and --line are required. For a file/dir outline, use: symbols <file|dir>',
+        '--symbol and --line are required. For a file/dir outline, use: ls <file|dir> --symbols',
         jsonOutput
       );
       process.exitCode = EXIT.USAGE;
@@ -334,7 +334,7 @@ export const lspCommand: CLICommand = {
     }
     if (!lineHint) {
       printUsageError(
-        "--line <n> is required for this --type (the symbol's line from a prior grep/symbols hit — do not guess).",
+        "--line <n> is required for this --type (the symbol's line from a prior grep or `ls --symbols` hit — do not guess).",
         jsonOutput
       );
       process.exitCode = EXIT.USAGE;

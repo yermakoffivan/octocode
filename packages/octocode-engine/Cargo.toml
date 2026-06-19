@@ -85,6 +85,7 @@ tree-sitter-html       = "0.23"
 tree-sitter-css        = "0.25"
 tree-sitter-scss       = "1"
 tree-sitter-less       = "1"
+tree-sitter-scala      = "0.26"   # covers .scala / .sc / .sbt (structural search only)
 
 [features]
 default = ["tree-sitter-large-grammars"]

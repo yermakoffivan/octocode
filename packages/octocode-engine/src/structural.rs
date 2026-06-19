@@ -122,6 +122,19 @@ fn expando_for_ext(ext: &str) -> char {
         "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "java" | "sh" | "bash" | "zsh" => '$',
         // C / C++ accept this CJK code point as an identifier start.
         "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => '\u{10000}',
+        // HTML: tree-sitter-html's tagName scanner uses locale-dependent
+        // `iswalnum`, which rejects the micro sign — so a plain ASCII `z` is the
+        // only reliable expando for tag-name metavars (matches ast-grep-language).
+        "html" | "htm" => 'z',
+        // CSS family: `$` is SCSS's own variable sigil, so it can't double as the
+        // metavar expando. `_` is a valid identifier-start in all three dialects
+        // and is exactly what ast-grep-language uses for CSS (SCSS/LESS inherit).
+        "css" | "scss" | "less" => '_',
+        // Scala: `$` is reserved (string interpolation / synthetic names), so it
+        // can't be the expando. The micro sign is a Unicode lowercase letter,
+        // which Scala (and tree-sitter-scala) accept as an identifier char —
+        // matches the `ast-grep-language` default.
+        "scala" | "sc" | "sbt" => '\u{00b5}',
         // Go / Rust / Python / C# accept the micro sign as an identifier char.
         _ => '\u{00b5}',
     }
@@ -644,5 +657,115 @@ mod tests {
     #[test]
     fn invalid_pattern_errors() {
         assert!(search("x", "ts", Some("   "), None).is_err());
+    }
+
+    // ── markup / style grammars (HTML/CSS/SCSS/LESS) ──────────────────────────
+
+    #[test]
+    fn css_pattern_captures_declaration_value() {
+        // Expando is `_`, so `$C` → `_C`, a valid CSS identifier.
+        let src = ".btn {\n  color: red;\n}\n";
+        let matches = run_pattern(src, "css", ".btn { color: $C; }");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].metavars.get("C").map(Vec::as_slice),
+            Some(&["red".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn css_rule_matches_by_kind() {
+        // A `rule` surface needs no expando — match every rule_set.
+        let src = ".a { color: red; }\n.b { color: blue; }\n";
+        let rule = "rule:\n  kind: rule_set\n";
+        let matches = search(src, "css", None, Some(rule)).expect("css rule search");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn scss_pattern_matches_and_keeps_literal_lowercase_var() {
+        // Lowercase `$base` is a literal SCSS variable (NOT replaced — only
+        // `$UPPER`/`$$$` become metavars), so it must match verbatim while `$C`
+        // captures the property value.
+        let src = ".card {\n  color: $base;\n}\n";
+        let matches = run_pattern(src, "scss", ".card { color: $base; }");
+        assert_eq!(matches.len(), 1, "literal $base preserved as a real var");
+
+        let captured = run_pattern(src, "scss", ".card { color: $C; }");
+        assert_eq!(captured.len(), 1);
+        assert_eq!(
+            captured[0].metavars.get("C").map(Vec::as_slice),
+            Some(&["$base".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn less_pattern_matches_rule() {
+        let src = ".box {\n  width: 10px;\n}\n";
+        let matches = run_pattern(src, "less", ".box { width: $W; }");
+        assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn html_tag_name_metavar_resolves_with_z_expando() {
+        // The reason HTML's expando is `z`, not `µ`: tree-sitter-html's tagName
+        // scanner rejects non-ASCII, so a tag-name metavar only works with `z`.
+        let src = "<input>\n";
+        let matches = run_pattern(src, "html", "<$TAG>");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].metavars.get("TAG").map(Vec::as_slice),
+            Some(&["input".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn html_element_pattern_matches_nested_tag() {
+        let src = "<section>\n  <button id=\"go\">Click</button>\n</section>\n";
+        let matches = run_pattern(src, "html", "<button id=\"go\">$$$</button>");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].start_line, 2);
+    }
+
+    #[test]
+    fn markup_and_style_extensions_are_supported() {
+        let exts = supported_extensions();
+        for ext in ["html", "htm", "css", "scss", "less"] {
+            assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
+        }
+    }
+
+    // ── Scala ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn scala_pattern_captures_call_argument() {
+        // Expando is µ, so `$X` → `µX`, a valid Scala identifier.
+        let src = "object M {\n  def f() = { println(hello); println(world) }\n}\n";
+        let matches = run_pattern(src, "scala", "println($X)");
+        assert_eq!(matches.len(), 2);
+        assert_eq!(
+            matches[0].metavars.get("X").map(Vec::as_slice),
+            Some(&["hello".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn scala_comment_and_string_immunity() {
+        // KPI #1: a `println(evil)` in a comment and in a string must NOT match.
+        let src = "object M {\n  // println(evil)\n  val s = \"println(evil)\"\n  def go() = println(real)\n}\n";
+        let matches = run_pattern(src, "scala", "println($X)");
+        assert_eq!(matches.len(), 1, "only the real call site matches");
+        assert_eq!(
+            matches[0].metavars.get("X").map(Vec::as_slice),
+            Some(&["real".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn scala_extensions_are_supported() {
+        let exts = supported_extensions();
+        for ext in ["scala", "sc", "sbt"] {
+            assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
+        }
     }
 }

@@ -53,7 +53,7 @@ pub fn apply_content_view_minification_inner(content: &str, file_path: &str) -> 
         }
 
         // JS/TS: use OXC without mangling — preserves names for agent readability
-        if matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs") {
+        if crate::file_extension::is_js_ts_extension(&ext) {
             if let Some(oxc_out) = minify_js_oxc(content, file_path, false) {
                 return oxc_out;
             }

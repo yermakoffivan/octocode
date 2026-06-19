@@ -33,8 +33,10 @@ pub fn extract_boundary_lines_inner(content: &str, file_path: &str) -> Vec<(usiz
         if NO_SYMBOL_EXTS.contains(&ext.as_str()) {
             return Vec::new();
         }
-        // tree-sitter path (highest accuracy)
-        if let Some(entry) = languages::find_entry(&ext) {
+        // tree-sitter path (highest accuracy). Entries with an empty body_query
+        // are structural-search-only grammars (HTML/CSS/SCSS/LESS) — skip them
+        // here so they fall through to the heuristic outline.
+        if let Some(entry) = languages::find_entry(&ext).filter(|e| !e.body_query.is_empty()) {
             let cfg = LangExtractConfig {
                 language: entry.language.clone(),
                 body_query: entry.body_query,
@@ -268,7 +270,9 @@ fn extract_by_ext(content: &str, ext: &str) -> Option<String> {
     }
 
     // ── tree-sitter path (top-10 languages) ─────────────────────────────────
-    if let Some(entry) = languages::find_entry(ext) {
+    // Structural-search-only grammars (empty body_query) are skipped here and
+    // handled by the heuristic path below.
+    if let Some(entry) = languages::find_entry(ext).filter(|e| !e.body_query.is_empty()) {
         let cfg = LangExtractConfig {
             language: entry.language.clone(),
             body_query: entry.body_query,

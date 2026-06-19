@@ -6,6 +6,13 @@ pub struct LanguageEntry {
     /// Pre-built `Language` handle. `Language` is `Clone + Send + Sync` but
     /// NOT `Copy` in tree-sitter 0.26 — always use `.clone()` at call sites.
     pub language: Language,
+    /// Tree-sitter S-expression query whose `@body` captures are the nodes the
+    /// signature extractor drops. An **empty** string is a sentinel meaning
+    /// "this grammar is wired in for *structural search only*" — the signature
+    /// path (`extract_by_ext` / `extract_boundary_lines_inner`) skips the
+    /// tree-sitter route for it and falls through to the heuristic extractor.
+    /// Used by markup/style grammars (HTML/CSS/SCSS/LESS) that have no
+    /// function-body concept to strip.
     pub body_query: &'static str,
     pub comment_style: &'static str,
 }
@@ -127,6 +134,46 @@ fn init_language_table() -> Vec<LanguageEntry> {
             language: tree_sitter_bash::LANGUAGE.into(),
             body_query: BASH_BODY_QUERY,
             comment_style: "hash",
+        },
+        // ── Markup / style grammars: structural-search only ──────────────────
+        // These grammars are already linked (the LSP layer uses them). They are
+        // registered here so `structural::search` can resolve them, but they
+        // carry an EMPTY `body_query` so the signature path keeps using the
+        // tuned heuristic extractor (markup/styles have no fn body to strip).
+        LanguageEntry {
+            extensions: &["html", "htm"],
+            language: tree_sitter_html::LANGUAGE.into(),
+            body_query: "",
+            comment_style: "html",
+        },
+        LanguageEntry {
+            extensions: &["css"],
+            language: tree_sitter_css::LANGUAGE.into(),
+            body_query: "",
+            comment_style: "c",
+        },
+        LanguageEntry {
+            extensions: &["scss"],
+            language: tree_sitter_scss::language(),
+            body_query: "",
+            comment_style: "c",
+        },
+        LanguageEntry {
+            extensions: &["less"],
+            language: tree_sitter_less::language(),
+            body_query: "",
+            comment_style: "c",
+        },
+        // Scala: registered structural-search-only (empty body_query) so the
+        // tuned heuristic signature extractor (`heuristic::extract_scala`) keeps
+        // owning the outline — adding a tree-sitter body_query here would change
+        // Scala signature output. ast-grep supports Scala natively; this wires
+        // its grammar in for `structural::search` over .scala / .sc / .sbt.
+        LanguageEntry {
+            extensions: &["scala", "sc", "sbt"],
+            language: tree_sitter_scala::LANGUAGE.into(),
+            body_query: "",
+            comment_style: "c",
         },
     ];
 

@@ -67,11 +67,9 @@ describe('command-help-specs', () => {
       'ls',
       'find',
       'grep',
-      'ast',
       'pr',
       'repo',
       'pkg',
-      'symbols',
       'lsp',
       'clone',
       'unzip',
@@ -83,6 +81,13 @@ describe('command-help-specs', () => {
     }
   });
 
+  it('no longer exposes the removed ast / symbols commands', async () => {
+    const { findStaticCommandHelp } =
+      await import('../../src/cli/command-help-specs.js');
+    expect(findStaticCommandHelp('ast')).toBeUndefined();
+    expect(findStaticCommandHelp('symbols')).toBeUndefined();
+  });
+
   it('keeps static command help option lists documented and unique', async () => {
     const { COMMAND_SPECS } = await import('../../src/cli/commands/specs.js');
 
@@ -91,11 +96,9 @@ describe('command-help-specs', () => {
       'ls',
       'find',
       'grep',
-      'ast',
       'pr',
       'repo',
       'pkg',
-      'symbols',
       'lsp',
       'clone',
       'history',
@@ -138,9 +141,7 @@ describe('command-help-specs', () => {
     expect(findStaticCommandHelp('lsp')!.usage).toContain(
       '--format structured|compact'
     );
-    expect(findStaticCommandHelp('symbols')!.usage).toContain(
-      '--page-size <n>'
-    );
+    expect(findStaticCommandHelp('ls')!.usage).toContain('--symbols');
     expect(findStaticCommandHelp('install')!.usage).toContain(
       '--backup-path <path>'
     );
@@ -202,7 +203,7 @@ describe('command-help-specs', () => {
       'required option: --type enum(definition|references'
     );
     expect(output).toContain('runtime: lspGetSemantics');
-    expect(output).toContain('after grep or symbols');
+    expect(output).toContain('after grep');
     expect(output).toContain(
       'lsp packages/octocode/src/cli/index.ts --type references'
     );

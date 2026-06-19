@@ -165,8 +165,41 @@ describe('grep command', () => {
     });
   });
 
-  it('does not accept AST flags (moved to the ast command)', async () => {
-    expect(grepCommand.options?.some(o => o.name === 'pattern')).toBe(false);
-    expect(grepCommand.options?.some(o => o.name === 'rule')).toBe(false);
+  it('accepts AST flags (structural search folded into grep)', () => {
+    expect(grepCommand.options?.some(o => o.name === 'pattern')).toBe(true);
+    expect(grepCommand.options?.some(o => o.name === 'rule')).toBe(true);
+  });
+
+  it('--pattern routes to localSearchCode mode:"structural" (arg[0] is the path)', async () => {
+    await run(['src'], { pattern: 'eval($X)' });
+    expect(executeDirectTool).toHaveBeenCalledTimes(1);
+    const [tool] = executeDirectTool.mock.calls[0];
+    expect(tool).toBe('localSearchCode');
+    const q = lastQuery();
+    expect(q.mode).toBe('structural');
+    expect(q.pattern).toBe('eval($X)');
+    expect(q.rule).toBeUndefined();
+    expect(q.keywords).toBeUndefined();
+    expect(String(q.path)).toContain('src');
+  });
+
+  it('--rule routes to structural search with the rule blob', async () => {
+    await run(['.'], { rule: 'rule:\n  pattern: foo($X)' });
+    const q = lastQuery();
+    expect(q.mode).toBe('structural');
+    expect(q.rule).toBe('rule:\n  pattern: foo($X)');
+    expect(q.pattern).toBeUndefined();
+  });
+
+  it('rejects --pattern and --rule together', async () => {
+    await run(['.'], { pattern: 'foo($X)', rule: 'rule: bar' });
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it('rejects structural search against a GitHub ref (local-only)', async () => {
+    await run(['facebook/react'], { pattern: 'useState($X)' });
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
   });
 });

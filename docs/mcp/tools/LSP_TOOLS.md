@@ -121,7 +121,7 @@ Common environment overrides:
 | `OCTOCODE_YAML_SERVER_PATH` | YAML |
 | `OCTOCODE_TOML_SERVER_PATH` | TOML |
 | `OCTOCODE_HTML_SERVER_PATH` | HTML |
-| `OCTOCODE_CSS_SERVER_PATH` | CSS/SCSS |
+| `OCTOCODE_CSS_SERVER_PATH` | CSS/SCSS/LESS |
 
 Custom language-server config is loaded from:
 

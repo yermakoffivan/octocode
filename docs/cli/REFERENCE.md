@@ -14,15 +14,13 @@ octocode <command> [options]
 
 # Quick research commands
 octocode cat <path|owner/repo/path>
-octocode ls <path|owner/repo>
-octocode grep <keywords> <path|owner/repo>
+octocode ls <path|owner/repo>                       # tree; a file or --symbols shows a symbol outline
+octocode grep <keywords> <path|owner/repo>          # text/regex; --pattern/--rule for AST shape
 octocode find <query> [path|owner/repo]
-octocode ast <pattern> [path]
 octocode clone <owner/repo[/path][@branch]|url>
 octocode pr <owner/repo[#N]|PR-URL>
 octocode repo <keywords...>
 octocode pkg <package>
-octocode symbols <file|path>
 octocode lsp <file> --type <type>
 octocode binary <file>
 octocode unzip <archive>
@@ -50,9 +48,9 @@ Use `octocode context --full` for complete tool descriptions. Read schemas on de
 | Need | Use |
 |------|-----|
 | Map files and repos | `ls`, `find`, `repo`, `pkg` |
-| Search text or code structure | `grep`, `ast` |
+| Search text or code structure | `grep` (text/regex; `--pattern`/`--rule` for AST shape) |
 | Read less, cite exact evidence | `cat --mode symbols`, `cat --match-string`, `cat --start-line ... --end-line ...` |
-| Trace symbols semantically | `symbols`, then `lsp --type ... --symbol ... --line ...` |
+| Outline a file / trace symbols semantically | `ls <file>` or `ls <dir> --symbols`, then `lsp --type ... --symbol ... --line ...` |
 | Inspect PRs/history or clone for local analysis | `pr`, `history`, `clone` |
 | Inspect archives/binaries | `binary`, `unzip` |
 | Configure Octocode | `install`, `auth`, `login`, `logout`, `token`, `status`, `skills` |
@@ -77,16 +75,14 @@ Auto-route based on target: a local path routes to local tools; `owner/repo[/pat
 | Command | Routes to | What it does |
 |---------|-----------|------|
 | `cat` | `localGetFileContent` / `ghGetFileContent` | Read and minify file content |
-| `ls` | `localViewStructure` / `ghViewRepoStructure` | Directory structure |
-| `grep` | `localSearchCode` / `ghSearchCode` | Text or regex search |
+| `ls` | `localViewStructure` / `ghViewRepoStructure` / `lspGetSemantics` | Directory tree; a file or `--symbols` shows a symbol outline (local) |
+| `grep` | `localSearchCode` / `ghSearchCode` | Text/regex search; `--pattern`/`--rule` for AST shape (ast-grep, local) |
 | `find` | `localFindFiles` / `localSearchCode` / `ghSearchCode` | Find files by name, path, or content |
-| `ast` | `localSearchCode` (structural) | AST shape search via ast-grep (local only) |
 | `clone` | `ghCloneRepo` | Clone a repo or subtree to `~/.octocode/repos/` |
 | `pr` | `ghHistoryResearch` | List or deep-dive pull requests |
 | `history` | `ghHistoryResearch` (commits) | Commit history for a repo, dir, or file (→ `#PR` deep-read) |
 | `repo` | `ghSearchRepos` | Discover GitHub repositories |
 | `pkg` | `npmSearch` | npm package metadata + source repo |
-| `symbols` | `lspGetSemantics` (documentSymbols) | Semantic symbol outline |
 | `lsp` | `lspGetSemantics` | Definition, references, callers, callees, call hierarchy, hover, type definition, implementation |
 | `binary` | `localBinaryInspect` | Archives, compressed files, native binaries |
 | `unzip` | `localBinaryInspect` (unpack) | Unpack an archive to a cached directory |
@@ -136,36 +132,51 @@ octocode cat facebook/react/packages/react/index.js --branch 18.2.0
 
 ### ls
 
+Shows structure at any zoom. A **directory** (local or GitHub) lists a **tree**; a local **file** — or any local path with `--symbols` — shows a **semantic symbol outline** (`lspGetSemantics type=documentSymbols`). The outline is **local-only** and replaces the former `symbols` command.
+
 ```
 ls <path|owner/repo>
-    --depth <n>      recursion depth
+    --symbols        show a symbol outline instead of a tree (local only;
+                     auto-enabled when the target is a file)
+    --kind <kind>    outline: filter by kind — function, class, method, …
+    --depth <n>      tree: recursion depth · outline: directory discovery depth
     --branch <ref>   branch for GitHub paths
-    --pattern <glob> name filter (local only)
-    --ext <list>     comma-separated extension whitelist (local only)
-    --sort name|size|time|extension   (local only)
-    --reverse        reverse sort (local only)
-    --files-only     list files only (local only)
-    --dirs-only      list directories only (local only)
-    --hidden         include dot-files (local only)
-    --limit <n>
+    --pattern <glob> name filter (local tree only)
+    --ext <list>     comma-separated extension whitelist (tree filter; outline: which source files)
+    --sort name|size|time|extension   (local tree only)
+    --reverse        reverse sort (local tree only)
+    --files-only     list files only (local tree only)
+    --dirs-only      list directories only (local tree only)
+    --hidden         include dot-files (local tree only)
+    --limit <n>      tree: cap entries · outline: max files (default: 10)
     --page <n>
-    --page-size <n>
+    --page-size <n>  tree: entries/page · outline: symbols/file (default: 40)
     --json
 ```
+
+For JavaScript/TypeScript the outline works **with no language server installed** via a native (oxc) fast path — syntax-only, no type inference; with a TS server present, results are type-aware. Each result carries `lsp.source` (`native` or `lsp`).
 
 Examples:
 
 ```bash
 octocode ls src
 octocode ls src --depth 3 --ext ts,tsx
-octocode ls facebook/react
 octocode ls facebook/react --branch 18.2.0 --depth 2
+octocode ls src/index.ts                       # file → symbol outline
+octocode ls src --symbols --ext ts,tsx --limit 10
+octocode ls src/index.ts --symbols --kind function
 ```
 
 ### grep
 
 ```
-grep <keywords> <path|owner/repo>
+grep <keywords> <path|owner/repo>          text/regex search
+grep <path> --pattern <shape>              AST shape search (ast-grep, local only)
+grep <path> --rule <yaml>                  AST relational rule (local only)
+    --pattern <ast>    AST shape — switches grep to structural search (local only).
+                       Metavars: $X = one node, $$$ARGS = a list. e.g. 'eval($X)'
+    --rule <yaml>      relational YAML rule — not/inside/has/all/any.
+                       Mutually exclusive with --pattern. Local only.
     --type <ext>       filter by language or extension (ts, py, go, rs)
     --mode paginated|discovery|detailed   (local only, default: paginated)
     --concise          paths only, no snippets — cheapest orientation
@@ -191,7 +202,7 @@ grep <keywords> <path|owner/repo>
     --json
 ```
 
-For AST/structural search use `ast` instead.
+Text/regex runs locally or on GitHub. AST shape search (`--pattern`/`--rule`) is **local-only** — comments and strings never false-match.
 
 Examples:
 
@@ -201,6 +212,9 @@ octocode grep executeDirectTool src --type ts --mode discovery
 octocode grep 'runCLI\s*\(' packages/octocode/src --perl-regex --context 1 --max-files 2
 octocode grep "useState" facebook/react --type ts
 octocode grep "executeCloneRepo" bgauryy/octocode-mcp --concise
+octocode grep src --pattern 'eval($X)'
+octocode grep packages/octocode/src --pattern 'console.log($$$)' --type ts
+octocode grep src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement'
 ```
 
 ### find
@@ -254,34 +268,7 @@ octocode find auth bgauryy/octocode-mcp --source github --search path --ext ts
 octocode find auth . --search both --limit 20
 ```
 
-### ast
-
-AST shape search using [ast-grep](https://ast-grep.github.io). Structure-aware — comments and strings never false-match. **Local only** — for text/regex or GitHub use `grep`.
-
-```
-ast <pattern> [path]
-ast [path] --rule <yaml>
-    --pattern <ast>    AST shape. Metavars: $X = one node, $$$ARGS = a list.
-                       e.g. 'eval($X)', 'console.log($$$)', 'foo($X, $Y)'
-    --rule <yaml>      Relational YAML rule — not/inside/has/all/any.
-                       Mutually exclusive with positional pattern.
-    --type <ext>       filter by language or extension (ts, py, go)
-    --context-lines <n>   context around each match (default: 0)
-    --max-matches <n>  max matches per file
-    --limit <n>        max files in output (default: 10)
-    --page <n>
-    --page-size <n>
-    --json
-```
-
-Examples:
-
-```bash
-octocode ast 'eval($X)' src
-octocode ast 'console.log($$$)' src --type ts
-octocode ast 'useState($X)' . --type tsx --context-lines 3
-octocode ast src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement'
-```
+> **AST / structural search** lives under `grep --pattern`/`--rule` (see the `grep` section). The standalone `ast` command was removed.
 
 ### clone
 
@@ -434,29 +421,7 @@ octocode pkg @modelcontextprotocol/sdk
 octocode pkg "http client typescript"
 ```
 
-### symbols
-
-```
-symbols <file|path>
-    --ext <list>      comma-separated extensions for directory mode
-    --kind <kind>     filter by symbol kind: function, class, method, …
-    --limit <n>       max files in directory mode (default: 10)
-    --depth <n>       directory discovery depth (default: 4)
-    --page-size <n>   symbols per file from LSP (default: 40)
-    --json
-```
-
-For a file, runs `lspGetSemantics type=documentSymbols`. For a directory, discovers source files then batches `documentSymbols` over them.
-
-For JavaScript/TypeScript, the outline works **with no language server installed** via a native (oxc) fast path — syntax-only, no type inference. With a TS server present, results are type-aware. Each result carries `lsp.source` (`native` or `lsp`) so you can tell which tier produced it. The same applies to same-file `lsp --type references` (cross-file references still need a server).
-
-Examples:
-
-```bash
-octocode symbols src/index.ts
-octocode symbols src --ext ts,tsx --limit 10
-octocode symbols src/index.ts --kind function
-```
+> **Symbol outlines** moved to `ls` — `ls <file>` or `ls <dir> --symbols` (see the `ls` section). The standalone `symbols` command was removed.
 
 ### lsp
 
@@ -475,14 +440,14 @@ lsp <file> --type <type> --symbol <name> --line <n>
     --json
 ```
 
-Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`. Semantic misses such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls` exit with code `3` so shell scripts can fail fast without parsing JSON.
+Run `grep` or `ls --symbols` first to get a real `--line` value. Never guess `--line`. Semantic misses such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls` exit with code `3` so shell scripts can fail fast without parsing JSON.
 
-All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode symbols <file|path>` for `documentSymbols`. For TypeScript/JavaScript import aliases, `definition` follows local imports to the exported declaration when the language server first returns the import binding.
+All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode ls <file|dir> --symbols` for `documentSymbols`. For TypeScript/JavaScript import aliases, `definition` follows local imports to the exported declaration when the language server first returns the import binding.
 
 Examples:
 
 ```bash
-octocode symbols packages/octocode/src/cli/index.ts
+octocode ls packages/octocode/src/cli/index.ts --symbols
 octocode lsp packages/octocode/src/cli/index.ts --type references --symbol runCLI --line 73
 octocode lsp packages/octocode/src/index.ts --type definition --symbol runCLI --line 10 --format compact
 octocode lsp packages/octocode/src/cli/index.ts --type hover --symbol runCLI --line 73

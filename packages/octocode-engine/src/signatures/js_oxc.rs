@@ -25,17 +25,7 @@ use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType, Span};
 use serde::Serialize;
 
-/// Canonical list of extensions the native oxc JS/TS path handles. Single
-/// source of truth: the symbol/reference guards below use it, and it is exported
-/// to TS callers via `getSupportedJsTsExtensions` so the dispatch list never
-/// drifts between Rust and JS.
-pub const JS_TS_EXTENSIONS: &[&str] =
-    &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
-
-/// True when `ext` (lowercase, no leading dot) is a native-oxc JS/TS extension.
-pub fn is_js_ts_extension(ext: &str) -> bool {
-    JS_TS_EXTENSIONS.contains(&ext)
-}
+use crate::file_extension::is_js_ts_extension;
 
 // LSP SymbolKind numeric codes (subset we emit). The TS side maps these back to
 // names via `symbolKindName`; keep them in sync with the LSP spec.

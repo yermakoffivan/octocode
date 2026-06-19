@@ -25,8 +25,9 @@ interface GithubFile {
   matches?: Array<{ value?: string; line?: number }>;
 }
 
-// localSearchCode also accepts "structural", but that is the `ast` command's
-// domain (it needs pattern/rule, not keywords) — grep is text search only.
+// `--mode` selects a TEXT search mode. Structural (AST) search is a separate
+// axis, triggered by --pattern/--rule (routes to localSearchCode mode
+// "structural"), not by a --mode value.
 const GREP_MODES = new Set(['paginated', 'discovery', 'detailed']);
 
 interface GithubCodeResult {
@@ -109,6 +110,49 @@ async function searchLocal(
         mainResearchGoal: 'Search local codebase',
         researchGoal: `Find "${keywords}" in ${dirPath}`,
         reasoning: 'CLI grep command',
+      },
+    ],
+  });
+
+  if (result.isError) {
+    const errText =
+      result.content[0]?.type === 'text' ? result.content[0].text : '';
+    throw new Error(`Search error: ${errText}`);
+  }
+
+  return result.structuredContent as LocalSearchResult;
+}
+
+// Structural (AST) search: grep --pattern/--rule routes here, to localSearchCode
+// mode:"structural". Local-only — ast-grep cannot run against GitHub. Shares the
+// same executor and renderer as text grep; only the query shape differs.
+async function searchLocalStructural(
+  dirPath: string,
+  opts: {
+    pattern?: string;
+    rule?: string;
+    typeFilter?: string;
+    contextLines?: number;
+    maxMatchesPerFile?: number;
+    page?: number;
+    pageSize?: number;
+  }
+): Promise<LocalSearchResult> {
+  const shape = opts.pattern ?? opts.rule ?? '';
+  const result = await executeDirectTool('localSearchCode', {
+    queries: [
+      {
+        path: dirPath,
+        mode: 'structural' as const,
+        ...(opts.pattern ? { pattern: opts.pattern } : { rule: opts.rule }),
+        langType: opts.typeFilter,
+        contextLines: opts.contextLines,
+        maxMatchesPerFile: opts.maxMatchesPerFile,
+        page: opts.page,
+        itemsPerPage: opts.pageSize,
+        mainResearchGoal: 'Search local codebase by AST shape',
+        researchGoal: `Find AST shape "${shape}" in ${dirPath}`,
+        reasoning: 'CLI grep --pattern/--rule (structural)',
       },
     ],
   });
@@ -233,10 +277,22 @@ function renderGithubResults(
 export const grepCommand: CLICommand = {
   name: 'grep',
   description:
-    'Search code by text or regex (ripgrep) across local paths and GitHub repositories. For AST shape queries use the `ast` command.',
+    'Search code by text/regex (ripgrep) across local paths and GitHub, OR by AST shape (ast-grep) with --pattern/--rule. One search command: text by default, structural when you pass --pattern or --rule (local-only).',
   usage:
-    'grep <keywords> <path|github-ref> [--type <ext>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+    'grep <keywords> <path|github-ref> [text flags] | grep <path> --pattern <shape> | grep <path> --rule <yaml>  [--type <ext>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
+    {
+      name: 'pattern',
+      hasValue: true,
+      description:
+        'AST shape (ast-grep) — switches grep to structural search, local-only. Metavars: $X = one node, $$$ARGS = a list. E.g. "eval($X)", "console.log($$$)". Comments/strings never false-match.',
+    },
+    {
+      name: 'rule',
+      hasValue: true,
+      description:
+        'AST relational rule (YAML) for what --pattern can\'t express — not/inside/has/all/any. Relational sub-rules need "stopBy: end". Mutually exclusive with --pattern. Local-only.',
+    },
     {
       name: 'type',
       hasValue: true,
@@ -384,6 +440,74 @@ export const grepCommand: CLICommand = {
   ],
   handler: async args => {
     const { options } = args;
+
+    // ── Structural (AST) branch ──────────────────────────────────────────────
+    // --pattern / --rule switch grep to ast-grep structural search (local-only).
+    // arg[0] is the path here (there are no text keywords). Same executor and
+    // renderer as text grep; only the query shape differs.
+    const patternOpt = getString(options, 'pattern') || undefined;
+    const ruleOpt = getString(options, 'rule') || undefined;
+    if (patternOpt || ruleOpt) {
+      const jsonOutput = getBool(options, 'json');
+      if (patternOpt && ruleOpt) {
+        const err = 'Provide either --pattern or --rule, not both.';
+        if (jsonOutput)
+          console.log(JSON.stringify({ success: false, error: err }));
+        else printCliError(err);
+        process.exitCode = EXIT.USAGE;
+        return;
+      }
+
+      const ref = resolveRef(args.args[0] || '.');
+      if (isGithubRef(ref)) {
+        const err =
+          'Structural search (--pattern/--rule) is local-only — ast-grep cannot run on GitHub. Clone the repo first, or drop the flag for text search.';
+        if (jsonOutput)
+          console.log(JSON.stringify({ success: false, error: err }));
+        else printCliError(err);
+        process.exitCode = EXIT.USAGE;
+        return;
+      }
+
+      const rawLimitS = getString(options, 'limit');
+      const limitS = rawLimitS ? parseInt(rawLimitS, 10) : 10;
+      const ctxS = getString(options, 'context-lines', 'context');
+      const maxS = getString(options, 'max-matches');
+      const pageS = getString(options, 'page');
+      const pageSizeS = getString(options, 'page-size');
+      const shape = patternOpt ?? ruleOpt ?? '';
+
+      if (!jsonOutput) {
+        process.stderr.write(
+          `  ${dim(`Searching AST "${shape}" in ${refLabel(ref)} ...`)}\n`
+        );
+      }
+
+      try {
+        const sc = await searchLocalStructural(ref.path, {
+          pattern: patternOpt,
+          rule: ruleOpt,
+          typeFilter: getString(options, 'type') || undefined,
+          contextLines: ctxS ? parseInt(ctxS, 10) : undefined,
+          maxMatchesPerFile: maxS ? parseInt(maxS, 10) : undefined,
+          page: pageS ? parseInt(pageS, 10) : undefined,
+          pageSize: pageSizeS ? parseInt(pageSizeS, 10) : undefined,
+        });
+        if (jsonOutput) {
+          console.log(JSON.stringify(sc, null, 2));
+          return;
+        }
+        console.log('\n' + renderLocalResults(sc, limitS) + '\n');
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (jsonOutput)
+          console.log(JSON.stringify({ success: false, error: msg }));
+        else printCliError(msg);
+        process.exitCode = classifyToolErrorText(msg);
+      }
+      return;
+    }
+
     const pattern = args.args[0] ?? '';
     const target = args.args[1] ?? '.';
     const typeFilter = getString(options, 'type');
@@ -436,8 +560,8 @@ export const grepCommand: CLICommand = {
             `    grep "useState" src/\n` +
             `    grep "executeDirectTool" bgauryy/octocode-mcp\n` +
             `    grep "TODO" . --type ts\n` +
-            `    ${dim('# for AST shape queries (local), use the ast command:')}\n` +
-            `    ast "eval($X)" src\n`
+            `    ${dim('# for AST shape queries (local), pass --pattern:')}\n` +
+            `    grep src --pattern "eval($X)"\n`
         );
       }
       process.exitCode = EXIT.USAGE;
@@ -447,7 +571,7 @@ export const grepCommand: CLICommand = {
     const modeArg = getString(options, 'mode');
     if (modeArg && !GREP_MODES.has(modeArg)) {
       const err =
-        'Invalid --mode. Use paginated, discovery, or detailed. For AST shape queries, use the ast command.';
+        'Invalid --mode. Use paginated, discovery, or detailed. For AST shape queries, pass --pattern or --rule.';
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
