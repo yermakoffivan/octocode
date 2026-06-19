@@ -62,7 +62,14 @@ describe('searchContentStructural', () => {
         {
           path: '/repo/a.ts',
           matches: [
-            { startLine: 1, startCol: 1, text: 'target(value)', metavars: {} },
+            {
+              startLine: 1,
+              endLine: 1,
+              startCol: 1,
+              endCol: 14,
+              text: 'target(value)',
+              metavars: { X: ['value'] },
+            },
           ],
         },
       ],
@@ -97,7 +104,12 @@ describe('searchContentStructural', () => {
     expect(result.searchEngine).toBe('structural');
     expect(result.files).toHaveLength(1);
     expect(result.warnings?.join('\n')).toContain('Pre-filter skipped');
-    expect(result.hints?.join('\n')).toContain('lspGetSemantics');
+    expect(result.files[0]?.matches?.[0]).toMatchObject({
+      endLine: 1,
+      endColumn: 14,
+      metavars: { X: ['value'] },
+    });
+    expect(result.hints?.join('\n')).toContain('captured metavars');
   });
 
   it('passes caller include and excludeDir options to native Rust', async () => {

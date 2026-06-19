@@ -125,8 +125,11 @@ export async function searchContentStructural(
       matchCount: file.matches.length,
       matches: file.matches.map(match => ({
         line: match.startLine,
+        endLine: match.endLine,
         value: match.text.split('\n', 1)[0],
         column: match.startCol,
+        endColumn: match.endCol,
+        metavars: match.metavars,
       })),
     })
   );
@@ -143,7 +146,7 @@ export async function searchContentStructural(
   if (nativeResult.totalMatches > 0) {
     const hints = Array.isArray(result.hints) ? [...result.hints] : [];
     hints.push(
-      'Structural matches return node ranges — pass matches[].line as the lspGetSemantics lineHint to navigate semantically.'
+      'Structural matches include captured metavars when the pattern uses $X or $$$ARGS, and matches[].line can be passed as the lspGetSemantics lineHint.'
     );
     return { ...result, hints } as LocalSearchCodeToolResult;
   }

@@ -63,4 +63,29 @@ describe('renderLocalResults match counts', () => {
     };
     expect(renderLocalResults(sc, 10)).toContain('(2 matches)');
   });
+
+  it('renders structural metavariable captures when present', () => {
+    const sc = {
+      results: [
+        {
+          data: {
+            files: [
+              {
+                path: 'a.tsx',
+                matches: [
+                  {
+                    line: 7,
+                    value: 'useEffect(() => {',
+                    metavars: { ARGS: ['() => { body(); }', '[dep]'] },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    expect(renderLocalResults(sc, 10)).toContain('$ARGS=() => { body(); }, [dep]');
+  });
 });

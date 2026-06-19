@@ -3,6 +3,8 @@ use std::path::Path;
 use std::sync::LazyLock;
 use tree_sitter::{Language, Parser};
 
+use crate::signatures::languages;
+
 pub struct GrammarSpec {
     pub language_id: &'static str,
     language: Language,
@@ -16,9 +18,9 @@ impl GrammarSpec {
     }
 }
 
-/// Language objects are pre-built once at first use and reused for every subsequent
-/// `grammar_for_file` call.  `Language` is `Copy + Send + Sync`, so storing it in
-/// a `LazyLock<HashMap>` is safe and avoids repeated FFI calls per symbol lookup.
+/// Grammars are pre-built once at first use and reused for every subsequent
+/// `grammar_for_file` call. `Language` is `Clone + Send + Sync`, so storing it
+/// in a `LazyLock<HashMap>` is safe and avoids repeated FFI calls per lookup.
 static GRAMMAR_MAP: LazyLock<HashMap<&'static str, GrammarSpec>> =
     LazyLock::new(init_grammar_map);
 
@@ -29,91 +31,46 @@ pub fn grammar_for_file(file_path: &str) -> Option<&'static GrammarSpec> {
     GRAMMAR_MAP.get(ext.as_str())
 }
 
+/// Derived from the single language registry (`signatures::languages`): every
+/// entry carrying a `language_id` contributes its extensions + grammar. There is
+/// no second grammar table, so the LSP grammar map can never drift from the
+/// registry the signature/structural layers read.
 fn init_grammar_map() -> HashMap<&'static str, GrammarSpec> {
     let mut map = HashMap::with_capacity(32);
 
-    let rows: &[(&[&str], &str, Language)] = &[
-        (
-            &["ts", "mts", "cts"],
-            "typescript",
-            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        ),
-        (
-            &["tsx"],
-            "typescriptreact",
-            tree_sitter_typescript::LANGUAGE_TSX.into(),
-        ),
-        (
-            &["js", "mjs", "cjs", "jsx"],
-            "javascript",
-            tree_sitter_javascript::LANGUAGE.into(),
-        ),
-        (&["py", "pyi"], "python", tree_sitter_python::LANGUAGE.into()),
-        (&["go"], "go", tree_sitter_go::LANGUAGE.into()),
-        (&["rs"], "rust", tree_sitter_rust::LANGUAGE.into()),
-        (&["java"], "java", tree_sitter_java::LANGUAGE.into()),
-        (&["c", "h"], "c", tree_sitter_c::LANGUAGE.into()),
-        (&["cpp", "cc", "cxx", "hpp"], "cpp", cpp_language()),
-        (&["cs"], "csharp", csharp_language()),
-        (
-            &["sh", "bash", "zsh"],
-            "shellscript",
-            tree_sitter_bash::LANGUAGE.into(),
-        ),
-        (
-            &["json", "jsonc"],
-            "json",
-            tree_sitter_json::LANGUAGE.into(),
-        ),
-        (
-            &["yaml", "yml"],
-            "yaml",
-            tree_sitter_yaml::LANGUAGE.into(),
-        ),
-        (&["toml"], "toml", tree_sitter_toml_ng::LANGUAGE.into()),
-        (
-            &["html", "htm"],
-            "html",
-            tree_sitter_html::LANGUAGE.into(),
-        ),
-        (&["css"], "css", tree_sitter_css::LANGUAGE.into()),
-        (&["scss"], "scss", tree_sitter_scss::language()),
-        (&["less"], "less", tree_sitter_less::language()),
-    ];
-
-    for (exts, language_id, language) in rows {
-        for &ext in *exts {
+    for entry in languages::all_entries() {
+        let Some(language_id) = entry.language_id else {
+            continue;
+        };
+        for &ext in entry.extensions {
             map.insert(
                 ext,
                 GrammarSpec {
                     language_id,
-                    language: language.clone(),
+                    language: entry.language.clone(),
                 },
             );
         }
     }
 
+    // LSP-only fallback: when the C++/C# grammars are compiled out the registry
+    // omits them, but the LSP layer still parses those files with the C grammar
+    // as a rough approximation. Signatures/structural intentionally do NOT get
+    // this fallback — they drop to the heuristic path instead.
+    #[cfg(not(feature = "tree-sitter-cpp"))]
+    for &ext in &["cpp", "cc", "cxx", "hpp", "hh", "hxx"] {
+        map.entry(ext).or_insert_with(|| GrammarSpec {
+            language_id: "cpp",
+            language: tree_sitter_c::LANGUAGE.into(),
+        });
+    }
+    #[cfg(not(feature = "tree-sitter-c-sharp"))]
+    map.entry("cs").or_insert_with(|| GrammarSpec {
+        language_id: "csharp",
+        language: tree_sitter_c::LANGUAGE.into(),
+    });
+
     map
-}
-
-#[cfg(feature = "tree-sitter-cpp")]
-fn cpp_language() -> Language {
-    tree_sitter_cpp::LANGUAGE.into()
-}
-
-#[cfg(not(feature = "tree-sitter-cpp"))]
-fn cpp_language() -> Language {
-    tree_sitter_c::LANGUAGE.into()
-}
-
-#[cfg(feature = "tree-sitter-c-sharp")]
-fn csharp_language() -> Language {
-    tree_sitter_c_sharp::LANGUAGE.into()
-}
-
-#[cfg(not(feature = "tree-sitter-c-sharp"))]
-fn csharp_language() -> Language {
-    tree_sitter_c::LANGUAGE.into()
 }
 
 #[cfg(test)]

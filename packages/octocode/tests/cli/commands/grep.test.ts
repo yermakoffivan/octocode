@@ -71,6 +71,20 @@ describe('grep command', () => {
     expect(q.mode).toBe('discovery');
   });
 
+  it('maps local --type to include globs instead of ripgrep type filters', async () => {
+    await run(['needle', 'src'], { type: 'tsx' });
+
+    const q = lastQuery();
+    expect(q.langType).toBeUndefined();
+    expect(q.include).toEqual(['*.tsx']);
+  });
+
+  it('merges local --type with explicit include globs', async () => {
+    await run(['needle', 'src'], { type: 'tsx', include: '*.ts,*.md' });
+
+    expect(lastQuery().include).toEqual(['*.ts', '*.md', '*.tsx']);
+  });
+
   it('routes a GitHub ref to ghSearchCode', async () => {
     executeDirectTool.mockResolvedValue({
       isError: false,
@@ -84,7 +98,14 @@ describe('grep command', () => {
     // which is silently stripped → keyword-less search → wrong results).
     const q = lastQuery();
     expect(q.keywords).toEqual(['useState']);
+    expect(q.extension).toBeUndefined();
     expect(q.keywordsToSearch).toBeUndefined();
+  });
+
+  it('passes GitHub --type as the GitHub extension filter', async () => {
+    await run(['useState', 'facebook/react'], { type: 'tsx' });
+
+    expect(lastQuery().extension).toBe('tsx');
   });
 
   it('uses --limit as the GitHub code page size for JSON and rendered output', async () => {
@@ -207,6 +228,14 @@ describe('grep command', () => {
   it('accepts AST flags (structural search folded into grep)', () => {
     expect(grepCommand.options?.some(o => o.name === 'pattern')).toBe(true);
     expect(grepCommand.options?.some(o => o.name === 'rule')).toBe(true);
+  });
+
+  it('maps structural local --type to include globs', async () => {
+    await run(['src'], { pattern: 'useEffect($$$ARGS)', type: 'tsx' });
+
+    const q = lastQuery();
+    expect(q.langType).toBeUndefined();
+    expect(q.include).toEqual(['*.tsx']);
   });
 
   it('--pattern routes to localSearchCode mode:"structural" (arg[0] is the path)', async () => {

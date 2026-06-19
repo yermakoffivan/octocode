@@ -3,6 +3,11 @@ use tree_sitter::Language;
 
 pub struct LanguageEntry {
     pub extensions: &'static [&'static str],
+    /// LSP server language id (e.g. `"typescript"`, `"css"`). `None` for grammars
+    /// with no configured language server (e.g. Scala) — those still do structural
+    /// search and signatures, but `lsp::grammar::grammar_for_file` skips them. This
+    /// is the single source the LSP grammar map derives from (no second table).
+    pub language_id: Option<&'static str>,
     /// Pre-built `Language` handle. `Language` is `Clone + Send + Sync` but
     /// NOT `Copy` in tree-sitter 0.26 — always use `.clone()` at call sites.
     pub language: Language,
@@ -80,23 +85,29 @@ static LANGUAGE_TABLE: LazyLock<Vec<LanguageEntry>> = LazyLock::new(init_languag
 
 fn init_language_table() -> Vec<LanguageEntry> {
     // Non-feature-gated entries: use vec! to satisfy clippy::vec_init_then_push.
+    // `mut` is only exercised by the feature-gated cpp/c# pushes below; without
+    // those grammars the binding is never mutated.
+    #[allow(unused_mut)]
     let mut entries = vec![
         LanguageEntry {
             // `.mts`/`.cts` are first-class TS (oxc + LSP already treat them so);
             // align signature/structural with that.
             extensions: &["ts", "mts", "cts"],
+            language_id: Some("typescript"),
             language: tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             body_query: TS_BODY_QUERY,
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["tsx"],
+            language_id: Some("typescriptreact"),
             language: tree_sitter_typescript::LANGUAGE_TSX.into(),
             body_query: TS_BODY_QUERY,
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["js", "jsx", "mjs", "cjs"],
+            language_id: Some("javascript"),
             language: tree_sitter_javascript::LANGUAGE.into(),
             body_query: JS_BODY_QUERY,
             comment_style: "c",
@@ -104,36 +115,42 @@ fn init_language_table() -> Vec<LanguageEntry> {
         LanguageEntry {
             // `.pyi` stubs parse with the Python grammar (LSP already maps them).
             extensions: &["py", "pyi"],
+            language_id: Some("python"),
             language: tree_sitter_python::LANGUAGE.into(),
             body_query: PY_BODY_QUERY,
             comment_style: "hash",
         },
         LanguageEntry {
             extensions: &["go"],
+            language_id: Some("go"),
             language: tree_sitter_go::LANGUAGE.into(),
             body_query: GO_BODY_QUERY,
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["rs"],
+            language_id: Some("rust"),
             language: tree_sitter_rust::LANGUAGE.into(),
             body_query: RS_BODY_QUERY,
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["java"],
+            language_id: Some("java"),
             language: tree_sitter_java::LANGUAGE.into(),
             body_query: JAVA_BODY_QUERY,
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["c", "h"],
+            language_id: Some("c"),
             language: tree_sitter_c::LANGUAGE.into(),
             body_query: C_BODY_QUERY,
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["sh", "bash", "zsh"],
+            language_id: Some("shellscript"),
             language: tree_sitter_bash::LANGUAGE.into(),
             body_query: BASH_BODY_QUERY,
             comment_style: "hash",
@@ -145,35 +162,38 @@ fn init_language_table() -> Vec<LanguageEntry> {
         // tuned heuristic extractor (markup/styles have no fn body to strip).
         LanguageEntry {
             extensions: &["html", "htm"],
+            language_id: Some("html"),
             language: tree_sitter_html::LANGUAGE.into(),
             body_query: "",
             comment_style: "html",
         },
         LanguageEntry {
             extensions: &["css"],
+            language_id: Some("css"),
             language: tree_sitter_css::LANGUAGE.into(),
             body_query: "",
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["scss"],
+            language_id: Some("scss"),
             language: tree_sitter_scss::language(),
             body_query: "",
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["less"],
+            language_id: Some("less"),
             language: tree_sitter_less::language(),
             body_query: "",
             comment_style: "c",
         },
-        // Scala: registered structural-search-only (empty body_query) so the
-        // tuned heuristic signature extractor (`heuristic::extract_scala`) keeps
-        // owning the outline — adding a tree-sitter body_query here would change
-        // Scala signature output. ast-grep supports Scala natively; this wires
-        // its grammar in for `structural::search` over .scala / .sc / .sbt.
+        // Scala: structural-search only (empty body_query) so the tuned heuristic
+        // signature extractor keeps owning the outline. No LSP server configured,
+        // so `language_id: None` — it is absent from the LSP grammar map.
         LanguageEntry {
             extensions: &["scala", "sc", "sbt"],
+            language_id: None,
             language: tree_sitter_scala::LANGUAGE.into(),
             body_query: "",
             comment_style: "c",
@@ -185,18 +205,21 @@ fn init_language_table() -> Vec<LanguageEntry> {
         // signature path returning None (data files have no code signatures).
         LanguageEntry {
             extensions: &["json", "jsonc"],
+            language_id: Some("json"),
             language: tree_sitter_json::LANGUAGE.into(),
             body_query: "",
             comment_style: "c",
         },
         LanguageEntry {
             extensions: &["yaml", "yml"],
+            language_id: Some("yaml"),
             language: tree_sitter_yaml::LANGUAGE.into(),
             body_query: "",
             comment_style: "hash",
         },
         LanguageEntry {
             extensions: &["toml"],
+            language_id: Some("toml"),
             language: tree_sitter_toml_ng::LANGUAGE.into(),
             body_query: "",
             comment_style: "hash",
@@ -209,6 +232,7 @@ fn init_language_table() -> Vec<LanguageEntry> {
         // Include the `.hh`/`.hxx` header variants the structural expando table
         // already anticipates.
         extensions: &["cpp", "hpp", "cc", "cxx", "hh", "hxx"],
+        language_id: Some("cpp"),
         language: tree_sitter_cpp::LANGUAGE.into(),
         body_query: CPP_BODY_QUERY,
         comment_style: "c",
@@ -217,6 +241,7 @@ fn init_language_table() -> Vec<LanguageEntry> {
     #[cfg(feature = "tree-sitter-c-sharp")]
     entries.push(LanguageEntry {
         extensions: &["cs"],
+        language_id: Some("csharp"),
         language: tree_sitter_c_sharp::LANGUAGE.into(),
         body_query: CS_BODY_QUERY,
         comment_style: "c",
@@ -227,6 +252,13 @@ fn init_language_table() -> Vec<LanguageEntry> {
 
 pub fn find_entry(ext: &str) -> Option<&'static LanguageEntry> {
     LANGUAGE_TABLE.iter().find(|e| e.extensions.contains(&ext))
+}
+
+/// The full registry — the single source of truth for grammar capabilities.
+/// `lsp::grammar` derives its grammar map from this (entries with a
+/// `language_id`) instead of maintaining a parallel table.
+pub fn all_entries() -> &'static [LanguageEntry] {
+    &LANGUAGE_TABLE
 }
 
 pub fn supported_extensions() -> Vec<&'static str> {

@@ -44,8 +44,22 @@ interface GithubCodeResult {
   emptyQueries?: Array<{ id?: string }>;
 }
 
+function listOption(value: string | undefined): string[] | undefined {
+  const items = value
+    ?.split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+  return items && items.length > 0 ? items : undefined;
+}
+
+function localIncludeGlobs(include: string[] | undefined, typeFilter: string | undefined): string[] | undefined {
+  const filters = [...(include ?? [])];
+  const ext = typeFilter?.trim().replace(/^\./, '');
+  if (ext) filters.push(ext.includes('*') ? ext : `*.${ext}`);
+  return filters.length > 0 ? filters : undefined;
+}
+
 interface LocalSearchOpts {
-  typeFilter?: string;
   mode?: string;
   include?: string[];
   exclude?: string[];
@@ -82,7 +96,6 @@ async function searchLocal(
       {
         keywords,
         path: dirPath,
-        langType: opts.typeFilter,
         mode: opts.mode as 'paginated' | 'discovery' | 'detailed' | undefined,
         include: opts.include,
         exclude: opts.exclude,
@@ -131,7 +144,7 @@ async function searchLocalStructural(
   opts: {
     pattern?: string;
     rule?: string;
-    typeFilter?: string;
+    include?: string[];
     contextLines?: number;
     maxMatchesPerFile?: number;
     page?: number;
@@ -145,7 +158,7 @@ async function searchLocalStructural(
         path: dirPath,
         mode: 'structural' as const,
         ...(opts.pattern ? { pattern: opts.pattern } : { rule: opts.rule }),
-        langType: opts.typeFilter,
+        include: opts.include,
         contextLines: opts.contextLines,
         maxMatchesPerFile: opts.maxMatchesPerFile,
         page: opts.page,
@@ -475,6 +488,7 @@ export const grepCommand: CLICommand = {
       const maxS = getString(options, 'max-matches');
       const pageS = getString(options, 'page');
       const pageSizeS = getString(options, 'page-size');
+      const includeS = getString(options, 'include');
       const shape = patternOpt ?? ruleOpt ?? '';
 
       if (!jsonOutput) {
@@ -487,7 +501,10 @@ export const grepCommand: CLICommand = {
         const sc = await searchLocalStructural(ref.path, {
           pattern: patternOpt,
           rule: ruleOpt,
-          typeFilter: getString(options, 'type') || undefined,
+          include: localIncludeGlobs(
+            listOption(includeS),
+            getString(options, 'type') || undefined
+          ),
           contextLines: ctxS ? parseInt(ctxS, 10) : undefined,
           maxMatchesPerFile: maxS ? parseInt(maxS, 10) : undefined,
           page: pageS ? parseInt(pageS, 10) : undefined,
@@ -541,12 +558,8 @@ export const grepCommand: CLICommand = {
       getString(options, 'mode') || (concise ? 'discovery' : undefined);
     const includeOpt = getString(options, 'include');
     const excludeOpt = getString(options, 'exclude');
-    const include = includeOpt
-      ? includeOpt.split(',').map(s => s.trim())
-      : undefined;
-    const exclude = excludeOpt
-      ? excludeOpt.split(',').map(s => s.trim())
-      : undefined;
+    const include = listOption(includeOpt);
+    const exclude = listOption(excludeOpt);
     const jsonOutput = getBool(options, 'json');
 
     if (!pattern) {
@@ -611,9 +624,8 @@ export const grepCommand: CLICommand = {
         );
       } else {
         const sc = await searchLocal(pattern, ref.path, {
-          typeFilter: typeFilter || undefined,
           mode: modeOpt,
-          include,
+          include: localIncludeGlobs(include, typeFilter || undefined),
           exclude,
           contextLines,
           maxMatchesPerFile,

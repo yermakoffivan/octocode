@@ -15,11 +15,14 @@
 //!     parent/child relationships.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use napi_derive::napi;
+
+use ignore::overrides::{Override, OverrideBuilder};
+use ignore::WalkBuilder;
 
 use ast_grep_config::{from_str, DeserializeEnv, SerializableRuleCore};
 use ast_grep_core::language::Language;
@@ -231,11 +234,22 @@ pub fn search(
         ts: entry.language.clone(),
         expando: expando_for_ext(ext),
     };
+    let run = compile_matcher(&lang, pattern, rule)?;
+    Ok(run(content))
+}
 
-    let grep = lang.ast_grep(content);
-    let root = grep.root();
-    let mut out = Vec::new();
+/// A compiled query bound to one language: parse the pattern/rule ONCE, return a
+/// closure that runs it against any document of that language. `search_files`
+/// builds this once per extension instead of once per file (KPI: a 2,000-file
+/// single-language search does 1 parse, not 2,000). The closure owns the matcher
+/// and a language handle, so it is `'static`.
+type CompiledMatcher = Box<dyn Fn(&str) -> Vec<StructuralMatch>>;
 
+fn compile_matcher(
+    lang: &AgLanguage,
+    pattern: Option<&str>,
+    rule: Option<&str>,
+) -> Result<CompiledMatcher, String> {
     match (pattern, rule) {
         (Some(p), None) => {
             if p.trim().is_empty() {
@@ -243,9 +257,11 @@ pub fn search(
             }
             let pat = Pattern::try_new(p, lang.clone())
                 .map_err(|e| format!("invalid structural pattern: {e}"))?;
-            for m in root.find_all(&pat) {
-                out.push(to_match(&m));
-            }
+            let lang = lang.clone();
+            Ok(Box::new(move |content: &str| {
+                let grep = lang.ast_grep(content);
+                grep.root().find_all(&pat).map(|m| to_match(&m)).collect()
+            }))
         }
         (None, Some(r)) => {
             if r.trim().is_empty() {
@@ -257,19 +273,18 @@ pub fn search(
             let matcher = serialized
                 .get_matcher(env)
                 .map_err(|e| format!("invalid rule: {e}"))?;
-            for m in root.find_all(&matcher) {
-                out.push(to_match(&m));
-            }
+            let lang = lang.clone();
+            Ok(Box::new(move |content: &str| {
+                let grep = lang.ast_grep(content);
+                grep.root()
+                    .find_all(&matcher)
+                    .map(|m| to_match(&m))
+                    .collect()
+            }))
         }
-        (Some(_), Some(_)) => {
-            return Err("provide either `pattern` or `rule`, not both".to_string());
-        }
-        (None, None) => {
-            return Err("structural search requires `pattern` or `rule`".to_string());
-        }
+        (Some(_), Some(_)) => Err("provide either `pattern` or `rule`, not both".to_string()),
+        (None, None) => Err("structural search requires `pattern` or `rule`".to_string()),
     }
-
-    Ok(out)
 }
 
 pub fn search_files(
@@ -284,10 +299,24 @@ pub fn search_files(
     let exclude_dir = options.exclude_dir.unwrap_or_else(default_exclude_dirs);
     let max_files = options.max_files.map(|n| n as usize).unwrap_or(2_000);
     let max_file_bytes = options.max_file_bytes.map(|n| n as u64).unwrap_or(1_000_000);
-    let anchor = pattern.and_then(derive_literal_anchor);
+    // #9: prefilter from a pattern's literal, or — when safe — from a rule's
+    // positive root `pattern:` field.
+    let anchor = match (pattern, rule) {
+        (Some(p), _) => derive_literal_anchor(p),
+        (_, Some(r)) => derive_rule_anchor(r),
+        _ => None,
+    };
 
-    let mut candidate_files = Vec::new();
-    collect_candidate_files(&root, &include, &exclude_dir, max_files, &mut candidate_files)?;
+    // #6/#7: gitignore-aware traversal with glob include overrides (`src/**/*.ts`).
+    let overrides = build_overrides(&root, &include)?;
+    let candidate_files = collect_candidate_files(&root, overrides, &exclude_dir, max_files)?;
+
+    // #8: group by extension so the matcher is compiled once per language.
+    let mut by_ext: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    for path in candidate_files {
+        let ext = extension_for_path(&path).unwrap_or_default();
+        by_ext.entry(ext).or_default().push(path);
+    }
 
     let mut files = Vec::new();
     let mut total_matches = 0u32;
@@ -297,43 +326,53 @@ pub fn search_files(
     let mut skipped_large = 0u32;
     let mut warnings = Vec::new();
 
-    for file_path in candidate_files {
-        let metadata = match fs::metadata(&file_path) {
-            Ok(metadata) => metadata,
-            Err(_) => {
-                skipped_unreadable += 1;
+    for (ext, paths) in by_ext {
+        let Some(entry) = languages::find_entry(&ext) else {
+            continue;
+        };
+        let lang = AgLanguage {
+            ts: entry.language.clone(),
+            expando: expando_for_ext(&ext),
+        };
+        let run = compile_matcher(&lang, pattern, rule)?;
+
+        for file_path in paths {
+            let metadata = match fs::metadata(&file_path) {
+                Ok(metadata) => metadata,
+                Err(_) => {
+                    skipped_unreadable += 1;
+                    continue;
+                }
+            };
+            if metadata.len() > max_file_bytes {
+                skipped_large += 1;
                 continue;
             }
-        };
-        if metadata.len() > max_file_bytes {
-            skipped_large += 1;
-            continue;
-        }
 
-        let content = match fs::read_to_string(&file_path) {
-            Ok(content) => content,
-            Err(_) => {
-                skipped_unreadable += 1;
+            let content = match fs::read_to_string(&file_path) {
+                Ok(content) => content,
+                Err(_) => {
+                    skipped_unreadable += 1;
+                    continue;
+                }
+            };
+
+            if anchor.is_some_and(|literal| !content.contains(literal)) {
+                skipped_by_pre_filter += 1;
                 continue;
             }
-        };
 
-        if anchor.is_some_and(|literal| !content.contains(literal)) {
-            skipped_by_pre_filter += 1;
-            continue;
+            let matches = run(&content);
+            parsed_files += 1;
+            if matches.is_empty() {
+                continue;
+            }
+            total_matches = total_matches.saturating_add(matches.len() as u32);
+            files.push(StructuralSearchFileResult {
+                path: file_path.to_string_lossy().to_string(),
+                matches,
+            });
         }
-
-        let ext = extension_for_path(&file_path).unwrap_or_default();
-        let matches = search(&content, &ext, pattern, rule)?;
-        parsed_files += 1;
-        if matches.is_empty() {
-            continue;
-        }
-        total_matches = total_matches.saturating_add(matches.len() as u32);
-        files.push(StructuralSearchFileResult {
-            path: file_path.to_string_lossy().to_string(),
-            matches,
-        });
     }
 
     if anchor.is_none() {
@@ -385,84 +424,98 @@ fn default_exclude_dirs() -> Vec<String> {
         .collect()
 }
 
+/// Compile the `include` patterns into a gitignore-style override set, rooted at
+/// the search path so relative globs like `src/**/*.ts` resolve as users expect.
+/// An empty set whitelists nothing — the walker then yields all (gitignored
+/// files excepted), and the supported-extension filter narrows from there.
+fn build_overrides(root: &Path, include: &[String]) -> Result<Override, String> {
+    let mut builder = OverrideBuilder::new(root);
+    for glob in include {
+        builder
+            .add(glob)
+            .map_err(|e| format!("invalid include glob '{glob}': {e}"))?;
+    }
+    builder
+        .build()
+        .map_err(|e| format!("failed to compile include globs: {e}"))
+}
+
+/// Walk `root` with ripgrep's own `ignore` engine: honors `.gitignore`/`.ignore`,
+/// skips hidden files, applies the include `overrides`, prunes `exclude_dir`
+/// names, and yields in a deterministic path order. Returns up to `max_files`
+/// candidate paths whose extension a grammar can parse.
 fn collect_candidate_files(
     root: &Path,
-    include: &[String],
+    overrides: Override,
     exclude_dir: &[String],
     max_files: usize,
-    out: &mut Vec<PathBuf>,
-) -> Result<(), String> {
-    if out.len() >= max_files {
-        return Ok(());
-    }
+) -> Result<Vec<PathBuf>, String> {
     let metadata = fs::metadata(root).map_err(|err| {
         format!(
             "Cannot access structural search path '{}': {err}",
             root.display()
         )
     })?;
+
+    // An explicitly targeted single file is searched directly — gitignore rules
+    // shouldn't hide a path the caller named outright.
     if metadata.is_file() {
-        if path_matches_include(root, include) {
-            out.push(root.to_path_buf());
-        }
-        return Ok(());
+        return Ok(if file_is_candidate(root, &overrides) {
+            vec![root.to_path_buf()]
+        } else {
+            Vec::new()
+        });
     }
     if !metadata.is_dir() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
-    let entries = fs::read_dir(root).map_err(|err| {
-        format!(
-            "Cannot read structural search directory '{}': {err}",
-            root.display()
-        )
-    })?;
-    for entry in entries {
+    let excluded: HashSet<String> = exclude_dir.iter().cloned().collect();
+    let mut builder = WalkBuilder::new(root);
+    builder
+        .overrides(overrides)
+        .sort_by_file_path(|a, b| a.cmp(b))
+        .filter_entry(move |entry| {
+            if entry.depth() == 0 {
+                return true;
+            }
+            if entry.file_type().is_some_and(|ft| ft.is_dir()) {
+                let name = entry.file_name().to_string_lossy();
+                return !excluded.contains(name.as_ref());
+            }
+            true
+        });
+
+    let mut out = Vec::new();
+    for result in builder.build() {
         if out.len() >= max_files {
             break;
         }
-        let entry = entry.map_err(|err| format!("Cannot read structural search entry: {err}"))?;
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|err| {
-                format!(
-                    "Cannot inspect structural search entry '{}': {err}",
-                    path.display()
-                )
-            })?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if file_type.is_dir() {
-            if exclude_dir.iter().any(|dir| dir == &name) {
-                continue;
-            }
-            collect_candidate_files(&path, include, exclude_dir, max_files, out)?;
-        } else if file_type.is_file() && path_matches_include(&path, include) {
+        let Ok(entry) = result else { continue };
+        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+            continue;
+        }
+        let path = entry.into_path();
+        // Overrides already whitelisted the path; require a parseable extension.
+        if extension_for_path(&path).is_some_and(|ext| languages::find_entry(&ext).is_some()) {
             out.push(path);
         }
     }
-    Ok(())
+    Ok(out)
 }
 
-fn path_matches_include(path: &Path, include: &[String]) -> bool {
-    if include.is_empty() {
-        return extension_for_path(path).is_some_and(|ext| languages::find_entry(&ext).is_some());
-    }
-    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
-    include.iter().any(|pattern| glob_matches_name(pattern, name))
+/// A single-file root is a candidate when a grammar can parse it and it is not
+/// excluded by the include overrides (an empty override set matches nothing, so
+/// `is_ignore()` is false → kept).
+fn file_is_candidate(path: &Path, overrides: &Override) -> bool {
+    extension_for_path(path).is_some_and(|ext| languages::find_entry(&ext).is_some())
+        && !overrides.matched(path, false).is_ignore()
 }
 
 fn extension_for_path(path: &Path) -> Option<String> {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_ascii_lowercase())
-}
-
-fn glob_matches_name(pattern: &str, name: &str) -> bool {
-    if let Some(ext) = pattern.strip_prefix("*.") {
-        return name.ends_with(&format!(".{ext}"));
-    }
-    pattern == name
 }
 
 fn derive_literal_anchor(pattern: &str) -> Option<&str> {
@@ -476,6 +529,22 @@ fn derive_literal_anchor(pattern: &str) -> Option<&str> {
         }
     }
     best
+}
+
+/// #9: derive a prefilter anchor from a rule's positive root `pattern:`.
+/// Negation/disjunction (`not:`/`any:`) make any single literal unsafe — a file
+/// could match without containing it — so we bail to "parse everything" there.
+fn derive_rule_anchor(rule: &str) -> Option<&str> {
+    if rule.contains("not:") || rule.contains("any:") {
+        return None;
+    }
+    for line in rule.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("pattern:") {
+            let value = rest.trim().trim_matches(['\'', '"']);
+            return derive_literal_anchor(value);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -814,5 +883,88 @@ mod tests {
         for ext in ["json", "jsonc", "yaml", "yml", "toml", "mts", "cts", "pyi"] {
             assert!(exts.iter().any(|e| e == ext), "structural search must support .{ext}");
         }
+    }
+
+    // ── native walker: recursive globs (#6), ignore semantics (#7), rule
+    //    prefilter (#9) ─────────────────────────────────────────────────────
+
+    #[test]
+    fn search_files_supports_recursive_glob_includes() {
+        let root = temp_root("globs");
+        fs::create_dir_all(root.join("src/nested")).expect("nested dir");
+        fs::write(root.join("src/a.ts"), "target(v);\n").expect("a");
+        fs::write(root.join("src/nested/b.ts"), "target(v);\n").expect("b");
+        fs::write(root.join("src/c.js"), "target(v);\n").expect("c");
+
+        let result = search_files(StructuralSearchFilesOptions {
+            path: root.to_string_lossy().to_string(),
+            pattern: Some("target($X)".to_owned()),
+            rule: None,
+            include: Some(vec!["src/**/*.ts".to_owned()]),
+            exclude_dir: None,
+            max_files: Some(50),
+            max_file_bytes: None,
+        })
+        .expect("glob search");
+
+        assert_eq!(result.files.len(), 2, "both nested .ts match; .js excluded");
+        assert!(result.files.iter().all(|f| f.path.ends_with(".ts")));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn search_files_honors_dot_ignore_files() {
+        let root = temp_root("ignore");
+        fs::create_dir_all(root.join("skip")).expect("skip dir");
+        fs::write(root.join(".ignore"), "skip/\n").expect("ignore file");
+        fs::write(root.join("keep.ts"), "target(v);\n").expect("keep");
+        fs::write(root.join("skip/x.ts"), "target(v);\n").expect("skipped");
+
+        let result = search_files(StructuralSearchFilesOptions {
+            path: root.to_string_lossy().to_string(),
+            pattern: Some("target($X)".to_owned()),
+            rule: None,
+            include: None,
+            exclude_dir: None,
+            max_files: Some(50),
+            max_file_bytes: None,
+        })
+        .expect("ignore search");
+
+        assert_eq!(result.files.len(), 1, ".ignore skips skip/");
+        assert!(result.files[0].path.ends_with("keep.ts"));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn search_files_prefilters_rule_by_inner_pattern() {
+        let root = temp_root("ruleanchor");
+        fs::write(root.join("has.ts"), "async function f() {\n  await g();\n}\n").expect("has");
+        fs::write(root.join("none.ts"), "function f() {\n  return 1;\n}\n").expect("none");
+
+        let result = search_files(StructuralSearchFilesOptions {
+            path: root.to_string_lossy().to_string(),
+            pattern: None,
+            rule: Some("rule:\n  pattern: await $C\n".to_owned()),
+            include: None,
+            exclude_dir: None,
+            max_files: Some(50),
+            max_file_bytes: None,
+        })
+        .expect("rule search");
+
+        // Anchor "await" lets none.ts skip parsing entirely.
+        assert_eq!(result.skipped_by_pre_filter, 1);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].path.ends_with("has.ts"));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn derive_rule_anchor_extracts_positive_pattern_but_bails_on_negation() {
+        assert_eq!(derive_rule_anchor("rule:\n  pattern: await $C\n"), Some("await"));
+        // Negation / disjunction → no safe single literal.
+        assert_eq!(derive_rule_anchor("rule:\n  not:\n    pattern: await $C\n"), None);
+        assert_eq!(derive_rule_anchor("rule:\n  any:\n    - pattern: foo($X)\n"), None);
     }
 }

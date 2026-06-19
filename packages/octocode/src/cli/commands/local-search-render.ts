@@ -3,7 +3,11 @@ import { c, bold, dim } from '../../utils/colors.js';
 export interface LocalMatch {
   path?: string;
   matchCount?: number;
-  matches?: Array<{ value?: string; line?: number }>;
+  matches?: Array<{
+    value?: string;
+    line?: number;
+    metavars?: Record<string, string[]>;
+  }>;
 }
 
 export interface LocalPagination {
@@ -22,6 +26,18 @@ export interface LocalSearchResult {
       shared?: { matchCount?: number };
     };
   }>;
+}
+
+function formatMetavars(metavars: Record<string, string[]> | undefined): string {
+  if (!metavars) return '';
+  const parts = Object.entries(metavars)
+    .filter(([, values]) => values.length > 0)
+    .slice(0, 3)
+    .map(([name, values]) => {
+      const preview = values.join(', ').replace(/\s+/g, ' ').slice(0, 80);
+      return `$${name}=${preview}`;
+    });
+  return parts.length > 0 ? `[${parts.join('; ')}]` : '';
 }
 
 /**
@@ -50,7 +66,10 @@ export function renderLocalResults(
     (f.matches ?? []).slice(0, 5).forEach(m => {
       const lineNum = m.line != null ? m.line : '?';
       const snippet = (m.value ?? '').trim().slice(0, 120);
-      lines.push(`    ${c('yellow', `L${lineNum}:`)} ${snippet}`);
+      const metavars = formatMetavars(m.metavars);
+      lines.push(
+        `    ${c('yellow', `L${lineNum}:`)} ${snippet}${metavars ? ` ${dim(metavars)}` : ''}`
+      );
     });
   }
   if (total > shown.length) {
