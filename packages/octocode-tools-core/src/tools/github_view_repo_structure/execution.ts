@@ -295,7 +295,8 @@ export async function exploreMultipleRepositoryStructures(
         return handleCatchError(
           error,
           query,
-          'Failed to explore repository structure'
+          'Failed to explore repository structure',
+          TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE
         );
       }
     },

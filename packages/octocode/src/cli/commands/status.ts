@@ -1,5 +1,6 @@
 import type { CLICommand, ParsedArgs } from '../types.js';
 import { c, bold, dim } from '../../utils/colors.js';
+import { EXIT } from '../exit-codes.js';
 import { formatAuthStatusAsJson, printAuthStatus } from './shared.js';
 import { paths, getDirectorySizeBytes, formatBytes } from 'octocode-shared';
 import {
@@ -130,7 +131,7 @@ export const statusCommand: CLICommand = {
           ...(syncData ? { sync: syncData } : {}),
         })
       );
-      if (!auth['authenticated']) process.exitCode = 1;
+      if (!auth['authenticated']) process.exitCode = EXIT.AUTH;
       return;
     }
 

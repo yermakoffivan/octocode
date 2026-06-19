@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import https from 'node:https';
 import { getToken, getTokenType } from '../../../src/features/github-oauth.js';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 
 const sharedMocks = vi.hoisted(() => ({
   maskToken: vi.fn((t: string) => `masked(${t})`),
@@ -218,7 +219,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { type: 'bogus' },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(out('Invalid token type: bogus')).toBe(true);
     expect(getToken).not.toHaveBeenCalled();
   });
@@ -230,7 +231,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { type: 'bogus', json: true },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(out('"type":"none"')).toBe(true);
   });
 
@@ -245,7 +246,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { json: true },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('"valid":false')).toBe(true);
   });
 
@@ -317,7 +318,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { json: true, validate: true },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('"valid":false')).toBe(true);
   });
 
@@ -332,7 +333,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { type: 'octocode' },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('No Octocode token found')).toBe(true);
     expect(out('login')).toBe(true);
   });
@@ -348,7 +349,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { type: 'gh' },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('No gh CLI token found')).toBe(true);
     expect(out('gh auth login')).toBe(true);
   });
@@ -364,7 +365,7 @@ describe('tokenCommand', () => {
       args: [],
       options: {},
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('Not authenticated')).toBe(true);
     expect(sharedMocks.printLoginHint).toHaveBeenCalled();
   });
@@ -426,7 +427,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { validate: true },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('Token validation failed')).toBe(true);
     expect(out('ECONNREFUSED')).toBe(true);
   });
@@ -443,7 +444,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { validate: true },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('Request timed out')).toBe(true);
   });
 
@@ -459,7 +460,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { validate: true },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('Invalid API response')).toBe(true);
   });
 
@@ -475,7 +476,7 @@ describe('tokenCommand', () => {
       args: [],
       options: { validate: true },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
     expect(out('unknown error')).toBe(true);
   });
 

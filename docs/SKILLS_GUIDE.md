@@ -10,13 +10,12 @@ Skills are markdown instruction sets that teach AI coding clients how to perform
 |-------|-------------|
 | `octocode-install` | Guided Octocode setup: CLI/MCP, auth, IDE config, skills |
 | `octocode` | Run Octocode tools directly from the shell |
-| `octocode-researcher` | Everyday direct MCP code exploration — find, trace, definitions |
+| `octocode-engineer` | Everyday direct MCP code exploration — find, trace, definitions |
 | `octocode-research` | Deep research via HTTP research server (sessions, checkpoints) |
 | `octocode-brainstorming` | Validate ideas with prior art and market evidence |
-| `octocode-plan` | Plan → implement → verify |
-| `octocode-rfc-generator` | RFCs, design docs, options comparison |
+| `octocode-rfc-generator` | RFCs, design docs, options comparison, implementation plans |
 | `octocode-engineer` | Architecture-aware implementation, refactors, audits |
-| `octocode-pull-request-reviewer` | PR review (remote) or local/staged change review |
+| `octocode-engineer` | PR review (remote) or local/staged change review |
 | `octocode-roast` | Brutally honest code critique |
 | `octocode-prompt-optimizer` | Harden prompts, SKILL.md, and agent instructions |
 | `octocode-design` | Design-system and UI architecture guidance |
@@ -28,7 +27,7 @@ Skills are markdown instruction sets that teach AI coding clients how to perform
 | `octocode-slides` | Generate polished HTML slide decks |
 | `octocode-stats` | Render Octocode usage/statistics dashboards |
 
-**researcher vs research:** use `octocode-researcher` for direct MCP tool exploration. Use `octocode-research` for the HTTP research-server workflow with sessions and checkpoints.
+**researcher vs research:** use `octocode-engineer` for direct MCP tool exploration. Use `octocode-research` for the HTTP research-server workflow with sessions and checkpoints.
 
 ---
 
@@ -38,13 +37,13 @@ Skills install into one or more client skill directories and are picked up autom
 
 ```bash
 npx octocode skills list                                         # check install status
-npx octocode skills install --skill octocode-researcher          # install one
-npx octocode skills install -k octocode-plan                     # short flag
-npx octocode skills install --skill octocode-researcher --force  # update
+npx octocode skills install --skill octocode-engineer          # install one
+npx octocode skills install -k octocode-rfc-generator                     # short flag
+npx octocode skills install --skill octocode-engineer --force  # update
 npx octocode skills install                                      # prompt for targets/mode, then install all
 npx octocode skills install --targets claude-code,cursor,codex   # multi-target install
 npx octocode skills install --targets claude-code,cursor --mode symlink # symlink mode
-npx octocode skills remove --skill octocode-researcher --targets claude-code,cursor # remove from targets
+npx octocode skills remove --skill octocode-engineer --targets claude-code,cursor # remove from targets
 ```
 
 `skills install` without `--targets`/`--mode` opens prompts to choose platforms and install strategy. Non-interactive runs default to `claude-code` with `copy` mode.

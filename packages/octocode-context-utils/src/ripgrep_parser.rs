@@ -242,7 +242,7 @@ pub(crate) fn parse_ripgrep_json_inner(
                     }
                     push_joined_line(&mut joined, &m.line_text);
                     for i in 1..=context_lines {
-                        if let Some(ctx) = entry.contexts.get(&(m.line_number + i)) {
+                        if let Some(ctx) = entry.contexts.get(&m.line_number.saturating_add(i)) {
                             push_joined_line(&mut joined, ctx);
                         }
                     }
@@ -402,6 +402,25 @@ mod tests {
         assert!(val.contains("before"));
         assert!(val.contains("match"));
         assert!(val.contains("after"));
+    }
+
+    /// Regression: a match at `u32::MAX` with forward context lines must not
+    /// overflow on `line_number + i` (release has no overflow checks). The
+    /// `saturating_add` keeps the computation bounded and simply yields no
+    /// forward context, mirroring the backward `saturating_sub`.
+    #[test]
+    fn forward_context_does_not_overflow_at_u32_max() {
+        let stdout = make_match_line("f.ts", "match\n", u32::MAX, 0);
+        let r = parse_ripgrep_json_inner(
+            &stdout,
+            Some(RipgrepParseOptions {
+                context_lines: Some(3),
+                max_snippet_chars: None,
+            }),
+        );
+        // Reachable only if no overflow/abort occurred.
+        assert_eq!(r.files[0].matches[0].line, u32::MAX);
+        assert!(r.files[0].matches[0].value.contains("match"));
     }
 
     #[test]

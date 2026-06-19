@@ -1,5 +1,6 @@
 import type { CLICommand, ParsedArgs } from '../types.js';
 import { c, bold, dim } from '../../utils/colors.js';
+import { EXIT } from '../exit-codes.js';
 import {
   login as oauthLogin,
   logout as oauthLogout,
@@ -103,7 +104,7 @@ export const loginCommand: CLICommand = {
         );
         console.log();
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -120,14 +121,14 @@ export const loginCommand: CLICommand = {
             error: `Invalid git protocol: ${gitProtocol}. Supported: ssh, https`,
           })
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
       console.log();
       console.log(`  ${c('red', '✗')} Invalid git protocol: ${gitProtocol}`);
       console.log(`  ${dim('Supported:')} ssh, https`);
       console.log();
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -184,7 +185,7 @@ export const loginCommand: CLICommand = {
           error: result.error || null,
         })
       );
-      if (!result.success) process.exitCode = 1;
+      if (!result.success) process.exitCode = EXIT.AUTH;
       return;
     }
 
@@ -200,7 +201,7 @@ export const loginCommand: CLICommand = {
       console.log(
         `  ${c('red', '✗')} Authentication failed: ${result.error || 'Unknown error'}`
       );
-      process.exitCode = 1;
+      process.exitCode = EXIT.AUTH;
     }
     console.log();
   },
@@ -280,7 +281,7 @@ export const logoutCommand: CLICommand = {
           error: result.error || null,
         })
       );
-      if (!result.success) process.exitCode = 1;
+      if (!result.success) process.exitCode = EXIT.GENERAL;
       return;
     }
 
@@ -298,7 +299,7 @@ export const logoutCommand: CLICommand = {
       console.log(
         `  ${c('red', '✗')} Logout failed: ${result.error || 'Unknown error'}`
       );
-      process.exitCode = 1;
+      process.exitCode = EXIT.GENERAL;
     }
     console.log();
   },
@@ -338,7 +339,7 @@ export const authCommand: CLICommand = {
       if (jsonOutput) {
         const data = formatAuthStatusAsJson(hostname);
         console.log(JSON.stringify(data));
-        if (!data['authenticated']) process.exitCode = 1;
+        if (!data['authenticated']) process.exitCode = EXIT.AUTH;
         return;
       }
       printAuthStatus(hostname);
@@ -370,7 +371,7 @@ export const authCommand: CLICommand = {
           console.log(`  ${c('yellow', '⚠')} ${msg}`);
           console.log();
         }
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
 
@@ -396,7 +397,7 @@ export const authCommand: CLICommand = {
           );
           console.log();
         }
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
 
@@ -417,7 +418,7 @@ export const authCommand: CLICommand = {
           console.log(`  ${c('red', '✗')} ${msg}`);
           console.log();
         }
-        process.exitCode = 1;
+        process.exitCode = EXIT.AUTH;
         return;
       }
 
@@ -437,7 +438,7 @@ export const authCommand: CLICommand = {
             error: result.error ?? null,
           })
         );
-        if (!result.success) process.exitCode = 1;
+        if (!result.success) process.exitCode = EXIT.AUTH;
         return;
       }
       console.log();
@@ -452,7 +453,7 @@ export const authCommand: CLICommand = {
         console.log(
           `  ${dim('Tip:')} run ${c('yellow', 'login')} to re-authenticate`
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.AUTH;
       }
       console.log();
       return;
@@ -462,7 +463,7 @@ export const authCommand: CLICommand = {
       if (jsonOutput) {
         const data = formatAuthStatusAsJson(hostname);
         console.log(JSON.stringify(data));
-        if (!data['authenticated']) process.exitCode = 1;
+        if (!data['authenticated']) process.exitCode = EXIT.AUTH;
       } else {
         printAuthStatus(hostname);
       }

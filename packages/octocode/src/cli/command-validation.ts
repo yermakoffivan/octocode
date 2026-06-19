@@ -51,6 +51,7 @@ const NUMERIC_FLAGS = new Set([
   'max-matches',
   'max-matches-per-file',
   'max-files',
+  'match-length',
   'match-page',
   'max-entries',
   'min-length',
@@ -97,7 +98,7 @@ function editDistance(a: string, b: string): number {
   return dist[a.length][b.length];
 }
 
-function suggestFlag(
+export function suggestFlag(
   unknown: string,
   allowed: Set<string>
 ): string | undefined {

@@ -61,9 +61,21 @@ impl ProgressTracker {
     /// server is fully ready to answer queries.
     pub async fn wait_until_idle(&self, timeout_ms: u64) {
         /// Wait this long for the very first `$/progress begin` after
-        /// `initialized` is sent.  Servers that don't use progress return
-        /// immediately after this window expires with no activity.
-        const SETTLE_MS: u64 = 100;
+        /// `initialized` is sent.
+        ///
+        /// This window has to absorb two very different server behaviours:
+        ///   * Servers that announce indexing via `$/progress` — they emit a
+        ///     `begin` within this window and we then drain to completion.
+        ///   * Servers that index WITHOUT progress events — the only safe
+        ///     signal we have is elapsed time, so the window must be long
+        ///     enough that the server has plausibly finished its initial work
+        ///     before we let the first query through.
+        ///
+        /// 100 ms was too aggressive: a server indexing silently would race the
+        /// first query and return wrong/empty results. We use a conservative
+        /// few-second window instead, always bounded by the caller's
+        /// `timeout_ms` so `wait_for_ready` can never block longer than asked.
+        const SETTLE_MS: u64 = 2_000;
         /// After count reaches 0, wait this long for any follow-up wave before
         /// declaring the server idle.  Sized to bridge the typical gap between
         /// rust-analyzer progress waves (~10-100 ms in practice).
@@ -212,9 +224,14 @@ async fn read_loop<R, W>(
 {
     let mut reader = BufReader::new(reader);
     loop {
-        let Ok(Some(content_length)) = read_headers(&mut reader).await else {
-            break;
+        let content_length = match read_headers(&mut reader).await {
+            Ok(HeaderOutcome::Frame(len)) => len,
+            Ok(HeaderOutcome::Eof) | Err(_) => break,
         };
+        if content_length == 0 {
+            // Empty/length-less frame: nothing to parse, keep the connection open.
+            continue;
+        }
         if content_length > MAX_JSON_RPC_CONTENT_LENGTH {
             fail_all_pending(
                 &pending,
@@ -247,7 +264,7 @@ async fn read_loop<R, W>(
             }
             continue;
         }
-        let Some(id) = value.get("id").and_then(Value::as_u64) else {
+        let Some(id) = value.get("id").and_then(parse_response_id) else {
             continue;
         };
         let result = if let Some(error) = value.get("error") {
@@ -263,6 +280,16 @@ async fn read_loop<R, W>(
         }
     }
     fail_all_pending(&pending, "LSP connection closed").await;
+}
+
+/// Matches a response `id` field back to a pending request key.
+///
+/// We send integer ids, but the JSON-RPC spec also permits string ids and some
+/// servers echo our integer back as a stringified integer (e.g. `"3"`). Accept
+/// both so such responses resolve instead of waiting for the request timeout.
+fn parse_response_id(id: &Value) -> Option<u64> {
+    id.as_u64()
+        .or_else(|| id.as_str().and_then(|s| s.trim().parse::<u64>().ok()))
 }
 
 async fn handle_progress_notification(value: &Value, progress: &Arc<ProgressTracker>) {
@@ -324,7 +351,18 @@ fn client_response_for(
     }
 }
 
-async fn read_headers<R>(reader: &mut BufReader<R>) -> std::io::Result<Option<usize>>
+/// Outcome of reading one JSON-RPC header block.
+///
+/// `Eof` means the stream closed (connection should tear down). `Frame(len)`
+/// carries the body length to read next — a length of `0` (e.g. a blank-line
+/// frame with no `Content-Length`, or an explicit `Content-Length: 0`) is a
+/// well-formed but empty frame the read loop skips, NOT a reason to disconnect.
+enum HeaderOutcome {
+    Eof,
+    Frame(usize),
+}
+
+async fn read_headers<R>(reader: &mut BufReader<R>) -> std::io::Result<HeaderOutcome>
 where
     R: AsyncRead + Unpin,
 {
@@ -333,14 +371,21 @@ where
         let mut line = String::new();
         let bytes = reader.read_line(&mut line).await?;
         if bytes == 0 {
-            return Ok(None);
+            return Ok(HeaderOutcome::Eof);
         }
         let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
-            return Ok(content_length);
+            // End of header block. A missing Content-Length is treated as a
+            // zero-length (empty) frame so a single malformed frame does not
+            // tear down the whole connection.
+            return Ok(HeaderOutcome::Frame(content_length.unwrap_or(0)));
         }
-        if let Some(value) = trimmed.strip_prefix("Content-Length:") {
-            content_length = value.trim().parse::<usize>().ok();
+        // LSP headers are case-insensitive (per the base protocol, which mirrors
+        // HTTP); match the field name without regard to case.
+        if let Some((name, value)) = trimmed.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("Content-Length") {
+                content_length = value.trim().parse::<usize>().ok();
+            }
         }
     }
 }
@@ -373,6 +418,194 @@ fn io_error(err: std::io::Error) -> Error {
 mod tests {
     use super::*;
     use tokio::io::{duplex, sink};
+
+    #[test]
+    fn read_headers_is_case_insensitive_for_content_length() {
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let (mut server, client_reader) = duplex(1024);
+            server
+                .write_all(b"content-length: 42\r\n\r\n")
+                .await
+                .expect("write lowercase header");
+            drop(server);
+            let mut reader = BufReader::new(client_reader);
+            let outcome = read_headers(&mut reader).await.expect("read headers");
+            assert!(matches!(outcome, HeaderOutcome::Frame(42)));
+        });
+    }
+
+    #[test]
+    fn read_headers_treats_missing_length_as_empty_frame_not_eof() {
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let (mut server, client_reader) = duplex(1024);
+            // A header block with NO Content-Length followed by a blank line.
+            server
+                .write_all(b"X-Unknown: whatever\r\n\r\n")
+                .await
+                .expect("write length-less header");
+            drop(server);
+            let mut reader = BufReader::new(client_reader);
+            let outcome = read_headers(&mut reader).await.expect("read headers");
+            // Must be an (empty) frame, NOT Eof — the connection survives it.
+            assert!(matches!(outcome, HeaderOutcome::Frame(0)));
+        });
+    }
+
+    #[test]
+    fn read_headers_reports_eof_on_closed_stream() {
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let (server, client_reader) = duplex(1024);
+            drop(server);
+            let mut reader = BufReader::new(client_reader);
+            let outcome = read_headers(&mut reader).await.expect("read headers");
+            assert!(matches!(outcome, HeaderOutcome::Eof));
+        });
+    }
+
+    #[test]
+    fn read_loop_survives_lengthless_frame_then_routes_next_response() {
+        // A blank-line / length-less frame must NOT tear down the connection;
+        // a subsequent well-formed response with a string id should still route.
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
+            let (tx, rx) = oneshot::channel();
+            pending.lock().await.insert(7, tx);
+
+            let (mut server, client_reader) = duplex(4096);
+            // Frame 1: length-less header block (should be skipped, not fatal).
+            server
+                .write_all(b"\r\n")
+                .await
+                .expect("write empty frame");
+            // Frame 2: a real response for id 7.
+            let body = br#"{"jsonrpc":"2.0","id":7,"result":{"ok":true}}"#;
+            server
+                .write_all(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes())
+                .await
+                .expect("write header");
+            server.write_all(body).await.expect("write body");
+            drop(server);
+
+            read_loop(
+                client_reader,
+                Arc::clone(&pending),
+                Arc::new(Mutex::new(sink())),
+                ClientRequestContext {
+                    configuration: Value::Null,
+                    workspace_folders: Value::Null,
+                },
+                ProgressTracker::new(),
+            )
+            .await;
+
+            let result = rx.await.expect("pending response should be completed");
+            let value = result.expect("response should be Ok");
+            assert_eq!(value.get("ok").and_then(Value::as_bool), Some(true));
+        });
+    }
+
+    #[test]
+    fn concurrent_requests_on_cloned_handle_resolve_out_of_order() {
+        // Validates the structural fix in client.rs: a cloned connection handle
+        // supports multiple concurrent in-flight requests. Two requests are
+        // issued in parallel; the fake server answers the SECOND one first.
+        // Both must resolve — proving no head-of-line blocking / serialization
+        // and no deadlock once the outer connection mutex guard is dropped.
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            // client_writes: client -> server ; server_writes: server -> client
+            let (client_w, mut server_r) = duplex(8192);
+            let (mut server_w, client_r) = duplex(8192);
+
+            let conn = Arc::new(JsonRpcConnection::new(
+                client_r,
+                client_w,
+                ClientRequestContext {
+                    configuration: Value::Null,
+                    workspace_folders: Value::Null,
+                },
+                ProgressTracker::new(),
+            ));
+
+            // Fake server: read both request frames, then respond to id 2 first,
+            // then id 1 — exercising out-of-order routing under concurrency.
+            let server = tokio::spawn(async move {
+                // Drain two request frames (headers + body) loosely by reading
+                // a chunk; the exact bytes do not matter for this test.
+                let mut buf = vec![0u8; 4096];
+                let _ = server_r.read(&mut buf).await;
+                // Small wait so both client requests are genuinely in-flight.
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                for body in [
+                    br#"{"jsonrpc":"2.0","id":2,"result":"second"}"#.to_vec(),
+                    br#"{"jsonrpc":"2.0","id":1,"result":"first"}"#.to_vec(),
+                ] {
+                    let header = format!("Content-Length: {}\r\n\r\n", body.len());
+                    server_w.write_all(header.as_bytes()).await.expect("hdr");
+                    server_w.write_all(&body).await.expect("body");
+                    server_w.flush().await.expect("flush");
+                }
+                // Keep the server end alive a moment so responses are delivered.
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            });
+
+            let c1 = Arc::clone(&conn);
+            let c2 = Arc::clone(&conn);
+            let r1 = tokio::spawn(async move { c1.request("a", Value::Null, 5_000).await });
+            let r2 = tokio::spawn(async move { c2.request("b", Value::Null, 5_000).await });
+
+            // Both tasks are already running concurrently after spawn; awaiting
+            // the handles in sequence collects their results without serializing
+            // the in-flight requests themselves.
+            let v1 = r1.await.expect("join r1").expect("request 1 ok");
+            let v2 = r2.await.expect("join r2").expect("request 2 ok");
+            // id 1 -> "first", id 2 -> "second" regardless of response order.
+            assert_eq!(v1.as_str(), Some("first"));
+            assert_eq!(v2.as_str(), Some("second"));
+            server.await.expect("server task");
+        });
+    }
+
+    #[test]
+    fn read_loop_routes_response_with_string_id() {
+        // A server echoing the request id as a STRINGIFIED integer must still
+        // resolve the matching pending request (finding: lenient id parse).
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
+            let (tx, rx) = oneshot::channel();
+            pending.lock().await.insert(3, tx);
+
+            let (mut server, client_reader) = duplex(4096);
+            let body = br#"{"jsonrpc":"2.0","id":"3","result":42}"#;
+            server
+                .write_all(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes())
+                .await
+                .expect("write header");
+            server.write_all(body).await.expect("write body");
+            drop(server);
+
+            read_loop(
+                client_reader,
+                Arc::clone(&pending),
+                Arc::new(Mutex::new(sink())),
+                ClientRequestContext {
+                    configuration: Value::Null,
+                    workspace_folders: Value::Null,
+                },
+                ProgressTracker::new(),
+            )
+            .await;
+
+            let result = rx.await.expect("pending response should be completed");
+            let value = result.expect("response should be Ok");
+            assert_eq!(value.as_u64(), Some(42));
+        });
+    }
 
     #[test]
     fn read_loop_rejects_oversized_frame_before_body_allocation() {
@@ -415,15 +648,38 @@ mod tests {
     }
 
     #[test]
-    fn progress_tracker_returns_immediately_when_never_active() {
-        // No on_begin ever called — wait_until_idle must return within
-        // the settle window (100 ms), not spin for the full timeout.
+    fn progress_tracker_settle_is_bounded_by_caller_timeout() {
+        // No on_begin ever called. The settle window must respect a small
+        // caller timeout and never block past it (previously the 100 ms settle
+        // could also under-wait; here we assert the upper bound is honoured).
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         runtime.block_on(async {
             let tracker = ProgressTracker::new();
             let start = Instant::now();
-            tracker.wait_until_idle(2_000).await;
-            assert!(start.elapsed().as_millis() < 1_000);
+            tracker.wait_until_idle(150).await;
+            let elapsed = start.elapsed().as_millis();
+            // Should wait ~the timeout (settle is capped at timeout_ms=150),
+            // and must not run away to the full multi-second settle window.
+            assert!(elapsed < 1_000, "must not exceed caller timeout, got {elapsed} ms");
+        });
+    }
+
+    #[test]
+    fn progress_tracker_waits_full_settle_when_no_progress_and_ample_timeout() {
+        // A server that indexes WITHOUT progress events: no on_begin arrives,
+        // but with an ample timeout we must NOT return after only ~100 ms —
+        // we give the silent indexer the conservative settle window.
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        runtime.block_on(async {
+            let tracker = ProgressTracker::new();
+            let start = Instant::now();
+            tracker.wait_until_idle(10_000).await;
+            let elapsed = start.elapsed().as_millis();
+            assert!(
+                elapsed >= 1_500,
+                "must not return after the old aggressive 100 ms window, got {elapsed} ms"
+            );
+            assert!(elapsed < 5_000, "must stay bounded, got {elapsed} ms");
         });
     }
 

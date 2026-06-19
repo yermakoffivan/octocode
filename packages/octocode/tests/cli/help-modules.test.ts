@@ -15,12 +15,14 @@ describe('main-help', () => {
 
   it('renders top-level help with commands and tools sections', async () => {
     const { showHelp } = await import('../../src/cli/main-help.js');
-    showHelp();
+    await showHelp();
 
     const output = stdoutSpy.mock.calls
       .map((c: unknown[]) => String(c[0]))
       .join('');
     expect(output).toContain('ghSearchCode');
+    expect(output).toContain('<AGENT_INSTRUCTIONS>');
+    expect(output).toContain('octocode-engineer');
     expect(output).toContain('localSearchCode');
     expect(output).toContain('lspGetSemantics');
     expect(output).toContain('npmSearch');

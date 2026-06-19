@@ -8,6 +8,7 @@ import {
   handleCatchError,
   createSuccessResult,
   createErrorResult,
+  safeParseOrError,
 } from '../utils.js';
 import { FileContentQueryLocalSchema } from './scheme.js';
 import type { MinifyMode } from '../../scheme/fields.js';
@@ -43,15 +44,14 @@ export async function fetchMultipleGitHubFileContents(
     queries,
     async (query: FileContentInputQuery, _index: number) => {
       try {
-        const validated = FileContentQueryLocalSchema.safeParse(query);
-        if (!validated.success) {
-          const messages = validated.error.issues
-            .map(i => i.message)
-            .join('; ');
-          return createErrorResult(messages, query);
+        const parsed = safeParseOrError(FileContentQueryLocalSchema, query, {
+          prefix: false,
+        });
+        if (!parsed.ok) {
+          return parsed.error;
         }
 
-        const effectiveQuery = validated.data as PartialFileContentQuery;
+        const effectiveQuery = parsed.data as PartialFileContentQuery;
         const providerContext = getProviderContext();
 
         if (effectiveQuery.type === 'directory') {
@@ -64,7 +64,12 @@ export async function fetchMultipleGitHubFileContents(
 
         return handleFileFetch(effectiveQuery, providerContext);
       } catch (error) {
-        return handleCatchError(error, query);
+        return handleCatchError(
+          error,
+          query,
+          undefined,
+          TOOL_NAMES.GITHUB_FETCH_CONTENT
+        );
       }
     },
     {

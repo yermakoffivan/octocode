@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn().mockReturnValue(false),
@@ -214,7 +215,7 @@ describe('cli/commands/auth', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Invalid git protocol')
       );
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.USAGE);
     });
 
     it('shows verification UI when OAuth provides verification info', async () => {
@@ -270,7 +271,7 @@ describe('cli/commands/auth', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Authentication failed')
       );
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('already-authenticated in json mode outputs json and skips login', async () => {
@@ -364,7 +365,7 @@ describe('cli/commands/auth', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('requires browser interaction')
       );
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.USAGE);
     });
 
     it('blocks login in non-TTY with json output', async () => {
@@ -388,7 +389,7 @@ describe('cli/commands/auth', () => {
       const parsed = findJsonLine();
       expect(parsed.success).toBe(false);
       expect(parsed.requiresInteraction).toBe(true);
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.USAGE);
     });
 
     it('json mode emits verification and result steps', async () => {
@@ -446,7 +447,7 @@ describe('cli/commands/auth', () => {
       const result = jsonLines().find(l => l.step === 'result')!;
       expect(result.success).toBe(false);
       expect(result.error).toBe('denied');
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('invalid git protocol in json mode outputs json error', async () => {
@@ -466,7 +467,7 @@ describe('cli/commands/auth', () => {
       const parsed = findJsonLine();
       expect(parsed.success).toBe(false);
       expect(parsed.error).toContain('Invalid git protocol');
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.USAGE);
     });
   });
 
@@ -777,7 +778,7 @@ describe('cli/commands/auth', () => {
         }
       });
       expect(jsonLine).toBeDefined();
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('passes hostname through auth status', async () => {
@@ -884,7 +885,7 @@ describe('cli/commands/auth', () => {
         expect.stringContaining('Not authenticated')
       );
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('login'));
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('without subcommand when authenticated shows menu (back)', async () => {
@@ -1060,7 +1061,7 @@ describe('cli/commands/auth', () => {
 
       const parsed = findJsonLine();
       expect(parsed.authenticated).toBe(false);
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('without subcommand in non-TTY (no json) prints status text', async () => {
@@ -1110,7 +1111,7 @@ describe('cli/commands/auth', () => {
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining('environment variable (GITHUB_TOKEN)')
         );
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.USAGE);
       });
 
       it('rejects env-sourced tokens in json mode (no env var name)', async () => {
@@ -1131,7 +1132,7 @@ describe('cli/commands/auth', () => {
         expect(parsed.success).toBe(false);
         expect(parsed.refreshable).toBe(false);
         expect(parsed.tokenSource).toBe('env');
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.USAGE);
       });
 
       it('rejects gh-cli tokens with gh auth refresh hint', async () => {
@@ -1158,7 +1159,7 @@ describe('cli/commands/auth', () => {
             String(call[0]).includes('gh auth refresh')
           )
         ).toBe(true);
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.USAGE);
       });
 
       it('rejects gh-cli tokens in json mode with enterprise hostname', async () => {
@@ -1178,7 +1179,7 @@ describe('cli/commands/auth', () => {
         const parsed = findJsonLine();
         expect(parsed.success).toBe(false);
         expect(parsed.hint).toBe('gh auth refresh');
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.USAGE);
       });
 
       it('shows enterprise hostname hint in non-json gh-cli message', async () => {
@@ -1221,7 +1222,7 @@ describe('cli/commands/auth', () => {
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining('Not authenticated')
         );
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.AUTH);
       });
 
       it('errors in json mode when not authenticated', async () => {
@@ -1241,7 +1242,7 @@ describe('cli/commands/auth', () => {
         const parsed = findJsonLine();
         expect(parsed.success).toBe(false);
         expect(parsed.refreshable).toBe(false);
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.AUTH);
       });
 
       it('refreshes an octocode token successfully', async () => {
@@ -1326,7 +1327,7 @@ describe('cli/commands/auth', () => {
             String(call[0]).includes('login')
           )
         ).toBe(true);
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.AUTH);
       });
 
       it('reports failed refresh in json mode and sets exitCode', async () => {
@@ -1352,7 +1353,7 @@ describe('cli/commands/auth', () => {
         const parsed = findJsonLine();
         expect(parsed.success).toBe(false);
         expect(parsed.error).toBe('expired refresh token');
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.AUTH);
       });
     });
   });

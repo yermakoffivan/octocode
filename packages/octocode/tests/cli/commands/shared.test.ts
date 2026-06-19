@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn().mockReturnValue(false),
@@ -386,7 +387,7 @@ describe('statusCommand', () => {
     expect(typeof auth.hostname).toBe('string');
   });
 
-  it('sets exitCode=1 when not authenticated in --json mode', async () => {
+  it('sets EXIT.AUTH when not authenticated in --json mode', async () => {
     const { statusCommand } =
       await import('../../../src/cli/commands/status.js');
 
@@ -396,6 +397,6 @@ describe('statusCommand', () => {
       options: { json: true },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
   });
 });

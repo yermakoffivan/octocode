@@ -37,7 +37,7 @@ export const cloneCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: message }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${message}`);
+        console.error(`\n  ${c('red', '✗')} ${message}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    clone facebook/react\n` +
@@ -95,7 +95,7 @@ export const cloneCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

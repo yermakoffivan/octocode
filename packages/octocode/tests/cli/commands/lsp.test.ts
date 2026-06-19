@@ -101,4 +101,31 @@ describe('lsp command', () => {
     expect(output).toContain('export async function runCLI');
     expect(process.exitCode).toBeUndefined();
   });
+
+  it('renders callers/callees as readable lines, not [object Object]', async () => {
+    executeDirectTool.mockResolvedValue(
+      lspEnvelope({
+        kind: 'callers',
+        calls: [
+          {
+            direction: 'incoming',
+            item: {
+              name: 'countLines',
+              kind: 'function',
+              uri: 'utils/core/lines.ts',
+              line: 18,
+            },
+            ranges: [{ line: 23, character: 9 }],
+          },
+        ],
+      })
+    );
+
+    await run({ type: 'callers', json: false });
+
+    const output = vi.mocked(console.log).mock.calls.flat().join('\n');
+    expect(output).not.toContain('[object Object]');
+    expect(output).toContain('countLines');
+    expect(output).toContain('utils/core/lines.ts');
+  });
 });

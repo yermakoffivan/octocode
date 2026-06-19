@@ -14,6 +14,7 @@ vi.mock('../../../src/utils/colors.js', () => ({
 }));
 
 import { astCommand } from '../../../src/cli/commands/ast.js';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 import type { ParsedArgs } from '../../../src/cli/types.js';
 
 function run(args: string[], options: Record<string, string | boolean> = {}) {
@@ -82,18 +83,28 @@ describe('ast command', () => {
   it('rejects --pattern and --rule together', async () => {
     await run(['.'], { pattern: 'foo($X)', rule: 'rule: bar' });
     expect(executeDirectTool).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
   it('rejects a GitHub ref (local-only)', async () => {
     await run(['facebook/react'], { pattern: 'useState($X)' });
     expect(executeDirectTool).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
   it('requires a pattern or rule', async () => {
     await run([]);
     expect(executeDirectTool).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it('maps a tool runtime failure to EXIT.TOOL', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: 'AST engine blew up' }],
+      structuredContent: {},
+    });
+    await run(['eval($X)', 'src']);
+    expect(process.exitCode).toBe(EXIT.TOOL);
   });
 });

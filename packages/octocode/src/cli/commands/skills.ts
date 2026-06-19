@@ -1,5 +1,6 @@
 import type { CLICommand, ParsedArgs } from '../types.js';
 import { c, bold, dim } from '../../utils/colors.js';
+import { EXIT } from '../exit-codes.js';
 import { dirExists } from '../../utils/fs.js';
 import {
   CLAUDE_SKILL_INSTALL_TARGETS,
@@ -255,12 +256,12 @@ export const skillsCommand: CLICommand = {
       if (normalizedMode !== 'copy' && normalizedMode !== 'symlink') {
         console.log();
         console.log(
-          `  ${c('red', 'X')} Invalid --mode value: ${c('yellow', rawMode)}`
+          `  ${c('red', '✗')} Invalid --mode value: ${c('yellow', rawMode)}`
         );
         console.log(`  ${dim('Allowed values:')} copy, symlink`);
         console.log(`  ${dim('Example:')} skills install --mode symlink`);
         console.log();
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
       installMode = normalizedMode;
@@ -280,12 +281,12 @@ export const skillsCommand: CLICommand = {
       selectedTargets = parsed.targets;
       if (parsed.error) {
         console.log();
-        console.log(`  ${c('red', 'X')} ${parsed.error}`);
+        console.log(`  ${c('red', '✗')} ${parsed.error}`);
         console.log(
           `  ${dim('Valid targets:')} ${formatSkillInstallTargets()}`
         );
         console.log();
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
     }
@@ -349,7 +350,7 @@ export const skillsCommand: CLICommand = {
           `  ${dim('GitHub:')} skills read https://github.com/owner/repo/tree/main/skills/my-skill`
         );
         console.log();
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
 
@@ -363,7 +364,7 @@ export const skillsCommand: CLICommand = {
           `  ${dim('Expected:')} /local/path, ./relative, owner/repo/path, or https://github.com/...`
         );
         console.log();
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
 
@@ -654,7 +655,7 @@ export const skillsCommand: CLICommand = {
                 installed++;
               } catch (err) {
                 console.log(
-                  `  ${c('red', 'X')} Failed to write to ${skillDir}: ${err}`
+                  `  ${c('red', '✗')} Failed to write to ${skillDir}: ${err}`
                 );
                 failed++;
               }
@@ -669,7 +670,7 @@ export const skillsCommand: CLICommand = {
               );
             } else if (failed > 0) {
               console.log(
-                `  ${c('red', 'X')} Installation failed for ${failed} target(s)`
+                `  ${c('red', '✗')} Installation failed for ${failed} target(s)`
               );
               process.exitCode = 1;
             }
@@ -737,7 +738,7 @@ export const skillsCommand: CLICommand = {
             );
             console.log();
           }
-          process.exitCode = 1;
+          process.exitCode = EXIT.USAGE;
           return;
         }
       }
@@ -1064,7 +1065,7 @@ export const skillsCommand: CLICommand = {
       }
       if (summary.failed > 0) {
         console.log(
-          `  ${c('red', 'X')} Failed ${summary.failed} skill target(s)`
+          `  ${c('red', '✗')} Failed ${summary.failed} skill target(s)`
         );
         process.exitCode = 1;
       }
@@ -1097,13 +1098,13 @@ export const skillsCommand: CLICommand = {
       if (!effectiveSkill) {
         console.log();
         console.log(
-          `  ${c('red', 'X')} Missing required option: ${c('cyan', '--skill <name>')} or ${c('cyan', '--local <path>')}`
+          `  ${c('red', '✗')} Missing required option: ${c('cyan', '--skill <name>')} or ${c('cyan', '--local <path>')}`
         );
         console.log();
         console.log(`  ${dim('Usage:')} skills remove --skill <name>`);
         console.log(`  ${dim('   or:')} skills remove --local ./my-skill`);
         console.log();
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
       console.log();
@@ -1128,11 +1129,11 @@ export const skillsCommand: CLICommand = {
               error: `Invalid skill name: ${effectiveSkill}`,
             })
           );
-          process.exitCode = 1;
+          process.exitCode = EXIT.USAGE;
           return;
         }
-        console.log(`  ${c('red', 'X')} Invalid skill name: ${effectiveSkill}`);
-        process.exitCode = 1;
+        console.log(`  ${c('red', '✗')} Invalid skill name: ${effectiveSkill}`);
+        process.exitCode = EXIT.USAGE;
         return;
       }
 
@@ -1153,7 +1154,7 @@ export const skillsCommand: CLICommand = {
       for (const failure of summary.failures) {
         if (failure.reason === 'remove-failed') {
           console.log(
-            `  ${c('red', 'X')} Failed to remove from ${failure.target}: ${failure.path}`
+            `  ${c('red', '✗')} Failed to remove from ${failure.target}: ${failure.path}`
           );
         }
       }
@@ -1213,7 +1214,7 @@ export const skillsCommand: CLICommand = {
           console.log(`  ${c('red', '✗')} ${msg}`);
           console.log();
         }
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
 
@@ -1317,7 +1318,7 @@ export const skillsCommand: CLICommand = {
         );
       }
       if (summary.failed > 0) {
-        console.log(`  ${c('red', 'X')} Failed ${summary.failed}`);
+        console.log(`  ${c('red', '✗')} Failed ${summary.failed}`);
         process.exitCode = 1;
       }
       console.log();

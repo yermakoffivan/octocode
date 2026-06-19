@@ -98,7 +98,7 @@ function reportUsageError(message: string, jsonOutput: boolean): void {
   if (jsonOutput) {
     console.log(JSON.stringify({ success: false, error: message }));
   } else {
-    console.error(`\n  ${c('red', 'x')} ${message}`);
+    console.error(`\n  ${c('red', '✗')} ${message}`);
     console.error(
       `\n  ${dim('Examples:')}\n` +
         `    repo react state --language TypeScript --stars '>1000'\n` +
@@ -325,7 +325,7 @@ export const repoCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

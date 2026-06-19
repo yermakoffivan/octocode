@@ -2,6 +2,8 @@ import type { CLICommand } from '../types.js';
 import { getBool, getString } from '../options.js';
 import { resolveRef, isGithubRef, refLabel } from '../routing.js';
 import { c, bold, dim } from '../../utils/colors.js';
+import { EXIT, classifyToolErrorText } from '../exit-codes.js';
+import { printCliError } from '../cli-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 import {
   renderLocalResults,
@@ -428,7 +430,7 @@ export const grepCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${err}`);
+        printCliError(err);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    grep "useState" src/\n` +
@@ -438,7 +440,7 @@ export const grepCommand: CLICommand = {
             `    ast "eval($X)" src\n`
         );
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -449,9 +451,9 @@ export const grepCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${err}\n`);
+        printCliError(err);
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -522,9 +524,9 @@ export const grepCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: msg }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${msg}\n`);
+        printCliError(msg);
       }
-      process.exitCode = 1;
+      process.exitCode = classifyToolErrorText(msg);
     }
   },
 };

@@ -1,11 +1,11 @@
-# Research Driven Development for AI
+# Agentic Research Platform
 
 <div align="center">
   <img src="https://github.com/bgauryy/octocode/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
 
-  <h3>The context research Swiss Army knife for AI agents and developers.</h3>
-  <p><strong>Stop guessing.</strong> Octocode is an evidence-first research platform for understanding code across <strong>external sources and local workspaces</strong>. Search GitHub repositories, pull requests, and npm packages alongside your local codebase with ripgrep, AST structural search, repository structure browsing, smart content fetching, binary inspection, and LSP semantic navigation.</p>
-  <p>Use it as a <strong>CLI</strong> or <strong>MCP server</strong> to combine agent-friendly TypeScript workflows with <strong>Rust-backed performance</strong> for fast, evidence-based research across cross-repo systems and mega-repos.</p>
+  <h3>Agentic research platform for AI agents and developers.</h3>
+  <p><strong>Stop guessing.</strong> Octocode is an evidence-first agentic research platform for understanding code across <strong>external sources and local workspaces</strong>. Search GitHub repositories, pull requests, and npm packages alongside your local codebase with ripgrep, AST structural search, repository structure browsing, smart content fetching, binary inspection, and LSP semantic navigation.</p>
+  <p>Use it as a <strong>CLI</strong> or <strong>MCP server</strong> to combine agent-ready TypeScript workflows with <strong>Rust-backed performance</strong> for fast, evidence-based research across cross-repo systems and mega-repos.</p>
   <p>Created for <strong>agents and humans</strong> who need fast, reliable context before changing, reviewing, or explaining code.</p>
 
 </div>
@@ -515,7 +515,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 
 | Skill | What it does |
 |-------|--------------|
-| [**Researcher**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-researcher) | Code search & exploration: local LSP + external (GitHub, npm) |
+| [**Researcher**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer) | Code search & exploration: local LSP + external (GitHub, npm) |
 | [**Research**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-research) | Multi-phase research with sessions, checkpoints, state persistence |
 | [**Engineer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer) | Understand, write, analyze, audit code: AST + LSP + dependency graph |
 | [**Brainstorming**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-brainstorming) | Idea validation grounded in evidence: GitHub, npm, web in parallel |
@@ -525,8 +525,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 
 | Skill | What it does |
 |-------|--------------|
-| [**Plan**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-plan) | Evidence-based planning: Understand > Research > Plan > Implement |
-| [**RFC Generator**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-rfc-generator) | Formal technical decisions with alternatives, trade-offs, and recommendations |
+| [**RFC Generator**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-rfc-generator) | Formal technical decisions, alternatives, trade-offs, implementation plans, and migrations |
 | [**Doc Writer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-documentation-writer) | 6-phase pipeline producing 16+ validated docs |
 | [**Prompt Optimizer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-prompt-optimizer) | Turn weak prompts into enforceable agent protocols |
 | [**Agentic Flow**](https://github.com/bgauryy/octocode/tree/main/skills/agentic-flow-best-practices) | Thinking framework for designing/reviewing MCP & multi-agent workflows |
@@ -535,7 +534,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 
 | Skill | What it does |
 |-------|--------------|
-| [**PR Reviewer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-pull-request-reviewer) | PR & local code review across 7 domains with LSP flow tracing |
+| [**PR Reviewer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer) | PR & local code review across 7 domains with LSP flow tracing |
 | [**Roast**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-roast) | Brutal code critique with file:line citations and severity levels |
 
 **Build & Output**

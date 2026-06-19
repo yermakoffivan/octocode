@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 
 const fsMocks = vi.hoisted(() => ({
   existsSync: vi.fn().mockReturnValue(false),
@@ -48,7 +49,7 @@ const fsUtilsMocks = vi.hoisted(() => ({
   dirExists: vi.fn().mockReturnValue(true),
   listSubdirectories: vi
     .fn()
-    .mockReturnValue(['octocode-research', 'octocode-plan']),
+    .mockReturnValue(['octocode-research', 'octocode-rfc-generator']),
   removeDirectory: vi.fn().mockReturnValue(true),
 }));
 
@@ -290,7 +291,7 @@ describe('skillsCommand', () => {
     fsUtilsMocks.dirExists.mockReturnValue(true);
     fsUtilsMocks.listSubdirectories.mockReturnValue([
       'octocode-research',
-      'octocode-plan',
+      'octocode-rfc-generator',
     ]);
     fsUtilsMocks.removeDirectory.mockReturnValue(true);
     promptsMocks.loadInquirer.mockResolvedValue(undefined);
@@ -694,7 +695,7 @@ describe('skillsCommand', () => {
         targets: 'claude-code',
       },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Invalid --mode value')
     );
@@ -710,7 +711,7 @@ describe('skillsCommand', () => {
         mode: 'copy',
       },
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('No valid targets provided')
     );
@@ -723,7 +724,7 @@ describe('skillsCommand', () => {
       args: ['remove'],
       options: {},
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('--skill'));
   });
 
@@ -1082,7 +1083,7 @@ describe('skillsCommand', () => {
       args: ['read'],
       options: {},
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Missing path')
     );
@@ -1478,7 +1479,7 @@ description: RAG pipelines
       options: { skill: '../evil', targets: 'claude-code', json: true },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     const jsonLine = consoleSpy.mock.calls.flat().find((line: unknown) => {
       if (typeof line !== 'string') return false;
       try {
@@ -1501,7 +1502,7 @@ description: RAG pipelines
       options: { skill: '../evil', targets: 'claude-code' },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Invalid skill name');
   });
@@ -1609,7 +1610,7 @@ description: RAG pipelines
       options: {},
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Cannot parse path')
     );
@@ -1870,7 +1871,7 @@ description: RAG pipelines
       options: { target: 'bogus' },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Invalid --target')
     );
@@ -1884,7 +1885,7 @@ description: RAG pipelines
       options: { target: 'bogus', json: true },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     const parsed = JSON.parse(findJsonLine() as string);
     expect(parsed.error).toContain('Invalid target');
   });
@@ -2023,7 +2024,7 @@ description: RAG pipelines
       options: {},
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Invalid target')
     );
@@ -2037,7 +2038,7 @@ description: RAG pipelines
       options: { json: true },
     });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
     const parsed = JSON.parse(findJsonLine() as string);
     expect(parsed.error).toContain('Invalid target');
   });

@@ -1,7 +1,9 @@
 import type { CLICommand } from '../types.js';
-import { getBool, getString } from '../options.js';
+import { getBool, getString, nonNegIntOption } from '../options.js';
 import { resolveRef, isGithubRef, refLabel } from '../routing.js';
-import { c, dim } from '../../utils/colors.js';
+import { dim } from '../../utils/colors.js';
+import { EXIT } from '../exit-codes.js';
+import { printCliError } from '../cli-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 import {
   renderLocalResults,
@@ -49,12 +51,6 @@ async function searchAst(
   }
 
   return result.structuredContent as LocalSearchResult;
-}
-
-function intOpt(value: string): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
 export const astCommand: CLICommand = {
@@ -125,8 +121,8 @@ export const astCommand: CLICommand = {
       const err = 'Provide either --pattern or --rule, not both.';
       if (jsonOutput)
         console.log(JSON.stringify({ success: false, error: err }));
-      else console.error(`\n  ${c('red', 'x')} ${err}\n`);
-      process.exitCode = 1;
+      else printCliError(err);
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -135,7 +131,7 @@ export const astCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${err}`);
+        printCliError(err);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    ast "eval($X)" src/\n` +
@@ -144,7 +140,7 @@ export const astCommand: CLICommand = {
             `    ast src --rule 'rule:\\n  pattern: await $C\\n  inside:\\n    kind: for_statement\\n    stopBy: end'\n`
         );
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -154,8 +150,8 @@ export const astCommand: CLICommand = {
         'AST search is local-only (ast-grep cannot run on GitHub). Clone the repo first, or use grep for GitHub text search.';
       if (jsonOutput)
         console.log(JSON.stringify({ success: false, error: err }));
-      else console.error(`\n  ${c('red', 'x')} ${err}\n`);
-      process.exitCode = 1;
+      else printCliError(err);
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -174,10 +170,10 @@ export const astCommand: CLICommand = {
         pattern,
         rule: ruleOpt,
         typeFilter: getString(options, 'type') || undefined,
-        contextLines: intOpt(getString(options, 'context-lines')),
-        maxMatchesPerFile: intOpt(getString(options, 'max-matches')),
-        page: intOpt(getString(options, 'page')),
-        pageSize: intOpt(getString(options, 'page-size')),
+        contextLines: nonNegIntOption(getString(options, 'context-lines')),
+        maxMatchesPerFile: nonNegIntOption(getString(options, 'max-matches')),
+        page: nonNegIntOption(getString(options, 'page')),
+        pageSize: nonNegIntOption(getString(options, 'page-size')),
       });
       if (jsonOutput) {
         console.log(JSON.stringify(sc, null, 2));
@@ -188,8 +184,8 @@ export const astCommand: CLICommand = {
       const msg = e instanceof Error ? e.message : String(e);
       if (jsonOutput)
         console.log(JSON.stringify({ success: false, error: msg }));
-      else console.error(`\n  ${c('red', 'x')} ${msg}\n`);
-      process.exitCode = 1;
+      else printCliError(msg);
+      process.exitCode = EXIT.TOOL;
     }
   },
 };

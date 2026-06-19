@@ -16,8 +16,8 @@ import { runMarketplaceFlow } from './marketplace.js';
 
 const RECOMMENDED_SKILLS = new Set([
   'octocode-research',
-  'octocode-pull-request-reviewer',
-  'octocode-researcher',
+  'octocode-engineer',
+  'octocode-engineer',
 ]);
 
 interface InstalledSkill {

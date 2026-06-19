@@ -23,8 +23,8 @@ type OfficialFlowChoice = 'install-all' | 'browse' | 'back';
 
 const RECOMMENDED_SKILLS = new Set([
   'octocode-research',
-  'octocode-pull-request-reviewer',
-  'octocode-researcher',
+  'octocode-engineer',
+  'octocode-engineer',
 ]);
 
 async function pressEnterToContinue(): Promise<void> {

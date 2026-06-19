@@ -5,7 +5,7 @@ import {
 } from './scheme.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
-import { createErrorResult } from '../utils.js';
+import { safeParseOrError } from '../utils.js';
 import type { ProcessedBulkResult } from '../../types/toolResults.js';
 import { attachRawResponseChars } from '../../utils/response/charSavings.js';
 import { executeWithToolBoundary } from '../executionGuard.js';
@@ -25,14 +25,11 @@ export async function executeInspectBinary(
         query,
         contextMessage: 'localBinaryInspect execution failed',
         execute: async () => {
-          const validation = LocalBinaryInspectQuerySchema.safeParse(query);
-          if (!validation.success) {
-            const messages = validation.error.issues
-              .map(i => i.message)
-              .join('; ');
-            return createErrorResult(`Validation error: ${messages}`, query);
+          const parsed = safeParseOrError(LocalBinaryInspectQuerySchema, query);
+          if (!parsed.ok) {
+            return parsed.error;
           }
-          const result = await inspectBinary(validation.data);
+          const result = await inspectBinary(parsed.data);
           const rawResult = result as unknown as Record<string, unknown>;
           const rawSize =
             typeof rawResult.content === 'string'

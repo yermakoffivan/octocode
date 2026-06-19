@@ -6,7 +6,7 @@ import {
   LocalFetchContentQuerySchema,
   type FetchContentQuery,
 } from './scheme.js';
-import { createErrorResult } from '../utils.js';
+import { safeParseOrError } from '../utils.js';
 import { executeWithToolBoundary } from '../executionGuard.js';
 import type { ToolExecutionArgs } from '../../types/execution.js';
 export { finalizeFetchContentResult } from './fetchContent.js';
@@ -24,14 +24,11 @@ export async function executeFetchContent(
         query,
         contextMessage: 'localGetFileContent execution failed',
         execute: async () => {
-          const validation = LocalFetchContentQuerySchema.safeParse(query);
-          if (!validation.success) {
-            const messages = validation.error.issues
-              .map(i => i.message)
-              .join('; ');
-            return createErrorResult(`Validation error: ${messages}`, query);
+          const parsed = safeParseOrError(LocalFetchContentQuerySchema, query);
+          if (!parsed.ok) {
+            return parsed.error;
           }
-          const result = await fetchContent(validation.data);
+          const result = await fetchContent(parsed.data);
           return result;
         },
       }),

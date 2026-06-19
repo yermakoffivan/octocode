@@ -1,7 +1,9 @@
 import type { CLICommand } from '../types.js';
-import { getBool, getString } from '../options.js';
+import { getBool, getString, posIntOption } from '../options.js';
 import { resolveRef, isGithubRef, refLabel } from '../routing.js';
 import { c, bold, dim } from '../../utils/colors.js';
+import { EXIT, classifyToolErrorText } from '../exit-codes.js';
+import { printCliError } from '../cli-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 
 interface TreeEntry {
@@ -175,12 +177,6 @@ function listOpt(value: string): string[] | undefined {
   return list.length > 0 ? list : undefined;
 }
 
-function intOpt(value: string): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isInteger(n) && n > 0 ? n : undefined;
-}
-
 export const lsCommand: CLICommand = {
   name: 'ls',
   description:
@@ -240,9 +236,9 @@ export const lsCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: msg }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${msg}`);
+        printCliError(msg);
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
     };
 
     if (!target) {
@@ -254,9 +250,7 @@ export const lsCommand: CLICommand = {
           })
         );
       } else {
-        console.error(
-          `\n  ${c('red', '✗')} Provide a path or GitHub reference.`
-        );
+        printCliError('Provide a path or GitHub reference.');
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    ls src/\n` +
@@ -264,7 +258,7 @@ export const lsCommand: CLICommand = {
             `    ls bgauryy/octocode-mcp/packages --depth 2\n`
         );
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -305,8 +299,8 @@ export const lsCommand: CLICommand = {
           ref.subpath,
           ref.branch,
           depthExplicit,
-          intOpt(getString(options, 'page')),
-          intOpt(getString(options, 'page-size'))
+          posIntOption(getString(options, 'page')),
+          posIntOption(getString(options, 'page-size'))
         );
       } else {
         structured = await fetchLocalTree(ref.path, {
@@ -318,9 +312,9 @@ export const lsCommand: CLICommand = {
           reverse: getBool(options, 'reverse'),
           filesOnly: getBool(options, 'files-only'),
           directoriesOnly: getBool(options, 'dirs-only'),
-          limit: intOpt(getString(options, 'limit')),
-          page: intOpt(getString(options, 'page')),
-          itemsPerPage: intOpt(getString(options, 'page-size')),
+          limit: posIntOption(getString(options, 'limit')),
+          page: posIntOption(getString(options, 'page')),
+          itemsPerPage: posIntOption(getString(options, 'page-size')),
         });
       }
 
@@ -336,9 +330,9 @@ export const lsCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: msg }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${msg}\n`);
+        printCliError(msg);
       }
-      process.exitCode = 1;
+      process.exitCode = classifyToolErrorText(msg);
     }
   },
 };

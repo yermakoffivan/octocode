@@ -682,8 +682,8 @@ export async function executeDirectTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
-  const parsedInput = parseDirectToolInput(tool, input);
   try {
+    const parsedInput = parseDirectToolInput(tool, input);
     await ensureDirectToolRuntimeReady(tool);
     if (name === STATIC_TOOL_NAMES.GITHUB_CLONE_REPO && !isCloneEnabled()) {
       const disabledResult: CallToolResult = {
@@ -710,6 +710,11 @@ export async function executeDirectTool(
       return sanitizeCallToolResult(disabledResult);
     }
     return await runDirectTool(tool, parsedInput);
+  } catch (error) {
+    // Input parsing and runtime readiness can throw; convert to the same
+    // structured error envelope as execution failures so non-CLI consumers
+    // get a consistent result shape instead of an exception.
+    return buildToolErrorResult(tool.name, error);
   } finally {
     if (name === LSP_GET_SEMANTIC_CONTENT_TOOL_NAME) {
       await releaseAllPooledClients();

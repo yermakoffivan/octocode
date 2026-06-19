@@ -10,6 +10,7 @@ import {
   type ErrorCode,
 } from './errorConstants.js';
 import { logRateLimit } from '../session.js';
+import { ignoreBestEffortFailure } from '../utils/core/bestEffort.js';
 
 const NO_RESULTS_SEARCH_PHRASES = [
   'cannot be searched',
@@ -105,13 +106,13 @@ function handle429RateLimit(
         )
       : undefined);
 
-  void logRateLimit({
+  logRateLimit({
     limit_type: 'primary',
     retry_after_seconds: retryAfterSeconds,
     rate_limit_remaining: remaining,
     rate_limit_reset_ms: resetTime ? resetTime.getTime() : undefined,
     provider: 'github',
-  });
+  }).catch(ignoreBestEffortFailure('rate-limit logging'));
 
   return createErrorResponse(ERROR_CODES.RATE_LIMIT_PRIMARY, {
     error:
@@ -138,7 +139,10 @@ function handle403Error(
   const remaining = headers?.['x-ratelimit-remaining'];
   const isGraphQLRateLimited = checkGraphQLRateLimit(response);
 
-  if (remaining === '0' || isGraphQLRateLimited) {
+  if (
+    (remaining !== undefined && String(remaining) === '0') ||
+    isGraphQLRateLimited
+  ) {
     return handlePrimaryRateLimit(headers);
   }
 
@@ -153,11 +157,11 @@ function handleSecondaryRateLimit(
     ? parsed
     : RATE_LIMIT_CONFIG.SECONDARY_FALLBACK_SECONDS;
 
-  void logRateLimit({
+  logRateLimit({
     limit_type: 'secondary',
     retry_after_seconds: retryAfter,
     provider: 'github',
-  });
+  }).catch(ignoreBestEffortFailure('rate-limit logging'));
 
   return createErrorResponse(ERROR_CODES.RATE_LIMIT_SECONDARY, {
     error: ERROR_MESSAGES[ERROR_CODES.RATE_LIMIT_SECONDARY].message(retryAfter),
@@ -191,13 +195,13 @@ function handlePrimaryRateLimit(
       )
     : ERROR_MESSAGES[ERROR_CODES.RATE_LIMIT_PRIMARY].messageWithoutTime;
 
-  void logRateLimit({
+  logRateLimit({
     limit_type: 'primary',
     retry_after_seconds: retryAfterSeconds,
     rate_limit_remaining: 0,
     rate_limit_reset_ms: resetTime ? resetTime.getTime() : undefined,
     provider: 'github',
-  });
+  }).catch(ignoreBestEffortFailure('rate-limit logging'));
 
   return createErrorResponse(ERROR_CODES.RATE_LIMIT_PRIMARY, {
     error: errorMessage,

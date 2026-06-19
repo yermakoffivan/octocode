@@ -1,5 +1,5 @@
 import { c, dim } from '../../utils/colors.js';
-import { EXIT } from '../exit-codes.js';
+import { classifyToolErrorText } from '../exit-codes.js';
 
 type TextContent = {
   readonly type?: string;
@@ -38,7 +38,7 @@ export function printDirectToolResult(
   const text = getDirectToolText(result);
   if (result.isError) {
     console.error();
-    console.error(`  ${c('red', 'x')} Tool execution failed.`);
+    console.error(`  ${c('red', '✗')} Tool execution failed.`);
     console.error(`  ${dim(text)}`);
     console.error();
     return;
@@ -51,6 +51,8 @@ export function printDirectToolResult(
 
 export function markDirectToolFailure(result: DirectToolResult): void {
   if (result.isError) {
-    process.exitCode = EXIT.TOOL;
+    // Read the failure text so auth/rate-limit errors map to the correct exit
+    // code instead of a blanket TOOL — mirrors tool-command.ts.
+    process.exitCode = classifyToolErrorText(getDirectToolText(result));
   }
 }

@@ -5,10 +5,61 @@ import {
   DIRECT_TOOL_DEFINITIONS,
   getDirectToolCategory,
   getDirectToolDisplayFields,
+  loadToolContent,
   sortDirectToolNames,
 } from '@octocodeai/octocode-tools-core/direct';
 
 const LSP_TOOL = 'lspGetSemantics';
+
+/** Canonical octocode-engineer skill — the agent playbook for these flows. */
+const ENGINEER_SKILL_URL =
+  'https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer';
+
+/**
+ * The verbatim system prompt (Octocode MCP instructions) shown inside
+ * <AGENT_INSTRUCTIONS>. Loaded from the shared tool metadata so the help
+ * surface stays byte-identical to what the MCP server and `context` emit.
+ * Falls back to null on any failure — the block degrades gracefully.
+ */
+async function loadAgentInstructions(): Promise<string | null> {
+  try {
+    const metadata = await loadToolContent();
+    const instructions = metadata.instructions?.trim();
+    return instructions ? instructions : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Render the <AGENT_INSTRUCTIONS> block: system prompt + skill pointer. */
+function buildAgentInstructionsBlock(instructions: string | null): string[] {
+  const lines: string[] = [`  ${dim('<AGENT_INSTRUCTIONS>')}`];
+
+  if (instructions) {
+    // The system prompt itself — the canonical research strategy.
+    for (const line of instructions.split('\n')) {
+      lines.push(`  ${dim(line)}`);
+    }
+  } else {
+    // Fallback if metadata can't be loaded — keep the essentials inline.
+    lines.push(
+      `  ${dim('One toolset for LOCAL files and EXTERNAL GitHub/npm research.')}`,
+      `  ${dim('Flow: locate → search → read the smallest slice → prove. Cheapest tool first; orient before you read.')}`,
+      `  ${dim('3.')} ${c('red', bold('Do NOT hallucinate'))} ${dim('paths, lines, or fields — verify with tools; snippets are discovery, not proof.')}`
+    );
+  }
+
+  lines.push(
+    '',
+    `  ${dim('Tools:')} ${c('yellow', 'tools <name> --scheme')} ${dim('to read a schema (never guess fields), then')} ${c('yellow', "tools <name> --queries '<json>'")} ${dim('to run it. QUICK COMMANDS below cover the common path.')}`,
+    `  ${dim('Skill — read the')} ${c('cyan', 'octocode-engineer')} ${dim('flows to understand the research loop and leverage every tool fully:')}`,
+    `    ${underline(ENGINEER_SKILL_URL)}  ${dim('(install:')} ${c('yellow', 'skills install --skill octocode')}${dim(')')}`,
+    `  ${dim('Auth: humans run')} ${c('yellow', 'login')}${dim('; agents pass GITHUB_TOKEN / OCTOCODE_TOKEN / GH_TOKEN via env. Deeper protocol:')} ${c('cyan', 'context')}${dim('.')}`,
+    `  ${dim('</AGENT_INSTRUCTIONS>')}`
+  );
+
+  return lines;
+}
 
 /** Brief [required*, optional?] summary for the --help tool list (top-level fields only). */
 function formatBriefFields(toolName: string): string {
@@ -62,9 +113,12 @@ function quick(name: string, argHint: string, description: string): string {
   return `    ${c('cyan', name.padEnd(8))} ${dim(argHint.padEnd(28))}  ${dim(description)}`;
 }
 
-export function showHelp(): void {
+export async function showHelp(): Promise<void> {
   const toolCount = DIRECT_TOOL_DEFINITIONS.length;
   const toolLines = buildToolBlock();
+  const agentInstructions = buildAgentInstructionsBlock(
+    await loadAgentInstructions()
+  );
 
   let isAuthenticated = false;
   try {
@@ -89,15 +143,8 @@ export function showHelp(): void {
     `  ${c('magenta', bold('🔍🐙 Octocode'))}  ${dim('Code research CLI — for humans and agents')}`,
     '',
 
-    // ── Agent instructions — concise, tag-delimited so agents can parse it ──
-    `  ${dim('<AGENT_INSTRUCTIONS>')}`,
-    `  ${dim('One toolset for LOCAL files and EXTERNAL GitHub/npm research.')}`,
-    `  ${dim('1. QUICK COMMANDS for simple work; raw')} ${c('yellow', 'tools <name> --scheme')} ${dim('then')} ${c('yellow', "tools <name> --queries '<json>'")} ${dim('for full control — never guess fields.')}`,
-    `  ${dim('2. Flow: locate → search → read the smallest slice → prove (see PLAYBOOK).')}`,
-    `  ${dim('3.')} ${c('red', bold('Do NOT hallucinate'))} ${dim('paths, lines, or fields — verify with tools.')}`,
-    `  ${dim('Auth: humans run')} ${c('yellow', 'login')}${dim('; agents pass GITHUB_TOKEN / OCTOCODE_TOKEN / GH_TOKEN via env. Deeper protocol:')} ${c('cyan', 'context')}${dim('.')}`,
-    `  ${dim('Docs:')} ${underline('https://github.com/bgauryy/octocode/tree/main/docs')}  ${dim('· Skill:')} ${c('yellow', 'skills install --skill octocode')}`,
-    `  ${dim('</AGENT_INSTRUCTIONS>')}`,
+    // ── Agent instructions — system prompt + skill pointer, tag-delimited ──
+    ...agentInstructions,
     '',
 
     // ── Quick commands FIRST — the friendly, human-first surface ────────────

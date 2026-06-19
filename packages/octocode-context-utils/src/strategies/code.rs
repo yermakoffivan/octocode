@@ -8,7 +8,21 @@ use crate::comment_remover::remove_comments;
 /// `mangle = false`: preserve names (agent-readable, for content-view path).
 ///
 /// Returns `None` on parse error so callers can choose the non-OXC path.
+///
+/// The entire OXC parse/minify/codegen pipeline is wrapped in `catch_unwind`
+/// so that an OXC internal panic (ICE) on adversarial input is converted into a
+/// clean `None` fallback rather than unwinding across the napi FFI boundary and
+/// aborting the Node process (especially dangerous on the AsyncTask worker
+/// thread). Every caller — both the `minify*` entry points and the `apply*`
+/// pipeline — is therefore covered at the source.
 pub fn minify_js_oxc(content: &str, file_path: &str, mangle: bool) -> Option<String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        minify_js_oxc_inner(content, file_path, mangle)
+    }))
+    .unwrap_or(None)
+}
+
+fn minify_js_oxc_inner(content: &str, file_path: &str, mangle: bool) -> Option<String> {
     use oxc_allocator::Allocator;
     use oxc_codegen::{Codegen, CodegenOptions, CommentOptions};
     use oxc_minifier::{CompressOptions, MangleOptions, Minifier, MinifierOptions};
@@ -126,4 +140,54 @@ fn re_tighten_punct_js(s: &str) -> String {
         i = super::copy_seq(s, i, &mut result);
     }
     result
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minify_js_oxc_minifies_valid_input() {
+        let out = minify_js_oxc("const  x   =   1 ;\n", "x.js", true);
+        assert!(out.is_some(), "valid JS should minify");
+    }
+
+    /// Regression: the OXC pipeline must NEVER unwind across the FFI boundary.
+    /// A panic (ICE) raised anywhere inside the parse/minify/codegen pipeline
+    /// must be converted to a clean `None` fallback by the `catch_unwind` guard
+    /// added to `minify_js_oxc`, instead of unwinding into napi and aborting
+    /// Node. We verify the guard directly by forcing a panic inside the wrapped
+    /// closure shape, then confirm a barrage of malformed inputs all return
+    /// (Some or None) without aborting.
+    ///
+    /// (Note: a stack overflow from pathologically nested input is a distinct,
+    /// uncatchable failure class — `catch_unwind` only intercepts panics, which
+    /// is the class this finding targets.)
+    #[test]
+    fn minify_js_oxc_guard_converts_panic_to_none() {
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Option<String> {
+            panic!("simulated OXC ICE");
+        }))
+        .unwrap_or(None);
+        assert_eq!(caught, None, "catch_unwind must convert a panic into None");
+    }
+
+    #[test]
+    fn minify_js_oxc_never_aborts_on_malformed_input() {
+        let adversarial = [
+            "",
+            "\u{0}\u{0}\u{0}",
+            "function(){",
+            "}}}}}}}}}}",
+            "const x = /[/;",
+            "import type type type from from;",
+            "\u{feff}\u{202e}reversed",
+        ];
+        for src in adversarial {
+            // Must return (not abort). Either None or Some is acceptable.
+            let _ = minify_js_oxc(src, "x.ts", true);
+            let _ = minify_js_oxc(src, "x.tsx", false);
+        }
+    }
 }

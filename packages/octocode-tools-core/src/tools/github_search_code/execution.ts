@@ -170,7 +170,12 @@ export async function searchMultipleGitHubCode(
           }
         );
       } catch (error) {
-        return handleCatchError(error, query);
+        return handleCatchError(
+          error,
+          query,
+          undefined,
+          TOOL_NAMES.GITHUB_SEARCH_CODE
+        );
       }
     },
     {

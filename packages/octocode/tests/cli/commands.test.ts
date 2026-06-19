@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EXIT } from '../../src/cli/exit-codes.js';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn().mockReturnValue(false),
@@ -178,7 +179,7 @@ describe('CLI Commands', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Not authenticated')
       );
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('should use custom hostname when provided', async () => {
@@ -246,7 +247,7 @@ describe('CLI Commands', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Invalid token type: unknown')
       );
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.USAGE);
     });
 
     it('should use auto type when --type=auto is provided', async () => {
@@ -283,7 +284,7 @@ describe('CLI Commands', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Invalid token type')
       );
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.USAGE);
     });
 
     describe('--json flag', () => {
@@ -393,7 +394,7 @@ describe('CLI Commands', () => {
         const parsed = JSON.parse(output![0]);
         expect(parsed.token).toBeNull();
         expect(parsed.type).toBe('none');
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.AUTH);
       });
 
       it('does not treat removed -j alias as JSON mode', async () => {
@@ -435,7 +436,7 @@ describe('CLI Commands', () => {
         const parsed = JSON.parse(output![0]);
         expect(parsed.token).toBeNull();
         expect(parsed.type).toBe('none');
-        expect(process.exitCode).toBe(1);
+        expect(process.exitCode).toBe(EXIT.USAGE);
       });
     });
 
@@ -459,7 +460,7 @@ describe('CLI Commands', () => {
         expect.stringContaining('No Octocode token found')
       );
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('login'));
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('should show gh-specific hint when --type=gh and no token', async () => {
@@ -484,7 +485,7 @@ describe('CLI Commands', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('gh auth login')
       );
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(EXIT.AUTH);
     });
 
     it('should show source info with --source flag', async () => {

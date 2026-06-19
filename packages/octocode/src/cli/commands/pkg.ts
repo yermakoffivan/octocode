@@ -47,7 +47,7 @@ export const pkgCommand: CLICommand = {
     if (mode && !MODE_VALUES.has(mode)) {
       const error = 'Invalid --mode. Use lean or full.';
       if (jsonOutput) console.log(JSON.stringify({ success: false, error }));
-      else console.error(`\n  ${c('red', 'x')} ${error}\n`);
+      else console.error(`\n  ${c('red', '✗')} ${error}\n`);
       process.exitCode = EXIT.USAGE;
       return;
     }
@@ -57,7 +57,7 @@ export const pkgCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${error}`);
+        console.error(`\n  ${c('red', '✗')} ${error}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    pkg zod\n` +
@@ -103,7 +103,7 @@ export const pkgCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

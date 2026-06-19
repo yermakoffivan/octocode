@@ -41,7 +41,7 @@ function printUsageError(message: string, jsonOutput: boolean): void {
     return;
   }
 
-  console.error(`\n  ${c('red', 'x')} ${message}`);
+  console.error(`\n  ${c('red', '✗')} ${message}`);
   console.error(
     `\n  ${dim('Examples:')}\n` +
       `    grep "runCLI" packages/octocode/src --type ts\n` +
@@ -141,6 +141,31 @@ function formatLocation(location: LspLocation): string {
   return `${uri}:${range}${marker}${content}`;
 }
 
+function formatCall(call: unknown): string {
+  if (typeof call === 'string') return call;
+  const c = call as {
+    direction?: string;
+    item?: { name?: string; kind?: string; uri?: string };
+    ranges?: ReadonlyArray<{ line?: number }>;
+  };
+  const dir = c.direction ? `${c.direction} ` : '';
+  const name = c.item?.name ?? '?';
+  const kind = c.item?.kind ? ` (${c.item.kind})` : '';
+  const at =
+    c.item?.uri != null
+      ? ` ${c.item.uri}${c.ranges?.[0]?.line != null ? `:${c.ranges[0].line}` : ''}`
+      : '';
+  return `${dir}${name}${kind}${at}`;
+}
+
+function formatSymbolRow(row: unknown): string {
+  if (typeof row === 'string') return row;
+  const s = row as { name?: string; kind?: string; line?: number };
+  const kind = s.kind ? ` (${s.kind})` : '';
+  const at = s.line != null ? ` L${s.line}` : '';
+  return `${s.name ?? '?'}${kind}${at}`;
+}
+
 function renderLspResult(result: LspToolResult): string {
   const lines: string[] = [];
   for (const item of result.structuredContent?.results ?? []) {
@@ -175,13 +200,13 @@ function renderLspResult(result: LspToolResult): string {
 
     if (payload.calls) {
       for (const call of payload.calls.slice(0, 20))
-        lines.push(`    ${String(call)}`);
+        lines.push(`    ${formatCall(call)}`);
       continue;
     }
 
     if (payload.symbols) {
       for (const symbolRow of payload.symbols.slice(0, 40))
-        lines.push(`    ${String(symbolRow)}`);
+        lines.push(`    ${formatSymbolRow(symbolRow)}`);
     }
   }
 
@@ -375,7 +400,7 @@ export const lspCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

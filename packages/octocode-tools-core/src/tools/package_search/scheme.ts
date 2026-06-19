@@ -12,7 +12,6 @@ import { responseEnvelopeFields } from '../../scheme/responseEnvelope.js';
 
 const queryOverrides = {
   page: relaxedPageNumberField,
-  mode: z.enum(['lean', 'full']).optional(),
 } as const;
 
 export const NpmSearchQueryLocalSchema = describeQuerySchema(

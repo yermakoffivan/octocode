@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 
 vi.mock('node:fs', () => {
   const mod = {
@@ -259,7 +260,7 @@ describe('cli/commands/install', () => {
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('already configured')
     );
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
   it('runs successful install with spinner success path', async () => {
@@ -598,7 +599,7 @@ describe('cli/commands/install', () => {
       configPath: '/mock/mcp.json',
       error: 'Already configured. Use --force to overwrite.',
     });
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
   it('outputs JSON success when install succeeds with --json', async () => {
@@ -673,7 +674,7 @@ describe('cli/commands/install', () => {
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Backup not found')
     );
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.NOT_FOUND);
   });
 
   it('rollback fails (json) when backup not found with explicit --backup-path', async () => {
@@ -693,7 +694,7 @@ describe('cli/commands/install', () => {
     expect(json.success).toBe(false);
     expect(json.backupPath).toBe('/custom/backup.bak');
     expect(json.error).toContain('Backup not found');
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.NOT_FOUND);
   });
 
   it('rollback succeeds (text) copying backup over config', async () => {

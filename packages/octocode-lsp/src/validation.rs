@@ -152,7 +152,10 @@ mod tests {
     fn safe_read_file_rejects_relative_path() {
         let result = safe_read_file("relative/path.txt".to_owned());
         assert!(result.is_err());
-        assert!(result.unwrap_err().reason.contains("must be absolute"));
+        assert!(result
+            .expect_err("relative path must be rejected")
+            .reason
+            .contains("must be absolute"));
     }
 
     #[test]
@@ -169,7 +172,10 @@ mod tests {
         let result = safe_read_file(dir.to_string_lossy().into_owned());
         let _ = fs::remove_dir(&dir);
         assert!(result.is_err());
-        assert!(result.unwrap_err().reason.contains("not a regular file"));
+        assert!(result
+            .expect_err("directory must be rejected")
+            .reason
+            .contains("not a regular file"));
     }
 
     #[test]
@@ -217,7 +223,10 @@ mod tests {
         let result = validate_lsp_server_path(path.to_string_lossy().into_owned());
         let _ = fs::remove_file(&path);
         assert!(result.is_err());
-        assert!(result.unwrap_err().reason.contains("not executable"));
+        assert!(result
+            .expect_err("non-executable file must be rejected")
+            .reason
+            .contains("not executable"));
     }
 
     #[cfg(unix)]

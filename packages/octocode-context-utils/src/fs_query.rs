@@ -440,11 +440,14 @@ fn parse_duration(raw: &str) -> Option<u64> {
     let unit_start = raw.char_indices().find(|(_, c)| !c.is_ascii_digit())?.0;
     let (number, unit) = raw.split_at(unit_start);
     let value = number.parse::<u64>().ok()?;
+    // `checked_mul` returns None on overflow (release builds have no overflow
+    // checks), routing absurd-but-valid numerics into the invalid-duration path
+    // rather than wrapping silently.
     match unit {
-        "m" => Some(value * 60),
-        "h" => Some(value * 60 * 60),
-        "d" => Some(value * 24 * 60 * 60),
-        "w" => Some(value * 7 * 24 * 60 * 60),
+        "m" => value.checked_mul(60),
+        "h" => value.checked_mul(60 * 60),
+        "d" => value.checked_mul(24 * 60 * 60),
+        "w" => value.checked_mul(7 * 24 * 60 * 60),
         _ => None,
     }
 }
@@ -581,6 +584,14 @@ mod tests {
         // Regression: a multibyte unit must return None, not panic on a non-char
         // boundary split.
         assert_eq!(parse_duration("7€"), None);
+        // Regression: an absurd-but-valid numeric must not silently overflow u64
+        // (release builds have no overflow checks). It must return None via the
+        // invalid-duration path.
+        let huge = u64::MAX.to_string();
+        assert_eq!(parse_duration(&format!("{huge}m")), None);
+        assert_eq!(parse_duration(&format!("{huge}h")), None);
+        assert_eq!(parse_duration(&format!("{huge}d")), None);
+        assert_eq!(parse_duration(&format!("{huge}w")), None);
     }
 
     #[test]

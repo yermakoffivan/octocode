@@ -1,5 +1,10 @@
 import type { CLICommand } from '../types.js';
-import { getBool, getString } from '../options.js';
+import {
+  getBool,
+  getString,
+  nonNegIntOption,
+  posIntOption,
+} from '../options.js';
 import { resolveRef, isGithubRef, refLabel } from '../routing.js';
 import { c, dim } from '../../utils/colors.js';
 import { EXIT } from '../exit-codes.js';
@@ -36,22 +41,11 @@ const OPTION_NAMES = new Set([
   'content-type',
 ]);
 
-function intOption(value: string): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
-}
-
-function positiveIntOption(value: string): number | undefined {
-  const parsed = intOption(value);
-  return parsed && parsed > 0 ? parsed : undefined;
-}
-
 function reportUsage(message: string, jsonOutput: boolean): void {
   if (jsonOutput) {
     console.log(JSON.stringify({ success: false, error: message }));
   } else {
-    console.error(`\n  ${c('red', 'x')} ${message}`);
+    console.error(`\n  ${c('red', '✗')} ${message}`);
     console.error(
       `\n  ${dim('Examples:')}\n` +
         `    cat src/utils.ts --match-string createClient --mode none\n` +
@@ -92,19 +86,19 @@ function validateOptions(
     'page-size',
   ]) {
     const value = getString(options, key);
-    if (value && positiveIntOption(value) === undefined) {
+    if (value && posIntOption(value) === undefined) {
       return `--${key} must be a positive integer.`;
     }
   }
   for (const key of ['context-lines', 'char-offset']) {
     const value = getString(options, key);
-    if (value && intOption(value) === undefined) {
+    if (value && nonNegIntOption(value) === undefined) {
       return `--${key} must be a non-negative integer.`;
     }
   }
 
-  const startLine = positiveIntOption(getString(options, 'start-line'));
-  const endLine = positiveIntOption(getString(options, 'end-line'));
+  const startLine = posIntOption(getString(options, 'start-line'));
+  const endLine = posIntOption(getString(options, 'end-line'));
   if (startLine && endLine && endLine < startLine) {
     return '--end-line must be greater than or equal to --start-line.';
   }
@@ -117,10 +111,10 @@ function buildContentPaging(options: Record<string, string | boolean>): {
   charLength?: number;
 } {
   const pageSize =
-    positiveIntOption(getString(options, 'char-length')) ??
-    positiveIntOption(getString(options, 'page-size'));
-  const explicitOffset = intOption(getString(options, 'char-offset'));
-  const page = positiveIntOption(getString(options, 'page'));
+    posIntOption(getString(options, 'char-length')) ??
+    posIntOption(getString(options, 'page-size'));
+  const explicitOffset = nonNegIntOption(getString(options, 'char-offset'));
+  const page = posIntOption(getString(options, 'page'));
   return {
     charLength: pageSize,
     charOffset:
@@ -141,9 +135,9 @@ function buildSharedQuery(
     matchStringIsRegex: getBool(options, 'match-regex') || undefined,
     matchStringCaseSensitive:
       getBool(options, 'match-case-sensitive') || undefined,
-    startLine: positiveIntOption(getString(options, 'start-line')),
-    endLine: positiveIntOption(getString(options, 'end-line')),
-    contextLines: intOption(getString(options, 'context-lines')),
+    startLine: posIntOption(getString(options, 'start-line')),
+    endLine: posIntOption(getString(options, 'end-line')),
+    contextLines: nonNegIntOption(getString(options, 'context-lines')),
     charOffset: paging.charOffset,
     charLength: paging.charLength,
     minify: (getString(options, 'mode') || 'standard') as MinifyMode,
@@ -308,7 +302,7 @@ export const catCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

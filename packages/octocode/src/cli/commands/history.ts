@@ -221,7 +221,7 @@ export const historyCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${err}`);
+        console.error(`\n  ${c('red', '✗')} ${err}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    history facebook/react\n` +
@@ -240,7 +240,7 @@ export const historyCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${err}\n`);
+        console.error(`\n  ${c('red', '✗')} ${err}\n`);
       }
       process.exitCode = EXIT.USAGE;
       return;
@@ -280,7 +280,7 @@ export const historyCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: msg }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${msg}\n`);
+        console.error(`\n  ${c('red', '✗')} ${msg}\n`);
       }
       process.exitCode = EXIT.TOOL;
     }

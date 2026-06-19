@@ -76,6 +76,12 @@ describe('findInvalidNumericOptions', () => {
     ]);
   });
 
+  it('validates grep --match-length as numeric', () => {
+    expect(findInvalidNumericOptions(args({ 'match-length': 'abc' }))).toEqual([
+      '--match-length=abc',
+    ]);
+  });
+
   it('accepts valid non-negative integers', () => {
     expect(findInvalidNumericOptions(args({ limit: '10', page: '0' }))).toEqual(
       []

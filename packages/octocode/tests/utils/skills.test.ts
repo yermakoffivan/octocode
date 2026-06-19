@@ -187,11 +187,11 @@ describe('Skills Utilities', () => {
       vi.mocked(dirExists).mockReturnValue(true);
       vi.mocked(copyDirectory).mockReturnValue(true);
 
-      copySkill('octocode-plan', '/home/user/.claude/skills');
+      copySkill('octocode-rfc-generator', '/home/user/.claude/skills');
 
       expect(copyDirectory).toHaveBeenCalledWith(
         expect.any(String),
-        '/home/user/.claude/skills/octocode-plan'
+        '/home/user/.claude/skills/octocode-rfc-generator'
       );
     });
 
@@ -224,8 +224,8 @@ describe('Skills Utilities', () => {
     });
 
     it('resolves skill destinations only under the destination directory', () => {
-      expect(resolveSkillDestination('/dest/skills', 'octocode-plan')).toBe(
-        '/dest/skills/octocode-plan'
+      expect(resolveSkillDestination('/dest/skills', 'octocode-rfc-generator')).toBe(
+        '/dest/skills/octocode-rfc-generator'
       );
       expect(resolveSkillDestination('/dest/skills', '../evil')).toBeNull();
     });
@@ -243,7 +243,7 @@ describe('Skills Utilities', () => {
       vi.mocked(dirExists).mockReturnValue(true);
       vi.mocked(listSubdirectories).mockReturnValue([
         'octocode-research',
-        'octocode-plan',
+        'octocode-rfc-generator',
         'octocode-generate',
         'other-skill',
         'random-dir',
@@ -253,7 +253,7 @@ describe('Skills Utilities', () => {
 
       expect(result).toEqual([
         'octocode-research',
-        'octocode-plan',
+        'octocode-rfc-generator',
         'octocode-generate',
       ]);
       expect(result).not.toContain('other-skill');
@@ -284,7 +284,7 @@ describe('Skills Utilities', () => {
     it('should filter out non-octocode prefixed directories', () => {
       vi.mocked(dirExists).mockReturnValue(true);
       vi.mocked(listSubdirectories).mockReturnValue([
-        'octocode-pull-request-reviewer',
+        'octocode-engineer',
         '.git',
         'node_modules',
         'octocode-test',
@@ -292,10 +292,7 @@ describe('Skills Utilities', () => {
 
       const result = getAvailableSkills();
 
-      expect(result).toEqual([
-        'octocode-pull-request-reviewer',
-        'octocode-test',
-      ]);
+      expect(result).toEqual(['octocode-engineer', 'octocode-test']);
       expect(result).toHaveLength(2);
     });
 
@@ -322,9 +319,9 @@ describe('Skills Utilities', () => {
       vi.mocked(dirExists).mockReturnValue(true);
       vi.mocked(listSubdirectories).mockReturnValue([
         'octocode-research',
-        'octocode-plan',
+        'octocode-rfc-generator',
         'octocode-generate',
-        'octocode-pull-request-reviewer',
+        'octocode-engineer',
       ]);
       vi.mocked(copyDirectory).mockReturnValue(true);
 
@@ -348,7 +345,7 @@ describe('Skills Utilities', () => {
         .mockReturnValueOnce(false);
 
       const result1 = copySkill('octocode-research', '/dest');
-      const result2 = copySkill('octocode-plan', '/dest');
+      const result2 = copySkill('octocode-rfc-generator', '/dest');
 
       expect(result1).toBe(true);
       expect(result2).toBe(false);
@@ -432,9 +429,9 @@ name: only-name
       vi.mocked(fileExists).mockReturnValue(true);
       vi.mocked(readFileContent).mockReturnValue(validSkillMd);
 
-      const result = getSkillMetadata('/some/long/path/octocode-plan');
+      const result = getSkillMetadata('/some/long/path/octocode-rfc-generator');
 
-      expect(result?.folder).toBe('octocode-plan');
+      expect(result?.folder).toBe('octocode-rfc-generator');
     });
   });
 
@@ -443,7 +440,7 @@ name: only-name
       vi.mocked(dirExists).mockReturnValue(true);
       vi.mocked(listSubdirectories).mockReturnValue([
         'octocode-research',
-        'octocode-plan',
+        'octocode-rfc-generator',
         'other-dir',
       ]);
       vi.mocked(fileExists).mockReturnValue(true);
@@ -451,7 +448,7 @@ name: only-name
 name: octocode-research
 description: Research skill description
 ---`).mockReturnValueOnce(`---
-name: octocode-plan
+name: octocode-rfc-generator
 description: Plan skill description
 ---`);
 
@@ -459,7 +456,7 @@ description: Plan skill description
 
       expect(result).toHaveLength(2);
       expect(result[0].name).toBe('octocode-research');
-      expect(result[1].name).toBe('octocode-plan');
+      expect(result[1].name).toBe('octocode-rfc-generator');
     });
 
     it('should skip skills with invalid SKILL.md', () => {

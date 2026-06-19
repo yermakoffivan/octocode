@@ -135,7 +135,7 @@ export const installCommand: CLICommand = {
           console.log(`  ${dim('Provide the path via --backup-path <path>')}`);
           console.log();
         }
-        process.exitCode = 1;
+        process.exitCode = EXIT.NOT_FOUND;
         return;
       }
 
@@ -159,7 +159,7 @@ export const installCommand: CLICommand = {
           console.log(`  ${c('red', '✗')} Rollback failed: ${msg}`);
           console.log();
         }
-        process.exitCode = 1;
+        process.exitCode = EXIT.GENERAL;
         return;
       }
 
@@ -203,7 +203,7 @@ export const installCommand: CLICommand = {
               error: 'Node.js is not found in PATH',
             })
           );
-          process.exitCode = 1;
+          process.exitCode = EXIT.GENERAL;
           return;
         }
         console.log();
@@ -215,7 +215,7 @@ export const installCommand: CLICommand = {
         );
         console.log();
         printNodeDoctorHintCLI();
-        process.exitCode = 1;
+        process.exitCode = EXIT.GENERAL;
         return;
       }
 
@@ -230,7 +230,7 @@ export const installCommand: CLICommand = {
               error: 'npm is not found in PATH',
             })
           );
-          process.exitCode = 1;
+          process.exitCode = EXIT.GENERAL;
           return;
         }
         console.log();
@@ -240,7 +240,7 @@ export const installCommand: CLICommand = {
         console.log(`  ${dim('npm is required for npx installation method.')}`);
         console.log();
         printNodeDoctorHintCLI();
-        process.exitCode = 1;
+        process.exitCode = EXIT.GENERAL;
         return;
       }
     }
@@ -362,7 +362,7 @@ export const installCommand: CLICommand = {
         console.log(
           `  ${c('red', '✗')} Cannot write to ${parentDir} — check permissions.`
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.GENERAL;
       } else if (preview.action === 'override' && !force) {
         console.log();
         console.log(
@@ -387,7 +387,7 @@ export const installCommand: CLICommand = {
             error: 'Already configured. Use --force to overwrite.',
           })
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
       }
       console.log();
@@ -396,7 +396,7 @@ export const installCommand: CLICommand = {
         `  ${dim('Use')} ${c('cyan', '--force')} ${dim('to overwrite.')}`
       );
       console.log();
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -421,7 +421,7 @@ export const installCommand: CLICommand = {
           error: result.error || null,
         })
       );
-      if (!result.success) process.exitCode = 1;
+      if (!result.success) process.exitCode = EXIT.GENERAL;
       return;
     }
 
@@ -452,7 +452,7 @@ export const installCommand: CLICommand = {
         console.log(`  ${c('red', '✗')} ${result.error}`);
       }
       console.log();
-      process.exitCode = 1;
+      process.exitCode = EXIT.GENERAL;
     }
   },
 };

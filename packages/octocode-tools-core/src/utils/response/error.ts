@@ -152,6 +152,54 @@ export function createErrorResult(
     : attachRawResponseChars(result, options.rawResponse);
 }
 
+/**
+ * Minimal shape of the parts of a Zod schema this helper relies on, kept
+ * version-agnostic so it does not couple to a specific Zod release.
+ */
+interface SafeParseableSchema<T> {
+  safeParse(
+    input: unknown
+  ):
+    | { success: true; data: T; error?: never }
+    | {
+        success: false;
+        data?: never;
+        error: { issues: Array<{ message: string }> };
+      };
+}
+
+export type SafeParseOutcome<T> =
+  | { ok: true; data: T; error?: never }
+  | { ok: false; data?: never; error: UnifiedErrorResult };
+
+/**
+ * Validate `input` against `schema`, returning either the parsed data or a
+ * structured {@link UnifiedErrorResult} built via {@link createErrorResult}.
+ *
+ * Replaces the per-tool `safeParse → issues.map(...).join('; ') →
+ * createErrorResult('Validation error: …')` block. Pass `prefix: false` to
+ * omit the "Validation error: " prefix (github_fetch_content parity).
+ */
+export function safeParseOrError<T>(
+  schema: SafeParseableSchema<T>,
+  query: PartialBaseQuery,
+  options: { toolName?: string; prefix?: boolean } = {}
+): SafeParseOutcome<T> {
+  const result = schema.safeParse(query);
+  if (result.success) {
+    return { ok: true, data: result.data };
+  }
+
+  const messages = result.error.issues.map(i => i.message).join('; ');
+  const text =
+    options.prefix === false ? messages : `Validation error: ${messages}`;
+
+  return {
+    ok: false,
+    error: createErrorResult(text, query, { toolName: options.toolName }),
+  };
+}
+
 function getErrorTypeFromToolError(
   error: ToolError
 ): 'size_limit' | 'not_found' | 'directory' | 'permission' | undefined {

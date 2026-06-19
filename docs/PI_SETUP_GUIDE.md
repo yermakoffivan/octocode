@@ -143,7 +143,7 @@ ls ~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter   # binary exists
 Pi's stated philosophy is "CLI tools with READMEs (Skills) over MCP." If you don't need every octocode tool exposed, install the octocode researcher skill instead:
 
 ```bash
-npx skills add https://github.com/bgauryy/octocode --skill octocode-researcher
+npx skills add https://github.com/bgauryy/octocode --skill octocode-engineer
 ```
 
 The skill drives octocode via the CLI and avoids the MCP transport layer entirely. Use the adapter route when you want the full 13-tool surface; use the skill route when a focused research workflow is enough.

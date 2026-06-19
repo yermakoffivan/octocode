@@ -402,11 +402,17 @@ describe('directToolCatalog', () => {
   });
 
   it('rejects unknown and invalid direct execution requests before tool logic', async () => {
+    // Unknown tool still throws (no catalog entry to build a structured result from).
     await expect(executeDirectTool('missingTool', {})).rejects.toThrow(
       'Unknown tool: missingTool'
     );
-    await expect(
-      executeDirectTool(STATIC_TOOL_NAMES.LOCAL_RIPGREP, { queries: [] })
-    ).rejects.toThrow();
+    // Invalid INPUT for a known tool now returns a structured error result
+    // (not a throw) so every consumer — CLI and MCP — gets a uniform
+    // CallToolResult instead of an exception. (input-parse moved inside the
+    // execution try in directToolCatalog.)
+    const invalid = await executeDirectTool(STATIC_TOOL_NAMES.LOCAL_RIPGREP, {
+      queries: [],
+    });
+    expect(invalid.isError).toBe(true);
   });
 });

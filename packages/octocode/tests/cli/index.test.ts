@@ -261,6 +261,21 @@ describe('runCLI', () => {
     expect(mocks.loadCommand).not.toHaveBeenCalled();
   });
 
+  it('suggests a near-miss for any known top-level option typo', async () => {
+    const { runCLI } = await import('../../src/cli/index.js');
+
+    const handled = await runCLI(['--versoin']);
+
+    expect(handled).toBe(true);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Unknown option: --versoin (did you mean --version?)'
+      )
+    );
+    expect(process.exitCode).toBe(3);
+    expect(mocks.loadCommand).not.toHaveBeenCalled();
+  });
+
   it('prints error for unknown command and sets exitCode 3', async () => {
     mocks.loadCommand.mockResolvedValue(undefined);
 

@@ -1,5 +1,10 @@
 import type { CLICommand } from '../types.js';
-import { getBool, getString } from '../options.js';
+import {
+  getBool,
+  getString,
+  nonNegIntOption,
+  posIntOption,
+} from '../options.js';
 import { resolveRef, isGithubRef, isLocalRef, refLabel } from '../routing.js';
 import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT } from '../exit-codes.js';
@@ -168,17 +173,6 @@ function listOption(value: string): string[] | undefined {
   return list.length > 0 ? list : undefined;
 }
 
-function intOption(value: string): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
-}
-
-function positiveIntOption(value: string): number | undefined {
-  const parsed = intOption(value);
-  return parsed && parsed > 0 ? parsed : undefined;
-}
-
 function globForQuery(query: string): string {
   return /[*?[\]]/.test(query) ? query : `*${query}*`;
 }
@@ -203,7 +197,7 @@ function error(message: string, jsonOutput: boolean): void {
   if (jsonOutput) {
     console.log(JSON.stringify({ success: false, error: message }));
   } else {
-    console.error(`\n  ${c('red', 'x')} ${message}`);
+    console.error(`\n  ${c('red', '✗')} ${message}`);
     console.error(
       `\n  ${dim('Examples:')}\n` +
         `    find auth src --source local --search path --ext ts\n` +
@@ -302,9 +296,9 @@ function buildLocalFindQuery(
 ): Record<string, unknown> {
   const extList = listOption(getString(options, 'ext')) ?? [];
   const explicitNames = listOption(getString(options, 'name'));
-  const limit = positiveIntOption(getString(options, 'limit'));
+  const limit = posIntOption(getString(options, 'limit'));
   const pageSize =
-    positiveIntOption(getString(options, 'page-size')) ?? limit ?? undefined;
+    posIntOption(getString(options, 'page-size')) ?? limit ?? undefined;
 
   return {
     path,
@@ -316,8 +310,8 @@ function buildLocalFindQuery(
     pathPattern: getString(options, 'path-pattern') || undefined,
     regex: getString(options, 'regex') || undefined,
     entryType: getString(options, 'entry') || 'f',
-    minDepth: intOption(getString(options, 'min-depth')),
-    maxDepth: intOption(getString(options, 'max-depth')),
+    minDepth: nonNegIntOption(getString(options, 'min-depth')),
+    maxDepth: nonNegIntOption(getString(options, 'max-depth')),
     empty: getBool(options, 'empty') || undefined,
     modifiedWithin: getString(options, 'modified-within') || undefined,
     modifiedBefore: getString(options, 'modified-before') || undefined,
@@ -334,7 +328,7 @@ function buildLocalFindQuery(
     showFileLastModified: getBool(options, 'show-modified') || undefined,
     limit,
     itemsPerPage: pageSize,
-    page: positiveIntOption(getString(options, 'page')),
+    page: posIntOption(getString(options, 'page')),
     mainResearchGoal: `Find files matching ${query}`,
     researchGoal: `Find file paths in ${path}`,
     reasoning: 'CLI find command path search',
@@ -350,9 +344,9 @@ function buildLocalSearchQuery(
   const include = listOption(getString(options, 'include')) ?? [];
   const extIncludes =
     extList.length > 1 ? extList.map(ext => `*.${ext.replace(/^\./, '')}`) : [];
-  const limit = positiveIntOption(getString(options, 'limit'));
+  const limit = posIntOption(getString(options, 'limit'));
   const pageSize =
-    positiveIntOption(getString(options, 'page-size')) ?? limit ?? undefined;
+    posIntOption(getString(options, 'page-size')) ?? limit ?? undefined;
 
   return {
     keywords: query,
@@ -373,12 +367,10 @@ function buildLocalSearchQuery(
     hidden: getBool(options, 'hidden') || undefined,
     filesOnly: getBool(options, 'files-only') || undefined,
     filesWithoutMatch: getBool(options, 'files-without-match') || undefined,
-    contextLines: intOption(getString(options, 'context-lines')),
-    matchContentLength: positiveIntOption(getString(options, 'match-length')),
-    maxMatchesPerFile: positiveIntOption(
-      getString(options, 'max-matches-per-file')
-    ),
-    maxFiles: positiveIntOption(getString(options, 'max-files')),
+    contextLines: nonNegIntOption(getString(options, 'context-lines')),
+    matchContentLength: posIntOption(getString(options, 'match-length')),
+    maxMatchesPerFile: posIntOption(getString(options, 'max-matches-per-file')),
+    maxFiles: posIntOption(getString(options, 'max-files')),
     multiline: getBool(options, 'multiline') || undefined,
     multilineDotall: getBool(options, 'multiline-dotall') || undefined,
     sort: getString(options, 'sort') || undefined,
@@ -386,9 +378,9 @@ function buildLocalSearchQuery(
     langType: extList.length === 1 ? extList[0] : undefined,
     countLinesPerFile: getBool(options, 'count-lines') || undefined,
     countMatchesPerFile: getBool(options, 'count-matches') || undefined,
-    matchPage: positiveIntOption(getString(options, 'match-page')),
+    matchPage: posIntOption(getString(options, 'match-page')),
     itemsPerPage: pageSize,
-    page: positiveIntOption(getString(options, 'page')),
+    page: posIntOption(getString(options, 'page')),
     mainResearchGoal: `Search file contents for ${query}`,
     researchGoal: `Find content matches in ${path}`,
     reasoning: 'CLI find command content search',
@@ -410,8 +402,8 @@ function buildGithubQueries(
     filename: getString(options, 'filename') || undefined,
     path: getString(options, 'path') || target.path || undefined,
     match,
-    limit: positiveIntOption(getString(options, 'limit')),
-    page: positiveIntOption(getString(options, 'page')),
+    limit: posIntOption(getString(options, 'limit')),
+    page: posIntOption(getString(options, 'page')),
     verbose: getBool(options, 'verbose') || undefined,
     concise: getBool(options, 'concise') || undefined,
     mainResearchGoal: `Search ${target.owner}/${target.repo} files for ${query}`,
@@ -924,7 +916,7 @@ export const findFilesCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

@@ -49,7 +49,13 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
                 value: z.string().optional(),
                 pathOnly: z.boolean().optional(),
                 matchIndices: z
-                  .array(z.object({ start: z.number(), end: z.number() }))
+                  .array(
+                    z.object({
+                      start: z.number(),
+                      end: z.number(),
+                      lineOffset: z.number(),
+                    })
+                  )
                   .optional(),
                 url: z.string().optional(),
               })

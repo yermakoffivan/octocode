@@ -23,7 +23,7 @@ export const unzipCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${error}`);
+        console.error(`\n  ${c('red', '✗')} ${error}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    unzip app.zip\n` +
@@ -83,7 +83,7 @@ export const unzipCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

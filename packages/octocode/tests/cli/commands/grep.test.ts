@@ -14,6 +14,7 @@ vi.mock('../../../src/utils/colors.js', () => ({
 }));
 
 import { grepCommand } from '../../../src/cli/commands/grep.js';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 import type { ParsedArgs } from '../../../src/cli/types.js';
 
 function run(args: string[], options: Record<string, string | boolean> = {}) {
@@ -89,13 +90,33 @@ describe('grep command', () => {
   it('requires keywords', async () => {
     await run([]);
     expect(executeDirectTool).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
   it('rejects an invalid --mode with a friendly error (no raw Zod leak)', async () => {
     await run(['needle', 'src'], { mode: 'bogus' });
     expect(executeDirectTool).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it('maps a GitHub auth failure to EXIT.AUTH', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: 'HTTP 401 Bad credentials' }],
+      structuredContent: {},
+    });
+    await run(['useState', 'facebook/react']);
+    expect(process.exitCode).toBe(EXIT.AUTH);
+  });
+
+  it('maps a generic search failure to EXIT.TOOL', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: 'ripgrep crashed' }],
+      structuredContent: {},
+    });
+    await run(['needle', 'src']);
+    expect(process.exitCode).toBe(EXIT.TOOL);
   });
 
   it('accepts valid --mode values', async () => {

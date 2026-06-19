@@ -244,13 +244,12 @@ This installs 10 bundled skills:
 
 | Skill | What it does |
 |-------|-------------|
-| `octocode-researcher` | Deep code exploration & discovery |
+| `octocode-engineer` | Deep code exploration & discovery |
 | `octocode-research` | Multi-source research orchestration |
 | `octocode-engineer` | System-aware implementation & refactoring |
-| `octocode-plan` | Research-backed planning |
-| `octocode-rfc-generator` | Technical design documents & RFCs |
+| `octocode-rfc-generator` | Technical design documents, RFCs, and research-backed plans |
 | `octocode-documentation-writer` | Codebase documentation generation |
-| `octocode-pull-request-reviewer` | PR review & analysis |
+| `octocode-engineer` | PR review & analysis |
 | `octocode-roast` | Brutally honest code review |
 | `octocode-prompt-optimizer` | Agent prompt & SKILL.md optimization |
 | `octocode-install` | This installer |
@@ -272,7 +271,7 @@ npx octocode skills list  # skills install check
 ```
 
 Then open the IDE and test:
-> "Use octocode-researcher to find the main entry point of this project"
+> "Use octocode-engineer to find the main entry point of this project"
 
 Tools responding = setup complete.
 
@@ -290,7 +289,7 @@ Tools responding = setup complete.
 | Roast | "Roast my code" |
 
 - Local tools require `ENABLE_LOCAL=true` in MCP config
-- Skill not triggering? Name it explicitly: "use octocode-researcher to..."
+- Skill not triggering? Name it explicitly: "use octocode-engineer to..."
 - More skills: `npx octocode` → Manage Skills → Browse Marketplace
 
 ---

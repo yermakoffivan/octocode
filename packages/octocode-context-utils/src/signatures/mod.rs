@@ -23,22 +23,29 @@ pub fn extract_boundary_lines_inner(content: &str, file_path: &str) -> Vec<(usiz
     if content.len() > crate::minifier::MAX_SIZE {
         return Vec::new();
     }
-    let ext = get_extension_internal(file_path, true, "txt");
-    if NO_SYMBOL_EXTS.contains(&ext.as_str()) {
-        return Vec::new();
-    }
-    // tree-sitter path (highest accuracy)
-    if let Some(entry) = languages::find_entry(&ext) {
-        let cfg = LangExtractConfig {
-            language: entry.language.clone(),
-            body_query: entry.body_query,
-        };
-        if let Some(kept) = extract(content, &cfg) {
-            return kept;
+    // Wrap the tree-sitter parser path in `catch_unwind` so a parser panic on
+    // adversarial input is converted into a clean empty fallback rather than
+    // unwinding across the napi FFI boundary and aborting Node. Mirrors the
+    // guard on the sibling `extract_signatures_inner`.
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let ext = get_extension_internal(file_path, true, "txt");
+        if NO_SYMBOL_EXTS.contains(&ext.as_str()) {
+            return Vec::new();
         }
-    }
-    // Heuristic path (30+ languages)
-    heuristic::extract_heuristic(content, &ext).unwrap_or_default()
+        // tree-sitter path (highest accuracy)
+        if let Some(entry) = languages::find_entry(&ext) {
+            let cfg = LangExtractConfig {
+                language: entry.language.clone(),
+                body_query: entry.body_query,
+            };
+            if let Some(kept) = extract(content, &cfg) {
+                return kept;
+            }
+        }
+        // Heuristic path (30+ languages)
+        heuristic::extract_heuristic(content, &ext).unwrap_or_default()
+    }))
+    .unwrap_or_default()
 }
 
 /// Build a table of JS char offsets (UTF-16 code units) for each line start.
@@ -298,6 +305,31 @@ mod tests {
 
     fn extract(content: &str, path: &str) -> Option<String> {
         extract_signatures_inner(content, path)
+    }
+
+    /// Regression: the tree-sitter boundary extractor must never abort the
+    /// process on adversarial input — a parser panic must be caught and turned
+    /// into an empty fallback by the `catch_unwind` guard on
+    /// `extract_boundary_lines_inner`. We feed a barrage of malformed sources
+    /// and assert only that each call returns without aborting.
+    #[test]
+    fn boundary_extractor_never_aborts_on_malformed_input() {
+        let adversarial = [
+            "",
+            "\u{0}\u{0}\u{0}\u{0}",
+            "function broken( { [ unterminated",
+            "}}}};;;;export export export",
+            "\u{feff}\u{202e}const x =;",
+            "class { { { {",
+            "import type type from from from",
+        ];
+        for src in adversarial {
+            let lines = extract_boundary_lines_inner(src, "x.ts");
+            // Reachable only if no abort occurred.
+            let _ = lines.len();
+            let offsets = get_semantic_boundary_offsets_inner(src, "x.tsx");
+            let _ = offsets.len();
+        }
     }
 
     // ── tree-sitter languages ─────────────────────────────────────────────────

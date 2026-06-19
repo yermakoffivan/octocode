@@ -43,6 +43,24 @@ export function intFlag(
   return n;
 }
 
+/**
+ * Lenient non-negative integer parse for option values: returns the number when
+ * it's an integer >= 0, otherwise undefined (absent or invalid). Unlike
+ * intFlag() this never surfaces an error — it's the shared replacement for the
+ * copy-pasted `intOpt`/`intOption`/`parseInt10` helpers across commands.
+ */
+export function nonNegIntOption(value: string): number | undefined {
+  if (!value) return undefined;
+  const n = Number.parseInt(value, 10);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/** Lenient positive integer parse: integer > 0, else undefined. */
+export function posIntOption(value: string): number | undefined {
+  const n = nonNegIntOption(value);
+  return n && n > 0 ? n : undefined;
+}
+
 export function resolveHostname(opts: Options): string {
   const v = opts['hostname'];
   return (

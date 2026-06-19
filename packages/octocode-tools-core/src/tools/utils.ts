@@ -9,10 +9,13 @@ import type { ProviderResponse } from '../providers/types.js';
 import { getHints } from '../hints/index.js';
 import { logSessionError } from '../session.js';
 import { TOOL_ERRORS } from '../errors/domainErrors.js';
-import { createErrorResult } from '../utils/response/error.js';
+import {
+  createErrorResult,
+  safeParseOrError,
+} from '../utils/response/error.js';
 import { attachRawResponseChars } from '../utils/response/charSavings.js';
 
-export { createErrorResult };
+export { createErrorResult, safeParseOrError };
 
 export async function invokeCallbackSafely(
   callback: ToolInvocationCallback | undefined,

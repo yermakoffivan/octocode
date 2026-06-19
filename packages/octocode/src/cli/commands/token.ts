@@ -1,5 +1,6 @@
 import type { CLICommand, ParsedArgs } from '../types.js';
 import { c, dim } from '../../utils/colors.js';
+import { EXIT } from '../exit-codes.js';
 import { getToken, getTokenType } from '../../features/github-oauth.js';
 import {
   type GetTokenSource,
@@ -143,14 +144,14 @@ export const tokenCommand: CLICommand = {
       default:
         if (jsonOutput) {
           console.log(JSON.stringify({ token: null, type: 'none' }));
-          process.exitCode = 1;
+          process.exitCode = EXIT.USAGE;
           return;
         }
         console.log();
         console.log(`  ${c('red', '✗')} Invalid token type: ${typeArg}`);
         console.log(`  ${dim('Valid options:')} octocode, gh, auto`);
         console.log();
-        process.exitCode = 1;
+        process.exitCode = EXIT.USAGE;
         return;
     }
 
@@ -161,7 +162,7 @@ export const tokenCommand: CLICommand = {
         console.log(
           JSON.stringify({ token: null, type: 'none', valid: false })
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.AUTH;
         return;
       }
       if (validateToken) {
@@ -176,7 +177,7 @@ export const tokenCommand: CLICommand = {
             error: ping.error ?? null,
           })
         );
-        if (!ping.valid) process.exitCode = 1;
+        if (!ping.valid) process.exitCode = EXIT.AUTH;
         return;
       }
       console.log(
@@ -218,7 +219,7 @@ export const tokenCommand: CLICommand = {
         printLoginHint();
       }
       console.log();
-      process.exitCode = 1;
+      process.exitCode = EXIT.AUTH;
       return;
     }
 
@@ -246,7 +247,7 @@ export const tokenCommand: CLICommand = {
         console.log(
           `  ${c('red', '✗')} Token validation failed: ${ping.error ?? 'unknown error'}`
         );
-        process.exitCode = 1;
+        process.exitCode = EXIT.AUTH;
       }
       console.log();
       return;

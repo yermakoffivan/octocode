@@ -15,6 +15,7 @@ import {
   analyzeSyncState,
 } from '../../../src/features/sync.js';
 import { getDirectorySizeBytes, formatBytes } from 'octocode-shared';
+import { EXIT } from '../../../src/cli/exit-codes.js';
 
 const { mockPaths } = vi.hoisted(() => ({
   mockPaths: {
@@ -185,7 +186,7 @@ describe('statusCommand', () => {
     expect(process.exitCode).toBeUndefined();
   });
 
-  it('--json sets exitCode 1 when not authenticated', async () => {
+  it('--json sets EXIT.AUTH when not authenticated', async () => {
     vi.mocked(formatAuthStatusAsJson).mockReturnValue({
       authenticated: false,
       hostname: 'github.com',
@@ -193,7 +194,7 @@ describe('statusCommand', () => {
     const cmd = await loadCommand();
     await cmd.handler({ command: 'status', args: [], options: { json: true } });
     expect(out('"auth"')).toBe(true);
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(EXIT.AUTH);
   });
 
   it('--sync (json) includes sync data', async () => {

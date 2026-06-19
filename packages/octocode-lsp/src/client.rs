@@ -22,7 +22,13 @@ const STDERR_LINE_MAX_CHARS: usize = 2_000;
 pub struct NativeLspClient {
     config: JsLanguageServerConfig,
     child: Mutex<Option<Child>>,
-    connection: Mutex<Option<JsonRpcConnection<ChildStdin>>>,
+    // Stored behind an `Arc` so callers can clone a handle out from under the
+    // lock and then release the guard BEFORE awaiting the (potentially
+    // multi-second) request, instead of serializing all LSP traffic on this
+    // mutex. `JsonRpcConnection` is internally `Send + Sync` and supports
+    // concurrent `request`/`notify` (its writer + pending map are each
+    // `Arc<Mutex<..>>`), so cloned handles are safe to use in parallel.
+    connection: Mutex<Option<Arc<JsonRpcConnection<ChildStdin>>>>,
     stderr_task: Mutex<Option<JoinHandle<()>>>,
     stderr_lines: Arc<StdMutex<VecDeque<String>>>,
     capabilities: StdMutex<Option<Value>>,
@@ -106,7 +112,7 @@ impl NativeLspClient {
                 return Err(error);
             }
         };
-        let connection = JsonRpcConnection::new(
+        let connection = Arc::new(JsonRpcConnection::new(
             stdout,
             stdin,
             ClientRequestContext {
@@ -118,7 +124,7 @@ impl NativeLspClient {
                 workspace_folders: json!([{ "uri": root_uri, "name": "workspace" }]),
             },
             Arc::clone(&self.progress),
-        );
+        ));
         let initialize_result = match initialize(&connection, &self.config).await {
             Ok(value) => value,
             Err(error) => {
@@ -198,10 +204,7 @@ impl NativeLspClient {
                 "text": content
             }
         });
-        let guard = self.connection.lock().await;
-        let connection = guard
-            .as_ref()
-            .ok_or_else(|| Error::new(Status::GenericFailure, "LSP client not initialized"))?;
+        let connection = self.connection_handle().await?;
         connection.notify("textDocument/didOpen", params).await
     }
 
@@ -326,11 +329,25 @@ impl Drop for NativeLspClient {
 }
 
 impl NativeLspClient {
-    async fn request(&self, method: &str, params: Value) -> Result<Value> {
-        let guard = self.connection.lock().await;
-        let connection = guard
+    /// Clones the connection handle out from under the lock, releasing the
+    /// guard before the caller awaits any request. This keeps the
+    /// `connection` mutex uncontended (held only for the clone) so concurrent
+    /// LSP requests are NOT serialized and cannot head-of-line block one
+    /// another. Returns an error if the client has not been started.
+    async fn connection_handle(&self) -> Result<Arc<JsonRpcConnection<ChildStdin>>> {
+        self.connection
+            .lock()
+            .await
             .as_ref()
-            .ok_or_else(|| Error::new(Status::GenericFailure, "LSP client not initialized"))?;
+            .map(Arc::clone)
+            .ok_or_else(|| Error::new(Status::GenericFailure, "LSP client not initialized"))
+    }
+
+    async fn request(&self, method: &str, params: Value) -> Result<Value> {
+        // Acquire a cloned handle and DROP the guard before awaiting, so the
+        // request + content-modified retry loop never holds the connection
+        // mutex across `.await`.
+        let connection = self.connection_handle().await?;
         let mut attempts = 0;
         loop {
             match connection
@@ -373,8 +390,37 @@ impl NativeLspClient {
     }
 }
 
+/// Detects the LSP `ContentModified` (-32801) error so the request can be retried.
+///
+/// The reason string is the JSON error object rendered by [`read_loop`], e.g.
+/// `LSP error: {"code":-32801,"message":"content modified"}`. We match on the
+/// numeric error CODE rather than a free-text `"content modified"` substring,
+/// which would false-positive on hover/diagnostic payloads that merely mention
+/// the phrase (e.g. a doc-comment) and trigger spurious retries.
 fn is_content_modified_error(error: &Error) -> bool {
-    error.reason.contains("-32801") || error.reason.contains("content modified")
+    reason_has_error_code(&error.reason, -32801)
+}
+
+/// Returns true if the rendered JSON error object carries `"code": <code>`,
+/// tolerating arbitrary whitespace between the key, colon, and value.
+fn reason_has_error_code(reason: &str, code: i64) -> bool {
+    let mut search = reason;
+    while let Some(idx) = search.find("\"code\"") {
+        let after = &search[idx + "\"code\"".len()..];
+        let after = after.trim_start();
+        if let Some(rest) = after.strip_prefix(':') {
+            let rest = rest.trim_start();
+            // Parse the leading signed integer literal.
+            let end = rest
+                .find(|c: char| c != '-' && !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            if rest[..end].parse::<i64>() == Ok(code) {
+                return true;
+            }
+        }
+        search = &search[idx + "\"code\"".len()..];
+    }
+    false
 }
 
 fn capability_supported(capabilities: &Value, capability: &str) -> bool {
@@ -575,6 +621,46 @@ fn slice_range_content(content: &str, range: &JsRange) -> String {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn content_modified_detected_by_error_code() {
+        let error = Error::new(
+            Status::GenericFailure,
+            "LSP error: {\"code\":-32801,\"message\":\"content modified\"}".to_owned(),
+        );
+        assert!(is_content_modified_error(&error));
+    }
+
+    #[test]
+    fn content_modified_detected_with_spaced_code() {
+        let error = Error::new(
+            Status::GenericFailure,
+            "LSP error: {\"code\" : -32801 , \"message\":\"x\"}".to_owned(),
+        );
+        assert!(is_content_modified_error(&error));
+    }
+
+    #[test]
+    fn content_modified_not_triggered_by_phrase_in_payload() {
+        // A hover/result payload that merely mentions the phrase, with a
+        // different (or no) error code, must NOT be treated as ContentModified.
+        let error = Error::new(
+            Status::GenericFailure,
+            "LSP error: {\"code\":-32603,\"message\":\"docs say: content modified by user\"}"
+                .to_owned(),
+        );
+        assert!(!is_content_modified_error(&error));
+    }
+
+    #[test]
+    fn content_modified_not_triggered_by_substring_in_other_code() {
+        // The digits -32801 appearing inside a larger number must not match.
+        let error = Error::new(
+            Status::GenericFailure,
+            "LSP error: {\"code\":-328011,\"message\":\"x\"}".to_owned(),
+        );
+        assert!(!is_content_modified_error(&error));
+    }
 
     #[test]
     fn stderr_ring_keeps_only_recent_lines() {

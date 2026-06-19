@@ -1,5 +1,5 @@
 import type { CLICommand } from '../types.js';
-import { getBool, getString } from '../options.js';
+import { getBool, getString, posIntOption } from '../options.js';
 import { c, dim } from '../../utils/colors.js';
 import { EXIT } from '../exit-codes.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
@@ -39,12 +39,6 @@ function resolveMode(
     return { mode: 'decompress', auto: false };
   if (getBool(options, 'identify')) return { mode: 'identify', auto: false };
   return { mode: detectMode(file), auto: true };
-}
-
-function parseInt10(value: string): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 export const binaryCommand: CLICommand = {
@@ -124,7 +118,7 @@ export const binaryCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error }));
       } else {
-        console.error(`\n  ${c('red', 'x')} ${error}`);
+        console.error(`\n  ${c('red', '✗')} ${error}`);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    binary app.zip                 ${dim('# list entries')}\n` +
@@ -151,7 +145,7 @@ export const binaryCommand: CLICommand = {
 
     if (mode === 'list') {
       if (getBool(options, 'verbose')) query.verbose = true;
-      const maxEntries = parseInt10(getString(options, 'max-entries'));
+      const maxEntries = posIntOption(getString(options, 'max-entries'));
       if (maxEntries) query.maxEntries = maxEntries;
     } else if (mode === 'extract') {
       query.archiveFile = getString(options, 'extract');
@@ -161,7 +155,7 @@ export const binaryCommand: CLICommand = {
       if (format) query.format = format;
       if (match) query.matchString = match;
     } else if (mode === 'strings') {
-      const minLength = parseInt10(getString(options, 'min-length'));
+      const minLength = posIntOption(getString(options, 'min-length'));
       if (minLength) query.minLength = minLength;
       if (getBool(options, 'offsets')) query.includeOffsets = true;
     }
@@ -174,12 +168,12 @@ export const binaryCommand: CLICommand = {
         charOffsetRaw && /^\d+$/.test(charOffsetRaw)
           ? parseInt(charOffsetRaw, 10)
           : undefined;
-      const charLength = parseInt10(getString(options, 'char-length'));
+      const charLength = posIntOption(getString(options, 'char-length'));
       if (charOffset !== undefined) query.charOffset = charOffset;
       if (charLength) query.charLength = charLength;
     }
 
-    const page = parseInt10(getString(options, 'page'));
+    const page = posIntOption(getString(options, 'page'));
     if (page) query.page = page;
 
     if (!jsonOutput) {
@@ -207,7 +201,7 @@ export const binaryCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;

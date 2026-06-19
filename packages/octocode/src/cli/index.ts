@@ -46,7 +46,7 @@ async function tryLoadToolCommandModule(): Promise<Awaited<
 }
 
 async function loadMainHelpModule(): Promise<{
-  showHelp(): void;
+  showHelp(): Promise<void>;
 }> {
   return import('./main-help.js');
 }
@@ -108,12 +108,12 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
       }
 
       const { showHelp } = await loadMainHelpModule();
-      showHelp();
+      await showHelp();
       return true;
     }
 
     const { showHelp } = await loadMainHelpModule();
-    showHelp();
+    await showHelp();
     return true;
   }
 
@@ -140,8 +140,9 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
       option => !KNOWN_TOP_LEVEL_OPTIONS.has(option)
     );
     if (unknownOption) {
-      const suggestion =
-        unknownOption === 'contecxt' ? ' (did you mean --context?)' : '';
+      const { suggestFlag } = await import('./command-validation.js');
+      const hint = suggestFlag(unknownOption, KNOWN_TOP_LEVEL_OPTIONS);
+      const suggestion = hint ? ` (did you mean --${hint}?)` : '';
       console.log();
       console.log(`  Unknown option: --${unknownOption}${suggestion}`);
       console.log(`  Run '--help' to see available commands.`);

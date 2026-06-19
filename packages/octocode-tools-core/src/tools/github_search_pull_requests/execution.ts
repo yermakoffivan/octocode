@@ -21,6 +21,7 @@ import {
   handleCatchError,
   createSuccessResult,
   createErrorResult,
+  safeParseOrError,
 } from '../utils.js';
 import {
   buildPaginationHints,
@@ -52,18 +53,17 @@ export async function searchMultipleGitHubPullRequests(
     queries,
     async (query: GitHubPullRequestSearchInput, _index: number) => {
       try {
-        const validation =
-          GitHubPullRequestSearchQueryLocalSchema.safeParse(query);
-        if (!validation.success) {
-          const messages = validation.error.issues
-            .map(i => i.message)
-            .join('; ');
-          return createErrorResult(`Validation error: ${messages}`, query);
+        const parsed = safeParseOrError(
+          GitHubPullRequestSearchQueryLocalSchema,
+          query
+        );
+        if (!parsed.ok) {
+          return parsed.error;
         }
 
         // --- commits mode: route to commit history API ---
-        if ((validation.data as { type?: string }).type === 'commits') {
-          const q = validation.data as {
+        if ((parsed.data as { type?: string }).type === 'commits') {
+          const q = parsed.data as {
             type?: string;
             owner?: string;
             repo?: string;
@@ -183,7 +183,7 @@ export async function searchMultipleGitHubPullRequests(
         // --- end commits mode ---
 
         const currentProviderContext = getProviderContext();
-        const effectiveQuery: PartialPRQuery = { ...validation.data };
+        const effectiveQuery: PartialPRQuery = { ...parsed.data };
         const contentRequest = normalizePullRequestContentRequest(
           effectiveQuery as never
         );
@@ -431,7 +431,12 @@ export async function searchMultipleGitHubPullRequests(
           }
         );
       } catch (error) {
-        return handleCatchError(error, query);
+        return handleCatchError(
+          error,
+          query,
+          undefined,
+          TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS
+        );
       }
     },
     {

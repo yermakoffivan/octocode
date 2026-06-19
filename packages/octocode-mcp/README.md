@@ -6,32 +6,26 @@
   <h3>The context research Swiss Army knife for AI agents and developers.</h3>
   <p><strong>Stop guessing.</strong> Octocode is an evidence-first research platform for understanding code across <strong>external sources and local workspaces</strong>. Search GitHub repositories, pull requests, and npm packages alongside your local codebase with ripgrep, AST structural search, repository structure browsing, smart content fetching, binary inspection, and LSP semantic navigation.</p>
   <p>Use it as a <strong>CLI</strong> or <strong>MCP server</strong> to combine agent-friendly TypeScript workflows with <strong>Rust-backed performance</strong> for fast, evidence-based research across cross-repo systems and mega-repos.</p>
-  <p>Use it <strong>three ways</strong>: an <strong>MCP server</strong> for AI assistants, a <strong>CLI</strong> for terminals, scripts, and CI, and a library of <strong>Agent Skills</strong> that turn the tools into ready-made research, review, planning, and quality workflows.</p>
+  <p>Created for <strong>agents and humans</strong> who need fast, reliable context before changing, reviewing, or explaining code.</p>
 
-  <p>
-    <a href="https://octocode.ai"><strong>octocode.ai</strong></a>
-    &nbsp;·&nbsp;
-    <a href="#quickstart">Quickstart</a>
-    &nbsp;·&nbsp;
-    <a href="#platform">Platform</a>
-    &nbsp;·&nbsp;
-    <a href="#mcp">MCP</a>
-    &nbsp;·&nbsp;
-    <a href="#cli">CLI</a>
-    &nbsp;·&nbsp;
-    <a href="#tools">Tools</a>
-    &nbsp;·&nbsp;
-    <a href="#skills">Skills</a>
-    &nbsp;·&nbsp;
-    <a href="#security">Security</a>
-    &nbsp;·&nbsp;
-    <a href="#architecture">Architecture</a>
-    &nbsp;·&nbsp;
-    <a href="#development">Development</a>
-  </p>
 </div>
 
 ---
+
+
+## Table of Contents
+
+- [Quickstart](#quickstart)
+- [Platform](#platform)
+- [MCP](#mcp)
+- [CLI](#cli)
+- [Tools](#tools)
+- [Security](#security)
+- [Development](#development)
+- [Architecture](#architecture)
+- [Skills](#skills)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
 
 ## Quickstart
 
@@ -205,560 +199,69 @@ https://github.com/user-attachments/assets/de8d14c0-2ead-46ed-895e-09144c9b5071
 
 ### Configuration
 
-Set via `env` in the MCP config block, or in the shell environment.
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OCTOCODE_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` | GitHub token - resolution order: OCTOCODE → GH → GITHUB → encrypted store → `gh` CLI | - |
-| `GITHUB_API_URL` | GitHub API base URL (GitHub Enterprise) | `https://api.github.com` |
-| `ENABLE_LOCAL` | Enable local filesystem tools | `true` |
-| `ENABLE_CLONE` | Enable `ghCloneRepo` and directory fetch mode (requires `ENABLE_LOCAL`) | `false` |
-| `WORKSPACE_ROOT` | Root for resolving relative local paths | `process.cwd()` |
-| `ALLOWED_PATHS` | Restrict local tools to these paths, comma-separated; empty = all | all |
-| `TOOLS_TO_RUN` | Run only these tools, comma-separated | all |
-| `ENABLE_TOOLS` / `DISABLE_TOOLS` | Add or remove specific tools, comma-separated | - |
-| `OCTOCODE_OUTPUT_FORMAT` | Response format: `yaml` or `json` | `yaml` |
-| `OCTOCODE_DEFAULT_MINIFY` | Default minify mode: `none`, `standard`, `symbols` | `standard` |
-| `OCTOCODE_OUTPUT_DEFAULT_CHAR_LENGTH` | Default output page size in characters | `2000` |
-| `REQUEST_TIMEOUT` | API request timeout in milliseconds | `30000` |
-| `MAX_RETRIES` | Maximum API retry attempts | `3` |
-| `OCTOCODE_CACHE_TTL_MS` | Clone cache TTL in milliseconds | `86400000` |
-| `LOG` | Enable session logging | `true` |
+Keep README setup minimal. Full environment variables, path restrictions, GitHub Enterprise setup, clone/cache behavior, and output tuning live in the [MCP Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md).
 
 ---
 
 ## CLI
 
-The CLI is the terminal interface to the same engine. Every MCP tool is available via `octocode tools <name>`. Quick commands are Unix-style shortcuts with automatic local-or-GitHub routing.
-
-**CLI UX map:** use quick commands for day-to-day research, management commands for setup/auth/skills, and the raw tool runner when you need exact MCP schemas.
-
-| Need | Use |
-|------|-----|
-| Map files and repos | `ls`, `find`, `repo`, `pkg` |
-| Search text or code structure | `grep`, `ast` |
-| Read less, cite exact evidence | `cat --mode symbols`, `cat --match-string`, `cat --start-line ... --end-line ...` |
-| Trace symbols semantically | `symbols`, then `lsp --type ... --symbol ... --line ...` |
-| Inspect PRs/history or clone for local analysis | `pr`, `history`, `clone` |
-| Inspect archives/binaries | `binary`, `unzip` |
-| Configure Octocode | `install`, `auth`, `login`, `logout`, `token`, `status`, `skills` |
-| Run any MCP tool directly | `tools <name> --scheme`, then `tools <name> --queries '<json>'` |
+The CLI exposes the same research engine without an MCP client. Use quick commands for humans, or call raw tools from scripts and CI.
 
 ### Install
 
 ```bash
-# Homebrew (macOS / Linux)
 brew install bgauryy/octocode/octocode
-
-# npm
+# or
 npm install -g octocode
-
-# no global install needed
-npx octocode install
 ```
 
 ```bash
-octocode --version
 octocode login
 octocode status
 ```
 
-### Quick Commands
+### Research Commands
 
-Auto-route based on target: a local path routes to local tools; `owner/repo[/path]` routes to GitHub. All commands support `--json`.
+Auto-route local paths to local tools and `owner/repo[/path]` targets to GitHub tools.
 
-| Command | Routes to | What it does |
-|---------|-----------|------|
-| `cat <path\|owner/repo/path>` | `localGetFileContent` / `ghGetFileContent` | Read and minify file content |
-| `ls <path\|owner/repo>` | `localViewStructure` / `ghViewRepoStructure` | Directory structure |
-| `grep <keywords> <path\|owner/repo>` | `localSearchCode` / `ghSearchCode` | Text or regex search |
-| `find <query> [path\|owner/repo]` | `localFindFiles` / `localSearchCode` / `ghSearchCode` | Find files by name, path, or content |
-| `ast <pattern> [path]` | `localSearchCode` (structural) | AST shape search via ast-grep (local only) |
-| `clone <owner/repo[/path][@branch]>` | `ghCloneRepo` | Clone a repo or subtree to `~/.octocode/repos/` |
-| `pr <owner/repo[#N]\|PR-URL>` | `ghHistoryResearch` | List or deep-dive pull requests |
-| `history <owner/repo[/path]>` | `ghHistoryResearch` (commits) | Commit history for a repo, dir, or file (→ `#PR` deep-read) |
-| `repo <keywords...>` | `ghSearchRepos` | Discover GitHub repositories |
-| `pkg <package>` | `npmSearch` | npm package metadata + source repo |
-| `symbols <file\|path>` | `lspGetSemantics` (documentSymbols) | Semantic symbol outline |
-| `lsp <file> --type <type>` | `lspGetSemantics` | Definition, references, callers, callees, call hierarchy, hover, type definition, implementation |
-| `binary <file>` | `localBinaryInspect` | Archives, compressed files, native binaries |
-| `unzip <archive>` | `localBinaryInspect` (unpack) | Unpack an archive to a cached directory |
-
-### Minimize First
-
-Octocode is designed for agent UX: map cheaply, then read the smallest proof slice.
-
-- `--compact` trims CLI rendering; `--json` returns the raw envelope when automation needs it.
-- `--concise` returns path/title-only discovery lists for search-style commands.
-- `cat --mode symbols` gives a line-numbered skeleton before reading bodies.
-- `cat --match-string`, `--start-line`, and `--end-line` keep evidence reads small and quotable.
-- `grep --mode discovery` finds files only; switch to paginated/detailed only after narrowing.
-
-#### cat
-
-```
-cat <path|owner/repo/path>
-    --mode  none|standard|symbols    minification (default: standard)
-    --branch <ref>                   branch for GitHub paths
-    --match-string <s>               return only sections containing this string
-    --match-regex                    treat --match-string as a regex
-    --match-case-sensitive
-    --start-line <n>                 first line (1-based)
-    --end-line <n>
-    --context-lines <n>              context lines around --match-string hits
-    --page-size <n>                  characters per page
-    --page <n>
-    --char-offset <n>                character offset for continuation
-    --char-length <n>
-    --full-content                   return the whole file
-    --content-type file|directory    GitHub content type
-    --force-refresh                  bypass GitHub cache
-    --json
-```
-
-#### ls
-
-```
-ls <path|owner/repo>
-    --depth <n>                       recursion depth
-    --branch <ref>                    branch for GitHub paths
-    --pattern <glob>                  name filter, e.g. "*.ts" (local only)
-    --ext <list>                      comma-separated extension whitelist (local only)
-    --sort name|size|time|extension   (local only, default: name)
-    --reverse                         reverse sort (local only)
-    --files-only                      list files only (local only)
-    --dirs-only                       list directories only (local only)
-    --hidden                          include dot-files (local only)
-    --limit <n>                       cap entries before pagination
-    --page <n>
-    --page-size <n>                   entries per page
-    --json
-```
-
-#### grep
-
-```
-grep <keywords> <path|owner/repo>
-    --type <ext>          filter by language or extension (ts, py, go, rs)
-    --mode paginated|discovery|detailed   (local only, default: paginated)
-    --concise             paths only - cheapest orientation
-    --include <glob>      include globs (local only)
-    --exclude <glob>      exclude globs (local only)
-    --context-lines <n> / --context <n>   context around each match (local only)
-    --fixed / --fixed-string              literal string search (local only)
-    --perl-regex                          advanced regex features (local only)
-    --case-insensitive / --case-sensitive
-    --whole-word / --invert-match
-    --hidden / --no-ignore
-    --files-only / --files-without-match
-    --count-lines / --count-matches
-    --multiline / --multiline-dotall
-    --match-length <n>  characters kept per match snippet (local only)
-    --max-matches <n>   max matches per file (local only)
-    --max-files <n>     max matched files returned (local only)
-    --match-page <n>    page within one file's matches (local only)
-    --branch <ref>      branch for GitHub paths
-    --limit <n>         max files in output
-    --page <n>
-    --page-size <n>
-    --json
-```
-
-For AST/structural search use `ast` instead.
-
-#### ast
-
-AST shape search via [ast-grep](https://ast-grep.github.io). Structure-aware - comments and strings never false-match. **Local only** - for text/regex or GitHub use `grep`.
-
-**Supported languages** (Rust-native, Tree-sitter grammars compiled in):
-
-`ts` `tsx` `js` `jsx` `mjs` `cjs` `py` `go` `rs` `java` `c` `h` `cpp` `cc` `cxx` `hpp` `cs` `sh` `bash` `zsh`
-
-```
-ast <pattern> [path]
-ast [path] --rule <yaml>
-    --pattern <ast>    AST shape (alternative to positional). Metavars: $X = one node, $$$ARGS = a list.
-                       e.g. 'eval($X)', 'console.log($$$)', 'useState($X)'
-    --rule <yaml>      Relational YAML rule - not/inside/has/all/any.
-                       Relational sub-rules need 'stopBy: end'.
-                       Mutually exclusive with a pattern.
-    --type <ext>       filter by language or extension (ts, py, go)
-    --context-lines <n>   context around each match (default: 0)
-    --max-matches <n>  max matches per file
-    --limit <n>        max files in output (default: 10)
-    --page <n>
-    --page-size <n>
-    --json
-```
-
-#### find
-
-```
-find <query> [path|owner/repo]
-    --source auto|local|github      routing (default: auto)
-    --search path|content|both      search mode (default: path)
-    --ext <list>                    comma-separated extensions
-    --path <subpath>                local root or GitHub repo subpath
-    --owner <owner>                 GitHub owner
-    --repo <repo>                   GitHub repository
-    --filename <name>               GitHub filename filter
-    --verbose                       verbose GitHub search results
-    --concise                       GitHub flat "owner/repo:path" list — cheapest orientation
-    --limit <n>
-    --page <n>
-    --page-size <n>
-
-    Local path filters:
-    --name <glob>                   basename glob(s)
-    --path-pattern <glob>           full path glob (e.g. src/**/*.ts)
-    --regex <pattern>               basename regex
-    --entry f|d                     file (f) or directory (d)
-    --min-depth <n>
-    --max-depth <n>
-    --modified-within <window>      e.g. 7d, 2h, 1w
-    --modified-before <window>
-    --accessed-within <window>
-    --size-greater <size>           e.g. 100k, 1m
-    --size-less <size>
-    --permissions <perm>            e.g. 755, -u+x
-    --executable / --readable / --writable
-    --empty
-    --exclude-dir <list>            directory names to skip
-    --sort modified|name|path|size
-    --details                       add size and permissions per entry
-    --show-modified                 add modification timestamps
-
-    Local content filters (when --search content|both):
-    --mode paginated|discovery|detailed
-    --include <glob>
-    --exclude <glob>
-    --case-insensitive / --case-sensitive / --whole-word
-    --fixed-string / --perl-regex
-    --invert-match
-    --hidden                        search hidden files
-    --no-ignore                     skip .gitignore rules
-    --context-lines <n>
-    --max-matches-per-file <n>
-    --max-files <n>                 cap matched files
-    --match-length <n>              cap match snippet length
-    --match-page <n>                page within one file's matches
-    --multiline                     let match span lines
-    --multiline-dotall              let . cross newlines (requires --multiline)
-    --sort path|modified|accessed|created
-    --sort-reverse
-    --count-lines / --count-matches
-    --files-only / --files-without-match
-    --json
-```
-
-#### pr
-
-```
-pr <owner/repo[#N]|PR-URL>
-    --pr <n>                         PR number (alternative to #N syntax)
-    --state open|closed|merged
-    --query <keywords>               keyword filter in list mode
-    --author <user>
-    --label <label>
-    --base <branch>
-    --sort created|updated|best-match|comments|reactions
-    --order asc|desc                 (default: desc)
-    --draft                          show only draft PRs
-    --created <range>                e.g. >2024-01-01
-    --merged-at <range>              e.g. >2024-06-01
-    --concise                        flat "#number title" list - cheapest triage
-    --limit <n>
-    --page <n>
-    --page-size <n>
-    --patches                        include unified diffs
-    --file <path>                    diff for one file only
-    --comments                       include comments
-    --commits                        include commits
-    --deep                           patches + comments + commits + reviews
-    --match-string <s>               narrow returned content
-    --char-length <n>                cap body/diff size in chars
-    --char-offset <n>                continue from char offset
-    --json
-```
-
-#### repo
-
-```
-repo <keywords...>
-    --topic <list>                    comma-separated GitHub topics
-    --language <lang>
-    --owner <owner>                   owner or organization
-    --stars <range>                   e.g. >100, 50..500
-    --forks <range>
-    --good-first-issues <range>
-    --license <spdx>                  e.g. mit, apache-2.0
-    --created <range>                 e.g. >2023-01-01
-    --updated <range>
-    --size <range>                    repository size in KB
-    --match name,description,readme
-    --sort stars|forks|help-wanted-issues|updated|best-match
-    --archived true|false
-    --visibility public|private
-    --limit <n>
-    --page <n>
-    --verbose                         structured repository objects
-    --json
-```
-
-#### pkg
-
-```
-pkg <package|keywords>
-    --mode lean|full    lean (default, token-efficient) or full metadata
-    --page <n>          result page for keyword searches
-    --json
-```
-
-#### symbols
-
-```
-symbols <file|path>
-    --ext <list>      comma-separated extensions for directory mode
-    --kind <kind>     filter by symbol kind: function, class, method, variable, ...
-    --limit <n>       max files in directory mode (default: 10)
-    --depth <n>       directory discovery depth (default: 4)
-    --page-size <n>   symbols per file from LSP (default: 40)
-    --json
-```
-
-Directory mode discovers files matching extensions (defaults: `ts tsx js jsx mjs cjs py go rs java kt swift cs cpp c h hpp php rb lua dart`). LSP coverage depends on server availability - see the `lsp` section for per-language support.
-
-#### lsp
-
-```
-lsp <file> --type <type> --symbol <name> --line <n>
-    --type   definition|references|callers|callees|callHierarchy
-             hover|typeDefinition|implementation   (required)
-    --symbol <name>             required
-    --line <n>                  required
-    --workspace-root <path>
-    --format structured|compact
-    --context-lines <n>
-    --depth <n>                 call hierarchy depth
-    --page <n>
-    --page-size <n>
-    --json
-```
-
-Run `grep` or `symbols` first to get a real `--line` value. Never guess `--line`. Semantic misses such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls` exit with code `3` so shell scripts can fail fast without parsing JSON.
-
-All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode symbols <file|path>` for `documentSymbols`. For TypeScript/JavaScript import aliases, `definition` follows local imports to the exported declaration when the language server first returns the import binding.
-
-**Supported languages** (Rust-native, no server install required for symbol detection; LSP ops need the listed server on PATH):
-
-| Language | Extensions | Default server |
-|----------|------------|----------------|
-| TypeScript | `.ts` `.mts` `.cts` | `typescript-language-server` |
-| TSX | `.tsx` | `typescript-language-server` |
-| JavaScript | `.js` `.mjs` `.cjs` | `typescript-language-server` |
-| JSX | `.jsx` | `typescript-language-server` |
-| Python | `.py` `.pyi` | `pylsp` |
-| Go | `.go` | `gopls` |
-| Rust | `.rs` | `rust-analyzer` |
-| Java | `.java` | `jdtls` |
-| C | `.c` `.h` | `clangd` |
-| C++ | `.cpp` `.cc` `.cxx` `.hpp` | `clangd` |
-| C# | `.cs` | `csharp-ls` |
-| Shell | `.sh` `.bash` `.zsh` | `bash-language-server` |
-| JSON / JSONC | `.json` `.jsonc` | `vscode-json-language-server` |
-| YAML | `.yaml` `.yml` | `yaml-language-server` |
-| TOML | `.toml` | `taplo` |
-| HTML | `.html` `.htm` | `vscode-html-language-server` |
-| CSS | `.css` | `vscode-css-language-server` |
-| SCSS | `.scss` | `vscode-css-language-server` |
-| Less | `.less` | `vscode-css-language-server` |
-
-Custom server: add `~/.octocode/lsp-servers.json` or `<workspace>/.octocode/lsp-servers.json`.
-
-**Operation tiers** (what `--type` values each language supports):
-
-| Tier | Languages | Available operations |
-|------|-----------|----------------------|
-| **1 - Full** | TypeScript, TSX, JavaScript, JSX, Go, Rust | All 8: `definition` `references` `callers` `callees` `callHierarchy` `hover` `typeDefinition` `implementation` |
-| **2 - No call hierarchy** | Python, C++ | All except `callHierarchy` |
-| **3 - Basic** | Shell, JSON, YAML, TOML, HTML, CSS, SCSS, Less | `documentSymbols` `hover` `definition` only |
-| **Varies** | Java, C, C# | Depends on server - `definition` `references` `hover` `documentSymbols` confirmed |
-
-#### binary
-
-```
-binary <file>
-    (no flags)           auto-detect mode from extension
-    --list               list archive entries
-    --extract <entry>    extract one archive member (exact path from --list)
-    --strings            readable strings from a native binary
-    --decompress         decompress a single-stream file
-    --identify           file type and magic bytes only
-    --match <s>          filter extracted/decompressed lines
-    --min-length <n>     strings: shortest run to keep (default 8)
-    --max-entries <n>    list: cap entries
-    --format <fmt>       decompress: force compression format
-    --verbose            list: include size and mtime
-    --offsets            strings: prefix each with hex byte offset
-    --page <n>
-    --json
-```
-
-Always run `--identify` or no flags first. Use `--list` before `--extract` - do not guess entry names.
-
-**Auto-detected formats:**
-
-| Mode | Extensions |
-|------|------------|
-| **list / extract** (archives) | `.zip` `.jar` `.war` `.ear` `.7z` `.deb` `.dmg` `.rpm` `.apk` `.nupkg` `.whl` `.gem` `.ar` `.a` `.tar` `.tar.gz` `.tar.bz2` `.tar.xz` `.tar.zst` `.tar.zstd` `.tar.lz4` `.tar.br` `.tar.lzfse` `.tgz` `.tbz` `.tbz2` `.txz` `.tzst` |
-| **decompress** (single-stream) | `.gz` `.bz2` `.xz` `.lzma` `.zst` `.zstd` `.lz4` `.br` `.lzfse` |
-| **strings** (native binaries) | `.so` `.dylib` `.node` `.exe` `.dll` `.wasm` `.o` `.bin` `.out` `.so.N` |
-
-#### clone
-
-Clone a GitHub repo or subtree locally. Clones land at `~/.octocode/repos/<owner>/<repo>/<branch>/` with a 24-hour cache. Requires `ENABLE_CLONE=true`.
-
-```
-clone <owner/repo[/path][@branch]|url>
-    --branch <ref>      override branch (also parsed from @branch syntax)
-    --force-refresh     bypass 24-hour cache and re-clone
-    --json
-```
-
-| Input | Effect |
-|-------|--------|
-| `owner/repo` | Full clone of default branch |
-| `owner/repo/packages/core` | Sparse checkout of `packages/core` subtree |
-| `owner/repo@main` | Full clone at branch `main` |
-| `owner/repo@main/src` | Sparse checkout of `src` at `main` |
-| GitHub URL with `/tree/` | Parsed automatically |
-
-```bash
-octocode clone facebook/react
-octocode clone facebook/react/packages/react
-octocode clone facebook/react@18.2.0/packages/react
-octocode clone https://github.com/vercel/next.js/tree/main/packages/next
-```
-
-After cloning, use local tools against the returned path:
-
-```bash
-octocode ls ~/.octocode/repos/facebook/react/main
-octocode grep "useState" ~/.octocode/repos/facebook/react/main
-```
+| Command | Use it for |
+|---------|------------|
+| `octocode ls <path\|owner/repo>` | Browse local or GitHub structure |
+| `octocode cat <path\|owner/repo/path>` | Read a file, symbol skeleton, line range, or matched slice |
+| `octocode grep <term> <path\|owner/repo>` | Search local code with ripgrep or external GitHub code |
+| `octocode ast <pattern> [path]` | Run local AST structural search |
+| `octocode find <query> [path\|owner/repo]` | Find files by name, path, metadata, or content |
+| `octocode symbols <file\|path>` | Get a semantic symbol outline |
+| `octocode lsp <file> --type <type>` | Trace definitions, references, callers, callees, hover, and types |
+| `octocode pr <owner/repo[#N]\|PR-URL>` | Search or deep-read pull requests |
+| `octocode history <owner/repo[/path]>` | Inspect commit history for a repo, directory, or file |
+| `octocode repo <keywords...>` | Discover GitHub repositories |
+| `octocode pkg <package\|keywords>` | Search npm and hand off to source repositories |
+| `octocode binary <file>` | Inspect archives, compressed files, and native binaries |
+| `octocode clone <owner/repo[/path]>` | Clone a repo or subtree for local/LSP analysis |
 
 ### Management Commands
 
-These commands are for setup and account state, not code research. They are grouped separately so the research flow stays focused.
-
-#### install
-
-```
-install --ide <client> [--method npx] [--force] [--check] [--rollback] [--backup-path <path>] [--json]
-```
-
-Configures the MCP server for an IDE. `--check` does a pre-flight only. `--rollback` restores the most recent backup.
-
-Supported `--ide` values: `cursor`, `claude-desktop`, `claude-code`, `windsurf`, `zed`, `vscode-cline`, `vscode-roo`, `vscode-continue`, `opencode`, `trae`, `antigravity`, `codex`, `gemini-cli`, `goose`, `kiro`
-
-#### auth
-
-```
-auth [login|logout|status|token|refresh] [--hostname <host>] [--json]
-
-login   [--hostname <host>] [--git-protocol ssh|https] [--force] [--json]
-logout  [--hostname <host>] [--yes] [--json]
-```
-
-GitHub OAuth authentication. `login` opens the device flow. `logout` removes encrypted credentials. `--hostname` targets GitHub Enterprise.
-
-#### token
-
-```
-token [--type auto|octocode|gh] [--hostname <host>] [--source] [--validate] [--reveal] [--json]
-```
-
-Prints the resolved GitHub token (masked by default). Resolution order: `OCTOCODE_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → encrypted store → `gh auth token`.
-
-- `--source` - show token origin and authenticated username
-- `--validate` - ping the GitHub API; shows rate-limit info
-- `--reveal` - print the full token (default: masked on terminal, raw when piped)
-
-#### status
-
-```
-status [--hostname <host>] [--sync] [--json]
-```
-
-Shows auth state, MCP client install health, and cache info. `--sync` adds cross-client token sync analysis.
-
-#### skills
-
-```
-skills [search|read|install|remove|list|sync]
-    --skill <name>            bundled skill name
-    --local <path>            path to a local skill folder
-    --targets <list>          comma-separated install targets
-    --target <target>         filter list to one target
-    --mode copy|symlink       install mode (default: copy)
-    --force                   overwrite existing skills
-    --dry-run                 show plan without writing
-    --limit <n>               max search results (default: 20)
-    --full                    show full SKILL.md without truncation (read only)
-    --direct                  search skills.sh and show results
-    --install                 install the top search result (with search --direct)
-    --json
-```
+| Command | Use it for |
+|---------|------------|
+| `octocode install` | Configure Octocode in MCP clients |
+| `octocode auth` / `login` / `logout` | Manage GitHub authentication |
+| `octocode token` | Show the resolved token source, masked by default |
+| `octocode status` | Check auth, MCP installs, and cache state |
+| `octocode skills` | Search, read, install, remove, list, and sync Agent Skills |
+| `octocode tools` | Run any MCP tool directly from the terminal |
+| `octocode context` | Print agent-facing tool context |
 
 ### Raw Tool Runner
 
-Every MCP tool runs via `tools`. Read the schema before calling - field names vary per tool. This is the one-to-one CLI surface for the same tools exposed over MCP.
-
 ```bash
-octocode tools                                         # list all available tools
-octocode tools <name> --scheme                         # full JSON schema
-octocode tools <name> --queries '<json>'               # run (YAML by default)
-octocode tools <name> --queries '<json>' --json        # raw response envelope
-octocode tools <name> --queries '<json>' --compact     # leanest output
-octocode context                                       # agent protocol + system prompt
-octocode context --full                                # complete tool descriptions; schemas stay on demand
+octocode tools                         # list tools
+octocode tools <name> --scheme         # read the schema
+octocode tools <name> --queries '<json>'
+octocode tools <name> --queries '<json>' --json
 ```
 
-`--queries` accepts one object or an array of up to 5 independent queries. Legacy `--input` is not supported; unsupported tool flags are rejected before execution.
-
-### Playbook
-
-```
-orient:   ls <path>                                 flat tree, no file bodies
-          grep <term> <path> --mode discovery        file paths only
-search:   grep <keywords> <path>                    file + line anchors
-read:     cat <file> --mode symbols                 skeleton map
-          cat <file> --match-string <anchor>         exact slice
-prove:    lsp <file> --type references              blast radius
-          --symbol <name> --line <n>                anchor from grep
-```
-
-`ast --pattern`/`--rule` answers shape (AST).  
-`lsp` answers identity — always anchor on a real line from `grep` or `symbols`.
-
-### Flags and Exit Codes
-
-```
-Global flags:
-    --json      raw response envelope
-    --compact   leanest output
-    --no-color  disable ANSI color
-
-Unknown command flags are rejected with command-specific valid flags and near-miss suggestions.
-
-Exit codes:
-    0   ok
-    2   bad input
-    3   not found (including missing LSP symbols / empty semantic results)
-    4   auth error
-    5   tool error
-    7   rate limited
-```
+Full command syntax, flags, examples, and exit codes live in the [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md).
 
 ---
 
@@ -801,7 +304,7 @@ The same tool implementations run over MCP and CLI.
 
 | Tool | What it does |
 |------|--------------|
-| `lspGetSemantics` | Typed semantic navigation. Raw tools support `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored queries only; use `symbols` for `documentSymbols`. Supports 19 languages via installed language servers — see the `lsp` command section for the full list and operation tiers. |
+| `lspGetSemantics` | Typed semantic navigation. Raw tools support `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored queries only; use `symbols` for `documentSymbols`. Supports semantic navigation through installed language servers — see the [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md). |
 
 **References**
 - [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
@@ -813,44 +316,20 @@ The same tool implementations run over MCP and CLI.
 
 ## Security
 
-Octocode is built for AI-agent workflows where the expensive part is not just execution time - it is irrelevant context, secret leakage, and untrusted inputs.
+Octocode is designed for agent workflows where context can contain secrets and untrusted paths.
 
-### Input Validation & Secrets
+- Schema validation runs before tool execution.
+- Local filesystem access is bounded by workspace/path controls.
+- Sensitive files and directories are blocked by default.
+- Secrets are detected and redacted in inputs, outputs, logs, errors, and fetched content.
+- Local execution is allowlisted; tools do not pass arbitrary shell strings through.
+- GitHub auth uses environment tokens, encrypted Octocode credentials, or `gh` CLI credentials.
 
-- Inputs pass through schema validation and security wrappers before execution.
-- Secrets are detected and redacted in tool inputs, outputs, errors, logs, and returned content. When file content contains secrets, Octocode returns redacted content plus warnings such as `Secrets detected and redacted: ...`.
-- Octocode does not freely read the whole machine. Local paths are canonicalized, checked against `WORKSPACE_ROOT`/`ALLOWED_PATHS`, and rejected when they escape allowed roots or hit ignored paths.
-- Sensitive locations and files are blocked by default, including `.env` files, `.ssh`, `.aws`, `.kube`, `.docker`, `.terraform`, `secrets/`, `private/`, private keys/certificates, cloud credentials, browser credential stores, password stores, wallets, and shell/database histories.
-- Local command execution is allowlisted. Tools use controlled builders for commands such as `rg`, `find`, `ls`, and `git`; arguments are not passed through a free-form shell.
-- GitHub token resolution is explicit: `OCTOCODE_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, encrypted Octocode credentials, then `gh auth token`.
-- Clone-backed workflows require local/clone enablement and materialize into managed cache locations.
+Details: [Authentication](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md) · [Configuration](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) · [Credentials](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md)
 
-### Token Efficiency
+### Efficiency
 
-Every file-reading tool exposes a `minify` mode so an agent spends tokens on evidence, not boilerplate:
-
-| `minify` | Returns | Use it to |
-|----------|---------|-----------|
-| `symbols` | Structural skeleton with line numbers (no bodies) | Map an unknown file before reading anything |
-| `standard` | Comments and blank-line noise removed, readable shape kept (default) | Read code without the dead weight |
-| `none` | Exact bytes | Quote precisely or diff |
-
-On top of minification:
-
-- `concise:true` (search/discovery tools) returns path/title-only lists - the cheapest way to orient before reading.
-- Match-based and line-based reads keep the model on the exact slice instead of whole files.
-- Bulk tools paginate results and large payloads; agents continue from `page`, `charOffset`, or response pagination fields.
-- Responses default to compact, structured YAML because it is easier for an agent to scan than raw JSON (`--json`/`--compact` available).
-
-### Rust-Backed Hot Paths
-
-Octocode uses Rust where it changes the feel of the product, not as a vanity rewrite:
-
-- `octocode-security` runs high-volume secret detection and masking through Rust's linear-time regex engine.
-- `@octocodeai/octocode-context-utils` handles agent-readable minification, semantic signatures, UTF-8/UTF-16 offsets, ripgrep JSON parsing, diff filtering, and YAML serialization.
-- `octocode-lsp` owns native LSP runtime pieces: language detection, server command resolution, stdio JSON-RPC, symbol anchoring, pooled clients, and semantic requests.
-
-That combination keeps flows fast and predictable: search broadly, read narrowly, trace semantically, return compact evidence.
+Octocode combines TypeScript orchestration with Rust-backed hot paths for fast local scanning, minification, secret detection, structural search, diff shaping, and LSP runtime work. The result is simple: search broadly, read narrowly, trace semantically, and return compact evidence.
 
 ---
 
@@ -1036,7 +515,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 
 | Skill | What it does |
 |-------|--------------|
-| [**Researcher**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-researcher) | Code search & exploration: local LSP + external (GitHub, npm) |
+| [**Researcher**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer) | Code search & exploration: local LSP + external (GitHub, npm) |
 | [**Research**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-research) | Multi-phase research with sessions, checkpoints, state persistence |
 | [**Engineer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer) | Understand, write, analyze, audit code: AST + LSP + dependency graph |
 | [**Brainstorming**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-brainstorming) | Idea validation grounded in evidence: GitHub, npm, web in parallel |
@@ -1046,8 +525,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 
 | Skill | What it does |
 |-------|--------------|
-| [**Plan**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-plan) | Evidence-based planning: Understand > Research > Plan > Implement |
-| [**RFC Generator**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-rfc-generator) | Formal technical decisions with alternatives, trade-offs, and recommendations |
+| [**RFC Generator**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-rfc-generator) | Formal technical decisions, alternatives, trade-offs, implementation plans, and migrations |
 | [**Doc Writer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-documentation-writer) | 6-phase pipeline producing 16+ validated docs |
 | [**Prompt Optimizer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-prompt-optimizer) | Turn weak prompts into enforceable agent protocols |
 | [**Agentic Flow**](https://github.com/bgauryy/octocode/tree/main/skills/agentic-flow-best-practices) | Thinking framework for designing/reviewing MCP & multi-agent workflows |
@@ -1056,7 +534,7 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 
 | Skill | What it does |
 |-------|--------------|
-| [**PR Reviewer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-pull-request-reviewer) | PR & local code review across 7 domains with LSP flow tracing |
+| [**PR Reviewer**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer) | PR & local code review across 7 domains with LSP flow tracing |
 | [**Roast**](https://github.com/bgauryy/octocode/tree/main/skills/octocode-roast) | Brutal code critique with file:line citations and severity levels |
 
 **Build & Output**

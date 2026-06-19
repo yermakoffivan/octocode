@@ -94,11 +94,11 @@ describe('CLI Parser', () => {
         'skills',
         'install',
         '--skill',
-        'octocode-plan',
+        'octocode-rfc-generator',
       ]);
       expect(result.command).toBe('skills');
       expect(result.args).toEqual(['install']);
-      expect(result.options).toEqual({ skill: 'octocode-plan' });
+      expect(result.options).toEqual({ skill: 'octocode-rfc-generator' });
     });
 
     it('should keep single-dash skill tokens positional', () => {

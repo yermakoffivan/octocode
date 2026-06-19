@@ -1,6 +1,8 @@
 import type { CLICommand } from '../types.js';
 import { getBool, getString } from '../options.js';
 import { c, bold, dim } from '../../utils/colors.js';
+import { EXIT, classifyToolErrorText } from '../exit-codes.js';
+import { printCliError } from '../cli-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 
 interface PRLabel {
@@ -715,7 +717,7 @@ export const prCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${err}`);
+        printCliError(err);
         console.error(
           `\n  ${dim('Examples:')}\n` +
             `    pr bgauryy/octocode-mcp\n` +
@@ -727,7 +729,7 @@ export const prCommand: CLICommand = {
             `    pr https://github.com/bgauryy/octocode-mcp/pull/142\n`
         );
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -737,9 +739,9 @@ export const prCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: err }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${err}\n`);
+        printCliError(err);
       }
-      process.exitCode = 1;
+      process.exitCode = EXIT.USAGE;
       return;
     }
 
@@ -824,9 +826,9 @@ export const prCommand: CLICommand = {
       if (jsonOutput) {
         console.log(JSON.stringify({ success: false, error: msg }));
       } else {
-        console.error(`\n  ${c('red', '✗')} ${msg}\n`);
+        printCliError(msg);
       }
-      process.exitCode = 1;
+      process.exitCode = classifyToolErrorText(msg);
     }
   },
 };

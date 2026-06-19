@@ -171,7 +171,7 @@ function printUsageError(message: string, jsonOutput: boolean): void {
     return;
   }
 
-  console.error(`\n  ${c('red', 'x')} ${message}`);
+  console.error(`\n  ${c('red', '✗')} ${message}`);
   console.error(
     `\n  ${dim('Examples:')}\n` +
       `    symbols src/index.ts\n` +
@@ -390,7 +390,7 @@ export const symbolsCommand: CLICommand = {
         );
       } else {
         console.error(
-          `\n  ${c('red', 'x')} Octocode tool runtime failed: ${message}\n`
+          `\n  ${c('red', '✗')} Octocode tool runtime failed: ${message}\n`
         );
       }
       process.exitCode = EXIT.TOOL;
