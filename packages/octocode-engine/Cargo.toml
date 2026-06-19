@@ -1,0 +1,94 @@
+[package]
+name = "octocode-engine"
+version = "16.3.0"
+edition = "2021"
+description = "Rust native Octocode engine for context compression, structural search, and LSP semantic navigation"
+license = "MIT"
+repository = "https://github.com/bgauryy/octocode-mcp"
+keywords   = ["napi", "llm", "context", "lsp", "nodejs"]
+categories = ["development-tools", "text-processing"]
+
+[lints.clippy]
+all            = { level = "deny", priority = -1 }
+unwrap_used    = "deny"
+needless_pass_by_value = "allow"
+dbg_macro      = "deny"
+print_stdout   = "deny"
+print_stderr   = "deny"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi        = { version = "3", default-features = false, features = ["napi4", "tokio_rt", "serde-json"] }
+napi-derive = "3"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+serde_yaml_ng = "0.10"  # maintained continuation of serde_yaml (archived upstream)
+regex       = "1"
+tokio       = { version = "1", features = ["fs", "io-util", "process", "rt-multi-thread", "sync", "time"] }
+lsp-types   = "0.97"
+url         = "2"
+which       = "8"
+
+# ── high-quality CSS / HTML minifiers ────────────────────────────────────────
+lightningcss = { version = "1.0.0-alpha.71", default-features = false }
+minify-html  = { version = "0.18", default-features = false }
+
+# ── OXC — JS/TS AST minifier ─────────────────────────────────────────────────
+oxc_allocator = "0.135"
+oxc_ast       = "0.135"
+oxc_codegen   = "0.135"
+oxc_minifier  = "0.135"
+oxc_parser    = "0.135"
+oxc_span      = "0.135"
+
+# ── tree-sitter core ─────────────────────────────────────────────────────────
+tree-sitter          = "0.26"
+tree-sitter-language = "0.1"
+
+# ── ast-grep matcher (structural search) ─────────────────────────────────────
+# Matcher only — NO ast-grep-language (which would pull a 2nd set of grammar
+# crates → duplicate tree_sitter_<lang> symbols → cdylib link collision). We
+# bind ast-grep's Language/LanguageExt traits over the tree_sitter::Language
+# values already in signatures/languages.rs. ast-grep-core 0.43 pins
+# tree-sitter 0.26.3 (our 0.26 line) so there is no core version conflict.
+ast-grep-core   = { version = "0.43", default-features = false, features = ["tree-sitter"] }
+ast-grep-config = "0.43"   # parses the YAML relational/composite `rule` object
+
+# ── top-10 grammar crates ─────────────────────────────────────────────────────
+tree-sitter-typescript = "0.23"   # covers .ts / .tsx
+tree-sitter-javascript = "0.23"   # covers .js / .jsx / .mjs / .cjs
+tree-sitter-python     = "0.23"   # covers .py
+tree-sitter-go         = "0.23"   # covers .go
+tree-sitter-rust       = "0.23"   # covers .rs
+tree-sitter-java       = "0.23"   # covers .java
+tree-sitter-c          = "0.23"   # covers .c / .h
+tree-sitter-cpp        = { version = "0.23", optional = true }  # covers .cpp / .hpp / .cc
+tree-sitter-c-sharp    = { version = "0.23", optional = true }  # covers .cs
+tree-sitter-bash       = "0.23"   # covers .sh / .bash / .zsh
+tree-sitter-json       = "0.24"
+tree-sitter-yaml       = "0.7"
+tree-sitter-toml-ng    = "0.7"
+tree-sitter-html       = "0.23"
+tree-sitter-css        = "0.25"
+tree-sitter-scss       = "1"
+tree-sitter-less       = "1"
+
+[features]
+default = ["tree-sitter-large-grammars"]
+tree-sitter-cpp = ["dep:tree-sitter-cpp"]
+tree-sitter-c-sharp = ["dep:tree-sitter-c-sharp"]
+tree-sitter-large-grammars = ["tree-sitter-cpp", "tree-sitter-c-sharp"]
+
+[dev-dependencies]
+napi = { version = "3", default-features = false, features = ["noop", "napi4", "tokio_rt", "serde-json"] }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto           = true
+codegen-units = 1
+opt-level     = 3
+strip         = "symbols"

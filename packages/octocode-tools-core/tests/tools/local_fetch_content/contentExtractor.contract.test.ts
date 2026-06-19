@@ -6,7 +6,7 @@ import {
 } from '../../../src/utils/contextUtils.js';
 import { extractMatchingLines } from '../../../src/tools/local_fetch_content/contentExtractor.js';
 
-type NativeContextUtilsModule = typeof import('@octocodeai/octocode-context-utils');
+type NativeContextUtilsModule = typeof import('@octocodeai/octocode-engine');
 
 function installNative(partial: Partial<NativeContextUtilsModule>): void {
   setContextUtilsNativeLoaderForTesting(() => partial as NativeContextUtilsModule);

@@ -34,7 +34,7 @@ describe('isMidBlockCut — pure TypeScript logic', () => {
   });
 });
 
-describe('snapToSemanticBoundary — real Rust boundaries via octocode-context-utils', () => {
+describe('snapToSemanticBoundary — real Rust boundaries via octocode-engine', () => {
   it('returns char-limit when content fits entirely within the budget', () => {
     const result = snapToSemanticBoundary(
       TWO_TS_FUNCTIONS,

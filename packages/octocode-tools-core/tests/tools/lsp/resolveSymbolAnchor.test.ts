@@ -7,7 +7,7 @@ const resolverMocks = vi.hoisted(() => ({
   resolvePositionFromContent: vi.fn(),
 }));
 
-vi.mock('octocode-lsp/resolver', () => ({
+vi.mock('@octocodeai/octocode-engine/lsp/resolver', () => ({
   SymbolResolutionError: class SymbolResolutionError extends Error {
     constructor(
       public readonly symbolName: string,

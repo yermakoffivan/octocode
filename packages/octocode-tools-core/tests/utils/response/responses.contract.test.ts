@@ -6,7 +6,7 @@ import {
 } from '../../../src/utils/contextUtils.js';
 import { createResponseFormat } from '../../../src/responses.js';
 
-type NativeContextUtilsModule = typeof import('@octocodeai/octocode-context-utils');
+type NativeContextUtilsModule = typeof import('@octocodeai/octocode-engine');
 
 function installNative(partial: Partial<NativeContextUtilsModule>): void {
   setContextUtilsNativeLoaderForTesting(() => partial as NativeContextUtilsModule);

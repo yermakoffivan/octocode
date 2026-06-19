@@ -1,11 +1,11 @@
-import type { LSPClient } from 'octocode-lsp/client';
+import type { LSPClient } from '@octocodeai/octocode-engine/lsp/client';
 import type {
   CallHierarchyItem,
   IncomingCall,
   LSPRange,
   OutgoingCall,
-} from 'octocode-lsp/types';
-import { safeReadFile } from 'octocode-lsp/validation';
+} from '@octocodeai/octocode-engine/lsp/types';
+import { safeReadFile } from '@octocodeai/octocode-engine/lsp/validation';
 import { splitLines } from '../../../utils/core/lines.js';
 
 export type TraversalResult<T> = {

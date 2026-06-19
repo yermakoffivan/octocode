@@ -406,8 +406,8 @@ graph TB
     subgraph Rust["🦀 Rust Native Addons  ( napi-rs → .node binaries )"]
         direction TB
         SEC["octocode-security\n────────────────────────\n200+ secret patterns\nRust RegexSet · detector\nContent sanitizer\nPath + command validator"]
-        CTX["@octocodeai/octocode-context-utils\n────────────────────────\nMinification - 55+ languages\nSemantic signatures\nStructural AST search\nRipgrep JSON parser\nDiff filter · YAML serialize\nUTF-8 / UTF-16 offsets"]
-        LSP["octocode-lsp\n────────────────────────\nNative LSP client (JSON-RPC)\nLanguage server lifecycle\nCall hierarchy traversal\nSymbol anchoring + pooling"]
+        CTX["@octocodeai/octocode-engine\n────────────────────────\nMinification - 55+ languages\nSemantic signatures\nStructural AST search\nRipgrep JSON parser\nDiff filter · YAML serialize\nUTF-8 / UTF-16 offsets"]
+        LSP["/octocode-engine\n────────────────────────\nNative LSP client (JSON-RPC)\nLanguage server lifecycle\nCall hierarchy traversal\nSymbol anchoring + pooling"]
     end
 
     subgraph Ext["External"]
@@ -448,8 +448,8 @@ sequenceDiagram
     participant Bridge as Security Bridge<br/>(octocode-tools-core)
     participant RustSec as octocode-security<br/>🦀 Rust
     participant Tool as Tool Implementation<br/>(octocode-tools-core)
-    participant RustCtx as octocode-context-utils<br/>🦀 Rust
-    participant RustLsp as octocode-lsp<br/>🦀 Rust
+    participant RustCtx as octocode-engine<br/>🦀 Rust
+    participant RustLsp as /octocode-engine<br/>🦀 Rust
     participant Ext as GitHub API / FS / LSP server
 
     Client->>MCP: tool call (name, args)
@@ -486,8 +486,8 @@ Each Rust package solves a specific bottleneck that JavaScript cannot handle che
 | Package | What Rust buys here |
 |---------|---------------------|
 | **octocode-security** | `RegexSet` compiles 200+ secret patterns into a single linear-time automaton. Matching a 500 KB chunk costs ~10 ms regardless of pattern count; a JS loop over 200 regexes would take 10-50×. |
-| **octocode-context-utils** | Zero-copy comment stripping and minification across 55 languages runs on every file read. Async napi `Task` keeps the Node.js event loop unblocked while multi-MB files are processed. Structural (AST) search and UTF-8↔UTF-16 offset conversion are similarly allocation-heavy. |
-| **octocode-lsp** | The LSP client owns a long-lived child process (the language server) and a bidirectional async stdio pipe. Tokio drives the I/O concurrently, retries `ContentModified` errors, and drains stderr into a ring buffer - none of which map cleanly onto a single-threaded JS runtime. |
+| **octocode-engine** | Zero-copy comment stripping and minification across 55 languages runs on every file read. Async napi `Task` keeps the Node.js event loop unblocked while multi-MB files are processed. Structural (AST) search and UTF-8↔UTF-16 offset conversion are similarly allocation-heavy. |
+| **/octocode-engine** | The LSP client owns a long-lived child process (the language server) and a bidirectional async stdio pipe. Tokio drives the I/O concurrently, retries `ContentModified` errors, and drains stderr into a ring buffer - none of which map cleanly onto a single-threaded JS runtime. |
 
 All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-arm64, linux-x64, linux-x64-musl, win32-x64). No Rust toolchain is needed at runtime.
 
@@ -498,9 +498,9 @@ All three ship as pre-built `.node` binaries (darwin-arm64, darwin-x64, linux-ar
 | [`packages/octocode-mcp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server that registers the Octocode tool catalog for AI assistants. |
 | [`packages/octocode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode) | `octocode` | Agent-first terminal interface: raw tool runner (`tools`), `context`, auth, install, status, token, and skills workflows. |
 | [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Shared tool catalog and implementations for GitHub, local filesystem, package search, and LSP flows. |
-| [`packages/octocode-context-utils`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-context-utils) | `@octocodeai/octocode-context-utils` | Rust-backed context engine for minification, signatures, pagination offsets, ripgrep parsing, diff filtering, and YAML output. |
+| [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `@octocodeai/octocode-engine` | Rust-backed context engine for minification, signatures, pagination offsets, ripgrep parsing, diff filtering, and YAML output. |
 | [`packages/octocode-security`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-security) | `octocode-security` | Rust-backed secret detection plus TypeScript path, command, input, and tool security utilities. |
-| [`packages/octocode-lsp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-lsp) | `octocode-lsp` | Rust-native LSP runtime for language detection, server config, JSON-RPC, symbol anchoring, pooled clients, and semantic navigation. |
+| [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `/octocode-engine` | Rust-native LSP runtime for language detection, server config, JSON-RPC, symbol anchoring, pooled clients, and semantic navigation. |
 | [`packages/octocode-shared`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-shared) | `octocode-shared` | Shared credentials, token resolution, session persistence, and platform utilities. |
 | [`packages/octocode-vscode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-vscode) | `octocode-mcp-vscode` | VS Code extension for GitHub OAuth and multi-editor MCP installation. |
 

@@ -7,7 +7,7 @@ import {
   setContextUtilsNativeLoaderForTesting,
 } from '../../../src/utils/contextUtils.js';
 
-type NativeContextUtilsModule = typeof import('@octocodeai/octocode-context-utils');
+type NativeContextUtilsModule = typeof import('@octocodeai/octocode-engine');
 
 function installQueryFileSystem(
   queryFileSystem: ReturnType<typeof vi.fn>

@@ -11,8 +11,8 @@ import { executeWithToolBoundary } from '../../executionGuard.js';
 import {
   acquirePooledClient,
   isLanguageServerAvailable,
-} from 'octocode-lsp/manager';
-import { resolveWorkspaceRootForFile } from 'octocode-lsp/workspaceRoot';
+} from '@octocodeai/octocode-engine/lsp/manager';
+import { resolveWorkspaceRootForFile } from '@octocodeai/octocode-engine/lsp/workspaceRoot';
 import type {
   CallHierarchyItem,
   CodeSnippet,
@@ -21,7 +21,7 @@ import type {
   OutgoingCall,
   ReferenceLocation,
   ReferencesByFile,
-} from 'octocode-lsp/types';
+} from '@octocodeai/octocode-engine/lsp/types';
 import {
   gatherIncomingCallsRecursive,
   gatherOutgoingCallsRecursive,

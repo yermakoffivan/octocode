@@ -1,6 +1,6 @@
 import type { LocalSearchCodeFile } from '@octocodeai/octocode-core/types';
 import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-types';
-import type { StructuralSearchFileResult } from '@octocodeai/octocode-context-utils';
+import type { StructuralSearchFileResult } from '@octocodeai/octocode-engine';
 
 import { contextUtils } from '../../utils/contextUtils.js';
 import {

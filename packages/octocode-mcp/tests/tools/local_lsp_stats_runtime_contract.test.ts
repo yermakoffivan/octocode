@@ -39,12 +39,12 @@ vi.mock(
   })
 );
 
-vi.mock('octocode-lsp/manager', () => ({
+vi.mock('@octocodeai/octocode-engine/lsp/manager', () => ({
   acquirePooledClient: vi.fn(),
   isLanguageServerAvailable: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock('octocode-lsp/workspaceRoot', () => ({
+vi.mock('@octocodeai/octocode-engine/lsp/workspaceRoot', () => ({
   resolveWorkspaceRootForFile: vi.fn().mockResolvedValue(process.cwd()),
 }));
 

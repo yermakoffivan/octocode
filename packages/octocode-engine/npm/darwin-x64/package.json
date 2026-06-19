@@ -1,0 +1,28 @@
+{
+  "name": "@octocodeai/octocode-engine-darwin-x64",
+  "version": "16.3.0",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "octocode-engine.darwin-x64.node",
+  "files": [
+    "octocode-engine.darwin-x64.node"
+  ],
+  "description": "High-performance Rust minification for Octocode — darwin-x64",
+  "author": "Guy Bary <bgauryy@octocodeai.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bgauryy/octocode-mcp.git",
+    "directory": "packages/octocode-engine"
+  },
+  "scripts": {
+    "prepublishOnly": "node ../verify-binary.cjs"
+  }
+}

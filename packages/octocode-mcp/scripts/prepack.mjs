@@ -3,7 +3,7 @@
  * Pre-pack guard for octocode-mcp.
  *
  * Rust addons are distributed through npm optionalDependencies on
- * octocode-security and @octocodeai/octocode-context-utils.
+ * octocode-security and @octocodeai/octocode-engine.
  *
  * Ripgrep is resolved through the @vscode/ripgrep dependency for npm users.
  * Standalone Bun binaries still copy rg with build:bin:* scripts, but those

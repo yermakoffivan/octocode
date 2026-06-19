@@ -33,7 +33,7 @@ const expectDefinedFiles = (result: FindFilesResult) => {
 
 /**
  * The local tools now delegate filesystem traversal/filtering to the native
- * `@octocodeai/octocode-context-utils` module via `contextUtils.queryFileSystem`.
+ * `@octocodeai/octocode-engine` module via `contextUtils.queryFileSystem`.
  * These helpers let each test declare the entries that the (mocked) native
  * layer should return, plus optional capping/diagnostics metadata.
  */
@@ -128,7 +128,7 @@ describe('localFindFiles', () => {
       () =>
         ({
           queryFileSystem: queryFileSystemMock,
-        }) as unknown as typeof import('@octocodeai/octocode-context-utils')
+        }) as unknown as typeof import('@octocodeai/octocode-engine')
     );
     mockValidate.mockReturnValue({
       isValid: true,

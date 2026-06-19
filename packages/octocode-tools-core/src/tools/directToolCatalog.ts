@@ -14,7 +14,7 @@ import {
   withBasicSecurityValidation,
   withSecurityValidation,
 } from '../security/bridge.js';
-import { releaseAllPooledClients } from 'octocode-lsp/manager';
+import { releaseAllPooledClients } from '@octocodeai/octocode-engine/lsp/manager';
 
 export type DirectToolInput = Record<string, unknown> & {
   queries: unknown[];

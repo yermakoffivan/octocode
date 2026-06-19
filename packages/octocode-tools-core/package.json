@@ -41,12 +41,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@octocodeai/octocode-context-utils": "workspace:*",
     "@octocodeai/octocode-core": "file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core",
+    "@octocodeai/octocode-engine": "workspace:*",
     "@octokit/plugin-throttling": "^11.0.3",
     "@vscode/ripgrep": "^1.18.0",
     "node-cache": "^5.1.2",
-    "octocode-lsp": "workspace:*",
     "octocode-security": "workspace:*",
     "octocode-shared": "workspace:*",
     "octokit": "^5.0.5",

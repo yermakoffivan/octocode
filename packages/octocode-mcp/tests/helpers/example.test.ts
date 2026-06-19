@@ -25,7 +25,7 @@ const mockValidate = vi.mocked(pathValidator.pathValidator.validate);
 
 /**
  * The local view-structure tool now delegates filesystem traversal/filtering to
- * the native `@octocodeai/octocode-context-utils` module via
+ * the native `@octocodeai/octocode-engine` module via
  * `contextUtils.queryFileSystem`. These helpers let each test declare the
  * entries that the (mocked) native layer should return.
  */
@@ -119,7 +119,7 @@ function installHarness(validPath = '/workspace') {
     () =>
       ({
         queryFileSystem: queryFileSystemMock,
-      }) as unknown as typeof import('@octocodeai/octocode-context-utils')
+      }) as unknown as typeof import('@octocodeai/octocode-engine')
   );
   mockValidate.mockReturnValue({ isValid: true, sanitizedPath: validPath });
   setNativeEntries([]);

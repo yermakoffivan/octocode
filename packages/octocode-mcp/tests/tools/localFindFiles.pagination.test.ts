@@ -77,7 +77,7 @@ describe('localFindFiles.pagination — totalPages when wasFileCapped', () => {
       () =>
         ({
           queryFileSystem: queryFileSystemMock,
-        }) as unknown as typeof import('@octocodeai/octocode-context-utils')
+        }) as unknown as typeof import('@octocodeai/octocode-engine')
     );
     mockValidate.mockReturnValue({
       isValid: true,

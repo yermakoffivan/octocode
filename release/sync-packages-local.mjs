@@ -9,7 +9,7 @@
  *
  * A dependency is "internal" when its name matches a package that is listed in
  * the yarn workspaces config — including the platform-specific npm sub-packages
- * (`packages/octocode-context-utils/npm/*`, `packages/octocode-security/npm/*`).
+ * (`packages/octocode-engine/npm/*`, `packages/octocode-security/npm/*`).
  *
  * Usage:
  *   node scripts/sync-packages-local.mjs            # check only — exits 1 on violations

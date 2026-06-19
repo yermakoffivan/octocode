@@ -1,4 +1,4 @@
-import type { ExactPosition, LSPRange } from 'octocode-lsp/types';
+import type { ExactPosition, LSPRange } from '@octocodeai/octocode-engine/lsp/types';
 
 export const LSP_GET_SEMANTIC_CONTENT_TOOL_NAME = 'lspGetSemantics';
 

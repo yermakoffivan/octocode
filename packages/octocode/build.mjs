@@ -29,7 +29,7 @@ const runtimeExternals = Object.keys(pkg.dependencies ?? {});
 const transitiveExternals = [
   'octocode-shared',
   'octocode-security',
-  'octocode-lsp',
+  '@octocodeai/octocode-engine',
   '@octocodeai/octocode-core',
   '@octocodeai/octocode-core/schemas',
   '@octocodeai/octocode-core/types',

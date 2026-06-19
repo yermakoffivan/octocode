@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 
-import type * as NativeContextUtils from '@octocodeai/octocode-context-utils';
+import type * as NativeContextUtils from '@octocodeai/octocode-engine';
 
 export type {
   ExtractMatchingLinesOptions,
@@ -17,13 +17,13 @@ export type {
   SliceContentResult,
   StructuralMatch,
   YamlConversionConfig,
-} from '@octocodeai/octocode-context-utils';
+} from '@octocodeai/octocode-engine';
 
 type NativeContextUtilsModule = typeof NativeContextUtils;
 type NativeLoader = () => NativeContextUtilsModule;
 
 const require = createRequire(import.meta.url);
-const NATIVE_PACKAGE_NAME = '@octocodeai/octocode-context-utils';
+const NATIVE_PACKAGE_NAME = '@octocodeai/octocode-engine';
 
 let cachedNative: NativeContextUtilsModule | undefined;
 let nativeLoader: NativeLoader = () =>
