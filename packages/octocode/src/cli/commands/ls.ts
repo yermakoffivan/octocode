@@ -302,7 +302,8 @@ export const lsCommand: CLICommand = {
     }
     if (!isGh) {
       const resolvedPath = path.resolve(ref.path);
-      const isFile = existsSync(resolvedPath) && statSync(resolvedPath).isFile();
+      const isFile =
+        existsSync(resolvedPath) && statSync(resolvedPath).isFile();
       if (wantSymbols || isFile) {
         if (!jsonOutput) {
           process.stderr.write(`  ${dim(`Outlining ${label} ...`)}\n`);

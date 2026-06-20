@@ -55,7 +55,9 @@ describe('ls command', () => {
   beforeEach(() => {
     executeDirectTool.mockReset();
     executeDirectTool.mockImplementation((tool: string) =>
-      Promise.resolve(tool === 'localFindFiles' ? findEnvelope() : treeEnvelope())
+      Promise.resolve(
+        tool === 'localFindFiles' ? findEnvelope() : treeEnvelope()
+      )
     );
     process.exitCode = undefined;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);

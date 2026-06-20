@@ -44,7 +44,7 @@ vi.mock(
     ...(await importOriginal<object>()),
     loadToolContent: vi
       .fn()
-      .mockResolvedValue({ instructions: 'Test instructions' }),
+      .mockResolvedValue({ systemPrompt: 'Test instructions' }),
   })
 );
 vi.mock(

@@ -205,7 +205,10 @@ async function fetchDocumentSymbols(
   exec: DirectToolExecutor,
   filePaths: readonly string[],
   pageSize: number
-): Promise<{ readonly structured: unknown[]; readonly rendered: RenderedFile[] }> {
+): Promise<{
+  readonly structured: unknown[];
+  readonly rendered: RenderedFile[];
+}> {
   const structured: unknown[] = [];
   const rendered: RenderedFile[] = [];
 
@@ -257,7 +260,10 @@ export async function outlineSymbols(
   // properties) fall onto page 2 and `--kind` filtering, which runs over the
   // returned page, silently misses them. Pull a generous page; widen further
   // when a kind filter is active so the filter sees every symbol.
-  const requestedPageSize = parsePositiveInt(getString(options, 'page-size'), 200);
+  const requestedPageSize = parsePositiveInt(
+    getString(options, 'page-size'),
+    200
+  );
   const pageSize = kindFilter
     ? Math.max(requestedPageSize, 1000)
     : requestedPageSize;

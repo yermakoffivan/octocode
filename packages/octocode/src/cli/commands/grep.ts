@@ -52,13 +52,28 @@ function listOption(value: string | undefined): string[] | undefined {
   return items && items.length > 0 ? items : undefined;
 }
 
+const LOCAL_TYPE_GLOBS: Record<string, string[]> = {
+  javascript: ['*.js', '*.jsx', '*.mjs', '*.cjs'],
+  typescript: ['*.ts', '*.tsx', '*.mts', '*.cts'],
+  python: ['*.py', '*.pyw'],
+  rust: ['*.rs'],
+  ruby: ['*.rb'],
+  shell: ['*.sh', '*.bash', '*.zsh'],
+  bash: ['*.sh', '*.bash'],
+  markdown: ['*.md', '*.mdx'],
+  yaml: ['*.yml', '*.yaml'],
+};
+
 function localIncludeGlobs(
   include: string[] | undefined,
   typeFilter: string | undefined
 ): string[] | undefined {
   const filters = [...(include ?? [])];
   const ext = typeFilter?.trim().replace(/^\./, '');
-  if (ext) filters.push(ext.includes('*') ? ext : `*.${ext}`);
+  if (ext) {
+    const mapped = LOCAL_TYPE_GLOBS[ext.toLowerCase()];
+    filters.push(...(mapped ?? [ext.includes('*') ? ext : `*.${ext}`]));
+  }
   return filters.length > 0 ? filters : undefined;
 }
 
@@ -295,7 +310,7 @@ export const grepCommand: CLICommand = {
   description:
     'Search code by text/regex (ripgrep) across local paths and GitHub, OR by AST shape (ast-grep) with --pattern/--rule. One search command: text by default, structural when you pass --pattern or --rule (local-only).',
   usage:
-    'grep <keywords> <path|github-ref> [text flags] | grep <path> --pattern <shape> | grep <path> --rule <yaml>  [--type <ext>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+    'grep <keywords> <path|github-ref> [text flags] | grep <path> --pattern <shape> | grep <path> --rule <yaml>  [--type <ext|lang>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'pattern',
@@ -312,7 +327,8 @@ export const grepCommand: CLICommand = {
     {
       name: 'type',
       hasValue: true,
-      description: 'Filter by language / extension (e.g. ts, py, go)',
+      description:
+        'Filter by language or extension (e.g. ts, rust, typescript, "*.rs")',
     },
     {
       name: 'mode',

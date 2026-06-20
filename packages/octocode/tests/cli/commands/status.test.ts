@@ -14,7 +14,10 @@ import {
   readAllClientConfigs,
   analyzeSyncState,
 } from '../../../src/features/sync.js';
-import { getDirectorySizeBytes, formatBytes } from '@octocodeai/octocode-tools-core/fs-utils';
+import {
+  getDirectorySizeBytes,
+  formatBytes,
+} from '@octocodeai/octocode-tools-core/fs-utils';
 import { EXIT } from '../../../src/cli/exit-codes.js';
 
 const { mockPaths } = vi.hoisted(() => ({

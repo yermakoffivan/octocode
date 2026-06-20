@@ -15,7 +15,7 @@ describe('toolMetadata - Final Edge Cases', () => {
 
       expect(content).toBeDefined();
       expect(content.toolNames).toBeDefined();
-      expect(typeof content.instructions).toBe('string');
+      expect(typeof content.systemPrompt).toBe('string');
     });
 
     it('is stable across repeated calls', async () => {

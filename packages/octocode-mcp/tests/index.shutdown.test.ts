@@ -49,7 +49,7 @@ vi.mock('../../octocode-tools-core/src/session.js', () => ({
 vi.mock('../../octocode-tools-core/src/tools/toolMetadata/state.js', () => ({
   loadToolContent: vi.fn(() =>
     Promise.resolve({
-      instructions: 'Test instructions',
+      systemPrompt: 'Test instructions',
       toolNames: {
         GITHUB_FETCH_CONTENT: 'ghGetFileContent',
         GITHUB_SEARCH_CODE: 'ghSearchCode',

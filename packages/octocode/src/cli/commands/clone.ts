@@ -100,7 +100,7 @@ export const cloneCommand: CLICommand = {
               `    ${c('cyan', `ls ${localPath}`)}                 ${dim('# map the tree')}\n` +
               `    ${c('cyan', `grep <term> ${localPath}`)}        ${dim('# search locally')}\n` +
               `    ${c('cyan', `cat ${localPath}/<file>`)}         ${dim('# read a file')}\n` +
-              `    ${c('cyan', `lsp ${localPath}/<file> --type documentSymbols`)}  ${dim('# semantic outline')}\n`
+              `    ${c('cyan', `ls ${localPath}/<file> --symbols`)}  ${dim('# semantic outline')}\n`
           );
         }
       }

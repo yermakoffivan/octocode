@@ -4,7 +4,7 @@ const publicMocks = vi.hoisted(() => ({
   initialize: vi.fn().mockResolvedValue(undefined),
   initializeProviders: vi.fn().mockResolvedValue([]),
   loadToolContent: vi.fn().mockResolvedValue({
-    instructions: 'Use Octocode tools carefully.',
+    systemPrompt: 'Use Octocode tools carefully.',
     prompts: {},
     toolNames: {},
     baseSchema: {

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   initialize: vi.fn().mockResolvedValue(undefined),
   initializeProviders: vi.fn().mockResolvedValue([]),
   loadToolContent: vi.fn().mockResolvedValue({
-    instructions: 'Server instructions.',
+    systemPrompt: 'Server instructions.',
     prompts: {},
     toolNames: {},
     baseSchema: {},

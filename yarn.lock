@@ -1496,6 +1496,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core":
+  version: 16.4.0
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=675960&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
+  peerDependencies:
+    zod: ">=4.0.0"
+  checksum: 10c0/161555d03567b7f174de13e419560fac6cc9c8af71c6d37d18cc786f6e54cf2f2b786c01ba4bc5692767e4095de073ed08c2723b5fc212b4c5e48b920521882f
+  languageName: node
+  linkType: hard
+
 "@octocodeai/octocode-core@npm:16.4.0":
   version: 16.4.0
   resolution: "@octocodeai/octocode-core@npm:16.4.0"
@@ -1580,7 +1589,7 @@ __metadata:
   resolution: "@octocodeai/octocode-tools-core@workspace:packages/octocode-tools-core"
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
-    "@octocodeai/octocode-core": "npm:16.4.0"
+    "@octocodeai/octocode-core": "file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core"
     "@octocodeai/octocode-engine": "workspace:*"
     "@octokit/core": "npm:^7.0.6"
     "@octokit/oauth-methods": "npm:^6.0.2"

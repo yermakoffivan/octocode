@@ -228,9 +228,9 @@ Auto-route local paths to local tools and `owner/repo[/path]` targets to GitHub 
 |---------|------------|
 | `octocode ls <path\|owner/repo>` | Browse local or GitHub structure; a file (or `--symbols`) shows a symbol outline |
 | `octocode cat <path\|owner/repo/path>` | Read a file, symbol skeleton (`--mode symbols`), line range, or matched slice |
-| `octocode grep <term> <path\|owner/repo>` | Text/regex search, or AST structural search with `--pattern` / `--rule` (local) |
+| `octocode grep <term> <path\|owner/repo>` | Text/regex search, or AST structural search with `--pattern` / `--rule` (local). `--type` accepts extensions and language aliases such as `ts`, `rust`, `typescript`, and `*.rs`. |
 | `octocode find <query> [path\|owner/repo]` | Find files by name, path, metadata, or content |
-| `octocode lsp <file> --type <type>` | Trace definitions, references, callers, callees, hover, and types |
+| `octocode lsp <file> --type <type>` | Trace `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `typeDefinition`, and `implementation`; use `ls --symbols` for file outlines |
 | `octocode pr <owner/repo[#N]\|PR-URL>` | Search or deep-read pull requests |
 | `octocode history <owner/repo[/path]>` | Inspect commit history for a repo, directory, or file |
 | `octocode repo <keywords...>` | Discover GitHub repositories |
@@ -320,6 +320,16 @@ Four code-intelligence axes, three of them native to the Rust engine with **no e
 - **Signature outline** — `minify:"symbols"`. **Real tree-sitter parsing only** — no regex/heuristic guessing. Available for the languages with a wired grammar (the **Native code intelligence** table below); every other file type returns the real file. An anti-growth guard also returns the real file whenever a skeleton would not be smaller than the source, so symbols never inflate output.
 - **Content-view minification** — `minify:"standard"` (default). Native comment/whitespace stripping for **70+ languages and config formats** (full list below). HTML/Vue/Svelte additionally get an *embedded-language* view: the `<style>` (lightningcss) and `<script>` (oxc) blocks are minified while the markup stays readable.
 - **LSP** semantic navigation — `lspGetSemantics` / `lsp` / `ls --symbols`. Spawns the language server named below; it must be installed and on `PATH` (override per language with `OCTOCODE_<LANG>_SERVER_PATH`).
+
+### Local intelligence matrix
+
+| Need | CLI shortcut | Raw tool | Backing engine | Notes |
+|------|--------------|----------|----------------|-------|
+| Text / regex search | `grep <term> <path>` | `localSearchCode` | Rust ripgrep parser/search | Regex is default; use `--fixed` for literal text and `--perl-regex` for lookarounds/backrefs. |
+| AST structural search | `grep <path> --pattern <shape>` / `--rule <yaml>` | `localSearchCode mode:"structural"` | Embedded ast-grep libraries + tree-sitter grammars | Local-only. `--type` accepts extension or language aliases, e.g. `--type rust` maps to `.rs`. |
+| Symbol skeleton for compact reads | `cat <file> --mode symbols` | `localGetFileContent minify:"symbols"` | Tree-sitter signature extraction | Body-free skeleton with original line numbers; falls back to real content when no smaller skeleton is available. |
+| File / directory outline | `ls <file\|dir> --symbols` | `lspGetSemantics type:"documentSymbols"` | LSP, with native JS/TS fallback | This is the `documentSymbols` path in the CLI. |
+| Symbol navigation | `lsp <file> --type <type> --symbol <name> --line <n>` | `lspGetSemantics` | LSP | Shortcut supports `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `typeDefinition`, and `implementation`; get `--line` from `grep` or `ls --symbols`. |
 
 ### Native code intelligence (tree-sitter AST + LSP)
 

@@ -89,7 +89,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('storeCredentials', () => {
     it('should delegate to shared package', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { storeCredentials } =
         await import('../../src/utils/token-storage.js');
 
@@ -114,7 +115,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
     });
 
     it('should return credentials when they exist', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { getCredentials } =
         await import('../../src/utils/token-storage.js');
 
@@ -129,7 +131,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('getCredentialsSync', () => {
     it('should delegate to shared package', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { getCredentialsSync } =
         await import('../../src/utils/token-storage.js');
 
@@ -141,7 +144,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('deleteCredentials', () => {
     it('should return result from shared package', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { deleteCredentials } =
         await import('../../src/utils/token-storage.js');
 
@@ -159,7 +163,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('isTokenExpired', () => {
     it('should return false for non-expiring tokens', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { isTokenExpired } =
         await import('../../src/utils/token-storage.js');
 
@@ -172,7 +177,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
     });
 
     it('should return true for expired tokens', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { isTokenExpired } =
         await import('../../src/utils/token-storage.js');
 
@@ -194,7 +200,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('refreshAuthToken', () => {
     it('should delegate to shared package', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { refreshAuthToken } =
         await import('../../src/utils/token-storage.js');
 
@@ -213,7 +220,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('getTokenWithRefresh', () => {
     it('should return token when available', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { getTokenWithRefresh } =
         await import('../../src/utils/token-storage.js');
 
@@ -230,7 +238,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
     });
 
     it('should return null when no token available', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { getTokenWithRefresh } =
         await import('../../src/utils/token-storage.js');
 
@@ -247,7 +256,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('getCredentialsFilePath', () => {
     it('should return path from shared package', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { getCredentialsFilePath } =
         await import('../../src/utils/token-storage.js');
 
@@ -263,7 +273,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('getEnvTokenSource', () => {
     it('should return source from shared package', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { getEnvTokenSource } =
         await import('../../src/utils/token-storage.js');
 
@@ -277,7 +288,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('hasEnvToken', () => {
     it('should return result from shared package', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { hasEnvToken } = await import('../../src/utils/token-storage.js');
 
       vi.mocked(shared.hasEnvToken).mockReturnValue(true);
@@ -290,7 +302,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
 
   describe('resolveTokenFull', () => {
     it('should return token with source', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { resolveTokenFull } =
         await import('../../src/utils/token-storage.js');
 
@@ -307,7 +320,8 @@ describe('Token Storage (CLI re-exports from @octocodeai/octocode-tools-core)', 
     });
 
     it('should return null when no token', async () => {
-      const shared = await import('@octocodeai/octocode-tools-core/credentials');
+      const shared =
+        await import('@octocodeai/octocode-tools-core/credentials');
       const { resolveTokenFull } =
         await import('../../src/utils/token-storage.js');
 

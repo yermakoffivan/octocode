@@ -24,8 +24,8 @@ const ENGINEER_SKILL_URL =
 async function loadAgentInstructions(): Promise<string | null> {
   try {
     const metadata = await loadToolContent();
-    const instructions = metadata.instructions?.trim();
-    return instructions ? instructions : null;
+    const systemPrompt = metadata.systemPrompt.trim();
+    return systemPrompt ? systemPrompt : null;
   } catch {
     return null;
   }

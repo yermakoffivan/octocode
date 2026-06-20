@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-export { isWindows, isMac, HOME, getAppDataPath } from '@octocodeai/octocode-tools-core/platform';
+export {
+  isWindows,
+  isMac,
+  HOME,
+  getAppDataPath,
+} from '@octocodeai/octocode-tools-core/platform';
 
 import { isWindows, isMac } from '@octocodeai/octocode-tools-core/platform';
 

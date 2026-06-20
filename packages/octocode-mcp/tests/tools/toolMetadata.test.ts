@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const hoist = vi.hoisted(() => {
   const mockMetadata = {
-    instructions: 'Test instructions',
+    systemPrompt: 'Test instructions',
     prompts: {
       testPrompt: {
         name: 'testPrompt',
@@ -218,7 +218,7 @@ describe('toolMetadata', () => {
       const result = await loadToolContent();
 
       expect(result).toBeDefined();
-      expect(typeof result.instructions).toBe('string');
+      expect(typeof result.systemPrompt).toBe('string');
       expect(result.toolNames).toBeDefined();
     });
 

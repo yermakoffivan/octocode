@@ -85,6 +85,24 @@ describe('grep command', () => {
     expect(lastQuery().include).toEqual(['*.ts', '*.md', '*.tsx']);
   });
 
+  it('maps local language names to real extension globs', async () => {
+    await run(['needle', 'src'], { type: 'rust' });
+
+    expect(lastQuery().include).toEqual(['*.rs']);
+  });
+
+  it('expands broad local language names without losing explicit includes', async () => {
+    await run(['needle', 'src'], { type: 'typescript', include: '*.md' });
+
+    expect(lastQuery().include).toEqual([
+      '*.md',
+      '*.ts',
+      '*.tsx',
+      '*.mts',
+      '*.cts',
+    ]);
+  });
+
   it('routes a GitHub ref to ghSearchCode', async () => {
     executeDirectTool.mockResolvedValue({
       isError: false,
@@ -236,6 +254,12 @@ describe('grep command', () => {
     const q = lastQuery();
     expect(q.langType).toBeUndefined();
     expect(q.include).toEqual(['*.tsx']);
+  });
+
+  it('maps structural language names to real extension globs', async () => {
+    await run(['src'], { pattern: 'Regex::new($PAT)', type: 'rust' });
+
+    expect(lastQuery().include).toEqual(['*.rs']);
   });
 
   it('--pattern routes to localSearchCode mode:"structural" (arg[0] is the path)', async () => {

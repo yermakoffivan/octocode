@@ -33,7 +33,8 @@ describe('Platform Utilities', () => {
     it('should re-export platform detection from @octocodeai/octocode-tools-core', async () => {
       const { isMac, isWindows, HOME } =
         await import('../../src/utils/platform.js');
-      const { isLinux } = await import('@octocodeai/octocode-tools-core/platform');
+      const { isLinux } =
+        await import('@octocodeai/octocode-tools-core/platform');
       expect(isMac).toBe(true);
       expect(isWindows).toBe(false);
       expect(isLinux).toBe(false);
@@ -41,12 +42,14 @@ describe('Platform Utilities', () => {
     });
 
     it('should expose getPlatformName from @octocodeai/octocode-tools-core', async () => {
-      const { getPlatformName } = await import('@octocodeai/octocode-tools-core/platform');
+      const { getPlatformName } =
+        await import('@octocodeai/octocode-tools-core/platform');
       expect(getPlatformName()).toBe('macOS');
     });
 
     it('should expose getArchitecture from @octocodeai/octocode-tools-core', async () => {
-      const { getArchitecture } = await import('@octocodeai/octocode-tools-core/platform');
+      const { getArchitecture } =
+        await import('@octocodeai/octocode-tools-core/platform');
       expect(getArchitecture()).toBe('arm64');
     });
 
@@ -56,7 +59,8 @@ describe('Platform Utilities', () => {
     });
 
     it('should expose getLocalAppDataPath from @octocodeai/octocode-tools-core', async () => {
-      const { getLocalAppDataPath } = await import('@octocodeai/octocode-tools-core/platform');
+      const { getLocalAppDataPath } =
+        await import('@octocodeai/octocode-tools-core/platform');
       expect(getLocalAppDataPath()).toBe('/Users/test');
     });
   });

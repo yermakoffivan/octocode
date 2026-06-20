@@ -177,7 +177,7 @@ grep <path> --rule <yaml>                  AST relational rule (local only)
                        Metavars: $X = one node, $$$ARGS = a list. e.g. 'eval($X)'
     --rule <yaml>      relational YAML rule — not/inside/has/all/any.
                        Mutually exclusive with --pattern. Local only.
-    --type <ext>       filter by language or extension (ts, py, go, rs)
+    --type <ext|lang>  filter by language or extension (ts, rust, typescript, "*.rs")
     --mode paginated|discovery|detailed   (local only, default: paginated)
     --concise          paths only, no snippets — cheapest orientation
     --include <glob>   include globs (local only)
@@ -203,6 +203,7 @@ grep <path> --rule <yaml>                  AST relational rule (local only)
 ```
 
 Text/regex runs locally or on GitHub. AST shape search (`--pattern`/`--rule`) is **local-only** — comments and strings never false-match.
+For local searches, `--type` accepts short extensions and language aliases; for example `--type rust` maps to `.rs`, while `--type typescript` covers `.ts`, `.tsx`, `.mts`, and `.cts`.
 
 Examples:
 
@@ -305,6 +306,8 @@ After cloning, use local tools against the cloned path:
 ```bash
 octocode ls ~/.octocode/repos/facebook/react/main
 octocode grep "useState" ~/.octocode/repos/facebook/react/main
+octocode cat ~/.octocode/repos/facebook/react/main/packages/react/index.js
+octocode ls ~/.octocode/repos/facebook/react/main/packages/react/index.js --symbols
 ```
 
 ### pr

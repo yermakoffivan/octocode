@@ -517,7 +517,7 @@ export async function getToolsContextString(
     ].join('\n'),
     '',
     'Agent System Prompt (Octocode MCP Instructions):',
-    metadata.instructions.trim(),
+    metadata.systemPrompt.trim(),
     '',
     'Output contract (all tools):',
     [

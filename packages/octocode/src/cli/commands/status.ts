@@ -3,7 +3,10 @@ import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT } from '../exit-codes.js';
 import { formatAuthStatusAsJson, printAuthStatus } from './shared.js';
 import { paths } from '@octocodeai/octocode-tools-core/paths';
-import { getDirectorySizeBytes, formatBytes } from '@octocodeai/octocode-tools-core/fs-utils';
+import {
+  getDirectorySizeBytes,
+  formatBytes,
+} from '@octocodeai/octocode-tools-core/fs-utils';
 import {
   DETECTABLE_MCP_CLIENTS,
   getMCPConfigPath,

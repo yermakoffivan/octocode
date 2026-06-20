@@ -354,7 +354,7 @@ const ghSearchCodeSchema = {
 };
 
 const mockContent = {
-  instructions: 'Test instructions',
+  systemPrompt: 'Test instructions',
   prompts: {},
   toolNames: {
     GITHUB_FETCH_CONTENT: 'ghGetFileContent',
