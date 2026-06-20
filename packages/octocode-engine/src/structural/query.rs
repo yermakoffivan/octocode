@@ -37,16 +37,87 @@ impl<'a> StructuralQuery<'a> {
 }
 
 fn derive_literal_anchor(pattern: &str) -> Option<&str> {
-    let mut best: Option<&str> = None;
-    for token in pattern.split(|ch: char| !(ch == '_' || ch.is_ascii_alphanumeric())) {
-        if token.len() < 3 || token.chars().all(|ch| ch.is_ascii_uppercase()) {
+    literal_anchor_candidates(pattern)
+        .into_iter()
+        .max_by_key(|token| {
+            (
+                token.chars().any(|ch| ch.is_ascii_alphanumeric()),
+                token.len(),
+            )
+        })
+}
+
+fn literal_anchor_candidates(pattern: &str) -> Vec<&str> {
+    let mut candidates = Vec::new();
+    let mut token_start = None;
+    let mut chars = pattern.char_indices().peekable();
+
+    while let Some((index, ch)) = chars.next() {
+        if ch == '$' {
+            push_anchor_candidate(pattern, &mut candidates, &mut token_start, index);
+            while let Some((_, next)) = chars.peek() {
+                if *next == '$'
+                    || *next == '_'
+                    || next.is_ascii_uppercase()
+                    || next.is_ascii_digit()
+                {
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
             continue;
         }
-        if best.is_none_or(|current| token.len() > current.len()) {
-            best = Some(token);
+
+        if is_anchor_char(ch) {
+            token_start.get_or_insert(index);
+        } else {
+            push_anchor_candidate(pattern, &mut candidates, &mut token_start, index);
         }
     }
-    best
+
+    push_anchor_candidate(pattern, &mut candidates, &mut token_start, pattern.len());
+    candidates
+}
+
+fn push_anchor_candidate<'a>(
+    pattern: &'a str,
+    candidates: &mut Vec<&'a str>,
+    token_start: &mut Option<usize>,
+    end: usize,
+) {
+    let Some(start) = token_start.take() else {
+        return;
+    };
+    let token = &pattern[start..end];
+    if is_safe_anchor_token(token) {
+        candidates.push(token);
+    }
+}
+
+fn is_anchor_char(ch: char) -> bool {
+    ch == '_'
+        || ch.is_ascii_alphanumeric()
+        || matches!(
+            ch,
+            '&' | '|' | '=' | '!' | '<' | '>' | '+' | '-' | '*' | '/' | '%' | '?' | ':'
+        )
+}
+
+fn is_safe_anchor_token(token: &str) -> bool {
+    if token.len() >= 3
+        && token.chars().any(|ch| ch.is_ascii_lowercase())
+        && token
+            .chars()
+            .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+    {
+        return true;
+    }
+
+    token.len() >= 2
+        && token
+            .chars()
+            .all(|ch| !ch.is_ascii_alphanumeric() && !ch.is_whitespace())
 }
 
 /// Derive a prefilter anchor from a rule's positive root `pattern:`.
@@ -100,6 +171,32 @@ mod tests {
                 .expect("valid query")
                 .literal_anchor(),
             None
+        );
+    }
+
+    #[test]
+    fn literal_anchor_uses_operator_when_pattern_has_no_identifier_anchor() {
+        assert_eq!(
+            StructuralQuery::new(Some("$A && $A()"), None)
+                .expect("valid query")
+                .literal_anchor(),
+            Some("&&")
+        );
+    }
+
+    #[test]
+    fn literal_anchor_skips_metavars_and_prefers_identifier_literals() {
+        assert_eq!(
+            StructuralQuery::new(Some("console.log($$$ARGS)"), None)
+                .expect("valid query")
+                .literal_anchor(),
+            Some("console")
+        );
+        assert_eq!(
+            StructuralQuery::new(Some("foo($X)"), None)
+                .expect("valid query")
+                .literal_anchor(),
+            Some("foo")
         );
     }
 }

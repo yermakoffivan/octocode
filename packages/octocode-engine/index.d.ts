@@ -84,10 +84,10 @@ export interface ExtractMatchingLinesResult {
 }
 
 /**
- * Structural skeleton with an `NNN| ` line-number gutter: tree-sitter for
- * configured parser-backed languages, document outlines for Markdown,
- * heuristics for the rest. Returns `null` for data, config, unsupported
- * prose formats, and content above the 1MB guard.
+ * Structural skeleton with an `NNN| ` line-number gutter, produced purely by
+ * tree-sitter parsing. Returns `null` for data/config formats, any language
+ * without a wired grammar, content above the 1MB guard, and any skeleton that
+ * would not be smaller than the source.
  */
 export declare function extractSignatures(content: string, filePath: string): string | null
 

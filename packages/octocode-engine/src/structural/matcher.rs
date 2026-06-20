@@ -6,6 +6,7 @@ use ast_grep_core::tree_sitter::{LanguageExt, StrDoc};
 use ast_grep_core::{NodeMatch, Pattern};
 
 use super::language::AgLanguage;
+use super::octo;
 use super::query::StructuralQuery;
 use super::types::StructuralMatch;
 
@@ -14,6 +15,23 @@ use super::types::StructuralMatch;
 pub(super) type CompiledMatcher = Box<dyn Fn(&str) -> Vec<StructuralMatch>>;
 
 pub(super) fn compile_matcher(
+    lang: &AgLanguage,
+    query: StructuralQuery<'_>,
+) -> Result<CompiledMatcher, String> {
+    match selected_engine(std::env::var("OCTOCODE_STRUCTURAL_ENGINE").ok().as_deref()) {
+        StructuralEngine::Octocode => compile_matcher_octo(lang, query),
+        StructuralEngine::AstGrep => compile_matcher_ast_grep(lang, query),
+    }
+}
+
+pub(super) fn compile_matcher_octo(
+    lang: &AgLanguage,
+    query: StructuralQuery<'_>,
+) -> Result<CompiledMatcher, String> {
+    octo::compile_matcher(lang, query)
+}
+
+pub(super) fn compile_matcher_ast_grep(
     lang: &AgLanguage,
     query: StructuralQuery<'_>,
 ) -> Result<CompiledMatcher, String> {
@@ -48,6 +66,21 @@ pub(super) fn compile_matcher(
             }))
         }
         _ => unreachable!("StructuralQuery validates the query shape"),
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StructuralEngine {
+    Octocode,
+    AstGrep,
+}
+
+fn selected_engine(value: Option<&str>) -> StructuralEngine {
+    match value.map(|value| value.trim().to_ascii_lowercase()) {
+        Some(value) if matches!(value.as_str(), "ast-grep" | "astgrep" | "legacy") => {
+            StructuralEngine::AstGrep
+        }
+        _ => StructuralEngine::Octocode,
     }
 }
 
@@ -107,4 +140,27 @@ fn root_match(lang: &AgLanguage, content: &str) -> Vec<StructuralMatch> {
 
 fn is_document_probe(pattern: &str) -> bool {
     pattern.trim() == "$$$"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn octocode_matcher_is_the_default_engine() {
+        assert_eq!(selected_engine(None), StructuralEngine::Octocode);
+        assert_eq!(
+            selected_engine(Some("octocode")),
+            StructuralEngine::Octocode
+        );
+        assert_eq!(selected_engine(Some("native")), StructuralEngine::Octocode);
+        assert_eq!(selected_engine(Some("unknown")), StructuralEngine::Octocode);
+    }
+
+    #[test]
+    fn ast_grep_fallback_is_explicit() {
+        assert_eq!(selected_engine(Some("ast-grep")), StructuralEngine::AstGrep);
+        assert_eq!(selected_engine(Some("astgrep")), StructuralEngine::AstGrep);
+        assert_eq!(selected_engine(Some("legacy")), StructuralEngine::AstGrep);
+    }
 }

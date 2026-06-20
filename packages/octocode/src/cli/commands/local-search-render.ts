@@ -45,7 +45,7 @@ function formatMetavars(
 /**
  * Renders localSearchCode hits (text or structural/AST — same envelope shape)
  * into a compact `path (n matches)` + `Lnn: snippet` listing. Shared by the
- * `grep` (text) and `ast` (structural) commands.
+ * `grep` text and structural modes.
  */
 export function renderLocalResults(
   sc: LocalSearchResult,

@@ -74,7 +74,7 @@ function includeGlobsForLangType(langType?: string): string[] | undefined {
 /**
  * mode:"structural" execution path. Path validation and result shaping stay in
  * TypeScript with the rest of localSearchCode; filesystem traversal, file reads,
- * pre-filtering, parsing, and ast-grep matching run in native Rust.
+ * pre-filtering, parsing, and Octocode AST matching run in native Rust.
  */
 export async function searchContentStructural(
   query: RipgrepQuery

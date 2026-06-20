@@ -288,6 +288,38 @@ describe('minifyContentSync', () => {
     const out = addon!.minifyContentSync('{ "a": 1 }', 'data.json');
     expect(out).toBe('{"a":1}');
   });
+
+  it('has explicit minify strategies for rich AST aliases', () => {
+    for (const ext of ['mts', 'cts', 'pyi', 'hh', 'hxx']) {
+      expect(addon!.MINIFY_CONFIG.fileTypes[ext]).toBeTruthy();
+      expect(addon!.MINIFY_CONFIG.fileTypes[ext].strategy).toBe('conservative');
+    }
+
+    const mts = addon!.minifyContentResult(
+      "import type { Foo } from './foo';\nexport function f(x: Foo): string { return String(x); }\n",
+      'module.mts'
+    );
+    expect(mts.failed).toBe(false);
+    expect(mts.type).toBe('conservative');
+    expect(mts.content).not.toContain('import type');
+  });
+
+  it('is deterministic across repeated public minify calls', () => {
+    const cases = [
+      ['script.ts', 'export function add(a: number, b: number) { return a + b; }\n'],
+      ['data.jsonc', '{\n  // comment\n  "a": 1,\n}\n'],
+      ['style.css', '.card { color: red; margin: 0px; }\n'],
+      ['readme.md', '# Title\n\nBody text\n\n'],
+      ['query.sql', '-- comment\nSELECT * FROM users;\n'],
+    ] as const;
+
+    for (const [filePath, content] of cases) {
+      const first = addon!.minifyContentResult(content, filePath);
+      for (let i = 0; i < 4; i += 1) {
+        expect(addon!.minifyContentResult(content, filePath)).toEqual(first);
+      }
+    }
+  });
 });
 
 describe('minifyContent (async wrapper)', () => {

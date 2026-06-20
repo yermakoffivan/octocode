@@ -155,8 +155,9 @@ async function searchLocal(
 }
 
 // Structural (AST) search: grep --pattern/--rule routes here, to localSearchCode
-// mode:"structural". Local-only — ast-grep cannot run against GitHub. Shares the
-// same executor and renderer as text grep; only the query shape differs.
+// mode:"structural". Local-only because it parses files with the native
+// Octocode engine. Shares the same executor and renderer as text grep; only the
+// query shape differs.
 async function searchLocalStructural(
   dirPath: string,
   opts: {
@@ -308,7 +309,7 @@ function renderGithubResults(
 export const grepCommand: CLICommand = {
   name: 'grep',
   description:
-    'Search code by text/regex (ripgrep) across local paths and GitHub, OR by AST shape (ast-grep) with --pattern/--rule. One search command: text by default, structural when you pass --pattern or --rule (local-only).',
+    'Search code by text/regex (ripgrep) across local paths and GitHub, OR by AST shape with --pattern/--rule through Octocode structural grep. One search command: text by default, structural when you pass --pattern or --rule (local-only).',
   usage:
     'grep <keywords> <path|github-ref> [text flags] | grep <path> --pattern <shape> | grep <path> --rule <yaml>  [--type <ext|lang>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
@@ -316,7 +317,7 @@ export const grepCommand: CLICommand = {
       name: 'pattern',
       hasValue: true,
       description:
-        'AST shape (ast-grep) — switches grep to structural search, local-only. Metavars: $X = one node, $$$ARGS = a list. E.g. "eval($X)", "console.log($$$)". Comments/strings never false-match.',
+        'AST shape — switches grep to Octocode structural search, local-only. Metavars: $X = one node, $$$ARGS = a list. E.g. "eval($X)", "console.log($$$ARGS)". Comments/strings never false-match.',
     },
     {
       name: 'rule',
@@ -474,7 +475,7 @@ export const grepCommand: CLICommand = {
     const { options } = args;
 
     // ── Structural (AST) branch ──────────────────────────────────────────────
-    // --pattern / --rule switch grep to ast-grep structural search (local-only).
+    // --pattern / --rule switch grep to Octocode structural search (local-only).
     // arg[0] is the path here (there are no text keywords). Same executor and
     // renderer as text grep; only the query shape differs.
     const patternOpt = getString(options, 'pattern') || undefined;
@@ -493,7 +494,7 @@ export const grepCommand: CLICommand = {
       const ref = resolveRef(args.args[0] || '.');
       if (isGithubRef(ref)) {
         const err =
-          'Structural search (--pattern/--rule) is local-only — ast-grep cannot run on GitHub. Clone the repo first, or drop the flag for text search.';
+          'Structural search (--pattern/--rule) is local-only because Octocode parses files on disk. Clone the repo first, or drop the flag for text search.';
         if (jsonOutput)
           console.log(JSON.stringify({ success: false, error: err }));
         else printCliError(err);

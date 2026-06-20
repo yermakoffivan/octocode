@@ -2,16 +2,19 @@
 //!
 //! This is octocode's L2 search layer: it answers shape questions ripgrep
 //! can't (a call shaped `foo($X)`, an `eval()` call site that is NOT inside a
-//! comment/string) and that LSP is too heavy for. The matcher is
-//! `ast-grep-core`; the grammars are the exact `tree_sitter::Language` values
-//! in [`crate::signatures::languages`] — no second grammar set, no link
-//! collision.
+//! comment/string) and that LSP is too heavy for. The default matcher is
+//! Octocode-owned; the grammars are the exact `tree_sitter::Language` values in
+//! [`crate::signatures::languages`] — no second grammar set, no link collision.
 
 mod files;
 mod language;
 mod matcher;
+mod octo;
 mod query;
 mod types;
+
+#[cfg(test)]
+mod compare;
 
 pub use files::search_files;
 pub use types::{StructuralMatch, StructuralSearchFilesOptions, StructuralSearchFilesResult};
@@ -508,6 +511,29 @@ mod tests {
         assert_eq!(result.skipped_by_pre_filter, 1);
         assert_eq!(result.files.len(), 1);
         assert!(result.files[0].path.ends_with("has.ts"));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn search_files_prefilters_operator_anchor_before_structural_match() {
+        let root = temp_root("operatoranchor");
+        fs::write(root.join("match.js"), "foo && foo();\n").expect("match");
+        fs::write(root.join("nomatch.js"), "foo || foo();\n").expect("nomatch");
+
+        let result = search_files(StructuralSearchFilesOptions {
+            path: root.to_string_lossy().to_string(),
+            pattern: Some("$A && $A()".to_owned()),
+            rule: None,
+            include: None,
+            exclude_dir: None,
+            max_files: Some(50),
+            max_file_bytes: None,
+        })
+        .expect("operator anchor search");
+
+        assert_eq!(result.skipped_by_pre_filter, 1);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].path.ends_with("match.js"));
         fs::remove_dir_all(root).expect("cleanup");
     }
 }

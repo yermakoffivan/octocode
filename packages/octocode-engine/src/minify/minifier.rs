@@ -200,6 +200,86 @@ mod tests {
     }
 
     #[test]
+    fn rich_ast_aliases_have_explicit_minify_strategies() {
+        let cases = [
+            (
+                "module.mts",
+                "import type { Foo } from './foo';\nexport function f(x: Foo): string { return String(x); }\n",
+                "conservative",
+                "import type",
+            ),
+            (
+                "module.cts",
+                "import type { Foo } from './foo';\nexport function f(x: Foo): string { return String(x); }\n",
+                "conservative",
+                "import type",
+            ),
+            (
+                "types.pyi",
+                "# comment\nclass User: ...\n",
+                "conservative",
+                "# comment",
+            ),
+            (
+                "header.hh",
+                "// comment\nint add(int a, int b);\n",
+                "conservative",
+                "comment",
+            ),
+            (
+                "header.hxx",
+                "// comment\nint add(int a, int b);\n",
+                "conservative",
+                "comment",
+            ),
+        ];
+
+        for (path, src, expected_strategy, removed_text) in cases {
+            let result = minify_content_result_inner(src, path);
+            assert!(!result.failed, "{path} should minify successfully");
+            assert_eq!(
+                result.r#type, expected_strategy,
+                "{path} must not fall through to general text minify"
+            );
+            assert!(
+                !result.content.contains(removed_text),
+                "{path} should use its language-aware minify path: {}",
+                result.content
+            );
+        }
+    }
+
+    #[test]
+    fn minify_outputs_are_deterministic_for_representative_strategies() {
+        let cases = [
+            (
+                "script.ts",
+                "export function add(a: number, b: number) { return a + b; }\n",
+            ),
+            ("data.jsonc", "{\n  // comment\n  \"a\": 1,\n}\n"),
+            ("style.css", ".card { color: red; margin: 0px; }\n"),
+            (
+                "page.html",
+                "<style>.x { margin: 0px; }</style><h1>Hi</h1>\n",
+            ),
+            ("readme.md", "# Title\n\nBody text\n\n"),
+            ("query.sql", "-- comment\nSELECT * FROM users;\n"),
+            ("note.txt", "hello\n\n\nworld\n"),
+        ];
+
+        for (path, src) in cases {
+            let first = minify_content_result_inner(src, path);
+            assert!(!first.failed, "{path} should minify successfully");
+            for _ in 0..8 {
+                let next = minify_content_result_inner(src, path);
+                assert_eq!(next.failed, first.failed, "{path} failed flag drifted");
+                assert_eq!(next.r#type, first.r#type, "{path} strategy drifted");
+                assert_eq!(next.content, first.content, "{path} output drifted");
+            }
+        }
+    }
+
+    #[test]
     fn invalid_json_result_is_marked_failed() {
         let r = minify_content_result_inner("{ invalid json", "bad.json");
         assert!(r.failed);

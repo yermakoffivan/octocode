@@ -24,6 +24,18 @@ impl AgLanguage {
             expando: expando_for_ext(ext),
         }
     }
+
+    pub(super) fn tree_sitter_language(&self) -> TSLanguage {
+        self.ts.clone()
+    }
+
+    pub(super) fn expando_char_value(&self) -> char {
+        self.expando
+    }
+
+    pub(super) fn preprocess_pattern<'query>(&self, query: &'query str) -> Cow<'query, str> {
+        pre_process_pattern(self.expando, query)
+    }
 }
 
 impl Language for AgLanguage {

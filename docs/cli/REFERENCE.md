@@ -101,7 +101,7 @@ Auto-route based on target: a local path routes to local tools; `owner/repo[/pat
 |---------|-----------|------|
 | `cat` | `localGetFileContent` / `ghGetFileContent` | Read and minify file content |
 | `ls` | `localViewStructure` / `ghViewRepoStructure` / `lspGetSemantics` | Directory tree; a file or `--symbols` shows a symbol outline (local) |
-| `grep` | `localSearchCode` / `ghSearchCode` | Text/regex search; `--pattern`/`--rule` for AST shape (ast-grep, local) |
+| `grep` | `localSearchCode` / `ghSearchCode` | Text/regex search; `--pattern`/`--rule` for Octocode AST shape (local) |
 | `find` | `localFindFiles` / `localSearchCode` / `ghSearchCode` | Find files by name, path, or content |
 | `clone` | `ghCloneRepo` | Clone a repo or subtree to the Octocode home `repos/` cache |
 | `pr` | `ghHistoryResearch` | List or deep-dive pull requests |
@@ -196,7 +196,7 @@ octocode ls src/index.ts --symbols --kind function
 
 ```
 grep <keywords> <path|owner/repo>          text/regex search
-grep <path> --pattern <shape>              AST shape search (ast-grep, local only)
+grep <path> --pattern <shape>              AST shape search (local only)
 grep <path> --rule <yaml>                  AST relational rule (local only)
     --pattern <ast>    AST shape — switches grep to structural search (local only).
                        Metavars: $X = one node, $$$ARGS = a list. e.g. 'eval($X)'
@@ -239,8 +239,9 @@ octocode grep 'runCLI\s*\(' packages/octocode/src --perl-regex --context 1 --max
 octocode grep "useState" facebook/react --type ts
 octocode grep "executeCloneRepo" bgauryy/octocode-mcp --concise
 octocode grep src --pattern 'eval($X)'
-octocode grep packages/octocode/src --pattern 'console.log($$$)' --type ts
-octocode grep src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement'
+octocode grep packages/octocode/src --pattern 'console.log($$$ARGS)' --type ts
+octocode grep packages/octocode/src --pattern '$A && $A()' --type ts
+octocode grep src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement\n    stopBy: end'
 ```
 
 ### find

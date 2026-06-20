@@ -112,7 +112,7 @@ Fast content search powered by ripgrep.
 | `path` | File or directory to search. Relative paths resolve from the workspace root. |
 | `keywords` | Text or regex pattern for non-structural search. Use `fixedString=true` for literal search. Required unless `mode:"structural"`. |
 | `mode` | `paginated` (default), `discovery` (file paths only), `detailed` (expanded context), `structural` (AST/shape — use `pattern` or `rule`). |
-| `pattern` | ast-grep code-shaped pattern. `$X` = single node, `$$$ARGS` = list. **Only with `mode:"structural"`**. |
+| `pattern` | Octocode code-shaped AST pattern. `$X` = single node, `$$$ARGS` = list. **Only with `mode:"structural"`**. |
 | `rule` | YAML relational rule (`not`/`inside`/`has`/`all`/`any`). Add `stopBy: end` for ancestor/descendant relations. **Only with `mode:"structural"`**. |
 | `filesOnly` | Return matching file paths only. |
 | `filesWithoutMatch` | Return files that do not match. Mutually exclusive with `filesOnly`. |
@@ -152,6 +152,17 @@ Fast content search powered by ripgrep.
 ### Output
 
 Normal results include matched files and match snippets with line and column information. For count-only output use `countLinesPerFile:true` or `countMatchesPerFile:true`.
+
+When matches are returned, `localSearchCode` also emits a machine-readable
+`next` map for common agent follow-ups:
+
+| Next key | Tool | Purpose |
+|----------|------|---------|
+| `fetchExact` | `localGetFileContent` | Read the first match with `minify:"none"` for exact source, comments, tests, or edits. |
+| `fetchStandard` | `localGetFileContent` | Read a token-efficient source slice with `minify:"standard"`. |
+| `fetchSymbols` | `localGetFileContent` | Get a file-level symbol skeleton with `minify:"symbols"`. |
+| `lspDefinition` / `lspReferences` | `lspGetSemantics` | Follow the first match semantically when a safe symbol name can be inferred. |
+| `nextPage` / `nextMatchPage` | `localSearchCode` | Continue file-level or per-file match pagination. |
 
 ### Examples
 

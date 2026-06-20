@@ -162,8 +162,7 @@ Notes:
   though its tree-sitter grammar registry id is \`javascript\` (shared JS
   grammar). \`.tsx\` has its own grammar, so both ids are \`typescriptreact\`.
 - **\`.hh\` / \`.hxx\`** have the C++ grammar + signatures but **no clangd server
-  config** (only \`.cpp/.cc/.cxx/.hpp\` are mapped). \`.mts/.cts/.pyi\` have grammar
-  + LSP but no dedicated minify strategy.
+  config** (only \`.cpp/.cc/.cxx/.hpp\` are mapped).
 - **C/C++**: structural \`rule\` queries (e.g. \`kind: call_expression\`) work fully;
   a bare call-shaped \`pattern\` can hit tree-sitter's declaration-vs-call
   ambiguity — prefer a \`rule\` with \`kind\`. JS/TS also have a native (oxc)

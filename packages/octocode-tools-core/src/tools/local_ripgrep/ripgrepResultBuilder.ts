@@ -7,6 +7,76 @@ import type { RipgrepQuery } from './scheme.js';
 
 export type LocalSearchEngine = 'rg' | 'grep' | 'structural';
 
+type NextToolName =
+  | 'localGetFileContent'
+  | 'lspGetSemantics'
+  | 'localSearchCode';
+
+type NextConfidence = 'exact' | 'heuristic';
+
+type SearchNextCall = {
+  tool: NextToolName;
+  query: Record<string, unknown>;
+  why: string;
+  confidence?: NextConfidence;
+};
+
+type SearchNextMap = {
+  fetchExact?: SearchNextCall;
+  fetchStandard?: SearchNextCall;
+  fetchSymbols?: SearchNextCall;
+  lspDefinition?: SearchNextCall;
+  lspReferences?: SearchNextCall;
+  nextPage?: SearchNextCall;
+  nextMatchPage?: SearchNextCall;
+};
+
+type LocalSearchResultWithNext = LocalSearchCodeToolResult & {
+  next?: SearchNextMap;
+};
+
+type FlowMatch = {
+  line?: number;
+  endLine?: number;
+  value?: string;
+  metavars?: Record<string, string[]>;
+};
+
+type FlowFile = {
+  path?: string;
+  matches?: FlowMatch[];
+  pagination?: { hasMore?: boolean };
+};
+
+const FETCH_CONTEXT_LINES = 8;
+const RESERVED_SYMBOL_WORDS = new Set([
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'def',
+  'do',
+  'else',
+  'enum',
+  'export',
+  'for',
+  'function',
+  'if',
+  'import',
+  'interface',
+  'let',
+  'match',
+  'return',
+  'struct',
+  'switch',
+  'type',
+  'var',
+  'while',
+]);
+
 export async function buildSearchResult(
   parsedFiles: LocalSearchCodeFile[],
   configuredQuery: RipgrepQuery,
@@ -153,7 +223,16 @@ export async function buildSearchResult(
     refinementHints.unshift(`Active filters — ${activeFilters.join(' | ')}`);
   }
 
-  const fullResult: LocalSearchCodeToolResult = {
+  const next = buildSearchNextMap(finalFiles, configuredQuery, searchEngine, {
+    isFileListMode,
+    currentPage,
+    totalFilePages,
+    matchPage: aligned.matchPage || 1,
+    matchesPerPage,
+    hasFileWithMoreMatches: filesWithMoreMatches.length > 0,
+  });
+
+  const fullResult: LocalSearchResultWithNext = {
     searchEngine,
     files: finalFiles,
     pagination: {
@@ -178,9 +257,15 @@ export async function buildSearchResult(
             'Use localGetFileContent to read listed files, or rerun localSearchCode without filesOnly/count mode for matched snippets.',
           ]
         : []),
+      ...(Object.keys(next).length > 0
+        ? [
+            'Response includes next.* query objects for localGetFileContent, lspGetSemantics, or localSearchCode follow-ups.',
+          ]
+        : []),
       ...paginationHints,
       ...refinementHints,
     ],
+    ...(Object.keys(next).length > 0 ? { next } : {}),
   };
 
   return finalizeRipgrepResult(fullResult, configuredQuery, {
@@ -195,6 +280,179 @@ export function finalizeRipgrepResult(
   _totals: { totalMatches: number; totalFiles: number }
 ): LocalSearchCodeToolResult {
   return result;
+}
+
+function buildSearchNextMap(
+  files: LocalSearchCodeFile[],
+  query: RipgrepQuery,
+  searchEngine: LocalSearchEngine,
+  options: {
+    isFileListMode: boolean;
+    currentPage: number;
+    totalFilePages: number;
+    matchPage: number;
+    matchesPerPage: number;
+    hasFileWithMoreMatches: boolean;
+  }
+): SearchNextMap {
+  const firstFile = (files as FlowFile[]).find(file => file.path);
+  const firstMatch = firstFile?.matches?.find(match => match.line);
+  const next: SearchNextMap = {};
+
+  if (firstFile?.path) {
+    if (firstMatch?.line) {
+      const range = lineRangeAroundMatch(firstMatch);
+      next.fetchExact = {
+        tool: 'localGetFileContent',
+        query: withoutUndefined({
+          path: firstFile.path,
+          startLine: range.startLine,
+          endLine: range.endLine,
+          minify: 'none',
+        }),
+        why: 'Read exact source around the first grep match before editing, quoting, or validating comments/tests.',
+        confidence: 'exact',
+      };
+      next.fetchStandard = {
+        tool: 'localGetFileContent',
+        query: withoutUndefined({
+          path: firstFile.path,
+          startLine: range.startLine,
+          endLine: range.endLine,
+          minify: 'standard',
+        }),
+        why: 'Read a token-efficient source slice around the first grep match.',
+        confidence: 'exact',
+      };
+    } else if (options.isFileListMode) {
+      next.fetchStandard = {
+        tool: 'localGetFileContent',
+        query: { path: firstFile.path, minify: 'standard' },
+        why: 'Read the first matched file from file-list/count mode.',
+        confidence: 'heuristic',
+      };
+    }
+
+    next.fetchSymbols = {
+      tool: 'localGetFileContent',
+      query: { path: firstFile.path, minify: 'symbols' },
+      why: 'Get a symbol skeleton for fast orientation before opening large bodies.',
+      confidence: 'exact',
+    };
+
+    const symbolName = inferLspSymbolName(firstMatch, query, searchEngine);
+    if (symbolName && firstMatch?.line) {
+      const lspBase = {
+        uri: firstFile.path,
+        symbolName,
+        lineHint: firstMatch.line,
+      };
+      next.lspDefinition = {
+        tool: 'lspGetSemantics',
+        query: { ...lspBase, type: 'definition' },
+        why: 'Use the grep line as an LSP lineHint to resolve the symbol definition.',
+        confidence: 'heuristic',
+      };
+      next.lspReferences = {
+        tool: 'lspGetSemantics',
+        query: { ...lspBase, type: 'references' },
+        why: 'Use the grep line as an LSP lineHint to inspect semantic usages.',
+        confidence: 'heuristic',
+      };
+    }
+  }
+
+  if (options.currentPage < options.totalFilePages) {
+    next.nextPage = {
+      tool: 'localSearchCode',
+      query: withoutUndefined({
+        ...query,
+        page: options.currentPage + 1,
+      }),
+      why: 'Continue to the next page of matched files.',
+      confidence: 'exact',
+    };
+  }
+
+  if (options.hasFileWithMoreMatches) {
+    next.nextMatchPage = {
+      tool: 'localSearchCode',
+      query: withoutUndefined({
+        ...query,
+        maxMatchesPerFile: options.matchesPerPage,
+        matchPage: options.matchPage + 1,
+      }),
+      why: 'Continue within files that have more matches than this response returned.',
+      confidence: 'exact',
+    };
+  }
+
+  return next;
+}
+
+function lineRangeAroundMatch(match: FlowMatch): {
+  startLine: number;
+  endLine: number;
+} {
+  const line = Math.max(1, match.line ?? 1);
+  const endLine = Math.max(line, match.endLine ?? line);
+  return {
+    startLine: Math.max(1, line - FETCH_CONTEXT_LINES),
+    endLine: endLine + FETCH_CONTEXT_LINES,
+  };
+}
+
+function inferLspSymbolName(
+  match: FlowMatch | undefined,
+  query: RipgrepQuery,
+  searchEngine: LocalSearchEngine
+): string | undefined {
+  const fromMetavar = firstIdentifierFromMetavars(match?.metavars);
+  if (fromMetavar) return fromMetavar;
+
+  if (searchEngine === 'structural') {
+    return undefined;
+  }
+
+  const keywordSymbol = identifierFromSearchQuery(query.keywords);
+  if (keywordSymbol) return keywordSymbol;
+
+  return identifierFromText(match?.value);
+}
+
+function firstIdentifierFromMetavars(
+  metavars: Record<string, string[]> | undefined
+): string | undefined {
+  if (!metavars) return undefined;
+  for (const values of Object.values(metavars)) {
+    for (const value of values) {
+      const symbol = identifierFromText(value);
+      if (symbol) return symbol;
+    }
+  }
+  return undefined;
+}
+
+function identifierFromText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  const candidates = trimmed.match(/[A-Za-z_$][\w$]*/g) ?? [];
+  return candidates.find(candidate => !RESERVED_SYMBOL_WORDS.has(candidate));
+}
+
+function identifierFromSearchQuery(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const first = value.trim().match(/[A-Za-z_$][\w$]*/)?.[0];
+  if (!first || RESERVED_SYMBOL_WORDS.has(first)) return undefined;
+  return first;
+}
+
+function withoutUndefined(
+  value: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined)
+  );
 }
 
 function _getStructuredResultSizeHints(

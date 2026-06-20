@@ -39,9 +39,9 @@ const GRAMMARS = [
   { name: 'TSX', ext: 'tsx', aliases: [], sig: true, snippet: 'const a = foo(bar);\n', pattern: 'foo($X)', min: 1, sigSnippet: 'export function Foo(a: number): number {\n  return a + 1;\n}\n' },
   { name: 'JavaScript', ext: 'js', aliases: ['jsx', 'mjs', 'cjs'], sig: true, snippet: 'log(1, 2, 3);\n', pattern: 'log($$$A)', min: 1, sigSnippet: 'function foo(a) {\n  return a + 1;\n}\n' },
   { name: 'Python', ext: 'py', aliases: ['pyi'], sig: true, snippet: 'print(x)\n', pattern: 'print($X)', min: 1, sigSnippet: 'def foo(a):\n    return a + 1\n' },
-  { name: 'Go', ext: 'go', aliases: [], sig: true, snippet: 'package m\nfunc f() { foo(x) }\n', pattern: 'foo($X)', min: 1, sigSnippet: 'package m\nfunc Foo() int {\n  return 1\n}\n' },
-  { name: 'Rust', ext: 'rs', aliases: [], sig: true, snippet: 'fn f() { let _ = g(y); }\n', pattern: 'g($X)', min: 1, sigSnippet: 'fn foo() -> i32 {\n  1\n}\n' },
-  { name: 'Java', ext: 'java', aliases: [], sig: true, snippet: 'class A { void m() { foo(x); } }\n', pattern: 'foo($X)', min: 1, sigSnippet: 'class A {\n  int foo() {\n    return 1;\n  }\n}\n' },
+  { name: 'Go', ext: 'go', aliases: [], sig: true, snippet: 'package m\nfunc f() { foo(x) }\n', rule: 'rule:\n  kind: call_expression\n', min: 1, sigSnippet: 'package m\nfunc Foo() int {\n  return 1\n}\n' },
+  { name: 'Rust', ext: 'rs', aliases: [], sig: true, snippet: 'fn f() { let _ = g(y); }\n', rule: 'rule:\n  kind: call_expression\n', min: 1, sigSnippet: 'fn foo() -> i32 {\n  1\n}\n' },
+  { name: 'Java', ext: 'java', aliases: [], sig: true, snippet: 'class A { void m() { foo(x); } }\n', rule: 'rule:\n  kind: method_invocation\n', min: 1, sigSnippet: 'class A {\n  int foo() {\n    return 1;\n  }\n}\n' },
   { name: 'C', ext: 'c', aliases: ['h'], sig: true, snippet: 'int main() { foo(x); }\n', pattern: 'foo($X);', min: 1, sigSnippet: 'int foo(void) {\n  return 1;\n}\n' },
   { name: 'Bash', ext: 'sh', aliases: ['bash', 'zsh'], sig: true, snippet: 'echo hi\nfoo bar baz\n', pattern: PARSE_PROBE, min: 1, sigSnippet: 'foo() {\n  echo hi\n}\n' },
   { name: 'HTML', ext: 'html', aliases: ['htm'], sig: false, snippet: '<div><button id="go">Hi</button></div>', pattern: '<button id="go">$$$</button>', min: 1 },
@@ -52,13 +52,14 @@ const GRAMMARS = [
   { name: 'JSON', ext: 'json', aliases: ['jsonc'], sig: false, snippet: '{"a": 1, "b": 2}', pattern: '$K: $V', min: 1 },
   { name: 'YAML', ext: 'yaml', aliases: ['yml'], sig: false, snippet: 'a: 1\nb: 2\n', pattern: '$K: $V', min: 1 },
   { name: 'TOML', ext: 'toml', aliases: [], sig: false, snippet: 'name = "x"\nver = 2\n', pattern: PARSE_PROBE, min: 1 },
-  { name: 'C++', ext: 'cpp', aliases: ['hpp', 'cc', 'cxx', 'hh', 'hxx'], sig: true, snippet: 'int main() { foo(x); }\n', pattern: 'foo($X)', min: 1, sigSnippet: 'int foo() {\n  return 1;\n}\n' },
-  { name: 'C#', ext: 'cs', aliases: [], sig: true, snippet: 'class A { void M() { Foo(x); } }\n', pattern: 'Foo($X)', min: 1, sigSnippet: 'class A {\n  int Foo() {\n    return 1;\n  }\n}\n' },
+  { name: 'C++', ext: 'cpp', aliases: ['hpp', 'cc', 'cxx', 'hh', 'hxx'], sig: true, snippet: 'int main() { foo(x); }\n', rule: 'rule:\n  kind: call_expression\n', min: 1, sigSnippet: 'int foo() {\n  return 1;\n}\n' },
+  { name: 'C#', ext: 'cs', aliases: [], sig: true, snippet: 'class A { void M() { Foo(x); } }\n', rule: 'rule:\n  kind: invocation_expression\n', min: 1, sigSnippet: 'class A {\n  int Foo() {\n    return 1;\n  }\n}\n' },
 ]
 
 const structuralExts = new Set(engine.getSupportedStructuralExtensions())
 const signatureExts = new Set(engine.getSupportedSignatureExtensions())
-const sc = (content, ext, pattern) => engine.structuralSearch(content, `probe.${ext}`, pattern).length
+const sc = (content, ext, pattern) => engine.structuralSearch(content, `probe.${ext}`, pattern, null).length
+const scRule = (content, ext, rule) => engine.structuralSearch(content, `probe.${ext}`, null, rule).length
 
 const rows = []
 const failures = []
@@ -98,8 +99,9 @@ for (const g of GRAMMARS) {
 
   // MATCH (canonical snippet)
   let matches = 0
-  try { matches = sc(g.snippet, g.ext, g.pattern) } catch (e) { issues.push(`match threw: ${e.message}`) }
-  if (matches < g.min) issues.push(`canonical match got ${matches}, expected >=${g.min} for \`${g.pattern}\``)
+  const queryLabel = g.pattern || g.rule.trim().split('\n').join(' ')
+  try { matches = g.pattern ? sc(g.snippet, g.ext, g.pattern) : scRule(g.snippet, g.ext, g.rule) } catch (e) { issues.push(`match threw: ${e.message}`) }
+  if (matches < g.min) issues.push(`canonical match got ${matches}, expected >=${g.min} for \`${queryLabel}\``)
 
   // SIGNATURE (signature-tier)
   let sigInfo = g.sig ? '' : 'n/a'

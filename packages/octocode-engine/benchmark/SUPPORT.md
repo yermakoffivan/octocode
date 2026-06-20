@@ -21,15 +21,15 @@ server). The minify column is the configured strategy.
 | `.cpp` | `conservative` | ✅ | ✅ tree-sitter | `clangd` → `cpp` |
 | `.cs` | `conservative` | ✅ | ✅ tree-sitter | `csharp-ls` → `csharp` |
 | `.css` | `aggressive` | ✅ | — | `vscode-css-language-server` → `css` |
-| `.cts` | — | ✅ | ✅ tree-sitter | `typescript-language-server` → `typescript` |
+| `.cts` | `conservative` | ✅ | ✅ tree-sitter | `typescript-language-server` → `typescript` |
 | `.cxx` | `conservative` | ✅ | ✅ tree-sitter | `clangd` → `cpp` |
 | `.go` | `conservative` | ✅ | ✅ tree-sitter | `gopls` → `go` |
 | `.h` | `conservative` | ✅ | ✅ tree-sitter | `clangd` → `c` |
-| `.hh` | — | ✅ | ✅ tree-sitter | — |
+| `.hh` | `conservative` | ✅ | ✅ tree-sitter | — |
 | `.hpp` | `conservative` | ✅ | ✅ tree-sitter | `clangd` → `cpp` |
 | `.htm` | `aggressive` | ✅ | — | `vscode-html-language-server` → `html` |
 | `.html` | `aggressive` | ✅ | — | `vscode-html-language-server` → `html` |
-| `.hxx` | — | ✅ | ✅ tree-sitter | — |
+| `.hxx` | `conservative` | ✅ | ✅ tree-sitter | — |
 | `.java` | `conservative` | ✅ | ✅ tree-sitter | `jdtls` → `java` |
 | `.js` | `terser` | ✅ | ✅ tree-sitter | `typescript-language-server` → `javascript` |
 | `.json` | `json` | ✅ | — | `vscode-json-language-server` → `json` |
@@ -37,9 +37,9 @@ server). The minify column is the configured strategy.
 | `.jsx` | `terser` | ✅ | ✅ tree-sitter | `typescript-language-server` → `javascriptreact` |
 | `.less` | `aggressive` | ✅ | — | `vscode-css-language-server` → `less` |
 | `.mjs` | `terser` | ✅ | ✅ tree-sitter | `typescript-language-server` → `javascript` |
-| `.mts` | — | ✅ | ✅ tree-sitter | `typescript-language-server` → `typescript` |
+| `.mts` | `conservative` | ✅ | ✅ tree-sitter | `typescript-language-server` → `typescript` |
 | `.py` | `conservative` | ✅ | ✅ tree-sitter | `pylsp` → `python` |
-| `.pyi` | — | ✅ | ✅ tree-sitter | `pylsp` → `python` |
+| `.pyi` | `conservative` | ✅ | ✅ tree-sitter | `pylsp` → `python` |
 | `.rs` | `conservative` | ✅ | ✅ tree-sitter | `rust-analyzer` → `rust` |
 | `.sbt` | — | ✅ | — | — |
 | `.sc` | — | ✅ | — | — |
@@ -62,8 +62,7 @@ Notes:
   though its tree-sitter grammar registry id is `javascript` (shared JS
   grammar). `.tsx` has its own grammar, so both ids are `typescriptreact`.
 - **`.hh` / `.hxx`** have the C++ grammar + signatures but **no clangd server
-  config** (only `.cpp/.cc/.cxx/.hpp` are mapped). `.mts/.cts/.pyi` have grammar
-  + LSP but no dedicated minify strategy.
+  config** (only `.cpp/.cc/.cxx/.hpp` are mapped).
 - **C/C++**: structural `rule` queries (e.g. `kind: call_expression`) work fully;
   a bare call-shaped `pattern` can hit tree-sitter's declaration-vs-call
   ambiguity — prefer a `rule` with `kind`. JS/TS also have a native (oxc)
