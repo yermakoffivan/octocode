@@ -18,6 +18,7 @@ async function loadStaticCommandHelpModule(): Promise<{
 
 async function loadToolCommandModule(): Promise<{
   executeToolCommand(args: ParsedArgs): Promise<boolean>;
+  getToolsContextString(options?: { full?: boolean }): Promise<string>;
   printToolsContext(options?: { full?: boolean }): Promise<void>;
   showToolHelp(toolName: string): Promise<boolean>;
   showAvailableTools(): Promise<void>;
@@ -107,8 +108,11 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
         return true;
       }
 
-      const { showHelp } = await loadMainHelpModule();
-      await showHelp();
+      console.log();
+      console.log(`  Unknown command: ${args.command}`);
+      console.log(`  Run '--help' to see available commands.`);
+      console.log();
+      process.exitCode = EXIT.NOT_FOUND;
       return true;
     }
 
@@ -125,9 +129,13 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
   if (!args.command && args.options.context === true) {
     const toolModule = await tryLoadToolCommandModule();
     if (toolModule) {
-      await toolModule.printToolsContext({
-        full: args.options['full'] === true,
-      });
+      const options = { full: args.options['full'] === true };
+      if (args.options['json'] === true) {
+        const context = await toolModule.getToolsContextString(options);
+        console.log(JSON.stringify({ context }));
+      } else {
+        await toolModule.printToolsContext(options);
+      }
       return true;
     }
     const { printLightInstructions } = await loadLightToolHelpModule();
@@ -183,9 +191,13 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
   if (args.command === 'context') {
     const toolModule = await tryLoadToolCommandModule();
     if (toolModule) {
-      await toolModule.printToolsContext({
-        full: args.options['full'] === true,
-      });
+      const options = { full: args.options['full'] === true };
+      if (args.options['json'] === true) {
+        const context = await toolModule.getToolsContextString(options);
+        console.log(JSON.stringify({ context }));
+      } else {
+        await toolModule.printToolsContext(options);
+      }
       return true;
     }
     const { printLightInstructions } = await loadLightToolHelpModule();

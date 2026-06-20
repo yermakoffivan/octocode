@@ -15,9 +15,10 @@ pub struct LanguageEntry {
     /// signature extractor drops. An **empty** string is a sentinel meaning
     /// "this grammar is wired in for *structural search only*" — the signature
     /// path (`extract_by_ext` / `extract_boundary_lines_inner`) skips the
-    /// tree-sitter route for it and falls through to the heuristic extractor.
-    /// Used by markup/style grammars (HTML/CSS/SCSS/LESS) that have no
-    /// function-body concept to strip.
+    /// tree-sitter route for it and returns no outline (tree-sitter is the only
+    /// signature path; there is no regex/heuristic fallback). Used by
+    /// markup/style grammars (HTML/CSS/SCSS/LESS) that have no function-body
+    /// concept to strip.
     pub body_query: &'static str,
     pub comment_style: &'static str,
 }
@@ -158,8 +159,8 @@ fn init_language_table() -> Vec<LanguageEntry> {
         // ── Markup / style grammars: structural-search only ──────────────────
         // These grammars are already linked (the LSP layer uses them). They are
         // registered here so `structural::search` can resolve them, but they
-        // carry an EMPTY `body_query` so the signature path keeps using the
-        // tuned heuristic extractor (markup/styles have no fn body to strip).
+        // carry an EMPTY `body_query` so the signature path returns no outline
+        // (markup/styles have no fn body to strip).
         LanguageEntry {
             extensions: &["html", "htm"],
             language_id: Some("html"),
@@ -188,9 +189,9 @@ fn init_language_table() -> Vec<LanguageEntry> {
             body_query: "",
             comment_style: "c",
         },
-        // Scala: structural-search only (empty body_query) so the tuned heuristic
-        // signature extractor keeps owning the outline. No LSP server configured,
-        // so `language_id: None` — it is absent from the LSP grammar map.
+        // Scala: structural-search only (empty body_query) — no signature
+        // outline (tree-sitter is the only signature path). No LSP server
+        // configured, so `language_id: None` — absent from the LSP grammar map.
         LanguageEntry {
             extensions: &["scala", "sc", "sbt"],
             language_id: None,

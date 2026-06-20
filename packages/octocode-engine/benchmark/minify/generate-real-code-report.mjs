@@ -1389,7 +1389,7 @@ ${commonTypeRows.join('\n')}
 
 \`\`\`bash
 yarn build
-node benchmark/generate-real-code-report.mjs /path/to/real/corpus
+node benchmark/minify/generate-real-code-report.mjs /path/to/real/corpus
 \`\`\`
 `;
 }
@@ -1419,8 +1419,9 @@ async function main() {
     throw new Error(`No supported samples found in: ${corpusRoot}`);
   }
 
+  const preserve = new Set(['generate-real-code-report.mjs', 'check-minify.mjs']);
   for (const entry of readdirSync(outputRoot)) {
-    if (entry === 'generate-real-code-report.mjs') continue;
+    if (preserve.has(entry)) continue;
     rmSync(join(outputRoot, entry), { recursive: true, force: true });
   }
 

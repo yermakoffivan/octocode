@@ -14,7 +14,6 @@ import {
   printUnknownOptionError,
 } from '../../src/cli/command-validation.js';
 import { lsCommand } from '../../src/cli/commands/ls.js';
-import { skillsCommand } from '../../src/cli/commands/skills.js';
 import type { ParsedArgs } from '../../src/cli/types.js';
 
 function args(options: ParsedArgs['options']): ParsedArgs {
@@ -36,11 +35,6 @@ describe('command option validation', () => {
     expect(findUnknownOptions(lsCommand, args({ dpeth: '2' }))).toEqual([
       'dpeth',
     ]);
-  });
-
-  it('accepts spec-only flags that the command object omits', () => {
-    // `--query` is read by skills but only declared in the static spec.
-    expect(findUnknownOptions(skillsCommand, args({ query: 'x' }))).toEqual([]);
   });
 
   it('always allows the global flag set', () => {

@@ -58,7 +58,7 @@ npx octocode skills remove --skill octocode-engineer --targets claude-code,curso
 | `codex` | `~/.codex/skills/` | `%USERPROFILE%\.codex\skills\` |
 | `opencode` | `~/.opencode/skills/` | `%USERPROFILE%\.opencode\skills\` |
 
-**Project-scoped install** — set `"skillsDestDir"` in `~/.octocode/config.json` before running `skills install`:
+**Project-scoped install** — set `"skillsDestDir"` in `<octocode-home>/config.json` before running `skills install`:
 
 ```json
 { "skillsDestDir": "/your/project/.claude/skills" }

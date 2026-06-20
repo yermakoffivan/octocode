@@ -262,6 +262,9 @@ export async function showAvailableTools(): Promise<void> {
   console.log(
     `    ${c('yellow', 'context --full')}                                   ${dim('# full protocol + complete tool descriptions')}`
   );
+  console.log(
+    `    ${c('yellow', 'context --json')}                                   ${dim('# machine-readable context wrapper')}`
+  );
   console.log();
 
   const toolNames = sortDirectToolNames(
@@ -510,7 +513,7 @@ export async function getToolsContextString(
       '',
       '  *** REFERENCES ***',
       '  Docs:  https://github.com/bgauryy/octocode/tree/main/docs',
-      '  Skill: skills install --skill octocode   (agent playbook for driving this CLI)',
+      '  Research playbook: https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer',
       '  Quick commands (ls/cat/grep/find/repo/pr/pkg/…) are the fastest path; raw `tools` need a schema read first.',
       '  Do not hallucinate paths, lines, or fields — verify with the tools; snippets are discovery, not proof.',
       '',

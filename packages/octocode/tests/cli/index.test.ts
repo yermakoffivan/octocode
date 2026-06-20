@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   showMultipleToolSchemas: vi.fn().mockResolvedValue(undefined),
   findStaticCommandHelp: vi.fn(),
   executeToolCommand: vi.fn().mockResolvedValue(true),
+  getToolsContextString: vi.fn().mockResolvedValue('agent context'),
   printToolsContext: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -33,6 +34,7 @@ vi.mock('../../src/cli/tool-command.js', () => ({
   showAvailableTools: mocks.showAvailableTools,
   showMultipleToolSchemas: mocks.showMultipleToolSchemas,
   executeToolCommand: mocks.executeToolCommand,
+  getToolsContextString: mocks.getToolsContextString,
   printToolsContext: mocks.printToolsContext,
 }));
 
@@ -72,6 +74,19 @@ describe('runCLI', () => {
     expect(mocks.printToolsContext).toHaveBeenCalledWith({ full: true });
   });
 
+  it('prints real JSON for context --json', async () => {
+    const { runCLI } = await import('../../src/cli/index.js');
+
+    const handled = await runCLI(['context', '--json']);
+
+    expect(handled).toBe(true);
+    expect(mocks.getToolsContextString).toHaveBeenCalledWith({ full: false });
+    expect(mocks.printToolsContext).not.toHaveBeenCalled();
+    expect(JSON.parse(String(consoleSpy.mock.calls[0]?.[0]))).toEqual({
+      context: 'agent context',
+    });
+  });
+
   it('routes --context as a top-level agent-context shortcut', async () => {
     const { runCLI } = await import('../../src/cli/index.js');
 
@@ -81,6 +96,18 @@ describe('runCLI', () => {
     expect(process.env.NO_COLOR).toBe('1');
     expect(mocks.printToolsContext).toHaveBeenCalledWith({ full: true });
     expect(mocks.loadCommand).not.toHaveBeenCalled();
+  });
+
+  it('prints real JSON for --context --json', async () => {
+    const { runCLI } = await import('../../src/cli/index.js');
+
+    const handled = await runCLI(['--context', '--json', '--full']);
+
+    expect(handled).toBe(true);
+    expect(mocks.getToolsContextString).toHaveBeenCalledWith({ full: true });
+    expect(JSON.parse(String(consoleSpy.mock.calls[0]?.[0]))).toEqual({
+      context: 'agent context',
+    });
   });
 
   it('routes tools usage through the unified tool executor', async () => {
@@ -173,7 +200,7 @@ describe('runCLI', () => {
     expect(mocks.showCommandHelp).not.toHaveBeenCalled();
   });
 
-  it('shows main help for unknown command --help', async () => {
+  it('rejects unknown command --help', async () => {
     mocks.findStaticCommandHelp.mockReturnValue(undefined);
 
     const { runCLI } = await import('../../src/cli/index.js');
@@ -181,7 +208,11 @@ describe('runCLI', () => {
     const handled = await runCLI(['nonexistent', '--help']);
 
     expect(handled).toBe(true);
-    expect(mocks.showHelp).toHaveBeenCalledTimes(1);
+    expect(mocks.showHelp).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown command: nonexistent')
+    );
+    expect(process.exitCode).toBe(3);
   });
 
   it('shows static command help for "install --help" using shared renderer', async () => {

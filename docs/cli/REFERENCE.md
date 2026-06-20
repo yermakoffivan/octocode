@@ -21,7 +21,7 @@ octocode clone <owner/repo[/path][@branch]|url>
 octocode pr <owner/repo[#N]|PR-URL>
 octocode repo <keywords...>
 octocode pkg <package>
-octocode lsp <file> --type <type>
+octocode lsp <file> --type <type> --symbol <name> --line <n>
 octocode binary <file>
 octocode unzip <archive>
 
@@ -29,8 +29,33 @@ octocode unzip <archive>
 octocode tools
 octocode tools <name> --scheme
 octocode tools <name> --queries '<json>'
-octocode context
+octocode context [--full] [--json]
 ```
+
+## Command Index
+
+| Command | Purpose |
+|---------|---------|
+| `cat` | Read local or GitHub file content, with minification, line ranges, and match slices. |
+| `ls` | Browse local/GitHub trees; local files or `--symbols` return symbol outlines. |
+| `grep` | Search text/regex locally or on GitHub; local `--pattern`/`--rule` runs structural AST search. |
+| `find` | Find files by name/path/metadata, or local/GitHub content matches. |
+| `pr` | Search pull requests or deep-read one PR. |
+| `history` | Inspect commit history for a GitHub repo, directory, or file. |
+| `repo` | Discover GitHub repositories. |
+| `pkg` | Search npm packages and hand off to source repositories. |
+| `binary` | Identify binaries, list/extract archives, decompress streams, or read strings. |
+| `unzip` | Unpack an archive to `<octocode-home>/unzip/<name>-<timestamp>/`. |
+| `clone` | Clone a GitHub repo or sparse subtree to the Octocode home repo cache. |
+| `lsp` | Run symbol-anchored semantic queries: definition, references, callers, hover, type/implementation. |
+| `tools` | List tools, read schemas, and run any MCP tool directly. |
+| `context` | Print agent-facing protocol, system prompt, tool descriptions, and schemas. |
+| `install` | Configure Octocode in supported MCP clients. |
+| `auth` | Run auth subcommands: `login`, `logout`, or `refresh`. |
+| `login` / `logout` | Sign in or clear stored GitHub credentials directly. |
+| `status` | Show token presence/source, auth identity, MCP install state, sync info, and cache paths. |
+
+Removed commands: `token`, `skills`, and `auth status`. Use `status` to confirm whether a token is present.
 
 ## Agent Flow
 
@@ -41,7 +66,7 @@ Agents should use this order:
 3. `octocode tools <name> --scheme`
 4. `octocode tools <name> --queries '<json>'`
 
-Use `octocode context --full` for complete tool descriptions. Read schemas on demand with `octocode tools <name> --scheme`.
+Use `octocode context --full` for complete tool descriptions, and `octocode context --json` when automation needs a machine-readable `{ "context": "..." }` wrapper. Read schemas on demand with `octocode tools <name> --scheme`.
 
 ## UX Map
 
@@ -53,7 +78,7 @@ Use `octocode context --full` for complete tool descriptions. Read schemas on de
 | Outline a file / trace symbols semantically | `ls <file>` or `ls <dir> --symbols`, then `lsp --type ... --symbol ... --line ...` |
 | Inspect PRs/history or clone for local analysis | `pr`, `history`, `clone` |
 | Inspect archives/binaries | `binary`, `unzip` |
-| Configure Octocode | `install`, `auth`, `login`, `logout`, `token`, `status`, `skills` |
+| Configure Octocode | `install`, `auth`, `login`, `logout`, `status` |
 | Run any MCP tool directly | `tools <name> --scheme`, then `tools <name> --queries '<json>'` |
 
 ## Global Options
@@ -78,14 +103,14 @@ Auto-route based on target: a local path routes to local tools; `owner/repo[/pat
 | `ls` | `localViewStructure` / `ghViewRepoStructure` / `lspGetSemantics` | Directory tree; a file or `--symbols` shows a symbol outline (local) |
 | `grep` | `localSearchCode` / `ghSearchCode` | Text/regex search; `--pattern`/`--rule` for AST shape (ast-grep, local) |
 | `find` | `localFindFiles` / `localSearchCode` / `ghSearchCode` | Find files by name, path, or content |
-| `clone` | `ghCloneRepo` | Clone a repo or subtree to `~/.octocode/repos/` |
+| `clone` | `ghCloneRepo` | Clone a repo or subtree to the Octocode home `repos/` cache |
 | `pr` | `ghHistoryResearch` | List or deep-dive pull requests |
 | `history` | `ghHistoryResearch` (commits) | Commit history for a repo, dir, or file (→ `#PR` deep-read) |
 | `repo` | `ghSearchRepos` | Discover GitHub repositories |
 | `pkg` | `npmSearch` | npm package metadata + source repo |
 | `lsp` | `lspGetSemantics` | Definition, references, callers, callees, call hierarchy, hover, type definition, implementation |
 | `binary` | `localBinaryInspect` | Archives, compressed files, native binaries |
-| `unzip` | `localBinaryInspect` (unpack) | Unpack an archive to a cached directory |
+| `unzip` | `localBinaryInspect` (unpack) | Unpack an archive to a fresh `<octocode-home>/unzip/<name>-<timestamp>/` directory |
 
 ## Minimize First
 
@@ -235,28 +260,45 @@ find <query> [path|owner/repo]
 
     Local path filters:
     --name <glob>                   basename glob(s)
+    --path-pattern <pattern>        full path pattern
     --regex <pattern>               basename regex
     --min-depth <n>
     --max-depth <n>
     --entry f|d                     file (f) or directory (d)
     --modified-within <window>      e.g. 7d, 2h, 1w
     --modified-before <window>
+    --accessed-within <window>
     --size-greater <size>           e.g. 100k, 1m
     --size-less <size>
+    --permissions <mode>
     --executable / --readable / --writable
     --empty
+    --exclude-dir <list>
+    --sort modified|name|path|size  path mode
+    --details                       include metadata
+    --show-modified                 include modified timestamps
 
     Local content filters (when --search content|both):
     --mode paginated|discovery|detailed
     --include <glob>
     --exclude <glob>
+    --exclude-dir <list>
+    --sort path|modified|accessed|created
+    --sort-reverse
     --case-insensitive / --case-sensitive / --whole-word
     --fixed-string / --perl-regex
     --invert-match
+    --hidden / --no-ignore
     --context-lines <n>
+    --match-length <n>
     --max-matches-per-file <n>
+    --max-files <n>
+    --match-page <n>
+    --multiline / --multiline-dotall
     --count-lines / --count-matches
     --files-only / --files-without-match
+    --verbose                       GitHub only
+    --concise                       GitHub only, flat owner/repo:path list
     --json
 ```
 
@@ -273,7 +315,7 @@ octocode find auth . --search both --limit 20
 
 ### clone
 
-Clone a GitHub repo or subtree locally. Clones land at `~/.octocode/repos/<owner>/<repo>/<branch>/` with a 24-hour cache. Requires `ENABLE_CLONE=true`.
+Clone a GitHub repo or subtree locally. Clones land at `<octocode-home>/repos/<owner>/<repo>/<branch>/` with a 24-hour cache. Requires `ENABLE_CLONE=true`.
 
 ```
 clone <owner/repo[/path][@branch]|url>
@@ -304,10 +346,10 @@ octocode clone https://github.com/vercel/next.js/tree/main/packages/next
 After cloning, use local tools against the cloned path:
 
 ```bash
-octocode ls ~/.octocode/repos/facebook/react/main
-octocode grep "useState" ~/.octocode/repos/facebook/react/main
-octocode cat ~/.octocode/repos/facebook/react/main/packages/react/index.js
-octocode ls ~/.octocode/repos/facebook/react/main/packages/react/index.js --symbols
+octocode ls <localPath-from-clone-output>
+octocode grep "useState" <localPath-from-clone-output>
+octocode cat <localPath-from-clone-output>/packages/react/index.js
+octocode ls <localPath-from-clone-output>/packages/react/index.js --symbols
 ```
 
 ### pr
@@ -362,6 +404,7 @@ history <owner/repo[/path][@branch]>
     --diff               include per-commit file diffs (larger output)
     --limit <n>          max commits shown (default: 20)
     --page <n>
+    --page-size <n>
     --json
 ```
 
@@ -395,6 +438,7 @@ repo <keywords...>
     --visibility public|private
     --limit <n>
     --page <n>
+    --concise                         flat "owner/repo" list
     --verbose                         structured repository objects
     --json
 ```
@@ -472,6 +516,8 @@ binary <file>
     --format <fmt>       decompress: force compression format
     --verbose            list: include size and mtime
     --offsets            strings: prefix each with hex byte offset
+    --char-offset <n>    strings/decompress/extract text continuation offset
+    --char-length <n>    strings/decompress/extract text window length
     --page <n>
     --json
 ```
@@ -489,7 +535,7 @@ octocode binary lib.node --strings --min-length 12
 
 ### unzip
 
-Unpack an archive to a cached local directory, then use local commands on the extracted tree.
+Unpack an archive to a fresh `<octocode-home>/unzip/<name>-<timestamp>/` directory, then use local commands on the extracted tree. The command returns `localPath`; use that exact path for follow-up `ls`, `grep`, `cat`, and `lsp` calls.
 
 ```
 unzip <archive> [--json]
@@ -500,6 +546,8 @@ Examples:
 ```bash
 octocode unzip app.zip
 octocode unzip release.tar.gz
+octocode unzip app.zip --json
+octocode ls <localPath-from-unzip-output>
 ```
 
 ## Management Commands
@@ -517,25 +565,13 @@ Supported `--ide` values: `cursor`, `claude-desktop`, `claude-code`, `windsurf`,
 ### auth
 
 ```
-auth [login|logout|status|token|refresh] [--hostname <host>] [--json]
+auth [login|logout|refresh] [--hostname <host>] [--json]
 
 login   [--hostname <host>] [--git-protocol ssh|https] [--force] [--json]
 logout  [--hostname <host>] [--yes] [--json]
 ```
 
-GitHub OAuth authentication. `login` opens the device flow. `logout` removes encrypted credentials. `--hostname` targets GitHub Enterprise.
-
-### token
-
-```
-token [--type auto|octocode|gh] [--hostname <host>] [--source] [--validate] [--reveal] [--json]
-```
-
-Prints the resolved GitHub token (masked by default). Resolution order: `OCTOCODE_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → encrypted store → `gh auth token`.
-
-- `--source` — show token origin and authenticated username
-- `--validate` — ping the GitHub API; shows rate-limit info
-- `--reveal` — print the full token (default: masked on terminal, raw when piped)
+GitHub OAuth authentication. `login` opens the device flow. `logout` removes encrypted credentials. `refresh` refreshes stored Octocode credentials when possible. `--hostname` targets GitHub Enterprise.
 
 ### status
 
@@ -543,35 +579,15 @@ Prints the resolved GitHub token (masked by default). Resolution order: `OCTOCOD
 status [--hostname <host>] [--sync] [--json]
 ```
 
-Shows auth state, MCP client install health, and cache info. `--sync` adds cross-client token sync analysis.
-
-### skills
-
-```
-skills [search|read|install|remove|list|sync]
-    --skill <name>            bundled skill name
-    --local <path>            path to a local skill folder
-    --targets <list>          comma-separated install targets
-    --target <target>         filter list to one target
-    --mode copy|symlink       install mode (default: copy)
-    --force                   overwrite existing skills
-    --dry-run                 show plan without writing
-    --limit <n>               max search results (default: 20)
-    --full                    show full SKILL.md without truncation (read only)
-    --direct                  search skills.sh and show results
-    --install                 install the top search result (with search --direct)
-    --json
-```
-
-Supported install targets: `claude-code`, `claude-desktop`, `cursor`, `codex`, `opencode`.
-
-Skills guide: [docs/SKILLS_GUIDE.md](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md)
+Shows auth state, token presence/source, MCP client install health, and cache info. `--sync` adds cross-client MCP sync analysis.
 
 ## Tool Runner
 
 `octocode tools` imports the canonical public catalog from `octocode-mcp/public`; the CLI does not maintain separate tool schemas.
 
 Raw tool calls use `--queries`. Legacy `--input` is not supported, and unsupported tool flags are rejected before execution.
+
+`octocode context [--full] [--json]` prints the same system prompt, protocol, quick-command guidance, and tool descriptions used by the CLI help surface. `--json` wraps the text as `{ "context": "..." }`.
 
 `--queries` accepts an object, array, or wrapped object:
 
@@ -609,7 +625,7 @@ octocode tools ghCloneRepo --queries '{"owner":"facebook","repo":"react","sparse
 | `OCTOCODE_TOKEN` | Highest-priority GitHub token. |
 | `GH_TOKEN` | GitHub CLI compatible token. |
 | `GITHUB_TOKEN` | GitHub token fallback. |
-| `OCTOCODE_HOME` | Override Octocode data directory (default: `~/.octocode`). |
+| `OCTOCODE_HOME` | Override Octocode data directory. Defaults: macOS `~/.octocode`, Windows `%APPDATA%\octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/octocode`. |
 | `ENABLE_LOCAL` | Enable local filesystem tools (default: `true`). |
 | `ENABLE_CLONE` | Enable `ghCloneRepo` / `clone` command (default: `false`). |
 | `NO_COLOR` | Disable terminal color. |

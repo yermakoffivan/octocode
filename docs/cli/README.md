@@ -1,6 +1,6 @@
 # CLI Docs
 
-The Octocode CLI (`octocode`) installs and manages Octocode, and runs all Octocode MCP tools directly from the terminal.
+The Octocode CLI (`octocode`) runs quick research commands, executes all Octocode MCP tools directly from the terminal, manages GitHub auth, installs MCP client config, and reports status/cache state.
 
 ## Quick Start
 
@@ -8,6 +8,7 @@ The Octocode CLI (`octocode`) installs and manages Octocode, and runs all Octoco
 npx octocode --help            # all commands
 npx octocode tools             # list tools
 npx octocode tools <name>      # schema for one tool
+npx octocode status --json     # auth/token/cache/MCP status
 npx octocode install --ide cursor  # install MCP for an IDE
 ```
 

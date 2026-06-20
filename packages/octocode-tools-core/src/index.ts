@@ -389,7 +389,16 @@ export {
 } from './shared/config/index.js';
 export { createLogger, setLogHandler, _getLogHandler } from './shared/logger/index.js';
 export type { LogLevel, LogEntry } from './shared/logger/index.js';
-export { OCTOCODE_HOME, paths, ensureHome, ensureRepos, ensureLogs } from './shared/paths.js';
+export {
+  OCTOCODE_HOME,
+  getDefaultOctocodeHome,
+  getOctocodeHome,
+  paths,
+  ensureHome,
+  ensureRepos,
+  ensureLogs,
+  ensureUnzip,
+} from './shared/paths.js';
 export { getDirectorySizeBytes, formatBytes } from './shared/fs-utils.js';
 
 export { completeMetadata } from '@octocodeai/octocode-core';

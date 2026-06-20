@@ -6,10 +6,10 @@
 
 | File | Purpose | Notes |
 |------|---------|-------|
-| `~/.octocode/session.json` | Session identity | `version`, `sessionId`, `createdAt`, `lastActiveAt`. |
-| `~/.octocode/stats.json` | Usage counters | Tool calls, errors, rate limits, char savings, cache hits, package registry failures. |
+| `<octocode-home>/session.json` | Session identity | `version`, `sessionId`, `createdAt`, `lastActiveAt`. |
+| `<octocode-home>/stats.json` | Usage counters | Tool calls, errors, rate limits, char savings, cache hits, package registry failures. |
 
-`OCTOCODE_HOME` changes the base directory for both files.
+`OCTOCODE_HOME` changes the base directory for both files. Without it, Octocode uses the platform default: macOS `~/.octocode`, Windows `%APPDATA%\octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/octocode`.
 
 ## Data Model
 

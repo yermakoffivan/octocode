@@ -15,6 +15,14 @@ function fail(message) {
   process.exit(1)
 }
 
+function parseNpmPackJson(stdout) {
+  const jsonStart = stdout.indexOf('[')
+  if (jsonStart === -1) {
+    throw new Error('no JSON array found in npm pack output')
+  }
+  return JSON.parse(stdout.slice(jsonStart))
+}
+
 const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const result = spawnSync(npmBin, ['pack', '--dry-run', '--json'], {
   cwd: __dirname + '/..',
@@ -32,7 +40,7 @@ if (result.status !== 0) {
 
 let packs
 try {
-  packs = JSON.parse(result.stdout)
+  packs = parseNpmPackJson(result.stdout)
 } catch (error) {
   process.stdout.write(result.stdout)
   fail(`npm pack did not return JSON: ${error.message}`)

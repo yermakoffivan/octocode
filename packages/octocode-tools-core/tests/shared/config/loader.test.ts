@@ -8,6 +8,7 @@ import {
   getOctocodeDir,
   CONFIG_FILE_PATH,
 } from '../../../src/shared/config/loader.js';
+import { paths } from '../../../src/shared/paths.js';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
@@ -43,16 +44,16 @@ describe('config/loader', () => {
     it('returns the config file path', () => {
       const path = getConfigPath();
       expect(path).toBe(CONFIG_FILE_PATH);
-      expect(path).toContain('.octocode');
-      expect(path).toContain('.octocoderc');
+      expect(path).toBe(paths.config);
+      expect(path.endsWith('.octocoderc')).toBe(true);
     });
   });
 
   describe('getOctocodeDir', () => {
-    it('returns a path that includes the octocode directory segment', () => {
+    it('returns the shared Octocode home directory', () => {
       const dir = getOctocodeDir();
       expect(typeof dir).toBe('string');
-      expect(dir).toContain('.octocode');
+      expect(dir).toBe(paths.home);
     });
   });
 

@@ -2,6 +2,7 @@ import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { initialize } from '../serverConfig.js';
 import { initializeProviders } from '../providers/factory.js';
+import { getConfigSync } from '../shared/index.js';
 import { STATIC_TOOL_NAMES } from './toolNames.js';
 import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from './lsp/shared/semanticTypes.js';
 import type { ToolConfig } from './toolConfig.js';
@@ -117,6 +118,8 @@ interface JsonSchemaObject extends Record<string, unknown> {
 type DirectToolRuntimeDefinition = DirectToolDefinition & {
   execute: (input: DirectToolInput) => Promise<CallToolResult>;
   security: ToolConfig['direct']['security'];
+  isLocal: boolean;
+  isClone?: boolean;
   requiresServerRuntime?: boolean;
   requiresProviders?: boolean;
 };
@@ -167,6 +170,8 @@ function createDirectTool(tool: ToolConfig): DirectToolRuntimeDefinition {
     inputSchema: direct.inputSchema,
     execute: wrapExecution(direct.executionFn),
     security: direct.security,
+    isLocal: tool.isLocal,
+    isClone: tool.isClone,
     requiresServerRuntime: direct.requiresServerRuntime,
     requiresProviders: direct.requiresProviders,
   };
@@ -685,6 +690,7 @@ export async function executeDirectTool(
   try {
     const parsedInput = parseDirectToolInput(tool, input);
     await ensureDirectToolRuntimeReady(tool);
+    assertDirectToolEnabled(tool);
     return await runDirectTool(tool, parsedInput);
   } catch (error) {
     // Input parsing and runtime readiness can throw; convert to the same
@@ -741,6 +747,29 @@ async function ensureDirectToolRuntimeReady(
       providerRuntimeInitPromise = initializeProviders().then(() => undefined);
     }
     await providerRuntimeInitPromise;
+  }
+}
+
+function assertDirectToolEnabled(tool: DirectToolRuntimeDefinition): void {
+  if (!tool.isLocal && !tool.isClone) {
+    return;
+  }
+
+  const config = getConfigSync();
+  if (tool.isLocal && !config.local.enabled) {
+    const error = new Error(
+      `Tool "${tool.name}" requires local tools. Set ENABLE_LOCAL=true to use it.`
+    );
+    (error as { code?: string }).code = 'localToolsDisabled';
+    throw error;
+  }
+
+  if (tool.isClone && !(config.local.enabled && config.local.enableClone)) {
+    const error = new Error(
+      `Tool "${tool.name}" requires clone support. Set ENABLE_CLONE=true and ENABLE_LOCAL=true to use it.`
+    );
+    (error as { code?: string }).code = 'cloneDisabled';
+    throw error;
   }
 }
 

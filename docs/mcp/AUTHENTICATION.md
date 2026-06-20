@@ -29,7 +29,7 @@ npx octocode-mcp
 | GitHub CLI | You already use `gh` locally | `gh auth login` |
 | Environment token | You are configuring an MCP client, CI, or Enterprise host | `OCTOCODE_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` |
 
-Octocode CLI stores OAuth credentials encrypted in `~/.octocode/credentials.json` with the key in `~/.octocode/.key`.
+Octocode CLI stores OAuth credentials encrypted in `<octocode-home>/credentials.json` with the key in `<octocode-home>/.key`. `OCTOCODE_HOME` overrides the platform default.
 
 For manual tokens, create a GitHub token with access to the repositories you need. Private repository and organization access usually needs `repo`, `read:user`, and `read:org`.
 

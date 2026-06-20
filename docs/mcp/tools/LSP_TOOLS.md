@@ -127,7 +127,7 @@ Custom language-server config is loaded from:
 
 1. `OCTOCODE_LSP_CONFIG`
 2. `.octocode/lsp-servers.json`
-3. `${OCTOCODE_HOME:-~/.octocode}/lsp-servers.json`
+3. `<octocode-home>/lsp-servers.json`
 
 ## Examples
 

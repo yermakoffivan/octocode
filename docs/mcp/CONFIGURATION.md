@@ -7,7 +7,7 @@ Concise reference for Octocode MCP environment variables, `.octocoderc`, local s
 Octocode resolves configuration in this order:
 
 ```text
-environment variables > ~/.octocode/.octocoderc > built-in defaults
+environment variables > <octocode-home>/.octocoderc > built-in defaults
 ```
 
 Use environment variables for per-client/per-project settings and tokens. Use `.octocoderc` for machine-wide defaults. Restart the MCP server after changing either source.
@@ -43,7 +43,7 @@ Supported clients are listed in the [CLI Reference](https://github.com/bgauryy/o
 Path:
 
 ```text
-${OCTOCODE_HOME:-~/.octocode}/.octocoderc
+<octocode-home>/.octocoderc
 ```
 
 The file is JSON with comments/trailing commas tolerated. Tokens do not belong here.
@@ -112,7 +112,7 @@ Env-only options:
 | `OCTOCODE_TOKEN` | unset | Highest-priority GitHub token. |
 | `GH_TOKEN` | unset | Second-priority GitHub token. |
 | `GITHUB_TOKEN` | unset | Third-priority GitHub token. |
-| `OCTOCODE_HOME` | `~/.octocode` | Base directory for config, credentials, sessions, stats, logs, and repo cache. |
+| `OCTOCODE_HOME` | platform default | Base directory for config, credentials, sessions, stats, logs, and repo cache. Defaults: macOS `~/.octocode`, Windows `%APPDATA%\octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/octocode`. |
 | `OCTOCODE_BULK_QUERY_TIMEOUT_MS` | `60000` | Per-query timeout inside a bulk tool call (ms). |
 | `OCTOCODE_TOOL_TIMEOUT_MS` | `60000` | Outer timeout for the entire tool call (ms). |
 | `OCTOCODE_COMMAND_CHECK_TIMEOUT_MS` | `5000` | System command availability check timeout (ms). |
@@ -142,7 +142,7 @@ Env-only options:
 
 ## Local State
 
-All state lives under `${OCTOCODE_HOME:-~/.octocode}`:
+All state lives under Octocode home (`OCTOCODE_HOME` when set, otherwise the platform default):
 
 | Path | Purpose |
 |------|---------|
@@ -164,7 +164,7 @@ Octocode also reads a per-project `.octocode/` directory at the workspace root. 
 
 | Path | Purpose |
 |------|---------|
-| `.octocode/lsp-servers.json` | Project-level LSP server config. Checked before `~/.octocode/lsp-servers.json`. |
+| `.octocode/lsp-servers.json` | Project-level LSP server config. Checked before `<octocode-home>/lsp-servers.json`. |
 
 ### `lsp-servers.json` format
 
@@ -200,7 +200,7 @@ TypeScript/JavaScript are bundled — no entry needed. Set `OCTOCODE_LSP_CONFIG`
 echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+set}"
 echo "ENABLE_LOCAL: ${ENABLE_LOCAL:-not set}"
 echo "ENABLE_CLONE: ${ENABLE_CLONE:-not set}"
-test -f "${OCTOCODE_HOME:-$HOME/.octocode}/.octocoderc" && cat "${OCTOCODE_HOME:-$HOME/.octocode}/.octocoderc"
+octocode status --json
 ```
 
 Common fixes:

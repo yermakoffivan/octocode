@@ -156,8 +156,8 @@ const lines = [
   '//   (?<name>)   → (?P<name>)',
   '//   [\\d-X]     → [\\d\\-X] (invalid range boundary fix)',
   '',
-  'use std::sync::LazyLock;',
   'use regex::{Regex, RegexSet, RegexSetBuilder};',
+  'use std::sync::LazyLock;',
   '',
   '#[allow(dead_code)]',
   '#[derive(Debug, Clone)]',
@@ -177,7 +177,12 @@ for (const p of finalPatterns) {
     ? `Some("${rustStringEscape(p.fileContext.source)}")`
     : 'None';
   lines.push(
-    `    Pattern { name: "${p.name}", description: "${rustStringEscape(p.description)}", accuracy: "${p.matchAccuracy}", file_context: ${fc} },`
+    '    Pattern {',
+    `        name: "${p.name}",`,
+    `        description: "${rustStringEscape(p.description)}",`,
+    `        accuracy: "${p.matchAccuracy}",`,
+    `        file_context: ${fc},`,
+    '    },'
   );
 }
 lines.push('];', '');

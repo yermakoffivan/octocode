@@ -29,9 +29,8 @@ import { trySafe } from './try-safe.js';
 import { parseSkillFrontmatter } from './parsers/frontmatter.js';
 import { z } from '@octocodeai/octocode-tools-core/zod';
 
-const OCTOCODE_DIR =
-  paths.home || process.env.OCTOCODE_HOME || join(HOME, '.octocode');
-const CONFIG_FILE = paths.cliConfig || join(OCTOCODE_DIR, 'config.json');
+const OCTOCODE_DIR = paths.home;
+const CONFIG_FILE = paths.cliConfig;
 
 const OctocodeConfigSchema = z
   .object({

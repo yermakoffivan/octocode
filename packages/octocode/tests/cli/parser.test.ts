@@ -70,17 +70,17 @@ describe('CLI Parser', () => {
       expect(result.options).toEqual({ hostname: 'github.enterprise.com' });
     });
 
-    it('should keep single-dash tokens positional', () => {
-      const result = parseArgs(['token', '-H', 'github.enterprise.com']);
-      expect(result.command).toBe('token');
+    it('should keep single-dash command args positional', () => {
+      const result = parseArgs(['status', '-H', 'github.enterprise.com']);
+      expect(result.command).toBe('status');
       expect(result.options).toEqual({});
       expect(result.args).toEqual(['-H', 'github.enterprise.com']);
     });
 
-    it('should parse --type option with value', () => {
-      const result = parseArgs(['token', '--type', 'gh']);
-      expect(result.command).toBe('token');
-      expect(result.options).toEqual({ type: 'gh' });
+    it('should parse --hostname option with value', () => {
+      const result = parseArgs(['status', '--hostname', 'github.com']);
+      expect(result.command).toBe('status');
+      expect(result.options).toEqual({ hostname: 'github.com' });
     });
 
     it('should parse --git-protocol option', () => {
@@ -89,22 +89,17 @@ describe('CLI Parser', () => {
       expect(result.options).toEqual({ 'git-protocol': 'ssh' });
     });
 
-    it('should parse skills install --skill with value', () => {
-      const result = parseArgs([
-        'skills',
-        'install',
-        '--skill',
-        'octocode-rfc-generator',
-      ]);
-      expect(result.command).toBe('skills');
-      expect(result.args).toEqual(['install']);
-      expect(result.options).toEqual({ skill: 'octocode-rfc-generator' });
+    it('should parse install --ide with value', () => {
+      const result = parseArgs(['install', '--ide', 'cursor']);
+      expect(result.command).toBe('install');
+      expect(result.args).toEqual([]);
+      expect(result.options).toEqual({ ide: 'cursor' });
     });
 
-    it('should keep single-dash skill tokens positional', () => {
-      const result = parseArgs(['skills', 'install', '-k', 'octocode-roast']);
-      expect(result.command).toBe('skills');
-      expect(result.args).toEqual(['install', '-k', 'octocode-roast']);
+    it('should keep single-dash install tokens positional', () => {
+      const result = parseArgs(['install', '-i', 'cursor']);
+      expect(result.command).toBe('install');
+      expect(result.args).toEqual(['-i', 'cursor']);
       expect(result.options).toEqual({});
     });
 
@@ -129,7 +124,7 @@ describe('CLI Parser', () => {
       expect(
         parseArgs(['tools', 'localSearchCode', '--scheme']).options.scheme
       ).toBe(true);
-      expect(parseArgs(['token', '--reveal']).options.reveal).toBe(true);
+      expect(parseArgs(['status', '--json']).options.json).toBe(true);
     });
 
     it('should parse --format as a value option', () => {

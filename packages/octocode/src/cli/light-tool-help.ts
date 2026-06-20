@@ -35,6 +35,9 @@ export function showLightAvailableTools(): void {
   console.log(
     `    ${c('yellow', 'context --full')}                                   ${dim('# full schemas when runtime loads')}`
   );
+  console.log(
+    `    ${c('yellow', 'context --json')}                                   ${dim('# machine-readable context wrapper')}`
+  );
   console.log();
 }
 
@@ -55,8 +58,8 @@ export function printLightInstructions(options: { full?: boolean } = {}): void {
   console.log();
   console.log('Protocol:');
   console.log('1. Authenticate before using GitHub tools:');
-  console.log('   auth login');
-  console.log('   status          # verify auth + cache');
+  console.log('   login');
+  console.log('   status          # verify token/auth + cache');
   console.log('2. Inspect a tool schema before calling (required):');
   console.log('   tools <name>    # schema: fields, types, example');
   console.log('   tools <n1> <n2> ...  # batch schema reads');
@@ -66,9 +69,9 @@ export function printLightInstructions(options: { full?: boolean } = {}): void {
     '   context         # protocol + system prompt + tool descriptions'
   );
   console.log('   context --full  # full tool descriptions');
-  console.log('4. Browse and install agent skills:');
-  console.log('   skills list');
-  console.log('   skills install --skill <name>');
+  console.log('   context --json  # machine-readable context wrapper');
+  console.log('4. Use status for read-only token/auth state:');
+  console.log('   status --json');
   console.log(
     '5. Read YAML output directly; use --json only when you need the envelope.'
   );

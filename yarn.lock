@@ -1498,19 +1498,19 @@ __metadata:
 
 "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core":
   version: 16.4.0
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=675960&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=d6d0f2&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/161555d03567b7f174de13e419560fac6cc9c8af71c6d37d18cc786f6e54cf2f2b786c01ba4bc5692767e4095de073ed08c2723b5fc212b4c5e48b920521882f
+  checksum: 10c0/81c6d177554dd7ada8a04483250193f7eef965a8850c806b88b937d85b1d9a8af29430ba5a6c7f002f6632bc2acc66f2d91c727da0a44532f1bdc11c5329174f
   languageName: node
   linkType: hard
 
-"@octocodeai/octocode-core@npm:16.4.0":
+"@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=octocode%40workspace%3Apackages%2Foctocode":
   version: 16.4.0
-  resolution: "@octocodeai/octocode-core@npm:16.4.0"
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=d6d0f2&locator=octocode%40workspace%3Apackages%2Foctocode"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/2ec73c0d8f3e5ef05f9aee9fff7e0c27704df0686cca5bf329bd66edf715cbb51ae3e894c8fd386aea7e3798f867127521e41f4249c572f9271e68128104b7f8
+  checksum: 10c0/81c6d177554dd7ada8a04483250193f7eef965a8850c806b88b937d85b1d9a8af29430ba5a6c7f002f6632bc2acc66f2d91c727da0a44532f1bdc11c5329174f
   languageName: node
   linkType: hard
 
@@ -6252,7 +6252,7 @@ __metadata:
   resolution: "octocode@workspace:packages/octocode"
   dependencies:
     "@inquirer/prompts": "npm:^8.5.2"
-    "@octocodeai/octocode-core": "npm:16.4.0"
+    "@octocodeai/octocode-core": "file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core"
     "@octocodeai/octocode-tools-core": "workspace:*"
     "@octokit/auth-oauth-device": "npm:^8.0.3"
     "@octokit/oauth-methods": "npm:^6.0.2"

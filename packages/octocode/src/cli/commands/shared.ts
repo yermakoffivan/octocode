@@ -1,20 +1,12 @@
-import type { MCPClient } from '../../types/index.js';
 import type { TokenSource } from '../../types/index.js';
 import { c, bold, dim } from '../../utils/colors.js';
 import { IDE_INFO, CLIENT_INFO } from '../../ui/constants.js';
 import { getAuthStatus, getStoragePath } from '../../features/github-oauth.js';
 import { DETECTABLE_MCP_CLIENTS } from '../../utils/mcp-paths.js';
-export {
-  formatSkillInstallTargets,
-  normalizeSkillTarget,
-  type SkillInstallMode,
-  type SkillInstallStrategy,
-  type SkillInstallTarget,
-} from '../../utils/skills.js';
 
 export type GetTokenSource = 'octocode' | 'gh' | 'auto';
 
-export const MCP_CLIENT_IDS: Record<string, MCPClient> = {
+export const MCP_CLIENT_IDS = {
   'claude-desktop': 'claude-desktop',
   'claude-code': 'claude-code',
   cursor: 'cursor',
@@ -31,7 +23,9 @@ export const MCP_CLIENT_IDS: Record<string, MCPClient> = {
   goose: 'goose',
   kiro: 'kiro',
   custom: 'custom',
-};
+} as const;
+
+type MCPClient = (typeof MCP_CLIENT_IDS)[keyof typeof MCP_CLIENT_IDS];
 
 export function normalizeMCPClient(value: string): MCPClient | null {
   return MCP_CLIENT_IDS[value.trim().toLowerCase()] ?? null;
@@ -72,11 +66,15 @@ export function formatAuthStatusAsJson(
   hostname: string
 ): Record<string, unknown> {
   const status = getAuthStatus(hostname);
+  const tokenSource = status.tokenSource || 'none';
+  const tokenPresent = tokenSource !== 'none';
   return {
     authenticated: status.authenticated,
     username: status.username || null,
     hostname: status.hostname,
-    tokenSource: status.tokenSource || null,
+    tokenPresent,
+    tokenConfigured: tokenPresent,
+    tokenSource,
     tokenExpired: Boolean(status.tokenExpired),
   };
 }
@@ -99,13 +97,24 @@ export function printAuthStatus(hostname: string = 'github.com'): void {
       );
     }
     console.log(`  ${dim('Host:')} ${status.hostname}`);
+    console.log(`  ${dim('Token:')} present`);
     console.log(
       `  ${dim('Source:')} ${formatTokenSource(status.tokenSource || 'none', status.envTokenSource)}`
     );
   } else {
+    const tokenSource = status.tokenSource || 'none';
+    const tokenPresent = tokenSource !== 'none';
     console.log(
       `  ${c('yellow', '⚠')} ${c('yellow', 'Not authenticated')} ${dim('(Not logged in)')}`
     );
+    console.log(
+      `  ${dim('Token:')} ${tokenPresent ? 'present but not usable' : 'missing'}`
+    );
+    if (tokenPresent) {
+      console.log(
+        `  ${dim('Source:')} ${formatTokenSource(tokenSource, status.envTokenSource)}`
+      );
+    }
     console.log();
     console.log(`  ${bold('To authenticate:')}`);
     printLoginHint();

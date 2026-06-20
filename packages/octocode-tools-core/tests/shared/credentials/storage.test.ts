@@ -394,10 +394,11 @@ describe('Token Storage', () => {
     it('should export storage path constants', async () => {
       const { OCTOCODE_DIR, CREDENTIALS_FILE, KEY_FILE } =
         await import('../../../src/shared/credentials/storage.js');
+      const { paths } = await import('../../../src/shared/paths.js');
 
-      expect(OCTOCODE_DIR).toContain('.octocode');
-      expect(CREDENTIALS_FILE).toContain('credentials.json');
-      expect(KEY_FILE).toContain('.key');
+      expect(OCTOCODE_DIR).toBe(paths.home);
+      expect(CREDENTIALS_FILE).toBe(paths.credentials);
+      expect(KEY_FILE).toBe(paths.key);
     });
   });
 

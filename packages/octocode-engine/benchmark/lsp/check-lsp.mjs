@@ -1,0 +1,119 @@
+#!/usr/bin/env node
+// LSP benchmark check — proves the octocode-engine LSP layer is wired correctly
+// for every language that has a configured language server (src/lsp/config.rs),
+// run over the REAL files in lsp/samples/ (see lsp/manifest.json for provenance).
+//
+// What it verifies WITHOUT needing the external servers installed:
+//   LANGUAGE-ID — detectLanguageId(<sample>) equals the expected LSP language id.
+//   SERVER      — getLanguageServerForFile(<sample>) resolves a non-empty command
+//                 and the expected languageId (the spec → invocation resolution).
+//   SEMANTICS   — native, in-process semantics that need no server:
+//                   • boundary-capable langs: getSemanticBoundaryOffsets > 0
+//                     (tree-sitter boundaries — the signature/chunk path).
+//                   • JS/TS family: extractJsSymbols returns symbols (oxc native).
+//
+// SERVER AVAILABILITY is reported (isCommandAvailable) but never fails the check —
+// the servers are optional, installed per-developer. Scala has no configured
+// server and is correctly absent from lsp/samples/.
+//
+// Exits non-zero on any wiring failure.
+
+import { readFileSync, existsSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const pkgRoot = join(here, '..', '..')
+const engine = createRequire(import.meta.url)(join(pkgRoot, 'index.cjs'))
+const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'))
+const sampleFor = new Map(manifest.samples.map((s) => [s.ext, s]))
+
+// ext -> expected LSP language id + native-semantics capabilities.
+// `boundary`: getSemanticBoundaryOffsets is backed by tree-sitter (sig grammars).
+// `jsSymbols`: extractJsSymbols (oxc) applies (JS/TS family only).
+const LANGS = [
+  { name: 'TypeScript', ext: 'ts', id: 'typescript', boundary: true, jsSymbols: true },
+  { name: 'TSX', ext: 'tsx', id: 'typescriptreact', boundary: true, jsSymbols: true },
+  { name: 'JavaScript', ext: 'js', id: 'javascript', boundary: true, jsSymbols: true },
+  { name: 'Python', ext: 'py', id: 'python', boundary: true, jsSymbols: false },
+  { name: 'Go', ext: 'go', id: 'go', boundary: true, jsSymbols: false },
+  { name: 'Rust', ext: 'rs', id: 'rust', boundary: true, jsSymbols: false },
+  { name: 'Java', ext: 'java', id: 'java', boundary: true, jsSymbols: false },
+  { name: 'C', ext: 'c', id: 'c', boundary: true, jsSymbols: false },
+  { name: 'C++', ext: 'cpp', id: 'cpp', boundary: true, jsSymbols: false },
+  { name: 'C#', ext: 'cs', id: 'csharp', boundary: true, jsSymbols: false },
+  { name: 'Bash', ext: 'sh', id: 'shellscript', boundary: true, jsSymbols: false },
+  { name: 'JSON', ext: 'json', id: 'json', boundary: false, jsSymbols: false },
+  { name: 'YAML', ext: 'yaml', id: 'yaml', boundary: false, jsSymbols: false },
+  { name: 'TOML', ext: 'toml', id: 'toml', boundary: false, jsSymbols: false },
+  { name: 'HTML', ext: 'html', id: 'html', boundary: false, jsSymbols: false },
+  { name: 'CSS', ext: 'css', id: 'css', boundary: false, jsSymbols: false },
+  { name: 'SCSS', ext: 'scss', id: 'scss', boundary: false, jsSymbols: false },
+  { name: 'Less', ext: 'less', id: 'less', boundary: false, jsSymbols: false },
+]
+
+const rows = []
+const failures = []
+
+for (const l of LANGS) {
+  const issues = []
+  const sample = sampleFor.get(l.ext)
+  let path = null
+  let content = ''
+  if (!sample) issues.push('no sample in lsp/manifest.json')
+  else {
+    path = join(here, 'samples', sample.file)
+    if (!existsSync(path)) issues.push(`sample file missing: ${sample.file}`)
+    else content = readFileSync(path, 'utf8')
+  }
+  const probePath = path || `probe.${l.ext}`
+
+  // LANGUAGE-ID
+  let id = null
+  try { id = engine.detectLanguageId(probePath) } catch (e) { issues.push(`detectLanguageId threw: ${e.message}`) }
+  if (id !== l.id) issues.push(`languageId got ${JSON.stringify(id)}, expected ${l.id}`)
+
+  // SERVER resolution
+  let cfg = null
+  try { cfg = engine.getLanguageServerForFile(probePath, pkgRoot) } catch (e) { issues.push(`getLanguageServerForFile threw: ${e.message}`) }
+  if (!cfg || !cfg.command) issues.push('no server config resolved')
+  else if (cfg.languageId !== l.id) issues.push(`server languageId ${JSON.stringify(cfg.languageId)} != ${l.id}`)
+
+  // SERVER availability — informational only
+  let avail = '—'
+  if (cfg && cfg.command) { try { avail = engine.isCommandAvailable(cfg.command) ? 'installed' : 'absent' } catch { avail = '?' } }
+
+  // NATIVE SEMANTICS
+  let sem = 'server-backed'
+  if (content) {
+    if (l.boundary) {
+      let n = 0
+      try { n = engine.getSemanticBoundaryOffsets(content, probePath).length } catch (e) { issues.push(`boundaries threw: ${e.message}`) }
+      if (n <= 0) issues.push('getSemanticBoundaryOffsets returned 0')
+      sem = `${n} boundaries`
+    }
+    if (l.jsSymbols) {
+      let syms = null
+      try { syms = engine.extractJsSymbols(content, probePath) } catch (e) { issues.push(`extractJsSymbols threw: ${e.message}`) }
+      let count = 0
+      if (syms) { try { count = JSON.parse(syms).length } catch { /* non-JSON */ } }
+      if (!syms || count <= 0) issues.push('extractJsSymbols returned no symbols')
+      sem += `, ${count} symbols`
+    }
+  }
+
+  const ok = issues.length === 0
+  if (!ok) failures.push(`${l.name}: ${issues.join('; ')}`)
+  rows.push({ name: l.name, ext: l.ext, id: l.id, avail, sem, ok })
+}
+
+const pad = (s, n) => String(s).padEnd(n)
+console.log(`\nLSP benchmark — ${rows.length} languages over real samples (lsp/samples/)`)
+console.log(`${pad('Language', 12)} ${pad('ext', 6)} ${pad('languageId', 16)} ${pad('server', 10)} ${pad('native semantics', 24)} status`)
+console.log('-'.repeat(82))
+for (const r of rows) console.log(`${pad(r.name, 12)} ${pad(r.ext, 6)} ${pad(r.id, 16)} ${pad(r.avail, 10)} ${pad(r.sem, 24)} ${r.ok ? 'PASS' : 'FAIL'}`)
+console.log(`\nServer column is informational (external servers are optional). Scala is intentionally excluded (no configured server).`)
+
+if (failures.length) { console.error(`\n✗ LSP check FAILED (${failures.length}):`); for (const f of failures) console.error(`  • ${f}`); process.exit(1) }
+console.log(`\n✓ all ${rows.length} LSP languages wired correctly (language-id + server resolution + native semantics).`)

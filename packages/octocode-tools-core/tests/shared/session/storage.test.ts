@@ -22,6 +22,7 @@ import {
   flushSession,
   _resetSessionState,
 } from '../../../src/shared/session/storage.js';
+import { paths } from '../../../src/shared/paths.js';
 import type { PersistedSession } from '../../../src/shared/session/types.js';
 
 const zeroTotalUsageStats = () => ({
@@ -128,13 +129,13 @@ describe('Session Storage', () => {
 
   describe('SESSION_FILE constant', () => {
     it('should point to session.json in the octocode directory', () => {
-      expect(SESSION_FILE).toContain('.octocode');
-      expect(SESSION_FILE).toContain('session.json');
+      expect(SESSION_FILE).toBe(paths.session);
+      expect(SESSION_FILE.endsWith('session.json')).toBe(true);
     });
 
     it('should point to stats.json in the octocode directory', () => {
-      expect(STATS_FILE).toContain('.octocode');
-      expect(STATS_FILE).toContain('stats.json');
+      expect(STATS_FILE).toBe(paths.stats);
+      expect(STATS_FILE.endsWith('stats.json')).toBe(true);
     });
   });
 

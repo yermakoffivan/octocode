@@ -255,6 +255,23 @@ fn compile_matcher(
             if p.trim().is_empty() {
                 return Err("pattern must not be empty".to_string());
             }
+            if is_document_probe(p) {
+                let lang = lang.clone();
+                return Ok(Box::new(move |content: &str| {
+                    let grep = lang.ast_grep(content);
+                    let node = grep.root();
+                    let start = node.start_pos();
+                    let end = node.end_pos();
+                    vec![StructuralMatch {
+                        start_line: (start.line() as u32) + 1,
+                        end_line: (end.line() as u32) + 1,
+                        start_col: start.column(&node) as u32,
+                        end_col: end.column(&node) as u32,
+                        text: node.text().to_string(),
+                        metavars: HashMap::new(),
+                    }]
+                }));
+            }
             let pat = Pattern::try_new(p, lang.clone())
                 .map_err(|e| format!("invalid structural pattern: {e}"))?;
             let lang = lang.clone();
@@ -285,6 +302,10 @@ fn compile_matcher(
         (Some(_), Some(_)) => Err("provide either `pattern` or `rule`, not both".to_string()),
         (None, None) => Err("structural search requires `pattern` or `rule`".to_string()),
     }
+}
+
+fn is_document_probe(pattern: &str) -> bool {
+    pattern.trim() == "$$$"
 }
 
 pub fn search_files(
@@ -615,6 +636,17 @@ mod tests {
                 ][..]
             )
         );
+    }
+
+    #[test]
+    fn document_probe_matches_root_without_ast_grep_ellipsis_panic() {
+        for ext in ["ts", "py", "sh", "html", "json", "toml"] {
+            let matches = run_pattern("foo(a)\nbar(b)\n", ext, "$$$");
+            assert_eq!(matches.len(), 1, "{ext} should return the document root");
+            assert_eq!(matches[0].start_line, 1);
+            assert!(!matches[0].text.is_empty());
+            assert!(matches[0].metavars.is_empty());
+        }
     }
 
     #[test]

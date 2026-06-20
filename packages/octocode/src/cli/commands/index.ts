@@ -1,8 +1,6 @@
 import type { CLICommand } from '../types.js';
 import { installCommand } from './install.js';
 import { authCommand, loginCommand, logoutCommand } from './auth.js';
-import { tokenCommand } from './token.js';
-import { skillsCommand } from './skills.js';
 import { statusCommand } from './status.js';
 
 type CommandLoader = () => Promise<CLICommand>;
@@ -12,8 +10,6 @@ const lightweightCommands: readonly CLICommand[] = [
   authCommand,
   loginCommand,
   logoutCommand,
-  skillsCommand,
-  tokenCommand,
   statusCommand,
 ];
 
@@ -35,8 +31,6 @@ const commandLoaders: Record<string, CommandLoader> = {
   auth: async () => (await import('./auth.js')).authCommand,
   login: async () => (await import('./auth.js')).loginCommand,
   logout: async () => (await import('./auth.js')).logoutCommand,
-  skills: async () => (await import('./skills.js')).skillsCommand,
-  token: async () => (await import('./token.js')).tokenCommand,
   status: async () => (await import('./status.js')).statusCommand,
 };
 
@@ -61,7 +55,5 @@ export {
   authCommand,
   loginCommand,
   logoutCommand,
-  tokenCommand,
-  skillsCommand,
   statusCommand,
 };

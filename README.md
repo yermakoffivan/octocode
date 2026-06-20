@@ -20,6 +20,7 @@
 - [MCP](#mcp)
 - [CLI](#cli)
 - [Tools](#tools)
+- [Language Support](#language-support)
 - [Security](#security)
 - [Development](#development)
 - [Architecture](#architecture)
@@ -80,12 +81,7 @@ octocode tools ghHistoryResearch --queries '{"owner":"vercel","repo":"next.js","
 
 ### Add Agent Skills
 
-```bash
-# Search, preview, and install packaged research/review workflows.
-octocode skills
-```
-
-Or browse the catalog at [skills.sh/bgauryy/octocode-mcp](https://www.skills.sh/bgauryy/octocode-mcp). See the [full list below](#skills).
+Browse packaged research/review workflows at [skills.sh/bgauryy/octocode-mcp](https://www.skills.sh/bgauryy/octocode-mcp). See the [full list below](#skills).
 
 ### Common Workflows
 
@@ -106,8 +102,8 @@ Octocode is not a chat prompt or a loose wrapper around `grep`. It is a tool run
 | Surface | Best for | Install | What you get |
 |---------|----------|---------|--------------|
 | **MCP server** | Claude Code, Cursor, Claude Desktop, Windsurf, Codex, and other MCP clients | `npx octocode install` | 13 research tools (12 enabled by default) exposed directly to your AI assistant |
-| **CLI** | Terminal research, scripts, CI, quick lookups, debugging tool calls | `brew install bgauryy/octocode/octocode` or `npm install -g octocode` | Agent-first runner for the same 13 tools (`octocode tools <name> --queries`) plus auth, install, and skills management |
-| **Agent Skills** | Packaged workflows for research, planning, review, and output | `octocode skills` or [skills.sh](https://www.skills.sh/bgauryy/octocode-mcp) | 20 ready-made skills that orchestrate the tools - see [Skills](#skills) |
+| **CLI** | Terminal research, scripts, CI, quick lookups, debugging tool calls | `brew install bgauryy/octocode/octocode` or `npm install -g octocode` | Agent-first runner for the same 13 tools (`octocode tools <name> --queries`) plus quick commands, auth, install, status, and context |
+| **Agent Skills** | Packaged workflows for research, planning, review, and output | [skills.sh](https://www.skills.sh/bgauryy/octocode-mcp) | 20 ready-made skills that orchestrate the tools - see [Skills](#skills) |
 
 The normal research loop is:
 
@@ -220,35 +216,30 @@ octocode login
 octocode status
 ```
 
-### Research Commands
+### All Commands
 
 Auto-route local paths to local tools and `owner/repo[/path]` targets to GitHub tools.
 
 | Command | Use it for |
 |---------|------------|
-| `octocode ls <path\|owner/repo>` | Browse local or GitHub structure; a file (or `--symbols`) shows a symbol outline |
+| `octocode ls <path\|owner/repo>` | Browse local or GitHub structure; a file or `--symbols` shows a symbol outline |
 | `octocode cat <path\|owner/repo/path>` | Read a file, symbol skeleton (`--mode symbols`), line range, or matched slice |
 | `octocode grep <term> <path\|owner/repo>` | Text/regex search, or AST structural search with `--pattern` / `--rule` (local). `--type` accepts extensions and language aliases such as `ts`, `rust`, `typescript`, and `*.rs`. |
 | `octocode find <query> [path\|owner/repo]` | Find files by name, path, metadata, or content |
-| `octocode lsp <file> --type <type>` | Trace `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `typeDefinition`, and `implementation`; use `ls --symbols` for file outlines |
+| `octocode lsp <file> --type <type> --symbol <name> --line <n>` | Trace `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `typeDefinition`, and `implementation`; use `ls --symbols` for file outlines |
 | `octocode pr <owner/repo[#N]\|PR-URL>` | Search or deep-read pull requests |
 | `octocode history <owner/repo[/path]>` | Inspect commit history for a repo, directory, or file |
 | `octocode repo <keywords...>` | Discover GitHub repositories |
 | `octocode pkg <package\|keywords>` | Search npm and hand off to source repositories |
 | `octocode binary <file>` | Inspect archives, compressed files, and native binaries |
-| `octocode clone <owner/repo[/path]>` | Clone a repo or subtree for local/LSP analysis |
-
-### Management Commands
-
-| Command | Use it for |
-|---------|------------|
+| `octocode unzip <archive>` | Unpack an archive to `<octocode-home>/unzip/<name>-<timestamp>/`, then use local `ls`, `grep`, `cat`, and `lsp` |
+| `octocode clone <owner/repo[/path][@branch]>` | Clone a repo or subtree to the Octocode home repo cache for local/LSP analysis (`ENABLE_CLONE=true`) |
+| `octocode tools` | List tools, read schemas, or run any MCP tool directly from the terminal |
+| `octocode context` | Print agent-facing protocol, system prompt, tool descriptions, and schemas |
 | `octocode install` | Configure Octocode in MCP clients |
-| `octocode auth` / `login` / `logout` | Manage GitHub authentication |
-| `octocode token` | Show the resolved token source, masked by default |
-| `octocode status` | Check auth, MCP installs, and cache state |
-| `octocode skills` | Search, read, install, remove, list, and sync Agent Skills |
-| `octocode tools` | Run any MCP tool directly from the terminal |
-| `octocode context` | Print agent-facing tool context |
+| `octocode auth` | Manage GitHub authentication with `login`, `logout`, or `refresh` |
+| `octocode login` / `octocode logout` | Sign in or clear stored GitHub credentials |
+| `octocode status` | Check token presence, auth identity, MCP installs, sync state, and cache paths |
 
 ### Raw Tool Runner
 
@@ -304,85 +295,27 @@ The same tool implementations run over MCP and CLI.
 |------|--------------|
 | `lspGetSemantics` | Typed semantic navigation. Raw tools support `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored queries only; use `ls --symbols` for `documentSymbols`. Supports semantic navigation through installed language servers — see the [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md). |
 
-**References**
-- [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
-- [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
-- [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+**Per-tool references** (full schemas, fields, and examples) live in **[`docs/mcp`](https://github.com/bgauryy/octocode/tree/main/docs/mcp)**:
+- [GitHub Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
+- [Local Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- [Binary Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/BINARY_TOOLS.md)
+- [LSP Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)
 - [Tool Behavior Guide](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/TOOL_BEHAVIOR.md)
 
 ---
 
 ## Language Support
 
-Four code-intelligence axes, three of them native to the Rust engine with **no external tooling**:
+Four code-intelligence axes — three native to the Rust engine, no external tooling:
 
-- **Structural AST** — `localSearchCode mode:"structural"` (`pattern` / `rule`). Tree-sitter, native.
-- **Signature outline** — `minify:"symbols"`. **Real tree-sitter parsing only** — no regex/heuristic guessing. Available for the languages with a wired grammar (the **Native code intelligence** table below); every other file type returns the real file. An anti-growth guard also returns the real file whenever a skeleton would not be smaller than the source, so symbols never inflate output.
-- **Content-view minification** — `minify:"standard"` (default). Native comment/whitespace stripping for **70+ languages and config formats** (full list below). HTML/Vue/Svelte additionally get an *embedded-language* view: the `<style>` (lightningcss) and `<script>` (oxc) blocks are minified while the markup stays readable.
-- **LSP** semantic navigation — `lspGetSemantics` / `lsp` / `ls --symbols`. Spawns the language server named below; it must be installed and on `PATH` (override per language with `OCTOCODE_<LANG>_SERVER_PATH`).
+| Axis | What it does | How to use it |
+|------|--------------|---------------|
+| **Structural AST** | Tree-sitter shape queries (`pattern` or YAML `rule`) across 19 grammars. | `localSearchCode mode:"structural"` · CLI `grep --pattern`/`--rule` |
+| **Signature outline** | Body-free skeleton with line numbers — real tree-sitter parsing, no heuristics. An anti-growth guard returns the real file when a skeleton wouldn't be smaller. | `minify:"symbols"` · CLI `cat --mode symbols` |
+| **Content minification** | Comment/whitespace stripping for 70+ languages and config formats; HTML/Vue/Svelte also minify embedded `<style>`/`<script>`. | `minify:"standard"` (default) |
+| **LSP navigation** | definition, references, callers/callees, callHierarchy, hover, typeDefinition, implementation, documentSymbols — via an installed language server; JS/TS also have a native, no-server path. | `lspGetSemantics` · CLI `lsp` / `ls --symbols` |
 
-### Local intelligence matrix
-
-| Need | CLI shortcut | Raw tool | Backing engine | Notes |
-|------|--------------|----------|----------------|-------|
-| Text / regex search | `grep <term> <path>` | `localSearchCode` | Rust ripgrep parser/search | Regex is default; use `--fixed` for literal text and `--perl-regex` for lookarounds/backrefs. |
-| AST structural search | `grep <path> --pattern <shape>` / `--rule <yaml>` | `localSearchCode mode:"structural"` | Embedded ast-grep libraries + tree-sitter grammars | Local-only. `--type` accepts extension or language aliases, e.g. `--type rust` maps to `.rs`. |
-| Symbol skeleton for compact reads | `cat <file> --mode symbols` | `localGetFileContent minify:"symbols"` | Tree-sitter signature extraction | Body-free skeleton with original line numbers; falls back to real content when no smaller skeleton is available. |
-| File / directory outline | `ls <file\|dir> --symbols` | `lspGetSemantics type:"documentSymbols"` | LSP, with native JS/TS fallback | This is the `documentSymbols` path in the CLI. |
-| Symbol navigation | `lsp <file> --type <type> --symbol <name> --line <n>` | `lspGetSemantics` | LSP | Shortcut supports `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `typeDefinition`, and `implementation`; get `--line` from `grep` or `ls --symbols`. |
-
-### Native code intelligence (tree-sitter AST + LSP)
-
-| Language | Extensions | Structural AST | LSP server | Signature outline |
-|----------|------------|:--------------:|------------|-------------------|
-| TypeScript / React | `.ts .tsx .mts .cts` | ✅ | `typescript-language-server` ² | ✅ tree-sitter |
-| JavaScript / JSX | `.js .jsx .mjs .cjs` | ✅ | `typescript-language-server` ² | ✅ tree-sitter |
-| Python | `.py .pyi` | ✅ | `pylsp` | ✅ tree-sitter |
-| Go | `.go` | ✅ | `gopls` | ✅ tree-sitter |
-| Rust | `.rs` | ✅ | `rust-analyzer` | ✅ tree-sitter |
-| Java | `.java` | ✅ | `jdtls` | ✅ tree-sitter |
-| C | `.c .h` | ✅ ¹ | `clangd` | ✅ tree-sitter |
-| C++ | `.cpp .cc .cxx .hpp .hh .hxx` | ✅ ¹ | `clangd` | ✅ tree-sitter |
-| C# | `.cs` | ✅ | `csharp-ls` | ✅ tree-sitter |
-| Shell | `.sh .bash .zsh` | ✅ | `bash-language-server` | ✅ tree-sitter |
-| HTML | `.html .htm` | ✅ | `vscode-html-language-server` | — ³ |
-| CSS | `.css` | ✅ | `vscode-css-language-server` | — |
-| SCSS | `.scss` | ✅ | `vscode-css-language-server` | — |
-| LESS | `.less` | ✅ | `vscode-css-language-server` | — |
-| Scala | `.scala .sc .sbt` | ✅ | — | — |
-| JSON | `.json .jsonc` | ✅ | `vscode-json-language-server` | — ⁴ |
-| YAML | `.yaml .yml` | ✅ | `yaml-language-server` | — ⁴ |
-| TOML | `.toml` | ✅ | `taplo` | — ⁴ |
-
-`.tsx`/`.jsx` (React) and `.mts`/`.cts`/`.pyi` parse as first-class members of their language. The markup/style/config grammars (HTML, CSS, SCSS, LESS, Scala, JSON, YAML, TOML) power structural `rule` queries (e.g. `kind: pair` over manifests, CI workflows, and k8s/compose files) but have no function-body concept, so they produce no signature outline.
-
-> **Signature outlines are tree-sitter only.** Languages without a wired grammar — Kotlin, Ruby, PHP, Swift, SQL, Vue, Svelte, Elixir, Erlang, Haskell, Lua, Clojure, Visual Basic, GraphQL, Protobuf, Markdown, … — do **not** get a `minify:"symbols"` outline (the engine returns the real file). They still get full content-view minification below. This is deliberate: outlines come from a real parse tree, never from regex heuristics.
-
-### Content-view minification (comment/whitespace stripping)
-
-Every file type below gets native `minify:"standard"` density reduction. HTML/Vue/Svelte get the embedded-language view ³. Anything not listed (and any unknown/binary file) is returned unchanged.
-
-```
-JS/TS        js jsx mjs cjs ts tsx
-Web/markup   html htm xml svg vue svelte xsl xslt
-Templates    hbs handlebars ejs pug jade mustache twig jinja jinja2 erb haml slim
-Styles       css scss less sass styl
-Data/config  json jsonc json5 yaml yml toml ini conf config env properties csv
-             tf tfvars cfg gitignore dockerignore star bzl cmake
-             (+ Makefile, Dockerfile, Procfile, Justfile, Rakefile, Gemfile, …)
-Systems      go java c h cpp hpp cc cxx cs rs rust swift kt kotlin scala dart
-             groovy gradle mm zig v pas adb ads f for f90 f95 f03 f08 nix jl
-Scripting    py coffee nim php rb perl pl pm sh bash zsh fish ps1 psm1 psd1 awk r lua
-Query/IDL    sql tsql plsql graphql gql proto
-Functional   fs fsx hs lhs elm lisp lsp scm rkt clj cljs ex exs erl hrl
-Hardware/asm vhd vhdl asm nasm wat wast
-Docs/text    md markdown rst txt log
-```
-
-¹ C/C++ structural **`rule`** queries (e.g. `kind: call_expression`) work fully; a bare call-shaped **`pattern`** can hit tree-sitter's declaration-vs-call ambiguity (upstream ast-grep behavior) — prefer a `rule` with `kind` to match calls.
-² JavaScript/TypeScript also have a native (oxc) symbol/same-file-reference fast path that works with **no server installed** (syntax-only, no type inference); set `OCTOCODE_TS_SERVER_PATH` to a `tsgo` binary to opt into Microsoft's native TS backend.
-³ HTML/Vue/Svelte content view keeps the markup readable while minifying embedded `<style>` (lightningcss) and `<script>` (oxc) blocks — that is where the compressible bytes live.
-⁴ Data/config formats have no code signatures, so `minify:"symbols"` is a no-op; use structural `rule` queries instead.
+📋 **Full support matrix** — every extension with its exact AST / signature / LSP / minify capability — is machine-generated from the shipped binary and lives in **[`benchmark/SUPPORT.md`](https://github.com/bgauryy/octocode/blob/main/packages/octocode-engine/benchmark/SUPPORT.md)**: 143 extensions (38 AST · 25 signature · 33 LSP · 105 minify-only). Regenerate or verify with `yarn matrix:check`.
 
 ---
 
@@ -485,8 +418,8 @@ Startup / shutdown handling"]
         CLIBIN["octocode
 ────────────────────────
 Raw tool runner  ( tools )
-Auth · Install · Skills
-MCP marketplace · Cache"]
+Quick commands · Context
+Auth · Install · Status"]
         CORE["@octocodeai/octocode-tools-core
 ────────────────────────
 Core tool implementations
@@ -606,7 +539,7 @@ Only these workspace packages are part of the monorepo:
 
 | Directory | npm package | Purpose |
 |-----------|-------------|---------|
-| [`packages/octocode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode) | `octocode` | CLI/interface package: direct tool runner, auth, install, status, token, MCP marketplace, cache, and skills workflows. |
+| [`packages/octocode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode) | `octocode` | CLI/interface package: quick commands, direct tool runner, auth/login/logout, install, status, context, and cache inspection. |
 | [`packages/octocode-mcp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server/interface package that registers the Octocode tool catalog for AI assistants. |
 | [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `@octocodeai/octocode-engine` | Rust-based native engine for security scanning/sanitization, minification, signatures, pagination offsets, ripgrep parsing, diff filtering, YAML output, and LSP support. |
 | [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Core tool implementations and shared credentials, token resolution, session persistence, config, and platform utilities. |

@@ -1,17 +1,21 @@
 import type { CLICommand } from '../types.js';
+import { join } from 'node:path';
 import { getBool } from '../options.js';
 import { c, dim } from '../../utils/colors.js';
 import { EXIT } from '../exit-codes.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
+import { paths } from '@octocodeai/octocode-tools-core/paths';
 import {
   markDirectToolFailure,
   printDirectToolResult,
 } from './direct-tool-output.js';
 
+const UNZIP_DESTINATION_PATTERN = join(paths.unzip, '<name>-<timestamp>');
+const UNZIP_EXAMPLE_PATH = join(paths.unzip, 'app.zip-<timestamp>');
+
 export const unzipCommand: CLICommand = {
   name: 'unzip',
-  description:
-    'Unpack an archive to a local directory (cached), then run grep/find/ls/cat/ast/lsp on the contents',
+  description: `Unpack an archive to ${UNZIP_DESTINATION_PATTERN}, then run grep/find/ls/cat/ast/lsp on the contents`,
   usage: 'unzip <archive> [--json]',
   options: [{ name: 'json', description: 'Output raw JSON results' }],
   handler: async args => {
@@ -29,8 +33,8 @@ export const unzipCommand: CLICommand = {
             `    unzip app.zip\n` +
             `    unzip release.tar.gz\n` +
             `    ${dim('# then work on the unpacked tree:')}\n` +
-            `    ls ~/.octocode/archives/app.zip__<hash>\n` +
-            `    grep "apiKey" ~/.octocode/archives/app.zip__<hash>\n`
+            `    ls ${UNZIP_EXAMPLE_PATH}\n` +
+            `    grep "apiKey" ${UNZIP_EXAMPLE_PATH}\n`
         );
       }
       process.exitCode = EXIT.USAGE;

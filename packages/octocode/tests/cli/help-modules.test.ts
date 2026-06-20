@@ -60,8 +60,6 @@ describe('command-help-specs', () => {
       'auth',
       'login',
       'logout',
-      'skills',
-      'token',
       'status',
       'cat',
       'ls',
@@ -105,7 +103,6 @@ describe('command-help-specs', () => {
       // management commands now carry agent guidance too
       'install',
       'auth',
-      'skills',
       'status',
     ]);
 
@@ -146,7 +143,6 @@ describe('command-help-specs', () => {
       '--backup-path <path>'
     );
     expect(findStaticCommandHelp('auth')!.usage).toContain('--hostname <host>');
-    expect(findStaticCommandHelp('token')!.usage).toContain('--reveal');
     expect(findStaticCommandHelp('context')!.usage).toContain('--context');
   });
 
@@ -211,24 +207,12 @@ describe('command-help-specs', () => {
     stdoutSpy.mockRestore();
   });
 
-  it('does not rewrite token source names inside usage', async () => {
-    const stdoutSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation(() => true);
-
+  it('no longer exposes removed token and skills command help', async () => {
     const { findStaticCommandHelp } =
       await import('../../src/cli/command-help-specs.js');
-    const { showCommandHelp } = await import('../../src/cli/help.js');
-    const cmd = findStaticCommandHelp('token')!;
-    showCommandHelp(cmd);
 
-    const output = stdoutSpy.mock.calls
-      .map((c: unknown[]) => String(c[0]))
-      .join('');
-    expect(output).toContain('--type <auto|octocode|gh>');
-    expect(output).toContain('env -> Octocode encrypted storage -> gh CLI');
-
-    stdoutSpy.mockRestore();
+    expect(findStaticCommandHelp('token')).toBeUndefined();
+    expect(findStaticCommandHelp('skills')).toBeUndefined();
   });
 });
 
@@ -276,7 +260,7 @@ describe('help (dynamic fallback)', () => {
 });
 
 describe('agent protocol help', () => {
-  it('shows protocol with auth, tools, context, and skills steps', async () => {
+  it('shows protocol with login, status, tools, and context steps', async () => {
     const stdoutSpy = vi
       .spyOn(console, 'log')
       .mockImplementation(() => undefined);
@@ -290,12 +274,11 @@ describe('agent protocol help', () => {
       .join('\n');
     // Smart commands temporarily unhooked — fallback now shows protocol steps.
     // Command examples omit the `octocode` prefix — agents know how to invoke the CLI.
-    expect(output).toContain('auth login');
+    expect(output).toContain('login');
     expect(output).toContain('status');
     expect(output).toContain('tools <name>');
     expect(output).toContain('context');
-    expect(output).toContain('skills list');
-    expect(output).toContain('skills install --skill <name>');
+    expect(output).toContain('status --json');
 
     stdoutSpy.mockRestore();
   });

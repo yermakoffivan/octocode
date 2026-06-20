@@ -9,7 +9,7 @@ Priority order:
 1. `OCTOCODE_TOKEN`
 2. `GH_TOKEN`
 3. `GITHUB_TOKEN`
-4. Encrypted Octocode credentials in `~/.octocode/credentials.json`
+4. Encrypted Octocode credentials in `<octocode-home>/credentials.json`
 5. `gh auth token`
 
 Environment and `gh` tokens are returned as-is. Stored Octocode credentials can be refreshed before they are returned.
@@ -18,10 +18,10 @@ Environment and `gh` tokens are returned as-is. Stored Octocode credentials can 
 
 | File | Purpose | Permissions |
 |------|---------|-------------|
-| `~/.octocode/credentials.json` | Encrypted credential store | `0600` |
-| `~/.octocode/.key` | 32-byte encryption key, hex encoded | `0600` |
+| `<octocode-home>/credentials.json` | Encrypted credential store | `0600` |
+| `<octocode-home>/.key` | 32-byte encryption key, hex encoded | `0600` |
 
-`OCTOCODE_HOME` changes the base directory.
+`OCTOCODE_HOME` changes the base directory. Without it, Octocode uses the platform default: macOS `~/.octocode`, Windows `%APPDATA%\octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/octocode`.
 
 Stored shape:
 

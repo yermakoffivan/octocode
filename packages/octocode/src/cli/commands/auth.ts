@@ -11,12 +11,7 @@ import {
 } from '../../features/github-oauth.js';
 import { loadInquirer, select } from '../../utils/prompts.js';
 import { Spinner } from '../../utils/spinner.js';
-import {
-  formatAuthStatusAsJson,
-  printAuthStatus,
-  printLoginHint,
-} from './shared.js';
-import { tokenCommand } from './token.js';
+import { printAuthStatus, printLoginHint } from './shared.js';
 
 export const loginCommand: CLICommand = {
   name: 'login',
@@ -308,8 +303,7 @@ export const logoutCommand: CLICommand = {
 export const authCommand: CLICommand = {
   name: 'auth',
   description: 'Manage GitHub authentication',
-  usage:
-    'auth [login|logout|status|token|refresh] [--hostname <host>] [--json]',
+  usage: 'auth [login|logout|refresh] [--hostname <host>] [--json]',
   options: [
     {
       name: 'hostname',
@@ -335,18 +329,25 @@ export const authCommand: CLICommand = {
     if (subcommand === 'logout') {
       return logoutCommand.handler(args);
     }
-    if (subcommand === 'status') {
+    if (subcommand === 'status' || subcommand === 'token') {
+      const message =
+        subcommand === 'status'
+          ? 'auth status was removed. Use `status` instead.'
+          : 'auth token was removed. Use `status --json` to check token presence.';
       if (jsonOutput) {
-        const data = formatAuthStatusAsJson(hostname);
-        console.log(JSON.stringify(data));
-        if (!data['authenticated']) process.exitCode = EXIT.AUTH;
-        return;
+        console.log(
+          JSON.stringify({
+            success: false,
+            error: message,
+          })
+        );
+      } else {
+        console.log();
+        console.log(`  ${c('red', '✗')} ${message}`);
+        console.log();
       }
-      printAuthStatus(hostname);
+      process.exitCode = EXIT.USAGE;
       return;
-    }
-    if (subcommand === 'token') {
-      return tokenCommand.handler(args);
     }
     if (subcommand === 'refresh') {
       const currentStatus = getAuthStatus(hostname);
@@ -461,12 +462,24 @@ export const authCommand: CLICommand = {
 
     if (!process.stdout.isTTY) {
       if (jsonOutput) {
-        const data = formatAuthStatusAsJson(hostname);
-        console.log(JSON.stringify(data));
-        if (!data['authenticated']) process.exitCode = EXIT.AUTH;
+        console.log(
+          JSON.stringify({
+            success: false,
+            error:
+              'Provide an auth action: login, logout, or refresh. Use `status` for read-only auth state.',
+          })
+        );
       } else {
-        printAuthStatus(hostname);
+        console.log();
+        console.log(
+          `  ${c('red', '✗')} Provide an auth action: login, logout, or refresh.`
+        );
+        console.log(
+          `  ${dim('Use')} ${c('cyan', 'status')} ${dim('for read-only auth state.')}`
+        );
+        console.log();
       }
+      process.exitCode = EXIT.USAGE;
       return;
     }
 

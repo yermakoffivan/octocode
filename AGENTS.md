@@ -69,7 +69,7 @@ octocode-mcp/
 | `packages/*/src/`, `packages/*/tests/` | ✅ Auto |
 | `docs/` | ✅ Auto |
 | `*.json`, `*.config.*` | ⚠️ Ask |
-| `.env*`, `.octocode/`, `node_modules/`, `dist/`, `coverage/` | ❌ Never |
+| `.env*`, `node_modules/`, `dist/`, `coverage/` | ❌ Never |
 
 ## Quick Commands
 

@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { c, bold, dim, underline } from '../utils/colors.js';
 import { getAuthStatus } from '../features/github-oauth.js';
 import {
@@ -8,12 +9,14 @@ import {
   loadToolContent,
   sortDirectToolNames,
 } from '@octocodeai/octocode-tools-core/direct';
+import { paths } from '@octocodeai/octocode-tools-core/paths';
 
 const LSP_TOOL = 'lspGetSemantics';
 
 /** Canonical octocode-engineer skill — the agent playbook for these flows. */
 const ENGINEER_SKILL_URL =
   'https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer';
+const UNZIP_DESTINATION_PATTERN = join(paths.unzip, '<name>-<timestamp>');
 
 /**
  * The verbatim system prompt (Octocode MCP instructions) shown inside
@@ -52,9 +55,9 @@ function buildAgentInstructionsBlock(instructions: string | null): string[] {
   lines.push(
     '',
     `  ${dim('Tools:')} ${c('yellow', 'tools <name> --scheme')} ${dim('to read a schema (never guess fields), then')} ${c('yellow', "tools <name> --queries '<json>'")} ${dim('to run it. QUICK COMMANDS below cover the common path.')}`,
-    `  ${dim('Skill — read the')} ${c('cyan', 'octocode-engineer')} ${dim('flows to understand the research loop and leverage every tool fully:')}`,
-    `    ${underline(ENGINEER_SKILL_URL)}  ${dim('(install:')} ${c('yellow', 'skills install --skill octocode')}${dim(')')}`,
-    `  ${dim('Auth: humans run')} ${c('yellow', 'login')}${dim('; agents pass GITHUB_TOKEN / OCTOCODE_TOKEN / GH_TOKEN via env. Deeper protocol:')} ${c('cyan', 'context')}${dim('.')}`,
+    `  ${dim('Skill reference — read the')} ${c('cyan', 'octocode-engineer')} ${dim('flows to understand the research loop and leverage every tool fully:')}`,
+    `    ${underline(ENGINEER_SKILL_URL)}`,
+    `  ${dim('Auth: humans run')} ${c('yellow', 'login')}${dim('; use')} ${c('yellow', 'status')} ${dim('to confirm token presence; agents pass GITHUB_TOKEN / OCTOCODE_TOKEN / GH_TOKEN via env. Deeper protocol:')} ${c('cyan', 'context')}${dim('.')}`,
     `  ${dim('</AGENT_INSTRUCTIONS>')}`
   );
 
@@ -190,12 +193,12 @@ export async function showHelp(): Promise<void> {
     quick(
       'unzip',
       '<archive>',
-      'unpack archive → ~/.octocode/archives, then grep/ls/cat it'
+      `unpack archive → ${UNZIP_DESTINATION_PATTERN}, then grep/ls/cat it`
     ),
     quick(
       'clone',
       '<owner/repo[/path][@branch]>',
-      'clone a repo or subtree → ~/.octocode/repos'
+      `clone a repo or subtree → ${paths.repos}`
     ),
     '',
 
@@ -204,7 +207,7 @@ export async function showHelp(): Promise<void> {
     `    ${c('yellow', 'tools'.padEnd(28))} ${dim('list all tools')}`,
     `    ${c('yellow', 'tools <name> --scheme'.padEnd(28))} ${dim('read schema (never guess fields)')}`,
     `    ${c('yellow', "tools <name> --queries '<json>'".padEnd(28))} ${dim('run a tool (1 object or array of ≤5)')}`,
-    `    ${c('yellow', 'context [--full]'.padEnd(28))} ${dim('optional — protocol + system prompt + descriptions (deeper research)')}`,
+    `    ${c('yellow', 'context [--full] [--json]'.padEnd(28))} ${dim('optional — protocol + system prompt + descriptions (deeper research)')}`,
     ...toolLines,
     '',
 
@@ -218,9 +221,9 @@ export async function showHelp(): Promise<void> {
     // ── Management (users) ─────────────────────────────────────────────────
     `  ${bold('MANAGEMENT')}`,
     `    ${c('cyan', 'install')} ${dim('--ide <cursor|claude-desktop|windsurf|...>')}  ${dim('configure IDE')}`,
-    `    ${c('cyan', 'auth')}    ${dim('<login|logout|status|token>')}                 ${dim('GitHub authentication')}`,
-    `    ${c('cyan', 'skills')}  ${dim('<install|remove|list|sync>')}                  ${dim('skills marketplace')}`,
-    `    ${c('cyan', 'status')}  ${dim('[--sync]')}                                    ${dim('auth + cache status')}`,
+    `    ${c('cyan', 'login')}   ${dim('[--hostname <host>]')}                         ${dim('GitHub authentication')}`,
+    `    ${c('cyan', 'logout')}  ${dim('[--hostname <host>]')}                         ${dim('clear stored credentials')}`,
+    `    ${c('cyan', 'status')}  ${dim('[--sync]')}                                    ${dim('token/auth + cache status')}`,
     '',
 
     // ── Flags + exit codes (one line each) ─────────────────────────────────

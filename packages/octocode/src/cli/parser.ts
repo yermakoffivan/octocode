@@ -106,7 +106,6 @@ const BOOLEAN_OPTIONS = new Set([
   'stats',
   'context',
   'dry-run',
-  'skills',
   'full',
   'direct',
   'list',

@@ -14,9 +14,7 @@ import {
   MCP_CLIENTS,
 } from '../../utils/mcp-paths.js';
 import { readMCPConfig } from '../../utils/mcp-io.js';
-import { getSkillsCacheDir } from '../../utils/skills-fetch.js';
 import { readAllClientConfigs, analyzeSyncState } from '../../features/sync.js';
-import path from 'node:path';
 
 export const statusCommand: CLICommand = {
   name: 'status',
@@ -64,16 +62,12 @@ export const statusCommand: CLICommand = {
       };
     });
 
-    const octocodeHome =
-      paths.home ||
-      process.env.OCTOCODE_HOME ||
-      path.join(process.env.HOME || '', '.octocode');
-    const reposDir = paths.repos || path.join(octocodeHome, 'repos');
-    const logsDir = paths.logs || path.join(octocodeHome, 'logs');
-    const skillsDir = getSkillsCacheDir();
+    const octocodeHome = paths.home;
+    const reposDir = paths.repos;
+    const logsDir = paths.logs;
     const reposBytes = getDirectorySizeBytes(reposDir);
-    const skillsBytes = getDirectorySizeBytes(skillsDir);
     const logsBytes = getDirectorySizeBytes(logsDir);
+    const totalCacheBytes = reposBytes + logsBytes;
 
     let syncData: {
       summary: {
@@ -119,18 +113,13 @@ export const statusCommand: CLICommand = {
               sizeBytes: reposBytes,
               sizeFormatted: formatBytes(reposBytes),
             },
-            skills: {
-              path: skillsDir,
-              sizeBytes: skillsBytes,
-              sizeFormatted: formatBytes(skillsBytes),
-            },
             logs: {
               path: logsDir,
               sizeBytes: logsBytes,
               sizeFormatted: formatBytes(logsBytes),
             },
-            totalBytes: reposBytes + skillsBytes + logsBytes,
-            totalFormatted: formatBytes(reposBytes + skillsBytes + logsBytes),
+            totalBytes: totalCacheBytes,
+            totalFormatted: formatBytes(totalCacheBytes),
           },
           ...(syncData ? { sync: syncData } : {}),
         })
@@ -166,10 +155,9 @@ export const statusCommand: CLICommand = {
 
     console.log();
     console.log(
-      `  ${bold('Cache')}  ${dim(formatBytes(reposBytes + skillsBytes + logsBytes))} total`
+      `  ${bold('Cache')}  ${dim(formatBytes(totalCacheBytes))} total`
     );
     console.log(`    ${c('cyan', '•')} repos:  ${formatBytes(reposBytes)}`);
-    console.log(`    ${c('cyan', '•')} skills: ${formatBytes(skillsBytes)}`);
     console.log(`    ${c('cyan', '•')} logs:   ${formatBytes(logsBytes)}`);
 
     if (syncData) {

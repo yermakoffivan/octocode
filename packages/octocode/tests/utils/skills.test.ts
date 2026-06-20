@@ -40,6 +40,7 @@ import {
 } from '../../src/utils/skills.js';
 import { existsSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { getSkillsDirForTarget } from '../../src/utils/skills.js';
+import { paths } from '@octocodeai/octocode-tools-core/paths';
 
 describe('Skills Utilities', () => {
   beforeEach(() => {
@@ -573,10 +574,10 @@ describe('Skills Config', () => {
         await import('../../src/utils/skills.js');
       setCustomSkillsDestDir('/new/path');
 
-      expect(mkdirSync).toHaveBeenCalledWith(
-        expect.stringContaining('.octocode'),
-        { recursive: true, mode: 0o700 }
-      );
+      expect(mkdirSync).toHaveBeenCalledWith(paths.home, {
+        recursive: true,
+        mode: 0o700,
+      });
     });
 
     it('should save custom path to config file', async () => {

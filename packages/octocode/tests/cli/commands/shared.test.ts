@@ -272,33 +272,6 @@ describe('cli/commands/shared', () => {
     });
   });
 
-  describe('normalizeSkillTarget', () => {
-    it('maps all supported canonical targets', async () => {
-      const { normalizeSkillTarget } =
-        await import('../../../src/cli/commands/shared.js');
-      const cases: [string, string][] = [
-        ['claude-code', 'claude-code'],
-        ['claude-desktop', 'claude-desktop'],
-        ['cursor', 'cursor'],
-        ['codex', 'codex'],
-        ['opencode', 'opencode'],
-      ];
-      for (const [input, expected] of cases) {
-        expect(normalizeSkillTarget(input)).toBe(expected);
-        expect(normalizeSkillTarget(`  ${input.toUpperCase()}  `)).toBe(
-          expected
-        );
-      }
-    });
-
-    it('returns null for unknown targets', async () => {
-      const { normalizeSkillTarget } =
-        await import('../../../src/cli/commands/shared.js');
-      expect(normalizeSkillTarget('vscode')).toBeNull();
-      expect(normalizeSkillTarget('')).toBeNull();
-    });
-  });
-
   describe('parseMCPEnv', () => {
     it('returns empty values for undefined or blank input', async () => {
       const { parseMCPEnv } =

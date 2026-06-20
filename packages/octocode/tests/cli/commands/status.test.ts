@@ -9,7 +9,6 @@ import {
   MCP_CLIENTS,
 } from '../../../src/utils/mcp-paths.js';
 import { readMCPConfig } from '../../../src/utils/mcp-io.js';
-import { getSkillsCacheDir } from '../../../src/utils/skills-fetch.js';
 import {
   readAllClientConfigs,
   analyzeSyncState,
@@ -62,10 +61,6 @@ vi.mock('../../../src/utils/mcp-io.js', () => ({
   readMCPConfig: vi.fn(),
 }));
 
-vi.mock('../../../src/utils/skills-fetch.js', () => ({
-  getSkillsCacheDir: vi.fn().mockReturnValue('/fake/skills'),
-}));
-
 vi.mock('../../../src/features/sync.js', () => ({
   readAllClientConfigs: vi.fn().mockReturnValue([]),
   analyzeSyncState: vi.fn(),
@@ -79,8 +74,6 @@ async function loadCommand() {
 describe('statusCommand', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let originalExitCode: typeof process.exitCode;
-  let originalHome: string | undefined;
-  let originalOctocodeHome: string | undefined;
 
   beforeEach(() => {
     vi.resetModules();
@@ -88,15 +81,11 @@ describe('statusCommand', () => {
     mockPaths.home = '/fake/octocode';
     mockPaths.repos = '/fake/repos';
     mockPaths.logs = '/fake/logs';
-    originalHome = process.env.HOME;
-    originalOctocodeHome = process.env.OCTOCODE_HOME;
-    delete process.env.OCTOCODE_HOME;
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     originalExitCode = process.exitCode;
     process.exitCode = undefined;
     vi.mocked(getDirectorySizeBytes).mockReturnValue(1024);
     vi.mocked(formatBytes).mockImplementation((b: number) => `${b} B`);
-    vi.mocked(getSkillsCacheDir).mockReturnValue('/fake/skills');
     vi.mocked(getMCPConfigPath).mockImplementation(
       (id: string) => `/cfg/${id}.json`
     );
@@ -105,6 +94,9 @@ describe('statusCommand', () => {
       authenticated: true,
       username: 'me',
       hostname: 'github.com',
+      tokenPresent: true,
+      tokenConfigured: true,
+      tokenSource: 'env',
     });
     vi.mocked(printAuthStatus).mockImplementation(() =>
       console.log('AUTH_STATUS')
@@ -114,10 +106,6 @@ describe('statusCommand', () => {
   afterEach(() => {
     logSpy.mockRestore();
     process.exitCode = originalExitCode;
-    if (originalHome === undefined) delete process.env.HOME;
-    else process.env.HOME = originalHome;
-    if (originalOctocodeHome === undefined) delete process.env.OCTOCODE_HOME;
-    else process.env.OCTOCODE_HOME = originalOctocodeHome;
   });
 
   const out = (needle: string) =>
@@ -139,7 +127,6 @@ describe('statusCommand', () => {
     expect(out('No MCP config files found.')).toBe(true);
     expect(out('Cache')).toBe(true);
     expect(out('repos:')).toBe(true);
-    expect(out('skills:')).toBe(true);
     expect(out('logs:')).toBe(true);
     expect(out('status --sync')).toBe(true);
     expect(process.exitCode).toBeUndefined();
@@ -186,10 +173,30 @@ describe('statusCommand', () => {
     const cmd = await loadCommand();
     await cmd.handler({ command: 'status', args: [], options: { json: true } });
     expect(out('"auth"')).toBe(true);
+    expect(out('"tokenPresent"')).toBe(true);
     expect(out('"mcpClients"')).toBe(true);
     expect(out('"cache"')).toBe(true);
     expect(out('"totalBytes"')).toBe(true);
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('uses shared Octocode paths for cache reporting', async () => {
+    const cmd = await loadCommand();
+    await cmd.handler({ command: 'status', args: [], options: { json: true } });
+
+    expect(getDirectorySizeBytes).toHaveBeenCalledWith('/fake/repos');
+    expect(getDirectorySizeBytes).toHaveBeenCalledWith('/fake/logs');
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as {
+      cache: {
+        home: string;
+        repos: { path: string };
+        logs: { path: string };
+      };
+    };
+    expect(payload.cache.home).toBe('/fake/octocode');
+    expect(payload.cache.repos.path).toBe('/fake/repos');
+    expect(payload.cache.logs.path).toBe('/fake/logs');
   });
 
   it('--json sets EXIT.AUTH when not authenticated', async () => {
@@ -271,42 +278,5 @@ describe('statusCommand', () => {
       options: { hostname: 'ghe.corp.com' },
     });
     expect(formatAuthStatusAsJson).toHaveBeenCalledWith('ghe.corp.com');
-  });
-
-  it('falls back to OCTOCODE_HOME when paths.home falsy', async () => {
-    mockPaths.home = '';
-    mockPaths.repos = '';
-    mockPaths.logs = '';
-    process.env.OCTOCODE_HOME = '/env/oct';
-    const cmd = await loadCommand();
-    await cmd.handler({ command: 'status', args: [], options: {} });
-    expect(getDirectorySizeBytes).toHaveBeenCalledWith('/env/oct/repos');
-    expect(getDirectorySizeBytes).toHaveBeenCalledWith('/env/oct/logs');
-  });
-
-  it('falls back to HOME/.octocode when paths.home and OCTOCODE_HOME unset', async () => {
-    mockPaths.home = '';
-    mockPaths.repos = '';
-    mockPaths.logs = '';
-    process.env.HOME = '/users/tester';
-    const cmd = await loadCommand();
-    await cmd.handler({ command: 'status', args: [], options: {} });
-    expect(getDirectorySizeBytes).toHaveBeenCalledWith(
-      '/users/tester/.octocode/repos'
-    );
-  });
-
-  it('falls back to relative .octocode when HOME unset', async () => {
-    mockPaths.home = '';
-    mockPaths.repos = '';
-    mockPaths.logs = '';
-    delete process.env.HOME;
-    const cmd = await loadCommand();
-    await cmd.handler({ command: 'status', args: [], options: {} });
-    expect(
-      vi
-        .mocked(getDirectorySizeBytes)
-        .mock.calls.some(([dir]) => String(dir).includes('.octocode'))
-    ).toBe(true);
   });
 });

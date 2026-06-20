@@ -1,9 +1,8 @@
 import { promises as fs } from 'fs';
-import { homedir } from 'node:os';
 import { join, basename } from 'node:path';
-import { createHash } from 'node:crypto';
 import { securityRegistry } from '@octocodeai/octocode-engine/registry';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
+import { paths } from '../../shared/paths.js';
 import {
   validateToolPath,
   createErrorResult,
@@ -20,6 +19,14 @@ import { decompressFile } from './decompressOps.js';
 import { identifyFile, extractStrings } from './binaryOps.js';
 
 const TOOL_NAME = TOOL_NAMES.LOCAL_BINARY_INSPECT;
+
+function timestampForPath(date = new Date()): string {
+  return date.toISOString().replace(/[:.]/g, '-');
+}
+
+function unpackDestination(path: string): string {
+  return join(paths.unzip, `${basename(path)}-${timestampForPath()}`);
+}
 
 // The binary backends shell out to external CLIs that are not in the base
 // security allowlist (rg/ls/find/grep/git). Register them here so the tool
@@ -340,51 +347,31 @@ async function handleStrings(path: string, query: BinaryInspectQuery) {
 }
 
 async function handleUnpack(path: string, query: BinaryInspectQuery) {
-  // Cache key: path + size + mtime, so a changed archive re-extracts.
-  let stat;
   try {
-    stat = await fs.stat(path);
+    await fs.stat(path);
   } catch {
     return createErrorResult(`File not found: ${path}`, query);
   }
-  const hash = createHash('sha1')
-    .update(`${path}:${stat.size}:${stat.mtimeMs}`)
-    .digest('hex')
-    .slice(0, 12);
-  const destDir = join(
-    homedir(),
-    '.octocode',
-    'archives',
-    `${basename(path)}__${hash}`
-  );
 
-  // Cache hit when the dir already holds extracted entries.
-  let cached = false;
-  try {
-    cached = (await fs.readdir(destDir)).length > 0;
-  } catch {
-    /* not yet extracted */
-  }
+  const destDir = unpackDestination(path);
+  await fs.mkdir(destDir, { recursive: true });
 
-  if (!cached) {
-    await fs.mkdir(destDir, { recursive: true });
-    const result = await extractArchiveToDir(path, destDir);
-    if (!result.success) {
-      return createErrorResult(
-        `Unpack failed: ${result.stderr || 'no backend could extract this archive'}`,
-        query,
-        {
-          customHints: [
-            'unpack handles archives (.zip/.jar/.tar.*/.7z/.deb/.dmg…). For a single-stream file use mode="decompress"; for a native binary use mode="strings".',
-            ...(result.missingCommands?.length
-              ? [
-                  `Missing backends: ${result.missingCommands.join(', ')} — install one (e.g. unzip, bsdtar, 7z).`,
-                ]
-              : []),
-          ],
-        }
-      );
-    }
+  const result = await extractArchiveToDir(path, destDir);
+  if (!result.success) {
+    return createErrorResult(
+      `Unpack failed: ${result.stderr || 'no backend could extract this archive'}`,
+      query,
+      {
+        customHints: [
+          'unpack handles archives (.zip/.jar/.tar.*/.7z/.deb/.dmg…). For a single-stream file use mode="decompress"; for a native binary use mode="strings".',
+          ...(result.missingCommands?.length
+            ? [
+                `Missing backends: ${result.missingCommands.join(', ')} — install one (e.g. unzip, bsdtar, 7z).`,
+              ]
+            : []),
+        ],
+      }
+    );
   }
 
   let topLevelEntries = 0;
@@ -399,7 +386,7 @@ async function handleUnpack(path: string, query: BinaryInspectQuery) {
     mode: 'unpack' as const,
     path,
     localPath: destDir,
-    cached,
+    cached: false,
     topLevelEntries,
     hints: [
       `Unpacked to ${destDir} — now run localViewStructure(path="${destDir}"), localSearchCode, or localGetFileContent on it.`,
