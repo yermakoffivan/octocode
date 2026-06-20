@@ -1,5 +1,6 @@
+use grep::pcre2::RegexMatcherBuilder as Pcre2MatcherBuilder;
+use grep::regex::RegexMatcherBuilder;
 use napi_derive::napi;
-use regex::Regex;
 
 #[napi(object)]
 pub struct RipgrepPatternValidationResult {
@@ -19,14 +20,29 @@ pub fn validate(
         };
     }
 
-    if fixed_string || perl_regex {
+    if fixed_string {
         return RipgrepPatternValidationResult {
             valid: true,
             error: None,
         };
     }
 
-    match Regex::new(pattern) {
+    if perl_regex {
+        let mut builder = Pcre2MatcherBuilder::new();
+        builder.utf(true).ucp(true).jit_if_available(true);
+        return match builder.build(pattern) {
+            Ok(_) => RipgrepPatternValidationResult {
+                valid: true,
+                error: None,
+            },
+            Err(err) => RipgrepPatternValidationResult {
+                valid: false,
+                error: Some(err.to_string()),
+            },
+        };
+    }
+
+    match RegexMatcherBuilder::new().build(pattern) {
         Ok(_) => RipgrepPatternValidationResult {
             valid: true,
             error: None,
@@ -56,8 +72,15 @@ mod tests {
     }
 
     #[test]
-    fn validate_does_not_js_validate_perl_regex() {
+    fn validate_compiles_valid_perl_regex() {
         let result = validate("(?<=foo)bar", false, true);
         assert!(result.valid);
+    }
+
+    #[test]
+    fn validate_rejects_invalid_perl_regex() {
+        let result = validate("(?<=", false, true);
+        assert!(!result.valid);
+        assert!(result.error.is_some());
     }
 }

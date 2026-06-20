@@ -17,6 +17,21 @@ import {
   type RipgrepSearchOptions,
 } from '../../utils/contextUtils.js';
 
+/** Filesystem sorts the native engine understands. */
+type EngineSort = 'path' | 'created' | 'modified' | 'accessed';
+
+/**
+ * TS-level relevance modes (relevance/matchCount) are not filesystem sorts;
+ * map them to a stable `path` walk so the engine returns a deterministic input
+ * order for the ranker. Real filesystem sorts pass through unchanged.
+ */
+function toEngineSort(sort: RipgrepQuery['sort']): EngineSort {
+  if (sort === 'created' || sort === 'modified' || sort === 'accessed') {
+    return sort;
+  }
+  return 'path';
+}
+
 /** Map the validated tool query onto the native engine's search options. */
 function toSearchOptions(
   query: RipgrepQuery & { path: string }
@@ -45,8 +60,14 @@ function toSearchOptions(
     excludeDir: query.excludeDir,
     noIgnore: query.noIgnore,
     hidden: query.hidden,
-    sort: query.sort,
+    // The engine only understands filesystem sorts. TS-level relevance modes
+    // (relevance/matchCount) are applied after the walk in ripgrepResultBuilder;
+    // give the engine a stable deterministic walk so ranking inputs are stable.
+    sort: toEngineSort(query.sort),
     sortReverse: query.sortReverse,
+    // AST classification feeds language-aware ranking; only worth its parse
+    // cost when relevance ordering is actually requested.
+    classifyMatches: query.sort === 'relevance' || query.sort === undefined,
     maxSnippetChars: query.matchContentLength,
     onlyMatching: query.onlyMatching,
     unique: query.unique,
@@ -171,19 +192,33 @@ export async function executeRipgrepSearchInternal(
         value: m.value,
       } as NonNullable<LocalSearchCodeFile['matches']>[number] & {
         count?: number;
+        kind?: string;
+        scoreHint?: number;
       };
       if (m.count !== undefined) match.count = m.count;
+      // AST classification from the engine (Tier 1 Phase 2), when present.
+      if (m.kind !== undefined) match.kind = m.kind;
+      if (m.scoreHint !== undefined) match.scoreHint = m.scoreHint;
       return match;
     }),
   }));
 
   const responseChars = estimateResponseChars(files);
+  const stats = {
+    matchCount: parsed.stats.matchCount,
+    matchedLines: parsed.stats.matchedLines,
+    filesMatched: parsed.stats.filesMatched,
+    filesSearched: parsed.stats.filesSearched,
+    bytesSearched: parsed.stats.bytesSearched ?? undefined,
+    searchTime: parsed.stats.searchTime,
+  };
 
   if (files.length === 0) {
     return attachRawResponseChars(
       {
         status: 'empty',
         searchEngine: 'rg',
+        stats,
         warnings: [...validationWarnings, ...chunkingWarnings],
         hints: getHints(TOOL_NAMES.LOCAL_RIPGREP, 'empty', {
           keywords: query.keywords,
@@ -208,15 +243,6 @@ export async function executeRipgrepSearchInternal(
       `Result payload is large (~${Math.round(responseChars / 1024)}KB).`
     );
   }
-
-  const stats = {
-    matchCount: parsed.stats.matchCount,
-    matchedLines: parsed.stats.matchedLines,
-    filesMatched: parsed.stats.filesMatched,
-    filesSearched: parsed.stats.filesSearched,
-    bytesSearched: parsed.stats.bytesSearched ?? undefined,
-    searchTime: parsed.stats.searchTime,
-  };
 
   const searchResult = await buildSearchResult(
     files,

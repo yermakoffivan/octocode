@@ -3,16 +3,15 @@ import { hints } from '../../../src/tools/local_ripgrep/hints.js';
 import type { HintContext } from '../../../src/types/metadata.js';
 
 describe('local_ripgrep hints.empty', () => {
-  it('emits grep-specific warning when searchEngine is grep', () => {
+  it('emits generic retry guidance for empty text searches', () => {
     const result = hints.empty({
       keywords: 'foobar',
-      searchEngine: 'grep',
+      searchEngine: 'rg',
     } as HintContext);
-    expect(result.some(h => h.includes('grep'))).toBe(true);
-    expect(result.some(h => h.includes('perlRegex') || h.includes('lookahead') || h.includes('backreference'))).toBe(true);
+    expect(result.join('\n')).toContain('fixedString=true');
   });
 
-  it('does not emit grep-specific warning when searchEngine is rg', () => {
+  it('does not emit stale grep fallback guidance', () => {
     const result = hints.empty({ keywords: 'foobar', searchEngine: 'rg' } as HintContext);
     expect(result.some(h => h.includes('grep fallback'))).toBe(false);
   });

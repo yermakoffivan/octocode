@@ -23,9 +23,6 @@ export const hints: ToolHintGenerators = {
       : [];
     const pattern = typeof c.keywords === 'string' ? c.keywords : undefined;
     const hasFilters = langType || include.length > 0 || excludeDir.length > 0;
-    const searchEngine =
-      typeof c.searchEngine === 'string' ? c.searchEngine : undefined;
-
     if (!pattern && !path && !hasFilters) return [];
 
     const baseHints = hasFilters
@@ -35,13 +32,6 @@ export const hints: ToolHintGenerators = {
       : [
           'Try a shorter partial term, fixedString=true for literals, or search a parent directory.',
         ];
-
-    if (searchEngine === 'grep') {
-      return [
-        'grep fallback active — perlRegex patterns (lookaheads, backreferences) unsupported; use fixedString:true or simplify the pattern.',
-        ...baseHints,
-      ];
-    }
 
     return baseHints;
   },

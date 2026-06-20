@@ -40,13 +40,17 @@ function extractContent(result: DirectToolResult): string | undefined {
   const structured = result.structuredContent as
     | {
         readonly results?: readonly {
+          // localGetFileContent nests content under `data`; ghGetFileContent
+          // carries it at results[].files[].content with no `data` wrapper.
           readonly data?: { readonly content?: unknown };
+          readonly files?: readonly { readonly content?: unknown }[];
         }[];
         readonly content?: unknown;
       }
     | undefined;
+  const first = structured?.results?.[0];
   const content =
-    structured?.results?.[0]?.data?.content ?? structured?.content;
+    first?.data?.content ?? first?.files?.[0]?.content ?? structured?.content;
   return typeof content === 'string' ? content : undefined;
 }
 

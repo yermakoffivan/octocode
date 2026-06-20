@@ -12,6 +12,13 @@ import {
   describeQuerySchema,
 } from '../../scheme/coreSchemas.js';
 
+// sort ('relevance'|'matchCount'|'path'|'modified'|'accessed'|'created'),
+// rankingProfile, and debugRanking are defined canonically in
+// @octocodeai/octocode-core (src/resources/tools/localSearchCode.ts) and flow in
+// through CoreRipgrepQuerySchema. Engine-incompatible sort values are translated
+// to a deterministic filesystem walk in ripgrepExecutor; the relevance scorer
+// runs in ripgrepResultBuilder. Keep tools-core overrides to tightening bounds
+// only, not redefining ranking fields.
 const queryOverrides = {
   contextLines: contextLinesField,
   matchContentLength: clampedInt(1, MAX_MATCH_CONTENT_LENGTH)

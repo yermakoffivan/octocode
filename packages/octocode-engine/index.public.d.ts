@@ -530,6 +530,13 @@ export interface RipgrepMatch {
   value: string
   /** Frequency for `onlyMatching + countUnique` values. */
   count?: number
+  /**
+   * AST node-kind label (declaration|import|export|callsite|identifier|comment|
+   * string|configKey|heading) when `classifyMatches` is enabled.
+   */
+  kind?: string
+  /** Deterministic relevance hint (0.0..1.0) derived from `kind`. */
+  scoreHint?: number
 }
 
 export interface RipgrepParseOptions {
@@ -602,6 +609,8 @@ export interface RipgrepSearchOptions {
   sortReverse?: boolean
   /** Max Unicode chars per assembled snippet (default 500). */
   maxSnippetChars?: number
+  /** Label each match with its AST node kind (tree-sitter) for ranking. */
+  classifyMatches?: boolean
   /**
    * Emit one match per submatch with `value` set to the matched span (not the
    * whole line) — ripgrep's `-o`/`--only-matching`. Enumerates every hit on a

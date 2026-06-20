@@ -197,6 +197,8 @@ pub(crate) fn assemble_file(
                 column: m.column,
                 value,
                 count: None,
+                kind: None,
+                score_hint: None,
             }
         })
         .collect();

@@ -49,7 +49,7 @@ Config reference: [Configuration Reference](https://github.com/bgauryy/octocode/
 
 ## Platform Support
 
-`localSearchCode` uses the bundled `@vscode/ripgrep` binary. There is no `grep` fallback. If the bundled binary cannot load, the tool returns an actionable error.
+`localSearchCode` runs ripgrep in-process through Octocode's native engine. There is no external `rg` binary dependency and no `grep` fallback.
 
 `localGetFileContent` is pure Node.js and works on macOS, Linux, and Windows.
 
@@ -118,6 +118,8 @@ Fast content search powered by ripgrep.
 | `filesWithoutMatch` | Return files that do not match. Mutually exclusive with `filesOnly`. |
 | `onlyMatching` | Return only the matched substring(s), one entry per hit, instead of the whole line — the way to enumerate every hit on a minified one-liner. |
 | `matchWindow` | With `onlyMatching`, widen each matched span by this many characters of context on each side (… marks trimmed sides). 0 = bare match. Requires `onlyMatching`. |
+| `unique` | With `onlyMatching`, collapse to distinct match values (per file) — no manual `sort -u`. Requires `onlyMatching`. |
+| `countUnique` | With `onlyMatching`, return distinct match values with a frequency count, sorted most-frequent first. Requires `onlyMatching`. |
 | `contextLines` | Lines around each match. Max 100. |
 | `matchContentLength` | Max characters per individual match snippet. Default 200, max 100000. |
 | `maxFiles` | Hard cap on matched files. |

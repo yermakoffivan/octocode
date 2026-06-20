@@ -8,12 +8,16 @@
 //!   * `ignore` for the gitignore-aware walk, `-g` override globs and `-t` types.
 //!
 //! It replicates every flag the old `RipgrepCommandBuilder` emitted and returns
-//! the exact `RipgrepParseResult` shape the `--json` parser produced, so the
-//! result is byte-identical to the previous `rg --json` execution path.
+//! the same `RipgrepParseResult` shape the `--json` parser produced, with native
+//! byte/time stats populated by the in-process search path.
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::SystemTime;
+use std::sync::{
+    atomic::{AtomicU32, AtomicU64, Ordering},
+    Arc, Mutex,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 use grep::matcher::Matcher;
 use grep::pcre2::RegexMatcherBuilder as Pcre2MatcherBuilder;
@@ -21,9 +25,10 @@ use grep::regex::RegexMatcherBuilder;
 use grep::searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::overrides::OverrideBuilder;
 use ignore::types::TypesBuilder;
-use ignore::WalkBuilder;
+use ignore::{WalkBuilder, WalkState};
 use napi::{Error, Result, Status};
 
+use crate::classify;
 use crate::ripgrep_parser::{assemble_file, strip_trailing_newline, FileEntry, RawMatch};
 use crate::types::{
     RipgrepFile, RipgrepMatch, RipgrepParseResult, RipgrepSearchOptions, RipgrepStats,
@@ -135,6 +140,13 @@ struct FileRec {
     sort_time: Option<SystemTime>,
 }
 
+struct CollectResult {
+    recs: Vec<FileRec>,
+    files_searched: u32,
+    bytes_searched: u64,
+    elapsed: Duration,
+}
+
 /// `grep_searcher::Sink` that accumulates matches/contexts for one file and,
 /// using the matcher, derives the 0-based UTF-16 column of the first submatch.
 struct CollectSink<'a, M: Matcher> {
@@ -181,6 +193,8 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
                         column,
                         value,
                         count: None,
+                        kind: None,
+                        score_hint: None,
                     });
                 }
                 true
@@ -194,6 +208,8 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
                     column: 0,
                     value: line_text,
                     count: None,
+                    kind: None,
+                    score_hint: None,
                 });
             }
         } else {
@@ -234,9 +250,9 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
 }
 
 /// Build the gitignore-aware walker with `-g` overrides, `-t` types, hidden and
-/// no-ignore handling. Single-threaded: we sort results ourselves afterwards to
-/// reproduce `--sort`/`--sortr` deterministically.
-fn build_walk(opts: &RipgrepSearchOptions) -> Result<ignore::Walk> {
+/// no-ignore handling. Results are sorted after parallel traversal to reproduce
+/// `--sort`/`--sortr` deterministically.
+fn build_walk_builder(opts: &RipgrepSearchOptions) -> Result<WalkBuilder> {
     let mut wb = WalkBuilder::new(&opts.path);
     let no_ignore = opts.no_ignore.unwrap_or(false);
     wb.ignore(!no_ignore)
@@ -278,7 +294,7 @@ fn build_walk(opts: &RipgrepSearchOptions) -> Result<ignore::Walk> {
         wb.overrides(ob.build().map_err(to_napi_err)?);
     }
 
-    Ok(wb.build())
+    Ok(wb)
 }
 
 fn capture_sort_time(opts: &RipgrepSearchOptions, entry: &ignore::DirEntry) -> Option<SystemTime> {
@@ -290,22 +306,7 @@ fn capture_sort_time(opts: &RipgrepSearchOptions, entry: &ignore::DirEntry) -> O
     }
 }
 
-/// Run the walk + per-file search for a concrete matcher type, returning the
-/// collected records plus the total number of files searched.
-fn collect<M: Matcher>(
-    opts: &RipgrepSearchOptions,
-    matcher: &M,
-    mode: Mode,
-) -> Result<(Vec<FileRec>, u32)> {
-    let only_matching = opts.only_matching.unwrap_or(false);
-    // only-matching emits bare spans; ripgrep's `-o` ignores `-C` context too.
-    let context_lines = if mode == Mode::Normal && !only_matching {
-        opts.context_lines.unwrap_or(0)
-    } else {
-        0
-    };
-    let match_window = opts.match_window.unwrap_or(0) as usize;
-
+fn build_searcher(opts: &RipgrepSearchOptions, context_lines: u32) -> Searcher {
     let mut sb = SearcherBuilder::new();
     sb.line_number(true)
         .binary_detection(BinaryDetection::quit(b'\x00'));
@@ -319,64 +320,127 @@ fn collect<M: Matcher>(
         sb.before_context(context_lines as usize);
         sb.after_context(context_lines as usize);
     }
-    let mut searcher = sb.build();
+    sb.build()
+}
 
-    let keep_unmatched = mode == Mode::FilesWithoutMatch;
-    let mut recs: Vec<FileRec> = Vec::new();
-    let mut files_searched: u32 = 0;
-
-    for dent in build_walk(opts)? {
-        let dent = match dent {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        if !dent.file_type().is_some_and(|t| t.is_file()) {
-            continue;
+fn checked_push(recs: &Mutex<Vec<FileRec>>, rec: FileRec) -> bool {
+    match recs.lock() {
+        Ok(mut guard) => {
+            guard.push(rec);
+            true
         }
-        let path: &Path = dent.path();
-
-        let mut entry = FileEntry::new();
-        let (submatches, matched_lines, om_matches) = {
-            let mut sink = CollectSink {
-                matcher,
-                entry: &mut entry,
-                submatches: 0,
-                matched_lines: 0,
-                only_matching,
-                match_window,
-                om_matches: Vec::new(),
-            };
-            // Per-file IO errors (permission denied, mid-file invalid UTF-8 under
-            // PCRE2 utf mode, etc.) just skip that file — rg behaves the same.
-            if searcher.search_path(matcher, path, &mut sink).is_err() {
-                continue;
-            }
-            (
-                sink.submatches,
-                sink.matched_lines,
-                std::mem::take(&mut sink.om_matches),
-            )
-        };
-        files_searched += 1;
-
-        let has_match = matched_lines > 0;
-        if has_match == keep_unmatched {
-            // Normal/files-only/count modes keep matched files; files-without-match
-            // keeps the rest.
-            continue;
-        }
-
-        recs.push(FileRec {
-            path: dent.path().to_string_lossy().into_owned(),
-            entry,
-            matched_lines,
-            submatches,
-            om_matches,
-            sort_time: capture_sort_time(opts, &dent),
-        });
+        Err(_) => false,
     }
+}
 
-    Ok((recs, files_searched))
+fn elapsed_human(elapsed: Duration) -> String {
+    format!("{:.6}s", elapsed.as_secs_f64())
+}
+
+fn bytes_as_i64(bytes: u64) -> i64 {
+    bytes.min(i64::MAX as u64) as i64
+}
+
+/// Run a parallel ignore walk + per-file search for a concrete matcher type.
+fn collect<M: Matcher + Sync>(
+    opts: &RipgrepSearchOptions,
+    matcher: &M,
+    mode: Mode,
+) -> Result<CollectResult> {
+    let started = Instant::now();
+    let only_matching = opts.only_matching.unwrap_or(false);
+    // only-matching emits bare spans; ripgrep's `-o` ignores `-C` context too.
+    let context_lines = if mode == Mode::Normal && !only_matching {
+        opts.context_lines.unwrap_or(0)
+    } else {
+        0
+    };
+    let match_window = opts.match_window.unwrap_or(0) as usize;
+    let keep_unmatched = mode == Mode::FilesWithoutMatch;
+
+    let recs = Arc::new(Mutex::new(Vec::<FileRec>::new()));
+    let files_searched = Arc::new(AtomicU32::new(0));
+    let bytes_searched = Arc::new(AtomicU64::new(0));
+
+    build_walk_builder(opts)?.build_parallel().run(|| {
+        let recs = Arc::clone(&recs);
+        let files_searched = Arc::clone(&files_searched);
+        let bytes_searched = Arc::clone(&bytes_searched);
+        let mut searcher = build_searcher(opts, context_lines);
+
+        Box::new(move |dent| {
+            let dent = match dent {
+                Ok(d) => d,
+                Err(_) => return WalkState::Continue,
+            };
+            if !dent.file_type().is_some_and(|t| t.is_file()) {
+                return WalkState::Continue;
+            }
+            let path: &Path = dent.path();
+
+            let mut entry = FileEntry::new();
+            let (submatches, matched_lines, om_matches) = {
+                let mut sink = CollectSink {
+                    matcher,
+                    entry: &mut entry,
+                    submatches: 0,
+                    matched_lines: 0,
+                    only_matching,
+                    match_window,
+                    om_matches: Vec::new(),
+                };
+                // Per-file IO errors (permission denied, mid-file invalid UTF-8
+                // under PCRE2 utf mode, etc.) just skip that file — rg behaves the
+                // same.
+                if searcher.search_path(matcher, path, &mut sink).is_err() {
+                    return WalkState::Continue;
+                }
+                (
+                    sink.submatches,
+                    sink.matched_lines,
+                    std::mem::take(&mut sink.om_matches),
+                )
+            };
+            files_searched.fetch_add(1, Ordering::Relaxed);
+            if let Ok(metadata) = dent.metadata() {
+                bytes_searched.fetch_add(metadata.len(), Ordering::Relaxed);
+            }
+
+            let has_match = matched_lines > 0;
+            if has_match == keep_unmatched {
+                // Normal/files-only/count modes keep matched files;
+                // files-without-match keeps the rest.
+                return WalkState::Continue;
+            }
+
+            let rec = FileRec {
+                path: dent.path().to_string_lossy().into_owned(),
+                entry,
+                matched_lines,
+                submatches,
+                om_matches,
+                sort_time: capture_sort_time(opts, &dent),
+            };
+
+            if checked_push(&recs, rec) {
+                WalkState::Continue
+            } else {
+                WalkState::Quit
+            }
+        })
+    });
+
+    let recs = {
+        let mut guard = recs.lock().map_err(to_napi_err)?;
+        std::mem::take(&mut *guard)
+    };
+
+    Ok(CollectResult {
+        recs,
+        files_searched: files_searched.load(Ordering::Relaxed),
+        bytes_searched: bytes_searched.load(Ordering::Relaxed),
+        elapsed: started.elapsed(),
+    })
 }
 
 fn sort_recs(opts: &RipgrepSearchOptions, recs: &mut [FileRec]) {
@@ -414,7 +478,7 @@ fn collapse_unique_matches(matches: Vec<RipgrepMatch>, include_counts: bool) -> 
     }
 
     if include_counts {
-        unique.sort_by(|a, b| b.count.unwrap_or(1).cmp(&a.count.unwrap_or(1)));
+        unique.sort_by_key(|matched| std::cmp::Reverse(matched.count.unwrap_or(1)));
     }
 
     unique
@@ -423,9 +487,14 @@ fn collapse_unique_matches(matches: Vec<RipgrepMatch>, include_counts: bool) -> 
 fn build_result(
     opts: &RipgrepSearchOptions,
     mode: Mode,
-    mut recs: Vec<FileRec>,
-    files_searched: u32,
+    collected: CollectResult,
 ) -> RipgrepParseResult {
+    let CollectResult {
+        mut recs,
+        files_searched,
+        bytes_searched,
+        elapsed,
+    } = collected;
     sort_recs(opts, &mut recs);
 
     let context_lines = opts.context_lines.unwrap_or(0);
@@ -438,7 +507,9 @@ fn build_result(
     let only_matching = opts.only_matching.unwrap_or(false);
     let unique = opts.unique.unwrap_or(false) || opts.count_unique.unwrap_or(false);
     let count_unique = opts.count_unique.unwrap_or(false);
-    let files: Vec<RipgrepFile> = recs
+    let bytes_searched = Some(bytes_as_i64(bytes_searched));
+    let search_time = Some(elapsed_human(elapsed));
+    let mut files: Vec<RipgrepFile> = recs
         .into_iter()
         .map(|r| match mode {
             Mode::Normal if only_matching => {
@@ -474,25 +545,45 @@ fn build_result(
         })
         .collect();
 
+    // Optional AST classification: only meaningful for Normal mode (the other
+    // modes carry no per-line snippets to anchor a parse position).
+    if opts.classify_matches.unwrap_or(false) && matches!(mode, Mode::Normal) {
+        classify::classify_ripgrep_files(&mut files, classify::DEFAULT_CLASSIFY_FILE_CAP);
+    }
+
     let stats = match mode {
         Mode::Normal => RipgrepStats {
             match_count: Some(total_submatches),
             matched_lines: Some(total_matched_lines),
             files_matched: Some(files_matched),
             files_searched: Some(files_searched),
-            bytes_searched: None,
-            search_time: None,
+            bytes_searched,
+            search_time,
         },
         Mode::CountLines => RipgrepStats {
             match_count: Some(total_matched_lines),
-            ..RipgrepStats::default()
+            matched_lines: Some(total_matched_lines),
+            files_matched: Some(files_matched),
+            files_searched: Some(files_searched),
+            bytes_searched,
+            search_time,
         },
         Mode::CountMatches => RipgrepStats {
             match_count: Some(total_submatches),
-            ..RipgrepStats::default()
+            matched_lines: Some(total_matched_lines),
+            files_matched: Some(files_matched),
+            files_searched: Some(files_searched),
+            bytes_searched,
+            search_time,
         },
-        // files-only / files-without-match emitted no stats in the old parser.
-        Mode::FilesOnly | Mode::FilesWithoutMatch => RipgrepStats::default(),
+        Mode::FilesOnly | Mode::FilesWithoutMatch => RipgrepStats {
+            match_count: Some(total_submatches),
+            matched_lines: Some(total_matched_lines),
+            files_matched: Some(files_matched),
+            files_searched: Some(files_searched),
+            bytes_searched,
+            search_time,
+        },
     };
 
     RipgrepParseResult { files, stats }
@@ -536,8 +627,8 @@ pub(crate) fn search(opts: RipgrepSearchOptions) -> Result<RipgrepParseResult> {
             .ucp(true)
             .jit_if_available(true);
         let matcher = b.build(&opts.pattern).map_err(to_napi_err)?;
-        let (recs, searched) = collect(&opts, &matcher, mode)?;
-        Ok(build_result(&opts, mode, recs, searched))
+        let collected = collect(&opts, &matcher, mode)?;
+        Ok(build_result(&opts, mode, collected))
     } else {
         let mut b = RegexMatcherBuilder::new();
         b.case_insensitive(case_insensitive)
@@ -551,8 +642,8 @@ pub(crate) fn search(opts: RipgrepSearchOptions) -> Result<RipgrepParseResult> {
             opts.pattern.clone()
         };
         let matcher = b.build(&pattern).map_err(to_napi_err)?;
-        let (recs, searched) = collect(&opts, &matcher, mode)?;
-        Ok(build_result(&opts, mode, recs, searched))
+        let collected = collect(&opts, &matcher, mode)?;
+        Ok(build_result(&opts, mode, collected))
     }
 }
 
@@ -614,6 +705,12 @@ mod tests {
         assert_eq!(f.matches[1].line, 3);
         assert_eq!(r.stats.match_count, Some(2));
         assert_eq!(r.stats.files_matched, Some(1));
+        assert!(r.stats.bytes_searched.unwrap_or_default() > 0);
+        assert!(r
+            .stats
+            .search_time
+            .as_deref()
+            .is_some_and(|s| s.ends_with('s')));
     }
 
     #[test]
@@ -678,6 +775,8 @@ mod tests {
         assert_eq!(r.files[0].match_count, 1);
         assert!(r.files[0].matches.is_empty());
         assert!(r.files[0].path.ends_with("a.txt"));
+        assert_eq!(r.stats.files_matched, Some(1));
+        assert!(r.stats.bytes_searched.unwrap_or_default() > 0);
     }
 
     #[test]

@@ -227,11 +227,15 @@ function renderList(sc: PRSearchResult, limit: number): string {
     const num = bold(`#${pr.number ?? '?'}`);
     const state = stateBadge(pr);
     const title = pr.title ?? '';
-    const author = dim(`by ${authorName(pr.author)}`);
+    // List mode is deliberately lean and omits per-PR author; only render the
+    // "by …" segment when an author is actually present (detail/history modes).
+    const authorSeg = pr.author
+      ? `  ${dim(`by ${authorName(pr.author)}`)}`
+      : '';
     const when = dim(relativeTime(pr.mergedAt ?? pr.updatedAt ?? pr.createdAt));
     const tags = labelNames(pr.labels);
     const labelStr = tags.length ? dim(` [${tags.join(', ')}]`) : '';
-    lines.push(`  ${num}  ${state}  ${title}${labelStr}  ${author}  ${when}`);
+    lines.push(`  ${num}  ${state}  ${title}${labelStr}${authorSeg}  ${when}`);
   }
 
   if (total > shown.length) {

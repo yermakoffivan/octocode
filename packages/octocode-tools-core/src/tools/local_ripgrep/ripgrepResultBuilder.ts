@@ -4,8 +4,17 @@ import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-
 import type { SearchStats } from '../../utils/core/types.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
 import type { RipgrepQuery } from './scheme.js';
+import {
+  rankFiles,
+  isLowSignalQueryPath,
+  RANK_CANDIDATE_CAP,
+  type FileScore,
+  type RankContext,
+  type RankSort,
+  type RankingProfileId,
+} from './rankingProfile.js';
 
-export type LocalSearchEngine = 'rg' | 'grep' | 'structural';
+export type LocalSearchEngine = 'rg' | 'structural';
 
 type NextToolName =
   | 'localGetFileContent'
@@ -84,11 +93,29 @@ export async function buildSearchResult(
   warnings: string[],
   stats?: SearchStats
 ): Promise<LocalSearchCodeToolResult> {
-  const filesWithMetadata = parsedFiles;
+  const sort: RankSort = (configuredQuery.sort as RankSort) ?? 'relevance';
+  // Ranking enriches ordering; it must never gate results. Any unexpected
+  // failure degrades to the engine's original order so every matched file is
+  // still returned to the tool.
+  let ranked: ReturnType<typeof rankFiles>;
+  try {
+    ranked = rankFiles(parsedFiles, sort, buildRankContext(configuredQuery), {
+      debug: Boolean(configuredQuery.debugRanking),
+    });
+  } catch {
+    ranked = { files: parsedFiles, cappedCandidates: 0 };
+    warnings.push(
+      'Relevance ranking failed; returning results in unranked engine order.'
+    );
+  }
+  const filesWithMetadata = ranked.files;
+  const rankDebug = ranked.debug;
 
-  filesWithMetadata.sort((a, b) =>
-    compareRipgrepFilesByRelevance(a, b, configuredQuery)
-  );
+  if (ranked.cappedCandidates > 0) {
+    warnings.push(
+      `Ranking scored the top ${RANK_CANDIDATE_CAP} of ${parsedFiles.length} matched files (truncated ${ranked.cappedCandidates} low-match-count candidates for relevance). Narrow the query or use sort:"matchCount" to rank all files by count.`
+    );
+  }
 
   let limitedFiles = filesWithMetadata;
   let wasLimited = false;
@@ -148,6 +175,7 @@ export async function buildSearchResult(
         ? undefined
         : file.matches?.slice(matchStartIdx, matchEndIdx);
 
+      const debugScore = rankDebug?.get(file.path);
       const result = {
         path: file.path,
         ...(isPathListMode
@@ -156,6 +184,16 @@ export async function buildSearchResult(
               matchCount: isCountMode ? file.matchCount || 1 : totalFileMatches,
             }),
         ...(paginatedMatches !== undefined && { matches: paginatedMatches }),
+        ...(debugScore
+          ? {
+              ranking: {
+                score: debugScore.score,
+                profile: debugScore.profile,
+                pathRole: debugScore.pathRole,
+                reasons: debugScore.reasons,
+              },
+            }
+          : {}),
         pagination:
           !isFileListMode && totalFileMatches > matchesPerPage
             ? {
@@ -166,7 +204,7 @@ export async function buildSearchResult(
                 hasMore: matchPage < totalMatchPages,
               }
             : undefined,
-      } as LocalSearchCodeFile;
+      } as LocalSearchCodeFile & { ranking?: RankingDebug };
       return result;
     }
   );
@@ -234,6 +272,7 @@ export async function buildSearchResult(
 
   const fullResult: LocalSearchResultWithNext = {
     searchEngine,
+    ...(stats ? { stats } : {}),
     files: finalFiles,
     pagination: {
       currentPage,
@@ -478,13 +517,32 @@ function _getStructuredResultSizeHints(
   return hints;
 }
 
-function compareRipgrepFilesByRelevance(
-  a: LocalSearchCodeFile,
-  b: LocalSearchCodeFile,
-  _query: RipgrepQuery
-): number {
-  const matchDelta = (b.matchCount ?? 0) - (a.matchCount ?? 0);
-  if (matchDelta !== 0) return matchDelta;
+type RankingDebug = {
+  score: number;
+  profile: RankingProfileId;
+  pathRole: FileScore['pathRole'];
+  reasons: string[];
+};
 
-  return a.path.localeCompare(b.path);
+/** Build the deterministic ranking context from the validated query. */
+function buildRankContext(query: RipgrepQuery): RankContext {
+  const profileOverride = query.rankingProfile as
+    | RankContext['profileOverride']
+    | undefined;
+  // If the user explicitly scoped the search into a low-signal/test/docs area
+  // (via include globs or a path that targets such an area), don't penalize
+  // those roles. Path detection is anchored to segments — "latest/" / "contest/"
+  // must NOT count (Fix #1).
+  const explicitLowSignal = Boolean(
+    query.include?.length || isLowSignalQueryPath(query.path)
+  );
+  return {
+    queryPath: query.path,
+    keyword: query.keywords,
+    langType: query.langType,
+    caseSensitive: query.caseSensitive,
+    wholeWord: query.wholeWord,
+    profileOverride,
+    explicitLowSignal,
+  };
 }

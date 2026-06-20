@@ -114,7 +114,7 @@ The remaining gap is structural `metavarRanges` and a similar `next` map inside
 
 Strengths:
 
-- `searchEngine` distinguishes `rg`, `grep`, and `structural`.
+- `searchEngine` distinguishes `rg` and `structural`.
 - `files[].path` is enough to fetch content.
 - `files[].matches[].line` is usable as an LSP `lineHint`.
 - `column`, `endLine`, and `endColumn` are present for structural matches.

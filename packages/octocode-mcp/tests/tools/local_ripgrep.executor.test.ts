@@ -100,9 +100,24 @@ describe('executeRipgrepSearchInternal - branch coverage', () => {
   });
 
   it('returns empty when the native search yields no files', async () => {
-    mocks.searchRipgrep.mockResolvedValue(emptyResult);
+    mocks.searchRipgrep.mockResolvedValue(
+      makeResult([], {
+        matchCount: 0,
+        filesSearched: 7,
+        bytesSearched: 2048,
+        searchTime: '0.002000s',
+      })
+    );
     const result = await executeRipgrepSearchInternal(baseQuery as any);
     expect(result.status).toBe('empty');
+    expect(result).toMatchObject({
+      stats: {
+        matchCount: 0,
+        filesSearched: 7,
+        bytesSearched: 2048,
+        searchTime: '0.002000s',
+      },
+    });
   });
 
   it('returns empty without runtime validation warnings', async () => {

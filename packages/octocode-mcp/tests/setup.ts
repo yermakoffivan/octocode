@@ -260,8 +260,6 @@ const githubFetchContentSchema = {
 const mockDynamicHints = {
   parallelTip: ['Use parallel queries for faster results'],
   multipleFiles: ['Multiple files found - use localGetFileContent to read'],
-  grepFallback: ['Using grep fallback (ripgrep unavailable)'],
-  grepFallbackEmpty: ['Try with ripgrep for better results'],
   nodeModulesSearch: [
     'Consider searching in packages/ instead of node_modules',
   ],

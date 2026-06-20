@@ -785,13 +785,23 @@ export const findFilesCommand: CLICommand = {
   ],
   handler: async args => {
     const jsonOutput = getBool(args.options, 'json');
-    const query = args.args[0] ?? '';
-    const targetArg = args.args[1] ?? '';
+    const hasName = Boolean(getString(args.options, 'name'));
+    let query = args.args[0] ?? '';
+    let targetArg = args.args[1] ?? '';
+    // `find --name <glob> [path]`: when --name supplies the filter and only one
+    // positional is given, that positional is the PATH/target, not the query.
+    if (hasName && !targetArg && query) {
+      targetArg = query;
+      query = '';
+    }
     const source = parseSourceMode(getString(args.options, 'source'));
     const search = parseSearchMode(getString(args.options, 'search'));
 
-    if (!query) {
-      error('Provide a file query.', jsonOutput);
+    if (!query && !hasName) {
+      error(
+        'Provide a file query, or use --name to supply the filter.',
+        jsonOutput
+      );
       return;
     }
     if (!source) {

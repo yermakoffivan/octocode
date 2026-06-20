@@ -115,8 +115,6 @@ Env-only options:
 | `OCTOCODE_BULK_QUERY_TIMEOUT_MS` | `60000` | Per-query timeout inside a bulk tool call (ms). |
 | `OCTOCODE_TOOL_TIMEOUT_MS` | `60000` | Outer timeout for the entire tool call (ms). |
 | `OCTOCODE_COMMAND_CHECK_TIMEOUT_MS` | `5000` | System command availability check timeout (ms). |
-| `OCTOCODE_RG_PATH` | unset | Explicit path to a ripgrep binary. Overrides bundled and `@vscode/ripgrep` lookups. |
-| `OCTOCODE_DISABLE_VSCODE_RIPGREP` | `0` | Set to `1` to skip `@vscode/ripgrep` lookup and use only `OCTOCODE_RG_PATH` or PATH. |
 | `OCTOCODE_CACHE_TTL_MS` | `86400000` | Clone cache TTL in ms. |
 | `OCTOCODE_MAX_CACHE_SIZE` | `2147483648` | Clone cache size limit in bytes. |
 | `OCTOCODE_MAX_CLONES` | `50` | Maximum cached clone count. |

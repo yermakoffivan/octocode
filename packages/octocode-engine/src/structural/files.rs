@@ -33,14 +33,22 @@ pub fn search_files(
     let anchor = query.literal_anchor();
 
     let overrides = build_overrides(&root, &include)?;
-    let mut candidate_files = collect_candidate_files(&root, overrides, &exclude_dir, max_files)?;
-    let mut skipped_by_pre_filter = 0u32;
-    if let Some(anchor) = anchor {
-        let matching_paths = matching_anchor_paths(&root, &include, &exclude_dir, anchor)?;
-        let before = candidate_files.len();
-        candidate_files.retain(|path| matching_paths.contains(path.to_string_lossy().as_ref()));
-        skipped_by_pre_filter = before.saturating_sub(candidate_files.len()) as u32;
-    }
+    let (candidate_files, skipped_by_pre_filter) = if let Some(anchor) = anchor {
+        matching_anchor_candidate_files(
+            &root,
+            &include,
+            &exclude_dir,
+            overrides,
+            anchor,
+            max_files,
+            true,
+        )?
+    } else {
+        (
+            collect_candidate_files(&root, overrides, &exclude_dir, max_files)?,
+            0,
+        )
+    };
 
     let mut by_ext: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
     for path in candidate_files {
@@ -452,6 +460,56 @@ fn matching_anchor_paths(
     .map_err(|err| format!("literal prefilter failed for anchor '{anchor}': {err}"))?;
 
     Ok(result.files.into_iter().map(|file| file.path).collect())
+}
+
+fn matching_anchor_candidate_files(
+    root: &Path,
+    include: &[String],
+    exclude_dir: &[String],
+    overrides: Override,
+    anchor: &str,
+    max_files: usize,
+    supported_only: bool,
+) -> Result<(Vec<PathBuf>, u32), String> {
+    let search_include = anchor_search_include_globs(include, supported_only);
+    let result = crate::ripgrep_search::search(RipgrepSearchOptions {
+        path: root.to_string_lossy().into_owned(),
+        pattern: anchor.to_owned(),
+        fixed_string: Some(true),
+        case_sensitive: Some(true),
+        files_only: Some(true),
+        include: (!search_include.is_empty()).then_some(search_include),
+        exclude_dir: (!exclude_dir.is_empty()).then(|| exclude_dir.to_vec()),
+        sort: Some("path".to_owned()),
+        ..RipgrepSearchOptions::default()
+    })
+    .map_err(|err| format!("literal prefilter failed for anchor '{anchor}': {err}"))?;
+
+    let files_searched = result.stats.files_searched.unwrap_or_default();
+    let mut matched_supported = 0u32;
+    let mut out = Vec::new();
+    for file in result.files {
+        let path = PathBuf::from(file.path);
+        if !file_is_candidate(&path, &overrides, supported_only) {
+            continue;
+        }
+        matched_supported = matched_supported.saturating_add(1);
+        if out.len() < max_files {
+            out.push(path);
+        }
+    }
+
+    Ok((out, files_searched.saturating_sub(matched_supported)))
+}
+
+fn anchor_search_include_globs(include: &[String], supported_only: bool) -> Vec<String> {
+    if !include.is_empty() || !supported_only {
+        return include.to_vec();
+    }
+    languages::supported_extensions()
+        .into_iter()
+        .map(|ext| format!("*.{ext}"))
+        .collect()
 }
 
 fn default_exclude_dirs() -> Vec<String> {

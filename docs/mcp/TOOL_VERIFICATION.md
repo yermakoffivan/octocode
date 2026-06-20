@@ -148,7 +148,7 @@ Primary code: [src/tools/local_ripgrep/](https://github.com/bgauryy/octocode/tre
 | Params | Verify `path`, `pattern`, search mode, `fixedString`, `perlRegex`, `wholeWord`, `caseSensitive`, type/include/exclude/excludeDir, hidden/noIgnore, `filesOnly`, `filesWithoutMatch`, `count`, `countMatches`, `contextLines`, `matchContentLength`, `filesPerPage`, `matchesPerPage`, `filePageNumber`, `charOffset`, `charLength`. |
 | Hidden fields | MCP schema must not expose hidden performance or diagnostic knobs such as threads, multiline, binary, encoding, sort, debug, passthru, or symlink following. |
 | Mutex | `filesOnly` conflicts with `filesWithoutMatch`; `fixedString` conflicts with `perlRegex`. Violations become per-query errors. |
-| Implementation | Uses the bundled `@vscode/ripgrep` path only. No grep fallback. Invalid regex, path errors, and no-permission paths are structured errors. |
+| Implementation | Runs ripgrep in-process through the native engine. No external `rg` binary and no grep fallback. Invalid regex, path errors, and no-permission paths are structured errors. |
 | Pagination | File and match pagination work independently. `line` values are stable 1-indexed `lineHint` inputs for LSP tools. |
 | Empty | Empty hints name active filters such as type, include, exclude, excludeDir, or path. No-filter empty stays silent. |
 | Research quality | Results must include file path, match count, line, column, snippet value, and enough context to drive precise `lspGetSemantics` queries such as `type="definition"`, `type="references"`, `type="callers"`, or `type="callees"`. |

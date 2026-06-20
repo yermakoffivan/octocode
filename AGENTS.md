@@ -116,7 +116,17 @@ request → interface registers tool (schema from octocode-core)
 
 **Methodology:** Plan → TDD (failing test → `yarn test` → fix) → `yarn lint` → verify. Prefer `octocode-local` MCP tools for research (LSP → local search → GitHub). Use Linux commands (`mv`/`cp`/`sed`) and batch file edits.
 
-> **🐙 IMPORTANT — dogfood the CLI for ALL file/research operations.** For reading, searching, finding, structure, history, and symbol navigation, drive the built CLI at `packages/octocode/out/octocode.js` (e.g. `node packages/octocode/out/octocode.js ls|cat|grep|find|lsp …`) instead of reaching for raw shell `cat`/`grep`/`find`. We use the product on the product. **After a CLI session, log a dated one-liner in [`.octocode/CLI_OVERVIEW.md`](.octocode/CLI_OVERVIEW.md): a *good flow* under "Good flows" AND any friction under "Known limits".** Why both: issues drive fixes, and good flows are the reusable playbook — capturing what worked is how the next session moves faster, not just what broke. Be concise and actionable (the command/flow + the win or the gap), e.g. "`grep --only-matching --count` enumerated distinct hosts off a minified bundle — no `sort -u`". (`yarn build` first; `out/` is stale until you rebuild after core/CLI edits.)
+> ### 🐙 Dogfood the CLI — and log what you learn
+>
+> **1. Use it for ALL file/research work.** For reading, searching, finding, structure, history, symbol navigation, and binary inspection, drive the built CLI at `packages/octocode/out/octocode.js` (`ls`/`cat`/`grep`/`find`/`lsp`/`binary`/`diff`/`pkg`/`history`/`pr`/`clone`) instead of raw shell `cat`/`grep`/`find`. We use the product on the product — every session is a chance to find real gaps and good flows.
+>
+> **2. Build first.** `yarn build` after any engine/core/CLI edit — `out/` is stale until you rebuild (the CLI warns when `src` is newer than the built entrypoint).
+>
+> **3. After the session, append a dated one-liner to [`.octocode/CLI_OVERVIEW.md`](.octocode/CLI_OVERVIEW.md)** — keep each concise and actionable (command/flow + the win or the gap):
+> - **Best practice → `## Good flows`** — a command or chain that worked well and is worth repeating. *Why: good flows are the reusable playbook; capturing what worked speeds up the next session — not just recording what broke.* e.g. `` `grep --only-matching --count` enumerated distinct hosts off a minified bundle — no `sort -u`. ``
+> - **Issue → `## Known limits`** — friction, a bug, or **a doc gap/inaccuracy you hit** (a flag that isn't in the REFERENCE, output that contradicts the docs). *Why: issues drive the next fix.* e.g. `` `binary --strings` silently truncated past 64MB — no continuation hint. ``
+>
+> The file is a **review log, not a manual** — record signal; don't turn it into instructions.
 
 **No backward compatibility by default:** this repo carries **no deprecation or backward-compat burden** — refactor freely, rename, and delete dead paths instead of leaving shims. Add compat layers or migration aliases **only when the user explicitly asks**.
 

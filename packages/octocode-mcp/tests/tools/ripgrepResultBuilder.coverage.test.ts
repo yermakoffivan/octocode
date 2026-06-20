@@ -174,11 +174,24 @@ describe('buildSearchResult - exact localSearchCode output fields', () => {
       buildSearchResult(files, baseQuery(), 'rg', [])
     ).resolves.toMatchObject({ searchEngine: 'rg' });
     await expect(
-      buildSearchResult(files, baseQuery(), 'grep', [])
-    ).resolves.toMatchObject({ searchEngine: 'grep' });
-    await expect(
       buildSearchResult(files, baseQuery(), 'structural', [])
     ).resolves.toMatchObject({ searchEngine: 'structural' });
+  });
+
+  it('preserves native search stats for observability', async () => {
+    const files = [makeFile('/test/a.ts', 1)];
+    const stats = {
+      matchCount: 1,
+      matchedLines: 1,
+      filesMatched: 1,
+      filesSearched: 3,
+      bytesSearched: 1234,
+      searchTime: '0.001000s',
+    };
+
+    await expect(
+      buildSearchResult(files, baseQuery(), 'rg', [], stats)
+    ).resolves.toMatchObject({ stats });
   });
 });
 

@@ -29,6 +29,13 @@ pub struct RipgrepMatch {
     pub value: String,
     /// Frequency for this value when `count_unique` is enabled.
     pub count: Option<u32>,
+    /// AST node-kind label (declaration|import|export|callsite|identifier|
+    /// comment|string|configKey|heading) when `classify_matches` is enabled.
+    /// `None` when classification was off, the language is unsupported, or the
+    /// file failed to parse.
+    pub kind: Option<String>,
+    /// Deterministic relevance hint (0.0..1.0) derived from `kind`.
+    pub score_hint: Option<f64>,
 }
 
 #[napi(object)]
@@ -119,6 +126,10 @@ pub struct RipgrepSearchOptions {
     pub sort_reverse: Option<bool>,
     /// Max Unicode chars per assembled snippet (default 500).
     pub max_snippet_chars: Option<u32>,
+    /// When true, label each match with its AST node kind (tree-sitter) for
+    /// language-aware ranking. Optional and capped by the caller; degrades to
+    /// unlabeled matches on unsupported/unparseable files.
+    pub classify_matches: Option<bool>,
 
     // ── only-matching (rg -o) ──────────────────────────────────────────────
     /// Emit one match per *submatch* with `value` set to the matched span
