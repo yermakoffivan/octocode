@@ -1,3 +1,4 @@
+use crate::lsp::commands::{has_path_separator, is_executable_path, is_rejected_shell};
 use napi::{Error, Result, Status};
 use std::path::{Path, PathBuf};
 
@@ -90,47 +91,6 @@ fn canonical_string(path: &Path) -> Result<String> {
         .to_str()
         .map(str::to_owned)
         .ok_or_else(|| Error::new(Status::InvalidArg, "Path is not valid UTF-8"))
-}
-
-fn has_path_separator(command: &str) -> bool {
-    command.contains('/') || command.contains('\\')
-}
-
-fn is_rejected_shell(command: &str) -> bool {
-    let name = Path::new(command)
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_ascii_lowercase();
-    matches!(
-        name.as_str(),
-        "sh" | "bash"
-            | "zsh"
-            | "fish"
-            | "cmd"
-            | "cmd.exe"
-            | "powershell"
-            | "powershell.exe"
-            | "pwsh"
-            | "pwsh.exe"
-    )
-}
-
-fn is_executable_path(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        path.metadata()
-            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
 }
 
 #[cfg(test)]

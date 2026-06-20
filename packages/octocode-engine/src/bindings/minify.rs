@@ -41,63 +41,40 @@ pub fn apply_content_view_minification(content: String, file_path: String) -> St
 /// `commentTypes` accepts a single string or array of strings.
 #[napi(js_name = "removeComments")]
 pub fn remove_comments(content: String, comment_types: serde_json::Value) -> String {
-    let groups: Vec<String> = match comment_types {
-        serde_json::Value::String(s) => vec![s],
-        serde_json::Value::Array(arr) => arr
-            .into_iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_owned()))
-            .collect(),
-        _ => return content,
-    };
-    let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
-    crate::comment_remover::remove_comments(&content, &refs)
+    let groups = parse_comment_groups(&Some(comment_types));
+    remove_comments_for_groups(&content, &groups)
 }
 
 /// Conservative strategy: strip the configured comment groups, collapse blank
 /// runs, preserve indentation.
 #[napi(js_name = "minifyConservativeCore")]
 pub fn minify_conservative_core(content: String, config: FileTypeMinifyConfig) -> String {
-    let groups = parse_comment_groups(&config.comments);
-    let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
-    crate::strategies::minify_conservative(
-        &content,
-        if refs.is_empty() { None } else { Some(&refs) },
-    )
+    with_comment_refs(&config, |comments| {
+        crate::strategies::minify_conservative(&content, comments)
+    })
 }
 
 /// Aggressive strategy: strip comments, collapse all whitespace, tighten
 /// punctuation. Lossy — for token-budget views only.
 #[napi(js_name = "minifyAggressiveCore")]
 pub fn minify_aggressive_core(content: String, config: FileTypeMinifyConfig) -> String {
-    let groups = parse_comment_groups(&config.comments);
-    let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
-    crate::strategies::minify_aggressive(&content, if refs.is_empty() { None } else { Some(&refs) })
+    with_comment_refs(&config, |comments| {
+        crate::strategies::minify_aggressive(&content, comments)
+    })
 }
 
 /// Compact JSON to a single line. JSONC/JSON5 noise (comments, trailing
 /// commas) is stripped before parsing; unparseable input is returned trimmed.
 #[napi(js_name = "minifyJsonCore")]
 pub fn minify_json_core(content: String) -> MinifyResult {
-    let (out, failed) = crate::strategies::minify_json_core_inner(&content);
-    MinifyResult {
-        content: out,
-        failed,
-        r#type: "json".to_owned(),
-        reason: None,
-    }
+    json_minify_result(crate::strategies::minify_json_core_inner(&content))
 }
 
 /// Readable JSON view: keeps formatting, strips JSONC noise and trailing
 /// whitespace, collapses blank runs. Valid JSON passes through unchanged.
 #[napi(js_name = "minifyJsonReadable")]
 pub fn minify_json_readable(content: String) -> MinifyResult {
-    let (out, failed) = crate::strategies::minify_json_readable_inner(&content);
-    MinifyResult {
-        content: out,
-        failed,
-        r#type: "json".to_owned(),
-        reason: None,
-    }
+    json_minify_result(crate::strategies::minify_json_readable_inner(&content))
 }
 
 /// Whitespace-only code cleanup: trim line ends, collapse 3+ blank lines,
@@ -160,6 +137,29 @@ pub fn minify_html_quality(content: String) -> String {
 #[napi(js_name = "stripPythonDocstrings")]
 pub fn strip_python_docstrings(content: String) -> String {
     crate::comment_remover::strip_python_docstrings(&content)
+}
+
+fn remove_comments_for_groups(content: &str, groups: &[String]) -> String {
+    let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
+    crate::comment_remover::remove_comments(content, &refs)
+}
+
+fn with_comment_refs<R>(
+    config: &FileTypeMinifyConfig,
+    run: impl FnOnce(Option<&[&str]>) -> R,
+) -> R {
+    let groups = parse_comment_groups(&config.comments);
+    let refs: Vec<&str> = groups.iter().map(String::as_str).collect();
+    run((!refs.is_empty()).then_some(refs.as_slice()))
+}
+
+fn json_minify_result((content, failed): (String, bool)) -> MinifyResult {
+    MinifyResult {
+        content,
+        failed,
+        r#type: "json".to_owned(),
+        reason: None,
+    }
 }
 
 #[cfg(test)]

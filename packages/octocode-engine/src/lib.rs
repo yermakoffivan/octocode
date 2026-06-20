@@ -1,23 +1,18 @@
-mod apply;
 mod bindings;
-mod comment_remover;
-mod config;
-mod diff_parser;
-mod file_extension;
-mod fs_query;
-mod line_extractor;
 mod lsp;
-mod minifier;
-mod ripgrep_parser;
-mod ripgrep_pattern;
-mod ripgrep_search;
+mod minify;
+mod search;
 mod security;
 mod signatures;
-mod strategies;
 mod structural;
+mod text;
 mod types;
-mod utf8_offsets;
-mod yaml_utils;
+
+pub(crate) use minify::{apply, comment_remover, config, minifier, strategies};
+pub(crate) use search::{
+    fs_query, line_extractor, ripgrep_parser, ripgrep_pattern, ripgrep_search,
+};
+pub(crate) use text::{diff_parser, file_extension, utf8_offsets, yaml_utils};
 
 pub use bindings::*;
 pub use lsp::client::NativeLspClient;

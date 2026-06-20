@@ -1,4 +1,5 @@
 pub mod client;
+mod commands;
 pub mod config;
 pub mod grammar;
 pub mod json_rpc;

@@ -1,3 +1,4 @@
+use crate::lsp::commands::{command_resolves_to_executable, is_executable_path, is_rejected_shell};
 use crate::lsp::grammar::grammar_for_file;
 use crate::lsp::types::JsLanguageServerConfig;
 use serde::Deserialize;
@@ -320,26 +321,6 @@ fn user_config_paths(workspace_root: &str) -> Vec<PathBuf> {
     paths
 }
 
-fn is_rejected_shell(command: &str) -> bool {
-    let name = Path::new(command)
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_ascii_lowercase();
-    matches!(
-        name.as_str(),
-        "sh" | "bash"
-            | "zsh"
-            | "fish"
-            | "cmd"
-            | "cmd.exe"
-            | "powershell"
-            | "powershell.exe"
-            | "pwsh"
-            | "pwsh.exe"
-    )
-}
-
 fn is_rust_analyzer_command(command: &str) -> bool {
     Path::new(command)
         .file_name()
@@ -424,29 +405,6 @@ fn current_node_command() -> Option<String> {
         .ok()
         .filter(|path| is_executable_path(path))
         .map(|path| path.to_string_lossy().into_owned())
-}
-
-fn command_resolves_to_executable(command: &str) -> bool {
-    which::which(command)
-        .map(|path| is_executable_path(&path))
-        .unwrap_or(false)
-}
-
-fn is_executable_path(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        path.metadata()
-            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
 }
 
 fn find_python_user_script(script_name: &str) -> Option<String> {
