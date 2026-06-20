@@ -22,27 +22,11 @@ import { attachRawResponseChars } from '../../utils/response/charSavings.js';
 
 type FindFilesQuery = WithOptionalMeta<UpstreamFindFilesQuery>;
 
-const DEFAULT_FIND_EXCLUDE_DIRS = [
-  'node_modules',
-  'dist',
-  '.git',
-  'coverage',
-  'build',
-  '.next',
-  '.nuxt',
-  '.svelte-kit',
-  '.turbo',
-  '.cache',
-  '.parcel-cache',
-  'out',
-  'target',
-  '.octocode',
-  '.cursor',
-  '.vscode',
-  '.idea',
-  '.claude',
-  '.context',
-];
+// No directories are excluded by default: `find` must never silently hide
+// real files (node_modules, build/, dist/, out/, target/, …). Hiding them
+// broke inspecting installed apps and compiled artifacts. Callers that want to
+// trim a search pass `excludeDir` explicitly.
+const DEFAULT_FIND_EXCLUDE_DIRS: string[] = [];
 
 function computeEffectiveExcludeDirs(
   searchPath: string,

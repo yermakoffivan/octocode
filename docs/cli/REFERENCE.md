@@ -44,7 +44,7 @@ octocode context [--full] [--json]
 | `history` | Inspect commit history for a GitHub repo, directory, or file. |
 | `repo` | Discover GitHub repositories. |
 | `pkg` | Search npm packages and hand off to source repositories. |
-| `binary` | Identify binaries, list/extract archives, decompress streams, or read strings. |
+| `binary` | Inspect binaries (format/symbols/imports/deps), list/extract archives, decompress streams, or read strings. |
 | `unzip` | Unpack an archive to `<octocode-home>/unzip/<name>-<timestamp>/`. |
 | `clone` | Clone a GitHub repo or sparse subtree to the Octocode home repo cache. |
 | `lsp` | Run symbol-anchored semantic queries: definition, references, callers, hover, type/implementation. |
@@ -506,11 +506,11 @@ octocode lsp packages/octocode/src/cli/index.ts --type hover --symbol runCLI --l
 ```
 binary <file>
     (no flags)           auto-detect mode from extension
+    --inspect            structure of a native binary: format, arch, symbols, imports, exports, sections, deps
     --list               list archive entries
     --extract <entry>    extract one archive member (exact path from --list)
     --strings            readable strings from a native binary
     --decompress         decompress a single-stream file
-    --identify           file type and magic bytes only
     --match <s>          filter extracted/decompressed lines
     --min-length <n>     strings: shortest run to keep (default 8)
     --max-entries <n>    list: cap entries
@@ -523,7 +523,7 @@ binary <file>
     --json
 ```
 
-Always run `--identify` or no flags first. Use `--list` before `--extract` — do not guess entry names.
+Inspection is fully native (no `file`/`xxd`/`strings`/binutils needed). Native binaries and unrecognized files default to `--inspect`; use `--list` before `--extract` — do not guess entry names.
 
 Examples:
 
@@ -531,6 +531,7 @@ Examples:
 octocode binary archive.zip --list
 octocode binary archive.zip --extract src/index.ts
 octocode binary release.tar.gz --decompress
+octocode binary lib.node                 # inspect: format, symbols, deps
 octocode binary lib.node --strings --min-length 12
 ```
 

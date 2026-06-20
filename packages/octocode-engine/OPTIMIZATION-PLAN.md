@@ -24,7 +24,7 @@ modules:
 - `src/minify/` owns full minification, content-view minification, strategy
   dispatch, and the 1 MiB content guard.
 - `src/structural/` owns AST search, query validation, file traversal, literal
-  prefiltering, and ast-grep integration.
+  prefiltering, and structural grep integration.
 - `src/lsp/` owns native LSP support, command validation, fuzzy position
   resolution, URI/path handling, and workspace detection.
 - `src/security/` owns secret detection and sanitization.
@@ -243,7 +243,7 @@ Primary files:
 - `src/structural/files.rs`
 - `src/structural/mod.rs`
 - `tests/ffi.test.ts`
-- `benchmark/ast/check-ast.mjs`
+- `packages/octocode-benchmark/benchmark/ast/check-ast.mjs`
 
 Work:
 
@@ -378,9 +378,9 @@ Acceptance gates:
 
 Primary files:
 
-- `benchmark/`
-- `benchmark/README.md`
-- `benchmark/SUPPORT.md`
+- `packages/octocode-benchmark/benchmark/`
+- `packages/octocode-benchmark/benchmark/README.md`
+- `packages/octocode-benchmark/benchmark/SUPPORT.md`
 - `tests/ffi.test.ts`
 - domain-specific Rust unit tests
 

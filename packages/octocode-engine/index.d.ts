@@ -297,6 +297,54 @@ export declare function getSupportedSignatureExtensions(): Array<string>
 
 export declare function getSupportedStructuralExtensions(): Array<string>
 
+/**
+ * Structural inspection of a binary (executable / object / archive) file.
+ * Identity fields are always populated; the list fields are populated only when
+ * the file is a recognized executable format goblin could parse.
+ */
+export interface BinaryInspectInfo {
+  format: string
+  description: string
+  magicHex: string
+  arch?: string
+  bits?: number
+  endianness?: string
+  stripped?: boolean
+  entry?: string
+  symbols: Array<string>
+  imports: Array<string>
+  exports: Array<string>
+  sections: Array<string>
+  libraries: Array<string>
+  symbolCount: number
+  importCount: number
+  exportCount: number
+  truncated: boolean
+  notes: Array<string>
+}
+
+export interface BinaryStrings {
+  strings: Array<string>
+  totalFound: number
+  truncated: boolean
+}
+
+/**
+ * Native binary inspection (format lane). Parses `path` as an executable /
+ * object / archive and returns its identity plus — for recognized executable
+ * formats — symbols, imports, exports, sections and dynamic dependencies.
+ * Never throws on malformed input (degrades to magic-byte identity + a note);
+ * only unreadable / oversized files reject.
+ */
+export declare function inspectBinaryNative(path: string): BinaryInspectInfo
+
+/**
+ * Native strings extraction. Recovers printable ASCII **and** UTF-16 (LE/BE)
+ * runs of at least `minLength` from `path`, longest-first, optionally hex
+ * offset-prefixed.
+ */
+export declare function extractBinaryStringsNative(path: string, minLength: number, includeOffsets: boolean): BinaryStrings
+
 /** Check whether `command` is available on `PATH`. */
 export declare function isCommandAvailable(command: string): boolean
 
@@ -669,7 +717,7 @@ export interface StructuralMatch {
 
 /**
  * Structural (AST) search — octocode's L2 layer. Resolves the grammar from
- * `file_path`'s extension and matches an ast-grep `pattern` OR a YAML `rule`
+ * `file_path`'s extension and matches an Octocode structural `pattern` OR a YAML `rule`
  * (exactly one). Returns node ranges (1-based lines, ready as `lineHint`s)
  * plus captured metavariables. Throws on unsupported extension, invalid
  * pattern/rule, or both/neither query supplied.

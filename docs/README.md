@@ -49,6 +49,7 @@ Install, run, and manage Octocode from the terminal.
 
 | Doc | When to read |
 |-----|--------------|
+| [Security Model](https://github.com/bgauryy/octocode/blob/main/docs/SECURITY.md) | Secret redaction (in + out), sanitization pipeline, path/command safety, credentials |
 | [Development Guide](https://github.com/bgauryy/octocode/blob/main/docs/DEVELOPMENT_GUIDE.md) | Monorepo setup, commands, testing standards |
 | [Skills Guide](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md) | Install, build, and browse the skills marketplace |
 | [Pi Setup Guide](https://github.com/bgauryy/octocode/blob/main/docs/PI_SETUP_GUIDE.md) | Use Octocode inside earendil-works/pi via `pi-mcp-adapter` |

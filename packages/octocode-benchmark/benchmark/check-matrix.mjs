@@ -17,10 +17,9 @@
 import { writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { engine, engineRoot } from './_engine.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const engine = createRequire(import.meta.url)(join(here, '..', 'index.cjs'))
 
 // Server binary per LSP language id (documentation — the engine is the source
 // of truth for WHICH languages have a server; this names the binary it spawns).
@@ -90,7 +89,7 @@ for (const ext of allExts) {
   let lsp = '—'
   let lspId = null
   let cfgL = null
-  try { cfgL = engine.getLanguageServerForFile(path, here) } catch { /* */ }
+  try { cfgL = engine.getLanguageServerForFile(path, engineRoot) } catch { /* */ }
   if (cfgL) {
     lspId = cfgL.languageId
     if (!cfgL.command) { lsp = `${cfgL.languageId}(no-server)`; anomalies.push(`lsp ${ext}: server config has no command`) }

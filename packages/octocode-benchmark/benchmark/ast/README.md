@@ -16,7 +16,7 @@ Per grammar:
    matches any node sequence, so `>0` proves the grammar loaded and parsed the
    real file).
 2. **MATCH** — `structuralSearch(<canonical snippet>, <pattern>)` resolves the
-   expected metavars (proves the ast-grep query engine, not just the parser).
+   expected metavars (proves the structural query engine, not just the parser).
 3. **SIGNATURE** — signature-tier grammars must return a non-empty skeleton from
    `extractSignatures` on both the canonical snippet and the real sample.
 

@@ -85,6 +85,8 @@ const MINIFIER_FUNCTION_EXPORTS = [
   'getSupportedJsTsExtensions',
   'structuralSearchFiles',
   'getSupportedStructuralExtensions',
+  'inspectBinaryNative',
+  'extractBinaryStringsNative',
   'getSemanticBoundaryOffsets',
   'getSupportedSignatureExtensions',
   'jsonToYamlString',
@@ -517,6 +519,69 @@ describe('structuralSearchFiles', () => {
       expect(result.files[0].path).toContain('a.ts');
       expect(result.files[0].matches[0].metavars.X).toEqual(['value']);
       expect(result.skippedByPreFilter).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('inspectBinaryNative (format lane)', () => {
+  it('identifies an ELF magic and degrades gracefully on a truncated header', () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-binary-'));
+    try {
+      const file = join(root, 'fake.so');
+      // Valid ELF magic, then garbage — goblin parse fails, identity survives.
+      writeFileSync(file, Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0, 0, 0, 0]));
+      const info = addon!.inspectBinaryNative(file);
+      expect(info.format).toBe('elf');
+      expect(info.magicHex.startsWith('7f 45 4c 46')).toBe(true);
+      expect(info.notes.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('marks unrecognized data as unknown without throwing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-binary-'));
+    try {
+      const file = join(root, 'data.bin');
+      writeFileSync(file, 'just some plain text, definitely not a binary');
+      const info = addon!.inspectBinaryNative(file);
+      expect(info.format).toBe('unknown');
+      expect(info.notes.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('extractBinaryStringsNative', () => {
+  it('recovers ASCII and UTF-16LE strings (the GNU strings -a blind spot)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-strings-'));
+    try {
+      const file = join(root, 'blob.bin');
+      const ascii = Buffer.from('\x00\x00HelloAsciiWorld\x00\x01');
+      // "WideString" as UTF-16LE.
+      const wide = Buffer.from('WideString', 'utf16le');
+      writeFileSync(file, Buffer.concat([ascii, Buffer.from([0xff, 0xff]), wide]));
+
+      const res = addon!.extractBinaryStringsNative(file, 5, false);
+      expect(res.strings).toContain('HelloAsciiWorld');
+      expect(res.strings).toContain('WideString');
+      expect(res.totalFound).toBeGreaterThanOrEqual(2);
+      expect(res.truncated).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('prefixes hex offsets when requested', () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-strings-'));
+    try {
+      const file = join(root, 'blob.bin');
+      writeFileSync(file, Buffer.from([0, 0, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66]));
+      const res = addon!.extractBinaryStringsNative(file, 4, true);
+      expect(res.strings[0]).toMatch(/^0x[0-9a-f]+: abcdef$/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

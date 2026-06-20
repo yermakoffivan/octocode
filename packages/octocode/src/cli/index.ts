@@ -1,6 +1,10 @@
 import { parseArgs, hasHelpFlag, hasVersionFlag } from './parser.js';
 import { EXIT } from './exit-codes.js';
 import type { CLICommand, CLICommandSpec, ParsedArgs } from './types.js';
+import {
+  setRuntimeSurface,
+  invalidateConfigCache,
+} from '@octocodeai/octocode-tools-core/config';
 
 declare const __APP_VERSION__: string;
 
@@ -72,6 +76,11 @@ function showVersion(): void {
 }
 
 export async function runCLI(argv?: string[]): Promise<boolean> {
+  // Declare the CLI surface before any config is read: local tools are always
+  // enabled here (ENABLE_LOCAL is MCP-only) and clone defaults to enabled.
+  setRuntimeSurface('cli');
+  invalidateConfigCache();
+
   const args = parseArgs(argv);
 
   if (args.options['no-color'] === true) {

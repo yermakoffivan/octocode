@@ -49,7 +49,7 @@ const MINIMAL_QUERY: Record<string, Record<string, unknown>> = {
   },
   [STATIC_TOOL_NAMES.LOCAL_BINARY_INSPECT]: {
     path: '/tmp/test.bin',
-    mode: 'identify',
+    mode: 'inspect',
   },
 };
 

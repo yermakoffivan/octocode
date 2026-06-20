@@ -2,8 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { HOME, getAppDataPath, isMac, isWindows } from './platform/index.js';
 
-const APP_DIR_NAME = 'octocode';
-const LEGACY_DOT_DIR_NAME = '.octocode';
+const DIR_NAME = '.octocode';
 const DIR_MODE = 0o700;
 
 function readNonEmptyEnv(name: string): string | undefined {
@@ -11,26 +10,28 @@ function readNonEmptyEnv(name: string): string | undefined {
   return value && value.trim().length > 0 ? value : undefined;
 }
 
+/**
+ * Octocode's home directory. Fixed per platform — there is no override env var:
+ *   - macOS:   `~/.octocode`
+ *   - Linux:   `${XDG_CONFIG_HOME:-~/.config}/.octocode`
+ *   - Windows: `%APPDATA%\.octocode`
+ */
 export function getDefaultOctocodeHome(): string {
   if (isWindows) {
-    return join(getAppDataPath(), APP_DIR_NAME);
+    return join(getAppDataPath(), DIR_NAME);
   }
 
   if (isMac) {
-    return join(HOME, LEGACY_DOT_DIR_NAME);
+    return join(HOME, DIR_NAME);
   }
 
   return join(
     readNonEmptyEnv('XDG_CONFIG_HOME') ?? join(HOME, '.config'),
-    APP_DIR_NAME
+    DIR_NAME
   );
 }
 
-export function getOctocodeHome(): string {
-  return readNonEmptyEnv('OCTOCODE_HOME') ?? getDefaultOctocodeHome();
-}
-
-export const OCTOCODE_HOME = getOctocodeHome();
+export const OCTOCODE_HOME = getDefaultOctocodeHome();
 
 export const paths = {
   home: OCTOCODE_HOME,

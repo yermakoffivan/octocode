@@ -1,3 +1,4 @@
+mod binary;
 mod comment_groups;
 mod config;
 mod extension;
@@ -11,6 +12,7 @@ mod tasks;
 mod text;
 mod yaml;
 
+pub use binary::*;
 pub use config::*;
 pub use extension::*;
 pub use filesystem::*;

@@ -8,7 +8,7 @@ import {
   printDirectToolResult,
 } from './direct-tool-output.js';
 
-type BinaryMode = 'identify' | 'list' | 'extract' | 'decompress' | 'strings';
+type BinaryMode = 'inspect' | 'list' | 'extract' | 'decompress' | 'strings';
 
 // Multi-entry archives → list. Checked before single-stream compression so
 // that .tar.gz/.tgz route to "list", not "decompress".
@@ -16,15 +16,16 @@ const ARCHIVE_RE =
   /\.(zip|jar|war|ear|7z|deb|dmg|rpm|apk|nupkg|whl|gem|ar|a)$|\.tar(\.(gz|bz2|xz|zst|zstd|lz4|br|lzfse))?$|\.t(gz|bz2?|xz|zst)$/i;
 // Single-stream compressed payloads → decompress.
 const COMPRESSED_RE = /\.(gz|bz2|xz|lzma|zst|zstd|lz4|br|lzfse)$/i;
-// Native binaries → readable strings.
-const BINARY_RE = /\.(so|dylib|node|exe|dll|wasm|o|bin|out)$|\.so\.\d+/i;
 
 /** Auto-pick the inspection mode from the file extension. */
 function detectMode(file: string): BinaryMode {
   if (ARCHIVE_RE.test(file)) return 'list';
   if (COMPRESSED_RE.test(file)) return 'decompress';
-  if (BINARY_RE.test(file)) return 'strings';
-  return 'identify';
+  // Native binaries (.so/.dylib/.node/.exe/.wasm/…) and anything unrecognized
+  // default to the smart inspect: it returns identity (type + magic) for any
+  // file and structural detail for recognized executables. `strings` stays an
+  // explicit opt-in.
+  return 'inspect';
 }
 
 /** Explicit flag overrides win over auto-detection; --extract implies extract. */
@@ -37,16 +38,16 @@ function resolveMode(
   if (getBool(options, 'strings')) return { mode: 'strings', auto: false };
   if (getBool(options, 'decompress'))
     return { mode: 'decompress', auto: false };
-  if (getBool(options, 'identify')) return { mode: 'identify', auto: false };
+  if (getBool(options, 'inspect')) return { mode: 'inspect', auto: false };
   return { mode: detectMode(file), auto: true };
 }
 
 export const binaryCommand: CLICommand = {
   name: 'binary',
   description:
-    'Inspect archives, compressed files, and binaries — list/unzip entries, decompress, or read strings',
+    'Inspect archives, compressed files, and binaries — inspect structure, list/unzip entries, decompress, or read strings',
   usage:
-    'binary <file> [--list | --strings | --decompress | --identify | --extract <entry>] [--match <s>] [--min-length <n>] [--max-entries <n>] [--format <fmt>] [--verbose] [--offsets] [--page <n>] [--json]',
+    'binary <file> [--inspect | --list | --strings | --decompress | --extract <entry>] [--match <s>] [--min-length <n>] [--max-entries <n>] [--format <fmt>] [--verbose] [--offsets] [--page <n>] [--json]',
   options: [
     { name: 'list', description: 'List archive entries (.zip/.tar.*/.jar/…)' },
     {
@@ -55,16 +56,17 @@ export const binaryCommand: CLICommand = {
       description: 'Extract one archive entry by exact path (run --list first)',
     },
     {
+      name: 'inspect',
+      description:
+        'Structure of a native binary: format, arch, symbols, imports, exports, sections, deps',
+    },
+    {
       name: 'strings',
       description: 'Readable strings of a native binary (.so/.dylib/.node/…)',
     },
     {
       name: 'decompress',
       description: 'Decompress a single-stream file (.gz/.xz/.zst/…)',
-    },
-    {
-      name: 'identify',
-      description: 'Detect file type and magic bytes only',
     },
     {
       name: 'match',
@@ -123,9 +125,9 @@ export const binaryCommand: CLICommand = {
           `\n  ${dim('Examples:')}\n` +
             `    binary app.zip                 ${dim('# list entries')}\n` +
             `    binary app.zip --extract README.md\n` +
-            `    binary libssl.so               ${dim('# readable strings')}\n` +
-            `    binary data.json.gz            ${dim('# decompress')}\n` +
-            `    binary mystery.bin --identify\n`
+            `    binary libssl.so               ${dim('# inspect: format, symbols, deps')}\n` +
+            `    binary libssl.so --strings     ${dim('# readable strings')}\n` +
+            `    binary data.json.gz            ${dim('# decompress')}\n`
         );
       }
       process.exitCode = EXIT.USAGE;

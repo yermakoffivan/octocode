@@ -8,9 +8,10 @@
 //               matches any node sequence, so >0 proves the grammar loaded and
 //               parsed the real file; catches ABI mismatches that only surface
 //               at parse time).
-//   MATCH     — structuralSearch(<canonical snippet>, <pattern>) resolves the
-//               expected metavars (proves the ast-grep query engine, not just
-//               that the file parsed).
+//   MATCH     — structuralSearch(<canonical snippet>, <pattern-or-rule>) returns
+//               the expected node(s). Pattern probes prove metavars where the
+//               grammar supports them cleanly; rule probes prove exact node-kind
+//               matching for grammars where bare call patterns are ambiguous.
 //   SIGNATURE — signature-tier grammars must return a non-empty skeleton from
 //               extractSignatures(<real sample>) AND from the canonical snippet.
 //
@@ -21,11 +22,9 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { engine } from '../_engine.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const pkgRoot = join(here, '..', '..')
-const engine = createRequire(import.meta.url)(join(pkgRoot, 'index.cjs'))
 const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'))
 const sampleFor = new Map(manifest.samples.map((s) => [s.ext, s]))
 

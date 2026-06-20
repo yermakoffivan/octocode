@@ -60,11 +60,12 @@ export function renderLocalResults(
   const shown = files.slice(0, limit);
   for (const f of shown) {
     // Prefer the per-file count; fall back to a hoisted shared count, then to
-    // the number of returned matches so the header is never wrongly "0".
-    const count = f.matchCount ?? sharedCount ?? f.matches?.length ?? 0;
-    lines.push(
-      `  ${c('cyan', bold(f.path ?? ''))}  ${dim(`(${count} matches)`)}`
-    );
+    // the number of returned matches. In --files-only mode none of these exist
+    // (the tool returns matching paths with no counts), so omit the suffix
+    // rather than printing a misleading "(0 matches)".
+    const count = f.matchCount ?? sharedCount ?? f.matches?.length;
+    const countSuffix = count != null ? `  ${dim(`(${count} matches)`)}` : '';
+    lines.push(`  ${c('cyan', bold(f.path ?? ''))}${countSuffix}`);
     (f.matches ?? []).slice(0, 5).forEach(m => {
       const lineNum = m.line != null ? m.line : '?';
       const snippet = (m.value ?? '').trim().slice(0, 120);

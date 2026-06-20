@@ -28,7 +28,7 @@ Neither works → octocode is required; stop and ask the user to register the MC
 | Map a directory / repo tree | `octocode ls <path\|owner/repo> --depth N` | `localViewStructure` / `ghViewRepoStructure` | structure |
 | Find files by name / size / mtime | `octocode find <q> [path] --regex/--size-greater/--modified-within` | `localFindFiles` | file metadata |
 | Text / regex search | `octocode grep <kw> <path\|owner/repo> [--mode discovery]` | `localSearchCode` / `ghSearchCode` | content |
-| **AST** structural search | `octocode ast '<pattern>' <path>` / `--rule <yaml>` | `localSearchCode(mode:"structural")` | ast-grep (local only) |
+| **AST** structural search | `octocode ast '<pattern>' <path>` / `--rule <yaml>` | `localSearchCode(mode:"structural")` | Octocode structural grep (local only) |
 | Read / minify a file | `octocode cat <f> --mode symbols\|none --match-string` | `localGetFileContent` / `ghGetFileContent` | content |
 | **Symbols** (file outline) | `octocode symbols <f\|path>` | `lspGetSemantics(type=documentSymbols)` | LSP |
 | **LSP** semantic nav | `octocode lsp <f> --type <t> --symbol S --line N` | `lspGetSemantics(type=…)` | LSP |
@@ -46,7 +46,7 @@ Global CLI flags: `--json` (raw envelope), `--compact` (lean), `--concise` (path
 
 ## `ast` — structural search (the old scanner's job)
 
-AST shape search via [ast-grep](https://ast-grep.github.io). Structure-aware — comments and strings never false-match. **Local only**; for a GitHub repo, `octocode clone owner/repo/path` first.
+AST shape search via Octocode structural grep. Structure-aware — comments and strings never false-match. **Local only**; for a GitHub repo, `octocode clone owner/repo/path` first.
 
 ```
 octocode ast <pattern> [path]

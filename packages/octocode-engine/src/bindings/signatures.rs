@@ -61,7 +61,7 @@ pub fn find_in_file_references(
 }
 
 /// Structural (AST) search — octocode's L2 layer. Resolves the grammar from
-/// `file_path`'s extension and matches an ast-grep `pattern` OR a YAML `rule`
+/// `file_path`'s extension and matches a code-shaped `pattern` OR a YAML `rule`
 /// (exactly one). Returns node ranges (1-based lines, ready as `lineHint`s)
 /// plus captured metavariables. Throws on unsupported extension, invalid
 /// pattern/rule, or both/neither query supplied.
@@ -73,7 +73,7 @@ pub fn structural_search(
     rule: Option<String>,
 ) -> Result<Vec<crate::structural::StructuralMatch>> {
     let ext = crate::file_extension::get_extension_internal(&file_path, true, "txt");
-    // Contain tree-sitter / ast-grep panics on pathological input: an unwind
+    // Contain tree-sitter matcher panics on pathological input: an unwind
     // across the napi FFI boundary would abort the Node process. Mirror the
     // panic guards used in `apply.rs` / signature extraction.
     let outcome = std::panic::catch_unwind(|| {

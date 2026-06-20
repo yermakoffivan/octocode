@@ -12,19 +12,21 @@ Inspect binary files without writing code. Pick the mode for the job:
 
 | Mode | Input | Output |
 |------|-------|--------|
-| `identify` | Any file | File type + magic bytes |
+| `inspect` | Native binary / object (.so, .dylib, .node, .exe, .dll, .wasm, .o; ELF/Mach-O/PE) or any file | Format, arch, bits, endianness, stripped, symbols, imports, exports, sections, dynamic deps (+ type + magic bytes) |
 | `list` | Archive (.zip, .tar.gz, .jar, .7z, …) | Entry names, sizes, timestamps |
 | `extract` | Archive + entry name (from `list`) | Entry content |
 | `decompress` | Single-stream compressed file (.gz, .bz2, .xz, .zst, .lz4, .br, .lzfse) | Decompressed text |
-| `strings` | Native binary (.so, .dylib, .node, .exe, .wasm) | Readable strings, symbols, URLs |
+| `strings` | Native binary (.so, .dylib, .node, .exe, .wasm) | Readable strings (ASCII + UTF-16), symbols, URLs |
+
+`inspect` and `strings` are fully native (octocode-engine / `goblin`) — no `file`, `xxd`, `strings`, or binutils dependency, so they work identically on Windows and on distroless/Alpine Linux.
 
 ### Decision Flow
 
 ```text
-Unknown file  → identify
-Archive       → list  → extract (one entry)
-Compressed    → decompress
-Native binary → strings
+Unknown / native binary → inspect
+Archive                 → list  → extract (one entry)
+Compressed              → decompress
+Want raw readable text  → strings
 ```
 
 ---
@@ -36,7 +38,11 @@ Native binary → strings
 | Parameter | Description |
 |-----------|-------------|
 | `path` | File path (absolute or workspace-relative). |
-| `mode` | One of: `identify`, `list`, `extract`, `decompress`, `strings`. |
+| `mode` | One of: `inspect`, `list`, `extract`, `decompress`, `strings`. |
+
+### `inspect` mode
+
+Takes no parameters beyond `path`. Returns identity (`format`, `description`, `magicBytes`) for any file, plus — for recognized executables — `arch`, `bits`, `endianness`, `stripped`, `entry`, `symbolCount`/`importCount`/`exportCount`, and capped `symbols`/`imports`/`exports`/`sections`/`libraries` lists.
 
 ### `list` mode
 
@@ -74,6 +80,8 @@ Native binary → strings
 | `minLength` | `8` | Minimum printable run length. Raise (12–16) to surface symbols/URLs only. |
 | `includeOffsets` | `false` | Prefix each string with its hex byte offset. |
 
+Recovers both ASCII and UTF-16 (LE/BE) runs — the wide strings GNU `strings -a` misses. Files over 64MB are scanned over their leading prefix only (`scanTruncated: true`).
+
 ---
 
 ## Supported Formats
@@ -82,7 +90,7 @@ Native binary → strings
 
 **Compressed streams (decompress):** `.gz`, `.bz2`, `.xz`, `.lzma`, `.zst`, `.lz4`, `.br`, `.lzfse`
 
-**Native binaries (strings):** `.so`, `.dylib`, `.node`, `.exe`, `.wasm`, any ELF/Mach-O binary
+**Native binaries (inspect / strings):** `.so`, `.dylib`, `.node`, `.exe`, `.dll`, `.wasm`, `.o`, any ELF / Mach-O / PE binary or ar archive
 
 > `decompress` rejects multi-entry archives. Use `list`/`extract` for `.tar.gz`, `.zip`, etc.
 
@@ -91,8 +99,8 @@ Native binary → strings
 ## Examples
 
 ```bash
-# What type is this file?
-localBinaryInspect(path="dist/server.node", mode="identify")
+# What is this binary? (format, arch, symbols, imports, exports, deps)
+localBinaryInspect(path="dist/server.node", mode="inspect")
 
 # List entries in a zip
 localBinaryInspect(path="build.zip", mode="list", verbose=true)
@@ -139,9 +147,8 @@ localBinaryInspect(queries=[
 ## Requirements
 
 - `ENABLE_LOCAL=true`
-- Backend CLIs must be available: `file`, `strings`, `unzip`, `tar`, `7z` (or `7zz`/`bsdtar` as fallbacks)
-- For `.lz4`, `.br`, `.lzfse`: `lz4cat`, `brotli`, `lzfse` must be installed
-- `strings` is part of `binutils` on Linux; available via Homebrew on macOS
+- `inspect` and `strings` need **no** external CLI — they run natively in octocode-engine (works on Windows / distroless / Alpine).
+- Container modes shell out: `list`/`extract`/`unpack` need `unzip`, `tar`, `7z` (or `7zz`/`bsdtar` as fallbacks); `decompress` of `.lz4`/`.br`/`.lzfse` needs `lz4cat`/`brotli`/`lzfse`.
 
 ---
 

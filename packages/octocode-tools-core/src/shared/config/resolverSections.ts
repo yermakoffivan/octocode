@@ -23,6 +23,7 @@ import {
   MIN_OUTPUT_DEFAULT_CHAR_LENGTH,
   MAX_OUTPUT_DEFAULT_CHAR_LENGTH,
 } from './defaults.js';
+import { getRuntimeSurface } from './runtimeSurface.js';
 
 export function parseBooleanEnv(
   value: string | undefined
@@ -79,18 +80,26 @@ export function resolveGitHub(
 export function resolveLocal(
   fileConfig?: OctocodeConfig['local']
 ): RequiredLocalConfig {
+  const isCli = getRuntimeSurface() === 'cli';
   const envEnableLocal = parseBooleanEnv(process.env.ENABLE_LOCAL);
   const envEnableClone = parseBooleanEnv(process.env.ENABLE_CLONE);
   const envAllowedPaths = parseStringArrayEnv(process.env.ALLOWED_PATHS);
   const envWorkspaceRoot = process.env.WORKSPACE_ROOT?.trim() || undefined;
 
   return {
-    enabled:
-      envEnableLocal ?? fileConfig?.enabled ?? DEFAULT_LOCAL_CONFIG.enabled,
+    // Local tools: the CLI is a local terminal, so local access is always on
+    // and ENABLE_LOCAL is ignored. Only the MCP server honors ENABLE_LOCAL
+    // (default on) so a deployment can restrict what an assistant may touch.
+    enabled: isCli
+      ? true
+      : (envEnableLocal ?? fileConfig?.enabled ?? DEFAULT_LOCAL_CONFIG.enabled),
+    // Clone: an explicit ENABLE_CLONE (env) or .octocoderc value wins for both
+    // surfaces, so `false` disables everywhere. Otherwise the default is
+    // surface-specific: ENABLED for the CLI, DISABLED for the MCP server.
     enableClone:
       envEnableClone ??
       fileConfig?.enableClone ??
-      DEFAULT_LOCAL_CONFIG.enableClone,
+      (isCli ? true : DEFAULT_LOCAL_CONFIG.enableClone),
     allowedPaths:
       envAllowedPaths ??
       fileConfig?.allowedPaths ??

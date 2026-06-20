@@ -10,14 +10,9 @@
 // part of run-all. Run it manually with `yarn lsp:live`.
 
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const pkgRoot = join(here, '..', '..')
-const engine = createRequire(import.meta.url)(join(pkgRoot, 'index.cjs'))
+import { engine, engineRoot } from '../_engine.mjs'
 
 const SAMPLE = `export interface Shape { area(): number }
 
@@ -40,7 +35,7 @@ const file = join(dir, 'sample.ts')
 writeFileSync(file, SAMPLE)
 
 // Resolve the server against the repo root so node_modules is found.
-const cfg = engine.getLanguageServerForFile(file, pkgRoot)
+const cfg = engine.getLanguageServerForFile(file, engineRoot)
 const skip = (msg) => { console.log(`↷ LSP live check SKIPPED: ${msg}`); rmSync(dir, { recursive: true, force: true }); process.exit(0) }
 if (!cfg || !cfg.command) skip('no server config resolved')
 if (!engine.isCommandAvailable(cfg.command)) skip(`server not available: ${cfg.command}`)

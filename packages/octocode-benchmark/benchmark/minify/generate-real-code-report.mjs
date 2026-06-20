@@ -10,10 +10,9 @@ import {
 } from 'node:fs';
 import { basename, extname, join, relative, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { createRequire } from 'node:module';
+import { engineRoot, requireEngine } from '../_engine.mjs';
 
 // index.js is CommonJS (native .node addon); use createRequire for ESM compatibility
-const _require = createRequire(import.meta.url);
 const {
   applyContentViewMinification,
   applyMinification,
@@ -22,7 +21,7 @@ const {
   minifyContent,
   minifyContentSync,
   SUPPORTED_SIGNATURE_EXTENSIONS,
-} = _require('../index.js');
+} = requireEngine(join(engineRoot, 'index.js'));
 
 const DEFAULT_CORPUS_ROOT = '/tmp/octocode-context-real-corpus';
 const EXCERPT_CHARS = 1800;

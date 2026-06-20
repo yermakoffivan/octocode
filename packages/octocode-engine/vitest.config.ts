@@ -8,7 +8,6 @@ export default defineConfig({
       provider: 'v8',
       include: ['index.js', 'index.mjs', 'scripts/**/*.cjs'],
       exclude: [
-        'benchmark/**',
         'target/**',
         'coverage/**',
         'node_modules/**',

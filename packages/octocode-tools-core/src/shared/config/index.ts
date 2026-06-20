@@ -67,4 +67,11 @@ export {
 
 export { parseLoggingEnv } from './resolverSections.js';
 
+export {
+  setRuntimeSurface,
+  getRuntimeSurface,
+  _resetRuntimeSurface,
+  type RuntimeSurface,
+} from './runtimeSurface.js';
+
 export { OctocodeConfigSchema } from './schemas.js';

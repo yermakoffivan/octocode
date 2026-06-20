@@ -10,7 +10,7 @@ Rust/native engine checks run successfully in this session.
 The Node/NAPI tool path is blocked in this shell:
 
 ```text
-node packages/octocode-engine/benchmark/ast/check-ast.mjs
+node packages/octocode-benchmark/benchmark/ast/check-ast.mjs
 ```
 
 fails with `ERR_DLOPEN_FAILED` because the existing
@@ -33,7 +33,7 @@ Results:
 
 | Surface | Result | What It Proves |
 |---|---:|---|
-| Octocode structural grep | 49 passed | AST patterns/rules, metavars, file search, ast-grep comparison, operator prefilter |
+| Octocode structural grep | 49 passed | AST patterns/rules, metavars, file search, operator prefilter |
 | Native ripgrep text/regex | 19 passed | fixed string, regex, PCRE2, whole word, lang type, include/exclude, gitignore, files-only |
 | Fetch-content line extraction | 14 passed | literal/regex matchString, context slices, unicode, max matches |
 | LSP resolver anchor | 4 passed | lineHint + tree-sitter symbol anchoring, UTF-16 positions, comment immunity |
@@ -50,9 +50,6 @@ External landscape checked:
 - `fd` shows the same Rust pattern for modern search-like CLIs: simple UX,
   parallel traversal, ignore-file defaults.
   https://github.com/sharkdp/fd
-- `ast-grep` is also Rust plus tree-sitter, with code-shaped patterns,
-  rewrite support, and polyglot parsing.
-  https://github.com/ast-grep/ast-grep
 - `tree-sitter` is the right parser substrate for this layer: general,
   fast enough for editor use, robust on broken code, embeddable runtime.
   https://github.com/tree-sitter/tree-sitter

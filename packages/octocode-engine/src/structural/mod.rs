@@ -13,9 +13,6 @@ mod octo;
 mod query;
 mod types;
 
-#[cfg(test)]
-mod compare;
-
 pub use files::search_files;
 pub use types::{StructuralMatch, StructuralSearchFilesOptions, StructuralSearchFilesResult};
 
@@ -93,9 +90,8 @@ mod tests {
         let src = "log(1, 2, 3);\n";
         let matches = run_pattern(src, "js", "log($$$ARGS)");
         assert_eq!(matches.len(), 1);
-        // ast-grep's `$$$` captures EVERY node in the list, separators
-        // included — matching the CLI exactly (KPI #2). We deliberately do not
-        // strip the commas.
+        // Multi-captures preserve punctuation so callers can reconstruct
+        // argument lists without guessing where separators were.
         assert_eq!(
             matches[0].metavars.get("ARGS").map(Vec::as_slice),
             Some(
@@ -111,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn document_probe_matches_root_without_ast_grep_ellipsis_panic() {
+    fn document_probe_matches_root_without_ellipsis_panic() {
         for ext in ["ts", "py", "sh", "html", "json", "toml"] {
             let matches = run_pattern("foo(a)\nbar(b)\n", ext, "$$$");
             assert_eq!(matches.len(), 1, "{ext} should return the document root");

@@ -6,6 +6,7 @@ import { cleanup } from '../../src/serverConfig.js';
 
 describe('executeDirectTool - invalid input handling (finding 3)', () => {
   const originalEnableClone = process.env.ENABLE_CLONE;
+  const originalEnableLocal = process.env.ENABLE_LOCAL;
 
   afterEach(() => {
     if (originalEnableClone === undefined) {
@@ -13,7 +14,36 @@ describe('executeDirectTool - invalid input handling (finding 3)', () => {
     } else {
       process.env.ENABLE_CLONE = originalEnableClone;
     }
+    if (originalEnableLocal === undefined) {
+      delete process.env.ENABLE_LOCAL;
+    } else {
+      process.env.ENABLE_LOCAL = originalEnableLocal;
+    }
     cleanup();
+  });
+
+  it('rejects a local tool when ENABLE_LOCAL is false (CLI/direct gate)', async () => {
+    process.env.ENABLE_LOCAL = 'false';
+    cleanup(); // invalidate the cached config so the new env is read
+
+    const result = await executeDirectTool(STATIC_TOOL_NAMES.LOCAL_RIPGREP, {
+      queries: [
+        {
+          path: '.',
+          keywords: 'anything',
+          mainResearchGoal: 'Verify local gate',
+          researchGoal: 'Ensure direct local execution respects ENABLE_LOCAL',
+          reasoning: 'Regression test for direct CLI local gate',
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    const structured = result.structuredContent as
+      | { error?: { code?: string; message?: string } }
+      | undefined;
+    expect(structured?.error?.code).toBe('localToolsDisabled');
+    expect(structured?.error?.message).toContain('ENABLE_LOCAL=true');
   });
 
   it('returns a structured error result instead of throwing for invalid input', async () => {

@@ -71,8 +71,19 @@ function copyPlatformBinaries() {
   }
 }
 
-restorePublicFile('index.cjs', 'index.public.cjs')
-restorePublicFile('index.js', 'index.public.js')
-restorePublicFile('index.d.ts', 'index.public.d.ts')
+function isDevBuild() {
+  return process.env.npm_lifecycle_event === 'build:dev'
+}
+
+restorePublicFile('index.cjs', '.index.cjs.build-backup')
+restorePublicFile('index.js', '.index.js.build-backup')
+restorePublicFile('index.d.ts', '.index.d.ts.build-backup')
 discardGeneratedFiles()
-copyPlatformBinaries()
+
+if (isDevBuild()) {
+  // Debug/native dev builds are intentionally large; keep them at the package
+  // root for local tests without poisoning the optional npm platform packages.
+  console.log('platform package binary copy skipped for build:dev; root artifact retained for local tests')
+} else {
+  copyPlatformBinaries()
+}

@@ -1,16 +1,13 @@
 use std::borrow::Cow;
 
-use ast_grep_core::language::Language;
-use ast_grep_core::matcher::{PatternBuilder, PatternError};
-use ast_grep_core::tree_sitter::{LanguageExt, StrDoc, TSLanguage};
-use ast_grep_core::Pattern;
+use tree_sitter::Language as TSLanguage;
 
 use crate::signatures::languages::LanguageEntry;
 
-/// A tree-sitter language wrapped so ast-grep can drive it. A single wrapper
-/// covers every grammar — the only per-language knob is `expando_char`, the
-/// stand-in identifier char used while parsing a pattern in languages where
-/// `$` is not a valid identifier character (Rust/Go/Python/C/…).
+/// A tree-sitter language wrapper. A single wrapper covers every grammar; the
+/// only per-language knob is `expando_char`, the stand-in identifier char used
+/// while parsing a pattern in languages where `$` is not a valid identifier
+/// character (Rust/Go/Python/C/...).
 #[derive(Clone)]
 pub(super) struct AgLanguage {
     ts: TSLanguage,
@@ -38,37 +35,9 @@ impl AgLanguage {
     }
 }
 
-impl Language for AgLanguage {
-    fn kind_to_id(&self, kind: &str) -> u16 {
-        self.ts.id_for_node_kind(kind, /* named */ true)
-    }
-
-    fn field_to_id(&self, field: &str) -> Option<u16> {
-        self.ts.field_id_for_name(field).map(|field| field.get())
-    }
-
-    fn expando_char(&self) -> char {
-        self.expando
-    }
-
-    fn pre_process_pattern<'q>(&self, query: &'q str) -> Cow<'q, str> {
-        pre_process_pattern(self.expando, query)
-    }
-
-    fn build_pattern(&self, builder: &PatternBuilder) -> Result<Pattern, PatternError> {
-        builder.build(|src| StrDoc::try_new(src, self.clone()))
-    }
-}
-
-impl LanguageExt for AgLanguage {
-    fn get_ts_language(&self) -> TSLanguage {
-        self.ts.clone()
-    }
-}
-
-/// The stand-in identifier char for `$` metavariables, per language. Mirrors
-/// `ast-grep-language`: languages where `$` is a legal identifier char
-/// (JS/TS/Java/Bash) keep `$`; the rest get a char the grammar accepts.
+/// The stand-in identifier char for `$` metavariables, per language. Languages
+/// where `$` is a legal identifier char (JS/TS/Java/Bash) keep `$`; the rest get
+/// a char the grammar accepts.
 fn expando_for_ext(ext: &str) -> char {
     match ext {
         "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs" | "java" | "sh" | "bash"
@@ -81,10 +50,9 @@ fn expando_for_ext(ext: &str) -> char {
     }
 }
 
-/// Verbatim port of `ast-grep-language::pre_process_pattern`: rewrites the
-/// `$` sigil of capturing/anonymous-multiple metavars to the language's
-/// expando char so the tree-sitter parser accepts the pattern. Literal `$`
-/// (e.g. a non-metavar `$` in the source) is preserved.
+/// Rewrites the `$` sigil of capturing/anonymous-multiple metavars to the
+/// language's expando char so the tree-sitter parser accepts the pattern.
+/// Literal `$` (e.g. a non-metavar `$` in the source) is preserved.
 fn pre_process_pattern(expando: char, query: &str) -> Cow<'_, str> {
     let mut ret = Vec::with_capacity(query.len());
     let mut dollar_count = 0;

@@ -1,13 +1,13 @@
 # Context — AST Pattern Cookbook
 
-AST structural search runs through one engine ([ast-grep](https://ast-grep.github.io)) via either transport:
+AST structural search runs through Octocode structural grep via either transport:
 
 - **CLI:** `octocode ast '<pattern>' <path> --type ts` · `octocode ast <path> --rule '<yaml>'`
 - **MCP:** `localSearchCode({ mode:"structural", pattern:"<pattern>" | rule:{…}, path, langType:"ts" })`
 
 It is **structure-aware** — comments and strings never false-match — and **local only**. For a GitHub repo, `octocode clone owner/repo/path` (or `ghCloneRepo`) first, then run AST on the clone.
 
-> The skill no longer ships preset scripts. The "presets" below are plain ast-grep patterns — copy the pattern into `octocode ast` or `localSearchCode(mode:"structural")`. Verify any decision-critical match by reading the `file:line` it returns.
+> The skill no longer ships preset scripts. The "presets" below are plain Octocode structural patterns — copy the pattern into `octocode ast` or `localSearchCode(mode:"structural")`. Verify any decision-critical match by reading the `file:line` it returns.
 
 ---
 
@@ -84,7 +84,7 @@ Python uses `µ` (micro sign) as the metavariable char in raw patterns (`$` is i
 
 ## Go nuance
 
-A literal-selector pattern like `fmt.Println($X)` matches nothing (a bare snippet is invalid at Go top level, so ast-grep can't parse it). Use a metavar callee `$F($X)`, or a rule with `pattern: { context: "func f(){ fmt.Println($X) }", selector: call_expression }`.
+A literal-selector pattern like `fmt.Println($X)` matches nothing (a bare snippet is invalid at Go top level, so the structural parser can't parse it). Use a metavar callee `$F($X)`, or a rule with `pattern: { context: "func f(){ fmt.Println($X) }", selector: call_expression }`.
 
 **Grammars supported:** ts/tsx, js/jsx/mjs/cjs, py, go, rs, java, c/h, cpp/cc/cxx/hpp, cs, sh/bash/zsh. Other extensions are skipped silently.
 

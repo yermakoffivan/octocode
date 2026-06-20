@@ -12,16 +12,9 @@ import type { SearchStats } from '../../utils/core/types.js';
 import { buildSearchResult } from './ripgrepResultBuilder.js';
 import type { RipgrepQuery } from './scheme.js';
 
-const DEFAULT_STRUCTURAL_EXCLUDE_DIRS = [
-  'node_modules',
-  'dist',
-  '.git',
-  'build',
-  'coverage',
-  '.next',
-  'out',
-  'target',
-];
+// No directories excluded by default — structural search must not silently
+// skip node_modules/build/dist either. Pass `excludeDir` to trim a search.
+const DEFAULT_STRUCTURAL_EXCLUDE_DIRS: string[] = [];
 
 const DEFAULT_MAX_STRUCTURAL_FILES = 2000;
 const MAX_STRUCTURAL_FILE_BYTES = 1_000_000;

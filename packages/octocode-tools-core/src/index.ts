@@ -392,7 +392,6 @@ export type { LogLevel, LogEntry } from './shared/logger/index.js';
 export {
   OCTOCODE_HOME,
   getDefaultOctocodeHome,
-  getOctocodeHome,
   paths,
   ensureHome,
   ensureRepos,

@@ -37,11 +37,20 @@ pub(super) fn compile_matcher(
                 let Some(tree) = parse_tree(compiled.language(), content) else {
                     return Vec::new();
                 };
+                let line_index = LineIndex::new(content);
                 let mut matches = Vec::new();
                 visit_named(tree.root_node(), &mut |candidate| {
+                    if !compiled.matches_candidate(candidate) {
+                        return;
+                    }
                     let mut captures = CaptureEnv::default();
                     if compiled.matches(candidate, content, &mut captures) {
-                        matches.push(to_structural_match(candidate, content, captures.into_map()));
+                        matches.push(to_structural_match_with_index(
+                            candidate,
+                            content,
+                            &line_index,
+                            captures.into_map(),
+                        ));
                     }
                 });
                 matches
@@ -50,16 +59,33 @@ pub(super) fn compile_matcher(
         (None, Some(rule)) => {
             let compiled = CompiledRule::new(lang, rule)?;
             let language = lang.tree_sitter_language();
+            if let Some(kind) = compiled.simple_kind().map(str::to_owned) {
+                return Ok(Box::new(move |content| {
+                    let Some(tree) = parse_tree(&language, content) else {
+                        return Vec::new();
+                    };
+                    collect_kind_matches(tree.root_node(), &kind, content)
+                }));
+            }
             Ok(Box::new(move |content| {
                 let Some(tree) = parse_tree(&language, content) else {
                     return Vec::new();
                 };
                 let document = Document { content };
+                let line_index = LineIndex::new(content);
                 let mut matches = Vec::new();
                 visit_named(tree.root_node(), &mut |candidate| {
+                    if !compiled.matches_candidate(candidate) {
+                        return;
+                    }
                     let mut captures = CaptureEnv::default();
                     if compiled.matches(candidate, &document, &mut captures) {
-                        matches.push(to_structural_match(candidate, content, captures.into_map()));
+                        matches.push(to_structural_match_with_index(
+                            candidate,
+                            content,
+                            &line_index,
+                            captures.into_map(),
+                        ));
                     }
                 });
                 matches
@@ -83,8 +109,84 @@ fn visit_named<'tree>(node: Node<'tree>, f: &mut impl FnMut(Node<'tree>)) {
     if node.is_named() {
         f(node);
     }
-    for child in named_children(node) {
-        visit_named(child, f);
+    for index in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(index as u32) {
+            visit_named(child, f);
+        }
+    }
+}
+
+fn collect_kind_matches(root: Node<'_>, kind: &str, content: &str) -> Vec<StructuralMatch> {
+    let line_index = LineIndex::new(content);
+    let mut matches = Vec::new();
+    visit_named(root, &mut |candidate| {
+        if candidate.kind() == kind {
+            matches.push(to_structural_match_with_index(
+                candidate,
+                content,
+                &line_index,
+                HashMap::new(),
+            ));
+        }
+    });
+    matches
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CandidatePlan {
+    Any,
+    Kinds(Vec<String>),
+    Empty,
+}
+
+impl CandidatePlan {
+    fn from_kind(kind: impl Into<String>) -> Self {
+        Self::from_kinds([kind.into()])
+    }
+
+    fn from_kinds(kinds: impl IntoIterator<Item = String>) -> Self {
+        let mut kinds = kinds.into_iter().collect::<Vec<_>>();
+        kinds.sort();
+        kinds.dedup();
+        if kinds.is_empty() {
+            Self::Empty
+        } else {
+            Self::Kinds(kinds)
+        }
+    }
+
+    fn matches(&self, candidate: Node<'_>) -> bool {
+        self.matches_kind(candidate.kind())
+    }
+
+    fn matches_kind(&self, kind: &str) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Kinds(kinds) => kinds.iter().any(|candidate| candidate == kind),
+            Self::Empty => false,
+        }
+    }
+
+    fn intersect(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Empty, _) | (_, Self::Empty) => Self::Empty,
+            (Self::Any, plan) | (plan, Self::Any) => plan,
+            (Self::Kinds(left), Self::Kinds(right)) => {
+                Self::from_kinds(left.into_iter().filter(|kind| right.contains(kind)))
+            }
+        }
+    }
+
+    fn union(plans: impl IntoIterator<Item = Self>) -> Self {
+        let mut kinds = Vec::new();
+        for plan in plans {
+            match plan {
+                Self::Any => return Self::Any,
+                Self::Kinds(plan_kinds) => kinds.extend(plan_kinds),
+                Self::Empty => {}
+            }
+        }
+        Self::from_kinds(kinds)
     }
 }
 
@@ -125,6 +227,7 @@ struct CompiledPattern {
     source: String,
     tree: Option<Tree>,
     special: Option<SpecialPattern>,
+    candidate_plan: CandidatePlan,
 }
 
 enum SpecialPattern {
@@ -146,6 +249,10 @@ impl CompiledPattern {
                 source: pattern.to_owned(),
                 tree: None,
                 special: Some(SpecialPattern::HtmlTagName { capture }),
+                candidate_plan: CandidatePlan::from_kinds([
+                    "element".to_owned(),
+                    "self_closing_tag".to_owned(),
+                ]),
             });
         }
 
@@ -159,6 +266,10 @@ impl CompiledPattern {
                     key_capture,
                     value_capture,
                 }),
+                candidate_plan: CandidatePlan::from_kinds([
+                    "block_mapping_pair".to_owned(),
+                    "pair".to_owned(),
+                ]),
             });
         }
 
@@ -172,12 +283,18 @@ impl CompiledPattern {
                 "invalid structural pattern: pattern parsed with syntax errors".to_string(),
             );
         }
+        let candidate_plan = if meta_from_node(root, &source, lang.expando_char_value()).is_some() {
+            CandidatePlan::Any
+        } else {
+            CandidatePlan::from_kind(root.kind())
+        };
         Ok(Self {
             language,
             expando: lang.expando_char_value(),
             source,
             tree: Some(tree),
             special: None,
+            candidate_plan,
         })
     }
 
@@ -187,6 +304,14 @@ impl CompiledPattern {
 
     fn is_special(&self) -> bool {
         self.special.is_some()
+    }
+
+    fn candidate_plan(&self) -> &CandidatePlan {
+        &self.candidate_plan
+    }
+
+    fn matches_candidate(&self, candidate: Node<'_>) -> bool {
+        self.candidate_plan.matches(candidate)
     }
 
     fn find_special_matches(&self, content: &str) -> Vec<StructuralMatch> {
@@ -199,8 +324,14 @@ impl CompiledPattern {
 
         let mut seen = HashSet::new();
         let mut matches = Vec::new();
+        let line_index = LineIndex::new(content);
         visit_named(tree.root_node(), &mut |candidate| {
-            if let Some(matched) = self.special_structural_match(special, candidate, content) {
+            if !self.matches_candidate(candidate) {
+                return;
+            }
+            if let Some(matched) =
+                self.special_structural_match(special, candidate, content, &line_index)
+            {
                 let key = (
                     matched.start_line,
                     matched.start_col,
@@ -232,6 +363,7 @@ impl CompiledPattern {
         special: &SpecialPattern,
         candidate: Node<'_>,
         content: &str,
+        line_index: &LineIndex,
     ) -> Option<StructuralMatch> {
         match special {
             SpecialPattern::HtmlTagName { capture } => {
@@ -245,8 +377,8 @@ impl CompiledPattern {
                     capture.clone(),
                     vec![node_text(tag_name, content).to_owned()],
                 );
-                Some(structural_match_from_byte_range(
-                    content, start_byte, end_byte, metavars,
+                Some(structural_match_from_byte_range_with_index(
+                    content, line_index, start_byte, end_byte, metavars,
                 ))
             }
             SpecialPattern::KeyValuePair {
@@ -263,7 +395,9 @@ impl CompiledPattern {
                     value_capture.clone(),
                     vec![node_text(value, content).to_owned()],
                 );
-                Some(to_structural_match(candidate, content, metavars))
+                Some(to_structural_match_with_index(
+                    candidate, content, line_index, metavars,
+                ))
             }
         }
     }
@@ -562,6 +696,7 @@ struct CompiledRule {
     any: Vec<CompiledRule>,
     not: Option<Box<CompiledRule>>,
     stop_by_end: bool,
+    candidate_plan: CandidatePlan,
 }
 
 impl CompiledRule {
@@ -608,7 +743,7 @@ impl CompiledRule {
             .map(|rule| Self::compile(lang, *rule).map(Box::new))
             .transpose()?;
 
-        let compiled = Self {
+        let mut compiled = Self {
             kind: raw.kind,
             pattern,
             regex,
@@ -618,10 +753,12 @@ impl CompiledRule {
             any,
             not,
             stop_by_end: raw.stop_by == Some(RawStopBy::End),
+            candidate_plan: CandidatePlan::Any,
         };
         if compiled.is_empty() {
             return Err("invalid rule: rule must contain at least one matcher".to_string());
         }
+        compiled.candidate_plan = compiled.compute_candidate_plan();
         Ok(compiled)
     }
 
@@ -636,12 +773,50 @@ impl CompiledRule {
             && self.not.is_none()
     }
 
+    fn simple_kind(&self) -> Option<&str> {
+        let kind = self.kind.as_deref()?;
+        (self.pattern.is_none()
+            && self.regex.is_none()
+            && self.has.is_none()
+            && self.inside.is_none()
+            && self.all.is_empty()
+            && self.any.is_empty()
+            && self.not.is_none())
+        .then_some(kind)
+    }
+
+    fn compute_candidate_plan(&self) -> CandidatePlan {
+        let mut plan = CandidatePlan::Any;
+        if let Some(kind) = &self.kind {
+            plan = plan.intersect(CandidatePlan::from_kind(kind.clone()));
+        }
+        if let Some(pattern) = &self.pattern {
+            plan = plan.intersect(pattern.candidate_plan().clone());
+        }
+        for rule in &self.all {
+            plan = plan.intersect(rule.candidate_plan.clone());
+        }
+        if !self.any.is_empty() {
+            let any_plan =
+                CandidatePlan::union(self.any.iter().map(|rule| rule.candidate_plan.clone()));
+            plan = plan.intersect(any_plan);
+        }
+        plan
+    }
+
+    fn matches_candidate(&self, candidate: Node<'_>) -> bool {
+        self.candidate_plan.matches(candidate)
+    }
+
     fn matches(
         &self,
         candidate: Node<'_>,
         document: &Document<'_>,
         captures: &mut CaptureEnv,
     ) -> bool {
+        if !self.matches_candidate(candidate) {
+            return false;
+        }
         if let Some(kind) = &self.kind {
             if candidate.kind() != kind {
                 return false;
@@ -712,22 +887,37 @@ fn matches_descendant(
     document: &Document<'_>,
     captures: &mut CaptureEnv,
 ) -> bool {
-    let children = if rule.stop_by_end {
-        named_descendants(candidate)
-    } else {
-        named_children(candidate)
-    };
-    for child in children {
+    for index in 0..candidate.named_child_count() {
+        if candidate
+            .named_child(index as u32)
+            .is_some_and(|child| matches_descendant_candidate(rule, child, document, captures))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn matches_descendant_candidate(
+    rule: &CompiledRule,
+    child: Node<'_>,
+    document: &Document<'_>,
+    captures: &mut CaptureEnv,
+) -> bool {
+    if rule.matches_candidate(child) {
         let mut branch = captures.clone();
         if rule.matches(child, document, &mut branch) {
             if !branch.capture_one("secondary", node_text(child, document.content).to_owned()) {
-                continue;
+                return rule.stop_by_end && matches_descendant(rule, child, document, captures);
             }
             *captures = branch;
             return true;
         }
     }
-    false
+    if !rule.stop_by_end {
+        return false;
+    }
+    matches_descendant(rule, child, document, captures)
 }
 
 fn matches_ancestor(
@@ -738,14 +928,16 @@ fn matches_ancestor(
 ) -> bool {
     let mut parent = candidate.parent();
     while let Some(node) = parent {
-        let mut branch = captures.clone();
-        if rule.matches(node, document, &mut branch) {
-            if !branch.capture_one("secondary", node_text(node, document.content).to_owned()) {
-                parent = node.parent();
-                continue;
+        if rule.matches_candidate(node) {
+            let mut branch = captures.clone();
+            if rule.matches(node, document, &mut branch) {
+                if !branch.capture_one("secondary", node_text(node, document.content).to_owned()) {
+                    parent = node.parent();
+                    continue;
+                }
+                *captures = branch;
+                return true;
             }
-            *captures = branch;
-            return true;
         }
         if !rule.stop_by_end {
             return false;
@@ -755,17 +947,9 @@ fn matches_ancestor(
     false
 }
 
-fn named_descendants<'tree>(node: Node<'tree>) -> Vec<Node<'tree>> {
-    let mut out = Vec::new();
-    for child in named_children(node) {
-        out.push(child);
-        out.extend(named_descendants(child));
-    }
-    out
-}
-
 fn first_named_descendant_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    for child in named_children(node) {
+    for index in 0..node.named_child_count() {
+        let child = node.named_child(index as u32)?;
         if child.kind() == kind {
             return Some(child);
         }
@@ -828,9 +1012,66 @@ fn node_text<'a>(node: Node<'_>, source: &'a str) -> &'a str {
         .unwrap_or_default()
 }
 
+struct LineIndex {
+    line_starts: Vec<usize>,
+}
+
+impl LineIndex {
+    fn new(content: &str) -> Self {
+        let mut line_starts = vec![0];
+        for (index, byte) in content.bytes().enumerate() {
+            if byte == b'\n' {
+                line_starts.push(index + 1);
+            }
+        }
+        Self { line_starts }
+    }
+
+    fn byte_to_line_col(&self, content: &str, byte: usize) -> (usize, usize) {
+        let byte = byte.min(content.len());
+        let row = match self.line_starts.binary_search(&byte) {
+            Ok(index) => index,
+            Err(0) => 0,
+            Err(index) => index - 1,
+        };
+        let line_start = self.line_starts.get(row).copied().unwrap_or_default();
+        let byte_column = byte.saturating_sub(line_start);
+        (
+            row + 1,
+            self.point_column_to_char_column(content, row, byte_column),
+        )
+    }
+
+    fn point_column_to_char_column(&self, content: &str, row: usize, byte_column: usize) -> usize {
+        let line_start = self.line_starts.get(row).copied().unwrap_or_default();
+        let line_end = self
+            .line_starts
+            .get(row + 1)
+            .map(|start| start.saturating_sub(1))
+            .unwrap_or(content.len())
+            .min(content.len());
+        let byte_end = line_start.saturating_add(byte_column).min(line_end);
+        content
+            .get(line_start..byte_end)
+            .map(str::chars)
+            .map(Iterator::count)
+            .unwrap_or(byte_column)
+    }
+}
+
 fn to_structural_match(
     node: Node<'_>,
     content: &str,
+    metavars: HashMap<String, Vec<String>>,
+) -> StructuralMatch {
+    let line_index = LineIndex::new(content);
+    to_structural_match_with_index(node, content, &line_index, metavars)
+}
+
+fn to_structural_match_with_index(
+    node: Node<'_>,
+    content: &str,
+    line_index: &LineIndex,
     metavars: HashMap<String, Vec<String>>,
 ) -> StructuralMatch {
     let start = node.start_position();
@@ -838,21 +1079,22 @@ fn to_structural_match(
     StructuralMatch {
         start_line: (start.row as u32) + 1,
         end_line: (end.row as u32) + 1,
-        start_col: point_column_to_char_column(content, start.row, start.column) as u32,
-        end_col: point_column_to_char_column(content, end.row, end.column) as u32,
+        start_col: line_index.point_column_to_char_column(content, start.row, start.column) as u32,
+        end_col: line_index.point_column_to_char_column(content, end.row, end.column) as u32,
         text: node_text(node, content).to_owned(),
         metavars,
     }
 }
 
-fn structural_match_from_byte_range(
+fn structural_match_from_byte_range_with_index(
     content: &str,
+    line_index: &LineIndex,
     start_byte: usize,
     end_byte: usize,
     metavars: HashMap<String, Vec<String>>,
 ) -> StructuralMatch {
-    let (start_line, start_col) = byte_to_line_col(content, start_byte);
-    let (end_line, end_col) = byte_to_line_col(content, end_byte);
+    let (start_line, start_col) = line_index.byte_to_line_col(content, start_byte);
+    let (end_line, end_col) = line_index.byte_to_line_col(content, end_byte);
     StructuralMatch {
         start_line: start_line as u32,
         end_line: end_line as u32,
@@ -864,30 +1106,6 @@ fn structural_match_from_byte_range(
             .to_owned(),
         metavars,
     }
-}
-
-fn byte_to_line_col(content: &str, byte: usize) -> (usize, usize) {
-    let byte = byte.min(content.len());
-    let prefix = content.get(..byte).unwrap_or_default();
-    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
-    let line_start = prefix.rfind('\n').map_or(0, |index| index + 1);
-    let col = content
-        .get(line_start..byte)
-        .map(str::chars)
-        .map(Iterator::count)
-        .unwrap_or(byte.saturating_sub(line_start));
-    (line, col)
-}
-
-fn point_column_to_char_column(content: &str, row: usize, byte_column: usize) -> usize {
-    let Some(line) = content.split('\n').nth(row) else {
-        return byte_column;
-    };
-    let byte_column = byte_column.min(line.len());
-    line.get(..byte_column)
-        .map(str::chars)
-        .map(Iterator::count)
-        .unwrap_or(byte_column)
 }
 
 #[cfg(test)]
@@ -1009,5 +1227,49 @@ mod tests {
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].text, "foo(a)");
         assert_eq!(matches[1].text, "bar(b)");
+    }
+
+    #[test]
+    fn pattern_candidate_plan_uses_effective_root_kind() {
+        let pattern = CompiledPattern::new(&lang("ts"), "foo($X)").expect("pattern compiles");
+
+        assert!(pattern.candidate_plan().matches_kind("call_expression"));
+        assert!(!pattern.candidate_plan().matches_kind("identifier"));
+    }
+
+    #[test]
+    fn rule_candidate_plan_intersects_all_and_unions_any() {
+        let all = CompiledRule::new(
+            &lang("ts"),
+            "rule:\n  all:\n    - kind: call_expression\n    - pattern: foo($X)\n",
+        )
+        .expect("all rule compiles");
+        assert!(all.candidate_plan.matches_kind("call_expression"));
+        assert!(!all.candidate_plan.matches_kind("identifier"));
+
+        let any = CompiledRule::new(
+            &lang("ts"),
+            "rule:\n  any:\n    - kind: call_expression\n    - kind: identifier\n",
+        )
+        .expect("any rule compiles");
+        assert!(any.candidate_plan.matches_kind("call_expression"));
+        assert!(any.candidate_plan.matches_kind("identifier"));
+        assert!(!any.candidate_plan.matches_kind("string"));
+    }
+
+    #[test]
+    fn simple_kind_rule_uses_direct_fast_path_shape() {
+        let rule = CompiledRule::new(&lang("ts"), "rule:\n  kind: call_expression\n")
+            .expect("kind rule compiles");
+
+        assert_eq!(rule.simple_kind(), Some("call_expression"));
+    }
+
+    #[test]
+    fn impossible_candidate_plan_returns_no_matches() {
+        let rule = "rule:\n  kind: identifier\n  pattern: foo($X)\n";
+        let matches = run_rule("foo(a);\nconst b = a;\n", "ts", rule);
+
+        assert!(matches.is_empty());
     }
 }

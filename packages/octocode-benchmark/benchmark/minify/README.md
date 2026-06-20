@@ -70,15 +70,14 @@ Measured async result types across the real corpus: conservative 27, terser 4, a
 
 ## Grammar-working check
 
-`check-grammars.mjs` proves every tree-sitter grammar the engine declares as
+`ast/check-ast.mjs` proves every tree-sitter grammar the engine declares as
 supported is actually loaded into the **shipped native binary** and works
-end-to-end through the napi surface — catching ABI mismatches that only surface
-at parse time, not compile time (grammar crates are pinned at mixed versions —
-0.7, 0.23, 0.24, 0.25, 0.26, 1.0 — against tree-sitter core 0.26).
+end-to-end through the napi surface, catching ABI mismatches that only surface
+at parse time, not compile time.
 
 ```bash
-yarn build:dev          # or any target — produces the .node binary
-yarn grammars:check     # runs node benchmark/check-grammars.mjs
+yarn workspace @octocodeai/octocode-engine build:dev
+yarn ast:check
 ```
 
 For each of the 19 distinct grammars it runs:
@@ -96,8 +95,9 @@ For each of the 19 distinct grammars it runs:
 
 A coverage pass asserts every extension in
 `getSupportedStructuralExtensions()` is claimed by exactly one grammar entry, so
-adding a grammar to the engine without a `benchmark/<lang>/` sample + proof here
-fails the check. It is wired into `yarn verify`.
+adding a grammar to the engine without an `ast/samples/` real fixture + proof
+here fails the check. Engine package compatibility scripts delegate to this
+package.
 
 > Note: tree-sitter is the **only** signature path. The former regex-heuristic
 > extractor (`src/signatures/heuristic.rs`, outlines for Scala/Kotlin/Ruby/PHP/…)
@@ -109,6 +109,6 @@ fails the check. It is wired into `yarn verify`.
 ## Regenerate
 
 ```bash
-yarn build
-node benchmark/generate-real-code-report.mjs /path/to/real/corpus
+yarn workspace @octocodeai/octocode-engine build
+node benchmark/minify/generate-real-code-report.mjs /path/to/real/corpus
 ```

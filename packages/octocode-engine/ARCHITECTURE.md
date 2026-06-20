@@ -47,9 +47,7 @@ bindings; Rust modules own the actual logic and are tested with `cargo test`.
 - Search: `grep`, `ignore`.
 - Minify/JS/CSS: `lightningcss`, `oxc_allocator`, `oxc_ast`, `oxc_codegen`,
   `oxc_minifier`, `oxc_parser`, `oxc_span`, `oxc_semantic`.
-- Structural search: `tree-sitter`, `tree-sitter-language`; `ast-grep-core`
-  and `ast-grep-config` remain only as a temporary legacy fallback until final
-  removal.
+- Structural search: `tree-sitter`, `tree-sitter-language`.
 - Grammars: `tree-sitter-typescript`, `tree-sitter-javascript`,
   `tree-sitter-python`, `tree-sitter-go`, `tree-sitter-rust`,
   `tree-sitter-java`, `tree-sitter-c`, `tree-sitter-cpp`,

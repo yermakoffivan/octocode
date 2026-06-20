@@ -16,7 +16,7 @@ import {
   extractArchiveToDir,
 } from './archiveOps.js';
 import { decompressFile } from './decompressOps.js';
-import { identifyFile, extractStrings } from './binaryOps.js';
+import { inspectBinaryFile, extractStrings } from './binaryOps.js';
 
 const TOOL_NAME = TOOL_NAMES.LOCAL_BINARY_INSPECT;
 
@@ -28,13 +28,14 @@ function unpackDestination(path: string): string {
   return join(paths.unzip, `${basename(path)}-${timestampForPath()}`);
 }
 
-// The binary backends shell out to external CLIs that are not in the base
-// security allowlist (rg/ls/find/grep/git). Register them here so the tool
-// can execute. Idempotent.
+// The container-lane backends shell out to external CLIs that are not in the
+// base security allowlist (rg/ls/find/grep/git). Register them here so the tool
+// can execute. Idempotent. The format lane (inspect/strings) is fully native
+// (octocode-engine) and needs no allowlisted command; the binutils commands
+// `xxd`/`strings` were removed with the old identify/strings shell-outs. `file`
+// stays — decompress still uses `file --mime-type` for format auto-detection.
 const BINARY_BACKEND_COMMANDS = [
   'file',
-  'xxd',
-  'strings',
   'unzip',
   'tar',
   'bsdtar',
@@ -114,17 +115,34 @@ function paginateContent(
 
 // ─── mode handlers ────────────────────────────────────────────────────────────
 
-async function handleIdentify(path: string, query: BinaryInspectQuery) {
-  const result = await identifyFile(path);
-  if (!result.success) {
-    return createErrorResult(result.error ?? 'identify failed', query);
+function handleInspect(path: string, query: BinaryInspectQuery) {
+  const result = inspectBinaryFile(path);
+  if (!result.success || !result.info) {
+    return createErrorResult(result.error ?? 'inspect failed', query);
   }
+  const info = result.info;
   return {
     status: 'success' as const,
-    mode: 'identify' as const,
+    mode: 'inspect' as const,
     path,
-    fileType: result.fileType,
-    magicBytes: result.magicBytes,
+    format: info.format,
+    description: info.description,
+    magicBytes: info.magicHex,
+    ...(info.arch ? { arch: info.arch } : {}),
+    ...(info.bits ? { bits: info.bits } : {}),
+    ...(info.endianness ? { endianness: info.endianness } : {}),
+    ...(info.stripped !== undefined ? { stripped: info.stripped } : {}),
+    ...(info.entry ? { entry: info.entry } : {}),
+    symbolCount: info.symbolCount,
+    importCount: info.importCount,
+    exportCount: info.exportCount,
+    ...(info.symbols.length ? { symbols: info.symbols } : {}),
+    ...(info.imports.length ? { imports: info.imports } : {}),
+    ...(info.exports.length ? { exports: info.exports } : {}),
+    ...(info.sections.length ? { sections: info.sections } : {}),
+    ...(info.libraries.length ? { libraries: info.libraries } : {}),
+    ...(info.truncated ? { truncated: true } : {}),
+    ...(info.notes.length ? { hints: info.notes } : {}),
   };
 }
 
@@ -142,7 +160,7 @@ async function handleList(path: string, query: BinaryInspectQuery) {
       {
         customHints: [
           ...missingHint,
-          'Run mode="identify" first to confirm this is an archive.',
+          'Run mode="inspect" first to confirm this is an archive.',
         ],
       }
     );
@@ -294,21 +312,13 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
   };
 }
 
-async function handleStrings(path: string, query: BinaryInspectQuery) {
+function handleStrings(path: string, query: BinaryInspectQuery) {
   const minLength = query.minLength ?? DEFAULT_MIN_STRING_LENGTH;
   const includeOffsets = query.includeOffsets ?? false;
-  const result = await extractStrings(path, minLength, includeOffsets);
+  const result = extractStrings(path, minLength, includeOffsets);
 
   if (!result.success) {
-    return createErrorResult(
-      result.error ?? 'strings extraction failed',
-      query,
-      {
-        customHints: [
-          'Ensure the "strings" CLI is installed (binutils on Linux, available via brew on macOS).',
-        ],
-      }
-    );
+    return createErrorResult(result.error ?? 'strings extraction failed', query);
   }
 
   // Longest-first (most meaningful) strings joined into one blob, then
@@ -329,7 +339,7 @@ async function handleStrings(path: string, query: BinaryInspectQuery) {
   }
   if (result.truncated) {
     hints.push(
-      'Binary larger than the 32MB scan cap — strings cover only its leading section. Raise --min-length to cut noise, or pass --match to target a term.'
+      'Binary larger than the 64MB scan cap — strings cover only its leading section. Raise minLength to cut noise, or use mode="inspect" for symbols/imports.'
     );
   }
 
@@ -417,8 +427,8 @@ export async function inspectBinary(query: BinaryInspectQuery) {
   }
 
   switch (query.mode) {
-    case 'identify':
-      return handleIdentify(filePath, query);
+    case 'inspect':
+      return handleInspect(filePath, query);
     case 'list':
       return handleList(filePath, query);
     case 'extract':

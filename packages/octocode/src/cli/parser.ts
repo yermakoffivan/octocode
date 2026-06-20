@@ -150,7 +150,7 @@ const BOOLEAN_OPTIONS = new Set([
   'force-refresh',
   'strings',
   'decompress',
-  'identify',
+  'inspect',
   'offsets',
 ]);
 

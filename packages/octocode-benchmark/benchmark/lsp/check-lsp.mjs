@@ -21,11 +21,9 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { engine, engineRoot } from '../_engine.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const pkgRoot = join(here, '..', '..')
-const engine = createRequire(import.meta.url)(join(pkgRoot, 'index.cjs'))
 const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'))
 const sampleFor = new Map(manifest.samples.map((s) => [s.ext, s]))
 
@@ -76,7 +74,7 @@ for (const l of LANGS) {
 
   // SERVER resolution
   let cfg = null
-  try { cfg = engine.getLanguageServerForFile(probePath, pkgRoot) } catch (e) { issues.push(`getLanguageServerForFile threw: ${e.message}`) }
+  try { cfg = engine.getLanguageServerForFile(probePath, engineRoot) } catch (e) { issues.push(`getLanguageServerForFile threw: ${e.message}`) }
   if (!cfg || !cfg.command) issues.push('no server config resolved')
   else if (cfg.languageId !== l.id) issues.push(`server languageId ${JSON.stringify(cfg.languageId)} != ${l.id}`)
 

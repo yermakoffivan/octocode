@@ -669,7 +669,7 @@ export interface StructuralMatch {
 
 /**
  * Structural (AST) search — octocode's L2 layer. Resolves the grammar from
- * `file_path`'s extension and matches an ast-grep `pattern` OR a YAML `rule`
+ * `file_path`'s extension and matches an Octocode structural `pattern` OR a YAML `rule`
  * (exactly one). Returns node ranges (1-based lines, ready as `lineHint`s)
  * plus captured metavariables. Throws on unsupported extension, invalid
  * pattern/rule, or both/neither query supplied.
