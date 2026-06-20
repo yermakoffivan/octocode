@@ -5,6 +5,7 @@ import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
+import { getConfigSync } from '@octocodeai/octocode-tools-core/config';
 import {
   renderLocalResults,
   type LocalSearchResult,
@@ -38,11 +39,22 @@ interface GithubCodeResult {
     data?: {
       files?: Array<string | GithubFile>;
       pagination?: GithubPagination;
+      nonExistentScope?: boolean;
     };
   }>;
   hints?: string[];
-  emptyQueries?: Array<{ id?: string }>;
+  emptyQueries?: Array<{
+    id?: string;
+    hints?: string[];
+    nonExistentScope?: true;
+  }>;
 }
+
+type GithubRenderRef = {
+  readonly owner?: string;
+  readonly repo?: string;
+  readonly subpath?: string;
+};
 
 function listOption(value: string | undefined): string[] | undefined {
   const items = value
@@ -261,13 +273,15 @@ async function searchGithub(
 function renderGithubResults(
   sc: GithubCodeResult,
   limit: number,
-  owner?: string,
-  repo?: string
+  ref: GithubRenderRef = {}
 ): string {
   const data = sc?.results?.[0]?.data;
   const files = data?.files ?? [];
   const pagination = data?.pagination;
   const totalFiles = pagination?.uniqueFileCount ?? files.length;
+  const hasNonExistentScope =
+    data?.nonExistentScope === true ||
+    (sc.emptyQueries ?? []).some(query => query.nonExistentScope === true);
   const lines: string[] = [];
   let shown = 0;
 
@@ -279,7 +293,7 @@ function renderGithubResults(
       shown++;
       continue;
     }
-    const repoLabel = `${file.owner ?? owner ?? ''}/${file.repo ?? repo ?? ''}`;
+    const repoLabel = `${file.owner ?? ref.owner ?? ''}/${file.repo ?? ref.repo ?? ''}`;
     lines.push(`  ${c('cyan', bold(file.path ?? ''))}  ${dim(repoLabel)}`);
     for (const m of (file.matches ?? []).slice(0, 5)) {
       const snippet = (m.value ?? '').trim().replace(/\n/g, ' ').slice(0, 120);
@@ -308,20 +322,45 @@ function renderGithubResults(
       lines.push(`  ${c('yellow', '→')} ${indexingHint}`);
     }
 
-    const repoRef = owner && repo ? `${owner}/${repo}` : '<owner>/<repo>';
+    const repoRef =
+      ref.owner && ref.repo ? `${ref.owner}/${ref.repo}` : '<owner>/<repo>';
+    const cloneRef =
+      ref.owner && ref.repo
+        ? `${ref.owner}/${ref.repo}${ref.subpath ? `/${ref.subpath}` : ''}`
+        : '<owner>/<repo>[/path]';
     lines.push('');
-    lines.push(
-      `  ${c('yellow', '→')} GitHub code search may not index this repo. Alternatives:`
-    );
+    if (hasNonExistentScope) {
+      lines.push(
+        `  ${c('yellow', '→')} GitHub reported this scope is not searchable. Verify owner/repo spelling, access, or path.`
+      );
+    } else {
+      lines.push(
+        `  ${c('yellow', '→')} GitHub code search may not index this repo. Alternatives:`
+      );
+    }
     lines.push(
       `     ${bold('ls ' + repoRef)}  — browse structure, then target a file`
     );
     lines.push(
       `     ${bold('cat ' + repoRef + '/<file> --match-string <pattern> --mode symbols')}  — search inside a known file (efficient)`
     );
+    if (isCloneHintEnabled()) {
+      lines.push(
+        `     ${bold('clone ' + cloneRef)}  — pull it local, then rerun grep`
+      );
+    }
   }
 
   return lines.join('\n');
+}
+
+function isCloneHintEnabled(): boolean {
+  try {
+    const config = getConfigSync();
+    return config.local.enabled && config.local.enableClone;
+  } catch {
+    return false;
+  }
 }
 
 export const grepCommand: CLICommand = {
@@ -741,7 +780,13 @@ export const grepCommand: CLICommand = {
           return;
         }
         console.log(
-          '\n' + renderGithubResults(sc, limit, ref.owner, ref.repo) + '\n'
+          '\n' +
+            renderGithubResults(sc, limit, {
+              owner: ref.owner,
+              repo: ref.repo,
+              subpath: ref.subpath,
+            }) +
+            '\n'
         );
       } else {
         const sc = await searchLocal(pattern, ref.path, {

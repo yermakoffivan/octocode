@@ -24,6 +24,7 @@ const OPTION_NAMES = new Set([
   'json',
   'compact',
   'no-color',
+  'raw',
   'mode',
   'branch',
   'match-string',
@@ -64,6 +65,10 @@ function validateOptions(
     option => !OPTION_NAMES.has(option)
   );
   if (unknown) return `Unknown cat option --${unknown}.`;
+
+  if (getBool(options, 'raw') && getBool(options, 'json')) {
+    return 'Use either --raw or --json, not both.';
+  }
 
   const mode = getString(options, 'mode') || 'standard';
   if (!VALID_MODES.has(mode)) {
@@ -128,6 +133,9 @@ function buildSharedQuery(
   options: Record<string, string | boolean>
 ): Record<string, unknown> {
   const paging = buildContentPaging(options);
+  const mode =
+    getString(options, 'mode') ||
+    (getBool(options, 'raw') ? 'none' : 'standard');
   return {
     path,
     fullContent: getBool(options, 'full-content') || undefined,
@@ -140,8 +148,41 @@ function buildSharedQuery(
     contextLines: nonNegIntOption(getString(options, 'context-lines')),
     charOffset: paging.charOffset,
     charLength: paging.charLength,
-    minify: (getString(options, 'mode') || 'standard') as MinifyMode,
+    minify: mode as MinifyMode,
   };
+}
+
+type DirectToolResult = {
+  readonly isError?: boolean;
+  readonly structuredContent?: unknown;
+};
+
+function extractRawContent(result: DirectToolResult): string | undefined {
+  const structured = result.structuredContent as
+    | {
+        readonly results?: readonly {
+          readonly data?: { readonly content?: unknown };
+          readonly files?: readonly { readonly content?: unknown }[];
+        }[];
+        readonly content?: unknown;
+      }
+    | undefined;
+  const first = structured?.results?.[0];
+  const content =
+    first?.data?.content ?? first?.files?.[0]?.content ?? structured?.content;
+  return typeof content === 'string' ? content : undefined;
+}
+
+function printRawContent(result: DirectToolResult): boolean {
+  const content = extractRawContent(result);
+  if (content === undefined) {
+    return false;
+  }
+  process.stdout.write(content);
+  if (!content.endsWith('\n')) {
+    process.stdout.write('\n');
+  }
+  return true;
 }
 
 export const catCommand: CLICommand = {
@@ -149,8 +190,13 @@ export const catCommand: CLICommand = {
   description:
     'Read file content from local paths and GitHub references with match, line, pagination, and minify controls',
   usage:
-    'cat <path|github-ref> [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]',
+    'cat <path|github-ref> [--raw] [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]',
   options: [
+    {
+      name: 'raw',
+      description:
+        'Print only file content, no YAML envelope; implies --mode none unless --mode is set',
+    },
     {
       name: 'mode',
       hasValue: true,
@@ -217,6 +263,7 @@ export const catCommand: CLICommand = {
   handler: async args => {
     const target = args.args[0] ?? '';
     const jsonOutput = getBool(args.options, 'json');
+    const rawOutput = getBool(args.options, 'raw');
     const branchOverride = getString(args.options, 'branch');
 
     if (!target) {
@@ -231,7 +278,7 @@ export const catCommand: CLICommand = {
       return;
     }
 
-    if (!jsonOutput) {
+    if (!jsonOutput && !rawOutput) {
       process.stderr.write(`  ${dim(`Fetching ${refLabel(ref)} ...`)}\n`);
     }
 
@@ -265,7 +312,7 @@ export const catCommand: CLICommand = {
         isGithubRef(ref) &&
         /path is a directory/i.test(getDirectToolText(result))
       ) {
-        if (!jsonOutput) {
+        if (!jsonOutput && !rawOutput) {
           process.stderr.write(
             `  ${dim('Path is a directory — switching to ls view ...')}\n`
           );
@@ -286,6 +333,17 @@ export const catCommand: CLICommand = {
         });
         printDirectToolResult(treeResult, jsonOutput);
         markDirectToolFailure(treeResult);
+        return;
+      }
+
+      if (!result.isError && rawOutput) {
+        if (!printRawContent(result)) {
+          console.error(
+            `\n  ${c('red', '✗')} No content returned for raw output.\n`
+          );
+          process.exitCode = EXIT.TOOL;
+          return;
+        }
         return;
       }
 

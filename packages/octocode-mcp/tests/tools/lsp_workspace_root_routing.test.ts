@@ -12,7 +12,9 @@ describe('LSP workspace root routing', () => {
   beforeEach(async () => {
     vi.resetModules();
 
-    tempDir = await mkdtemp(path.join(os.homedir(), '.octocode-engine-routing-'));
+    tempDir = await mkdtemp(
+      path.join(os.homedir(), '.octocode-engine-routing-')
+    );
     configuredWorkspaceRoot = path.join(tempDir, 'configured-workspace');
     inferredWorkspaceRoot = path.join(tempDir, 'repo', 'node_modules', 'pkg');
     externalFile = path.join(inferredWorkspaceRoot, 'cli.js');
@@ -34,7 +36,8 @@ describe('LSP workspace root routing', () => {
   it.each([['definition'], ['references'], ['callers']] as const)(
     'passes the inferred root to lspGetSemantics type=%s',
     async type => {
-      const managerModule = await import('@octocodeai/octocode-engine/lsp/manager');
+      const managerModule =
+        await import('@octocodeai/octocode-engine/lsp/manager');
 
       vi.spyOn(managerModule, 'isLanguageServerAvailable').mockResolvedValue(
         true

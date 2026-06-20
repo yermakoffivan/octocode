@@ -508,7 +508,7 @@ Website: **[octocode.ai](https://octocode.ai)** · Full docs: **[github.com/bgau
 **Setup**
 - [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md)
 - [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md)
-- [Using octocode-mcp with Pi](https://github.com/bgauryy/octocode/blob/main/docs/PI_SETUP_GUIDE.md)
+- [Using octocode-mcp with Pi](https://github.com/bgauryy/octocode/blob/main/docs/PI/PI_SETUP_GUIDE.md)
 
 **Tool References**
 - [GitHub Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
@@ -526,6 +526,20 @@ Website: **[octocode.ai](https://octocode.ai)** · Full docs: **[github.com/bgau
 
 **Operations**
 - [Development Guide](https://github.com/bgauryy/octocode/blob/main/docs/DEVELOPMENT_GUIDE.md) · [Agent Guidance (AGENTS.md)](https://github.com/bgauryy/octocode/blob/main/AGENTS.md)
+
+### Recommended dev mode: Pi + Octocode
+
+[Pi](https://github.com/earendil-works/pi) is a fast, local-first coding agent whose stated philosophy is *"CLI tools with READMEs (Skills) over MCP."* Pairing it with Octocode gives a lean, evidence-driven dev loop — **Pi edits, Octocode researches**. Two routes, pick by how much surface you need:
+
+- **Skill route — recommended, leanest.** Drop the [`octocode-engineer`](https://www.skills.sh/bgauryy/octocode-mcp/octocode-engineer) skill into Pi's global skills dir. It drives the Octocode **CLI** directly — no MCP transport, minimal token overhead — and Pi auto-discovers it:
+
+  ```bash
+  npx -y degit bgauryy/octocode/skills/octocode-engineer ~/.pi/agent/skills/octocode-engineer
+  ```
+
+- **Adapter route — full tool surface.** Install [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) to expose all 13 Octocode MCP tools behind a single ~200-token proxy tool, so servers stay disconnected until a tool is actually called. Enable clone tools with `ENABLE_CLONE=true`.
+
+Tune Pi's behavior with an `APPEND_SYSTEM.md` (a compact starter lives at [`docs/PI/APPEND_SYSTEM.md`](https://github.com/bgauryy/octocode/blob/main/docs/PI/APPEND_SYSTEM.md)). The full walkthrough — adapter install, MCP config scopes, skills, system-prompt tuning, and custom models — is in the [**Pi Setup Guide**](https://github.com/bgauryy/octocode/blob/main/docs/PI/PI_SETUP_GUIDE.md).
 
 ### The Manifest
 

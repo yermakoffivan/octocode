@@ -117,7 +117,12 @@ export const contextUtils = {
     line: number,
     character: number
   ): string | null {
-    return loadNative().findInFileReferences(content, filePath, line, character);
+    return loadNative().findInFileReferences(
+      content,
+      filePath,
+      line,
+      character
+    );
   },
 
   /**

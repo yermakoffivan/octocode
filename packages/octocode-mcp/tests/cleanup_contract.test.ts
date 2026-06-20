@@ -180,5 +180,4 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
       'paginateFlatQueryResult must guard on success (status === undefined)'
     ).toMatch(/status\s*!==\s*undefined/);
   });
-
 });

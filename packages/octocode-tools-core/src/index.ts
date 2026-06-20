@@ -234,7 +234,10 @@ export { hints as npmSearchHints } from './tools/package_search/hints.js';
 
 export { getDynamicHints as getDynamicToolHints } from './hints/dynamic.js';
 
-export { securityRegistry, ContentSanitizer } from '@octocodeai/octocode-engine/security';
+export {
+  securityRegistry,
+  ContentSanitizer,
+} from '@octocodeai/octocode-engine/security';
 export { maskSensitiveData } from '@octocodeai/octocode-engine/mask';
 export { configureSecurity } from '@octocodeai/octocode-engine/withSecurityValidation';
 
@@ -387,7 +390,11 @@ export {
   parseLoggingEnv,
   OctocodeConfigSchema,
 } from './shared/config/index.js';
-export { createLogger, setLogHandler, _getLogHandler } from './shared/logger/index.js';
+export {
+  createLogger,
+  setLogHandler,
+  _getLogHandler,
+} from './shared/logger/index.js';
 export type { LogLevel, LogEntry } from './shared/logger/index.js';
 export {
   OCTOCODE_HOME,

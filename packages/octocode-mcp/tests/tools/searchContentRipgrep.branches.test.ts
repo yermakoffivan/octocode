@@ -17,9 +17,8 @@ vi.mock(
   })
 );
 
-const { searchContentRipgrep } = await import(
-  '../../../octocode-tools-core/src/tools/local_ripgrep/searchContentRipgrep.js'
-);
+const { searchContentRipgrep } =
+  await import('../../../octocode-tools-core/src/tools/local_ripgrep/searchContentRipgrep.js');
 
 function makeRipgrepQuery(overrides: Partial<RipgrepQuery> = {}): RipgrepQuery {
   return {

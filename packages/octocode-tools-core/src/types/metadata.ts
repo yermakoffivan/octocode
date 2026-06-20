@@ -33,6 +33,7 @@ export interface HintContext {
   hasPagination?: boolean;
   path?: string;
   hasOwnerRepo?: boolean;
+  cloneEnabled?: boolean;
   match?: 'file' | 'path';
   searchEngine?: 'rg' | 'structural';
   wasFilteredToEmpty?: boolean;

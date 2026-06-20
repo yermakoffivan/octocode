@@ -8,19 +8,22 @@ const mocks = vi.hoisted(() => ({
   searchRipgrep: vi.fn(),
 }));
 
-vi.mock('../../../octocode-tools-core/src/utils/contextUtils.js', async importOriginal => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../octocode-tools-core/src/utils/contextUtils.js')
-    >();
-  return {
-    ...actual,
-    contextUtils: {
-      ...actual.contextUtils,
-      searchRipgrep: mocks.searchRipgrep,
-    },
-  };
-});
+vi.mock(
+  '../../../octocode-tools-core/src/utils/contextUtils.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/utils/contextUtils.js')
+      >();
+    return {
+      ...actual,
+      contextUtils: {
+        ...actual.contextUtils,
+        searchRipgrep: mocks.searchRipgrep,
+      },
+    };
+  }
+);
 
 vi.mock('@octocodeai/octocode-engine/pathValidator', () => ({
   pathValidator: {

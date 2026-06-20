@@ -17,12 +17,20 @@ export const hints: ToolHintGenerators = {
     }
 
     if (ctx.hasOwnerRepo && owner && repo) {
-      return [
+      const scoped: string[] = [
         hasFilters
           ? 'Remove path/filename/extension first, then retry keywords.'
           : `No results in ${owner}/${repo} — large or popular repos often require narrowing: add extension, filename, or path to reduce scope. Repo may also be unindexed (new/private/recently renamed). Fall back to ghGetFileContent with a known path, or ghViewRepoStructure to discover paths.`,
         'GitHub code search indexes the default branch only.',
       ];
+      // When clone is enabled, a repo that GitHub's index can't see is still
+      // fully searchable locally: clone it, then use the local tools.
+      if (ctx.cloneEnabled && !hasFilters) {
+        scoped.push(
+          `If ${owner}/${repo} is unindexed, clone it with ghCloneRepo (owner="${owner}", repo="${repo}") and research locally with localSearchCode, localGetFileContent, and lspGetSemantics.`
+        );
+      }
+      return scoped;
     }
 
     const out: string[] = [];

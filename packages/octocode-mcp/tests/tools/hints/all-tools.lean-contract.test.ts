@@ -205,6 +205,38 @@ describe('ghSearchCode — empty + error', () => {
     ).toBe(true);
   });
 
+  it('empty + owner/repo + cloneEnabled suggests cloning + local research', () => {
+    const h = ghCodeHints.empty({
+      hasOwnerRepo: true,
+      owner: 'facebook',
+      repo: 'react',
+      cloneEnabled: true,
+    } as never);
+    const cloneHint = h.find(s => s?.includes('ghCloneRepo'));
+    expect(cloneHint).toBeTruthy();
+    expect(cloneHint).toContain('localSearchCode');
+  });
+
+  it('empty + owner/repo without cloneEnabled omits the clone hint', () => {
+    const h = ghCodeHints.empty({
+      hasOwnerRepo: true,
+      owner: 'facebook',
+      repo: 'react',
+    } as never);
+    expect(h.some(s => s?.includes('ghCloneRepo'))).toBe(false);
+  });
+
+  it('empty + cloneEnabled but with filters omits the clone hint', () => {
+    const h = ghCodeHints.empty({
+      hasOwnerRepo: true,
+      owner: 'a',
+      repo: 'b',
+      extension: 'ts',
+      cloneEnabled: true,
+    } as never);
+    expect(h.some(s => s?.includes('ghCloneRepo'))).toBe(false);
+  });
+
   it('empty + filters returns filter removal hint', () => {
     const h = ghCodeHints.empty({
       hasOwnerRepo: true,

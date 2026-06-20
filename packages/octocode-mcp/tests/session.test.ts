@@ -1,5 +1,8 @@
 vi.mock('@octocodeai/octocode-tools-core/session', async importOriginal => {
-  const actual = await importOriginal<typeof import('@octocodeai/octocode-tools-core/session')>();
+  const actual =
+    await importOriginal<
+      typeof import('@octocodeai/octocode-tools-core/session')
+    >();
   return {
     ...actual,
     getOrCreateSession: vi.fn(() => ({

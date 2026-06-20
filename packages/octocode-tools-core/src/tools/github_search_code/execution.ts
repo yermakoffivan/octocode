@@ -24,6 +24,7 @@ import {
   executeProviderOperation,
 } from '../providerExecution.js';
 import { buildGhSearchCodeFinalizer } from './finalizer.js';
+import { getConfigSync } from '../../shared/index.js';
 
 type PartialCodeSearchQuery = WithOptionalMeta<GitHubCodeSearchQuery>;
 
@@ -91,8 +92,10 @@ export async function searchMultipleGitHubCode(
           query
         );
 
+        const cloneCfg = getConfigSync().local;
         const hintContext = {
           hasOwnerRepo: Boolean(query.owner && query.repo),
+          cloneEnabled: cloneCfg.enabled && cloneCfg.enableClone,
           owner: query.owner,
           repo: query.repo,
           nonExistentScope: flat.nonExistentScope,

@@ -4,7 +4,10 @@ import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-const securityMock = resolve(__dirname, 'tests/__mocks__/octocode-engine-security.ts');
+const securityMock = resolve(
+  __dirname,
+  'tests/__mocks__/octocode-engine-security.ts'
+);
 const mcpPublicSource = resolve(__dirname, '../octocode-mcp/src/public.ts');
 
 export default defineConfig({
@@ -57,6 +60,7 @@ export default defineConfig({
         'src/cli/commands/pkg.ts',
         'src/cli/commands/pr.ts',
         'src/cli/commands/repo.ts',
+        'src/cli/commands/symbol-outline.ts',
         'src/cli/commands/symbols.ts',
         'src/configs/**',
         'src/features/github-oauth.ts',

@@ -548,7 +548,10 @@ async function getDocumentSymbols(
     symbols = Array.isArray(raw) ? raw : [];
     source = 'lsp';
   } else {
-    const native = nativeDocumentSymbols(anchor.value.uri, anchor.value.content);
+    const native = nativeDocumentSymbols(
+      anchor.value.uri,
+      anchor.value.content
+    );
     if (native) {
       symbols = native;
       source = 'native';
@@ -799,9 +802,7 @@ function locationsEnvelope(
   };
 }
 
-type ReferencesSource =
-  | { kind: 'lsp' }
-  | { kind: 'native'; scope: 'file' };
+type ReferencesSource = { kind: 'lsp' } | { kind: 'native'; scope: 'file' };
 
 const LSP_REFERENCES_SOURCE: ReferencesSource = { kind: 'lsp' };
 
@@ -843,7 +844,11 @@ function referencesEnvelope(
     resolvedSymbol: compactResolvedSymbol(anchor.resolvedSymbol),
     lsp: native
       ? { serverAvailable: false, source: 'native' }
-      : { serverAvailable: true, provider: 'referencesProvider', source: 'lsp' },
+      : {
+          serverAvailable: true,
+          provider: 'referencesProvider',
+          source: 'lsp',
+        },
     payload: {
       kind: 'references',
       ...(byFile ? { byFile: pageItems } : { locations: pageItems }),

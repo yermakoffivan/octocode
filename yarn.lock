@@ -1502,21 +1502,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core":
-  version: 16.4.0
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=5e7120&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
+"@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=octocode%40workspace%3Apackages%2Foctocode":
+  version: 16.5.0
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=2eccb8&locator=octocode%40workspace%3Apackages%2Foctocode"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/1511043920c83f28fe5f48e2ad9d547135dbe3b84beb62c4ae6cbc9d4c59bb990e17a2b8aaad5ec1e4678eb40d3eda9062b67297abbb0244421ef1eebf64acc0
+  checksum: 10c0/8ea75045253ad763568a7e03c559e43cef8a5f82a5a15bc8caa8ec930ef517f42ac63d40ac5267431cb7277548290994b0bc8c32b0f78d022fd4f7f128914029
   languageName: node
   linkType: hard
 
-"@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=octocode%40workspace%3Apackages%2Foctocode":
-  version: 16.4.0
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=5e7120&locator=octocode%40workspace%3Apackages%2Foctocode"
+"@octocodeai/octocode-core@npm:^16.5.0":
+  version: 16.5.0
+  resolution: "@octocodeai/octocode-core@npm:16.5.0"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/1511043920c83f28fe5f48e2ad9d547135dbe3b84beb62c4ae6cbc9d4c59bb990e17a2b8aaad5ec1e4678eb40d3eda9062b67297abbb0244421ef1eebf64acc0
+  checksum: 10c0/30401d12f62ae63d5753bdd12b5a0624bf31a1715af9edb5d75203b5cc362629b4b7824e195d3390b4df3ee8d2c7bb8816a9788fb0fbd6b8e6be2adfcd909af1
   languageName: node
   linkType: hard
 
@@ -1595,7 +1595,7 @@ __metadata:
   resolution: "@octocodeai/octocode-tools-core@workspace:packages/octocode-tools-core"
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
-    "@octocodeai/octocode-core": "file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core"
+    "@octocodeai/octocode-core": "npm:^16.5.0"
     "@octocodeai/octocode-engine": "workspace:*"
     "@octokit/core": "npm:^7.0.6"
     "@octokit/oauth-methods": "npm:^6.0.2"

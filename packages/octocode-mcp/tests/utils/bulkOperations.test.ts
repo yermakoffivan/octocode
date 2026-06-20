@@ -1,5 +1,24 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { incrementToolCharSavings } from '@octocodeai/octocode-tools-core/session';
+
+const sessionMocks = vi.hoisted(() => ({
+  incrementToolCharSavings: vi.fn(),
+}));
+
+vi.mock(
+  '../../../octocode-tools-core/src/shared/index.js',
+  async importOriginal => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../octocode-tools-core/src/shared/index.js')
+      >();
+    return {
+      ...actual,
+      incrementToolCharSavings: sessionMocks.incrementToolCharSavings,
+    };
+  }
+);
+
+import { incrementToolCharSavings } from '../../../octocode-tools-core/src/shared/index.js';
 import { executeBulkOperation } from '../../../octocode-tools-core/src/utils/response/bulk.js';
 import { attachRawResponseChars } from '../../../octocode-tools-core/src/utils/response/charSavings.js';
 import type { QueryStatus } from '../../../octocode-tools-core/src/types/toolResults.js';

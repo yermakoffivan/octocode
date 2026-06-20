@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises';
-import { SymbolResolver, SymbolResolutionError } from '@octocodeai/octocode-engine/lsp/resolver';
-import type { ExactPosition, LSPRange } from '@octocodeai/octocode-engine/lsp/types';
+import {
+  SymbolResolver,
+  SymbolResolutionError,
+} from '@octocodeai/octocode-engine/lsp/resolver';
+import type {
+  ExactPosition,
+  LSPRange,
+} from '@octocodeai/octocode-engine/lsp/types';
 import { validateToolPath } from '../../../utils/file/toolHelpers.js';
 import { LSP_ERROR_CODES } from '@octocodeai/octocode-engine/lsp/lspErrorCodes';
 import type { LspGetSemanticsQuery, ResolvedSymbol } from './semanticTypes.js';

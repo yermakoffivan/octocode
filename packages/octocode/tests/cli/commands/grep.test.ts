@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const executeDirectTool = vi.fn();
+const getConfigSync = vi.fn();
 
 vi.mock('@octocodeai/octocode-tools-core/direct', () => ({
   executeDirectTool: (...args: unknown[]) => executeDirectTool(...args),
+}));
+
+vi.mock('@octocodeai/octocode-tools-core/config', () => ({
+  getConfigSync: () => getConfigSync(),
 }));
 
 // Keep color helpers as identity passthroughs so assertions match plain text.
@@ -41,6 +46,10 @@ function lastQuery() {
 describe('grep command', () => {
   beforeEach(() => {
     executeDirectTool.mockReset();
+    getConfigSync.mockReset();
+    getConfigSync.mockReturnValue({
+      local: { enabled: true, enableClone: true },
+    });
     executeDirectTool.mockResolvedValue(okEnvelope());
     process.exitCode = undefined;
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -147,6 +156,58 @@ describe('grep command', () => {
     await run(['useState', 'facebook/react'], { type: 'tsx' });
 
     expect(lastQuery().extension).toBe('tsx');
+  });
+
+  it('renders a specific non-existent GitHub scope message when the tool reports it', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: false,
+      content: [],
+      structuredContent: {
+        results: [{ data: { files: [], pagination: {} } }],
+        emptyQueries: [{ id: 'q1', nonExistentScope: true }],
+      },
+    });
+
+    await run(['useState', 'facebook/react']);
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('GitHub reported this scope is not searchable')
+    );
+  });
+
+  it('adds a clone fallback hint for empty GitHub searches when clone is enabled', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: false,
+      content: [],
+      structuredContent: {
+        results: [{ data: { files: [], pagination: {} } }],
+      },
+    });
+
+    await run(['useState', 'facebook/react/packages/react']);
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('clone facebook/react/packages/react')
+    );
+  });
+
+  it('omits the clone fallback hint when clone is disabled', async () => {
+    getConfigSync.mockReturnValue({
+      local: { enabled: true, enableClone: false },
+    });
+    executeDirectTool.mockResolvedValue({
+      isError: false,
+      content: [],
+      structuredContent: {
+        results: [{ data: { files: [], pagination: {} } }],
+      },
+    });
+
+    await run(['useState', 'facebook/react']);
+
+    expect(console.log).not.toHaveBeenCalledWith(
+      expect.stringContaining('clone facebook/react')
+    );
   });
 
   it('uses --limit as the GitHub code page size for JSON and rendered output', async () => {
