@@ -34,15 +34,7 @@ type GithubStructureResult = StructureResult;
 const SORT_VALUES = new Set(['name', 'size', 'time', 'extension']);
 
 // Filters localViewStructure supports but ghViewRepoStructure does not.
-const LOCAL_ONLY = [
-  'pattern',
-  'ext',
-  'hidden',
-  'sort',
-  'reverse',
-  'files-only',
-  'dirs-only',
-] as const;
+const LOCAL_ONLY = ['hidden', 'sort', 'reverse'] as const;
 
 interface LocalTreeOpts {
   depth?: number;
@@ -175,9 +167,85 @@ function renderTree(data: Record<string, unknown> | undefined): string {
 function listOpt(value: string): string[] | undefined {
   const list = value
     .split(',')
-    .map(s => s.trim().replace(/^\*?\./, ''))
+    .map(s =>
+      s
+        .trim()
+        .replace(/^\*?\./, '')
+        .toLowerCase()
+    )
     .filter(Boolean);
   return list.length > 0 ? list : undefined;
+}
+
+function globToRegExp(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`, 'i');
+}
+
+function matchesNameFilters(
+  name: string,
+  pattern: string | undefined,
+  extensions: string[] | undefined
+): boolean {
+  if (extensions && extensions.length > 0) {
+    const ext = name.split('.').pop()?.toLowerCase();
+    if (!ext || !extensions.includes(ext)) return false;
+  }
+  if (!pattern) return true;
+  return pattern.includes('*') || pattern.includes('?')
+    ? globToRegExp(pattern).test(name)
+    : name.toLowerCase().includes(pattern.toLowerCase());
+}
+
+function filterTreeData(
+  data: Record<string, unknown> | undefined,
+  options: {
+    pattern?: string;
+    extensions?: string[];
+    filesOnly?: boolean;
+    directoriesOnly?: boolean;
+  }
+): Record<string, unknown> | undefined {
+  if (!data) return data;
+  const filterEntry = (entry: TreeEntry): TreeEntry => ({
+    ...entry,
+    folders: options.filesOnly
+      ? []
+      : (entry.folders ?? []).filter(name =>
+          matchesNameFilters(name, options.pattern, undefined)
+        ),
+    files: options.directoriesOnly
+      ? []
+      : (entry.files ?? []).filter(name =>
+          matchesNameFilters(name, options.pattern, options.extensions)
+        ),
+  });
+
+  if (Array.isArray(data.structure)) {
+    return {
+      ...data,
+      structure: data.structure.map(entry => filterEntry(entry as TreeEntry)),
+    };
+  }
+  if (
+    data.structure &&
+    typeof data.structure === 'object' &&
+    !Array.isArray(data.structure)
+  ) {
+    return {
+      ...data,
+      structure: Object.fromEntries(
+        Object.entries(data.structure as Record<string, TreeEntry>).map(
+          ([key, entry]) => [key, filterEntry(entry)]
+        )
+      ),
+    };
+  }
+
+  return filterEntry(data as TreeEntry) as Record<string, unknown>;
 }
 
 export const lsCommand: CLICommand = {
@@ -216,8 +284,7 @@ export const lsCommand: CLICommand = {
     {
       name: 'ext',
       hasValue: true,
-      description:
-        'Comma-separated extension whitelist, e.g. ts,tsx (local only)',
+      description: 'Comma-separated extension whitelist, e.g. ts,tsx',
     },
     {
       name: 'sort',
@@ -317,7 +384,7 @@ export const lsCommand: CLICommand = {
       const localOnly = LOCAL_ONLY.find(name => options[name] !== undefined);
       if (localOnly) {
         fail(
-          `--${localOnly} is local-only; GitHub structure supports --depth and --branch.`
+          `--${localOnly} is local-only; GitHub structure supports --depth, --branch, --pattern, --ext, --files-only, and --dirs-only.`
         );
         return;
       }
@@ -361,7 +428,12 @@ export const lsCommand: CLICommand = {
         return;
       }
 
-      const data = structured?.results?.[0]?.data;
+      const data = filterTreeData(structured?.results?.[0]?.data, {
+        pattern: getString(options, 'pattern') || undefined,
+        extensions: listOpt(getString(options, 'ext')),
+        filesOnly: getBool(options, 'files-only'),
+        directoriesOnly: getBool(options, 'dirs-only'),
+      });
       console.log('\n' + renderTree(data) + '\n');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

@@ -6,6 +6,7 @@ export interface LocalMatch {
   matches?: Array<{
     value?: string;
     line?: number;
+    count?: number;
     metavars?: Record<string, string[]>;
   }>;
 }
@@ -26,6 +27,10 @@ export interface LocalSearchResult {
       shared?: { matchCount?: number };
     };
   }>;
+}
+
+interface RenderOptions {
+  valuesOnly?: boolean;
 }
 
 function formatMetavars(
@@ -50,7 +55,8 @@ function formatMetavars(
 export function renderLocalResults(
   sc: LocalSearchResult,
   limit: number,
-  contextLines = 0
+  contextLines = 0,
+  options: RenderOptions = {}
 ): string {
   const data = sc?.results?.[0]?.data;
   const pagination = data?.pagination;
@@ -66,10 +72,18 @@ export function renderLocalResults(
     // rather than printing a misleading "(0 matches)".
     const count = f.matchCount ?? sharedCount ?? f.matches?.length;
     const countSuffix = count != null ? `  ${dim(`(${count} matches)`)}` : '';
-    lines.push(`  ${c('cyan', bold(f.path ?? ''))}${countSuffix}`);
+    if (!options.valuesOnly) {
+      lines.push(`  ${c('cyan', bold(f.path ?? ''))}${countSuffix}`);
+    }
     (f.matches ?? []).slice(0, 5).forEach(m => {
       const metavars = formatMetavars(m.metavars);
       const metaSuffix = metavars ? ` ${dim(metavars)}` : '';
+      if (options.valuesOnly) {
+        const snippet = (m.value ?? '').trim().slice(0, 120);
+        const prefix = m.count !== undefined ? `${m.count}x  ` : '';
+        lines.push(`  ${prefix}${snippet}${metaSuffix}`);
+        return;
+      }
       const physical = (m.value ?? '').split('\n');
       // With a context window the value is `before… + matchLine + after…`.
       // Number each physical line so the gutter aligns with the text it labels

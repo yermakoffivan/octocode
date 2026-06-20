@@ -52,6 +52,16 @@ function listOption(value: string | undefined): string[] | undefined {
   return items && items.length > 0 ? items : undefined;
 }
 
+function structuralShellExpansionError(shape: string): string | undefined {
+  if (/\$\d|\$\(|\$\s/.test(shape)) {
+    return "Structural pattern looks shell-expanded. Wrap metavariables in single quotes, e.g. --pattern 'useEffect($$$ARGS)'.";
+  }
+  if (!shape.includes('$') && /[A-Za-z_][\w.]*\([^)]*\b\d{5,}\b/.test(shape)) {
+    return "Structural pattern contains a large bare number where a metavariable list often belongs. If you meant $$$ARGS, wrap the pattern in single quotes: --pattern 'fn($$$ARGS)'.";
+  }
+  return undefined;
+}
+
 const LOCAL_TYPE_GLOBS: Record<string, string[]> = {
   javascript: ['*.js', '*.jsx', '*.mjs', '*.cjs'],
   typescript: ['*.ts', '*.tsx', '*.mts', '*.cts'],
@@ -103,6 +113,8 @@ interface LocalSearchOpts {
   maxFiles?: number;
   matchPage?: number;
   onlyMatching?: boolean;
+  unique?: boolean;
+  countUnique?: boolean;
   matchWindow?: number;
 }
 
@@ -139,6 +151,8 @@ async function searchLocal(
         maxFiles: opts.maxFiles,
         matchPage: opts.matchPage,
         onlyMatching: opts.onlyMatching,
+        unique: opts.unique,
+        countUnique: opts.countUnique,
         matchWindow: opts.matchWindow,
         page: opts.page,
         itemsPerPage: opts.pageSize,
@@ -315,7 +329,7 @@ export const grepCommand: CLICommand = {
   description:
     'Search code by text/regex (ripgrep) across local paths and GitHub, OR by AST shape with --pattern/--rule through Octocode structural grep. One search command: text by default, structural when you pass --pattern or --rule (local-only).',
   usage:
-    'grep <keywords> <path|github-ref> [text flags] | grep <path> --pattern <shape> | grep <path> --rule <yaml>  [--type <ext|lang>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
+    'grep <keywords> <path|github-ref> [text flags] | grep <path> --pattern <shape> | grep <path> --rule <yaml>  [--type <ext|lang>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--only-matching [--unique|--count]] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'pattern',
@@ -426,6 +440,16 @@ export const grepCommand: CLICommand = {
       name: 'only-matching',
       description:
         'Return only the matched substring(s), one per hit, instead of the whole line — enumerates every hit on a minified one-liner (local only)',
+    },
+    {
+      name: 'unique',
+      description:
+        'With --only-matching, return each matched value once per file (local only)',
+    },
+    {
+      name: 'count',
+      description:
+        'With --only-matching, return each matched value once per file with its frequency (local only)',
     },
     {
       name: 'match-window',
@@ -539,6 +563,16 @@ export const grepCommand: CLICommand = {
       const pageSizeS = getString(options, 'page-size');
       const includeS = getString(options, 'include');
       const shape = patternOpt ?? ruleOpt ?? '';
+      const shellExpansionError = structuralShellExpansionError(shape);
+      if (shellExpansionError) {
+        if (jsonOutput)
+          console.log(
+            JSON.stringify({ success: false, error: shellExpansionError })
+          );
+        else printCliError(shellExpansionError);
+        process.exitCode = EXIT.USAGE;
+        return;
+      }
 
       if (!jsonOutput) {
         process.stderr.write(
@@ -597,6 +631,8 @@ export const grepCommand: CLICommand = {
     const rawMatchPage = getString(options, 'match-page');
     const rawMatchWindow = getString(options, 'match-window');
     const onlyMatching = getBool(options, 'only-matching') || undefined;
+    const unique = getBool(options, 'unique') || undefined;
+    const countUnique = getBool(options, 'count') || undefined;
     const page = rawPage ? parseInt(rawPage, 10) : undefined;
     const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : limit;
     const contextLines = rawContextLines
@@ -656,8 +692,31 @@ export const grepCommand: CLICommand = {
       return;
     }
 
+    if ((unique || countUnique) && !onlyMatching) {
+      const err = '--unique and --count require --only-matching.';
+      if (jsonOutput) {
+        console.log(JSON.stringify({ success: false, error: err }));
+      } else {
+        printCliError(err);
+      }
+      process.exitCode = EXIT.USAGE;
+      return;
+    }
+
     const ref = resolveRef(target, branchOverride || undefined);
     const label = refLabel(ref);
+
+    if (isGithubRef(ref) && (unique || countUnique)) {
+      const err =
+        '--unique and --count are local-only because they depend on local ripgrep match spans.';
+      if (jsonOutput) {
+        console.log(JSON.stringify({ success: false, error: err }));
+      } else {
+        printCliError(err);
+      }
+      process.exitCode = EXIT.USAGE;
+      return;
+    }
 
     if (!jsonOutput) {
       process.stderr.write(
@@ -713,6 +772,8 @@ export const grepCommand: CLICommand = {
           maxFiles: maxFiles ?? limit,
           matchPage,
           onlyMatching,
+          unique,
+          countUnique,
           matchWindow,
           page,
           pageSize,
@@ -721,7 +782,13 @@ export const grepCommand: CLICommand = {
           console.log(JSON.stringify(sc, null, 2));
           return;
         }
-        console.log('\n' + renderLocalResults(sc, limit, contextLines) + '\n');
+        console.log(
+          '\n' +
+            renderLocalResults(sc, limit, contextLines, {
+              valuesOnly: Boolean(unique || countUnique),
+            }) +
+            '\n'
+        );
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

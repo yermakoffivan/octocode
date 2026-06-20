@@ -81,6 +81,13 @@ describe('grep command', () => {
     expect(q.pattern).toBe('x($Y)');
   });
 
+  it('rejects shell-expanded structural metavars with a clear quoting error', async () => {
+    await run(['src'], { pattern: 'useEffect(12345)' });
+
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
   it('passes --mode through to localSearchCode', async () => {
     await run(['needle', 'src'], { mode: 'discovery' });
     const q = lastQuery();
@@ -280,6 +287,34 @@ describe('grep command', () => {
     });
   });
 
+  it('passes only-matching unique/count histogram flags through', async () => {
+    await run(['[A-Z_]+', 'src'], {
+      'only-matching': true,
+      unique: true,
+      count: true,
+    });
+
+    expect(lastQuery()).toMatchObject({
+      onlyMatching: true,
+      unique: true,
+      countUnique: true,
+    });
+  });
+
+  it('rejects --unique without --only-matching', async () => {
+    await run(['needle', 'src'], { unique: true });
+
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it('rejects --count without --only-matching', async () => {
+    await run(['needle', 'src'], { count: true });
+
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
   it('uses --limit as the local maxFiles and page size when --max-files/--page-size are absent', async () => {
     await run(['needle', 'src'], { limit: '2', json: true });
 
@@ -306,6 +341,8 @@ describe('grep command', () => {
   it('accepts AST flags (structural search folded into grep)', () => {
     expect(grepCommand.options?.some(o => o.name === 'pattern')).toBe(true);
     expect(grepCommand.options?.some(o => o.name === 'rule')).toBe(true);
+    expect(grepCommand.options?.some(o => o.name === 'unique')).toBe(true);
+    expect(grepCommand.options?.some(o => o.name === 'count')).toBe(true);
   });
 
   it('maps structural local --type to include globs', async () => {

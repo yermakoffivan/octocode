@@ -121,6 +121,7 @@ function handleInspect(path: string, query: BinaryInspectQuery) {
     return createErrorResult(result.error ?? 'inspect failed', query);
   }
   const info = result.info;
+  const detailed = query.detailed ?? false;
   return {
     status: 'success' as const,
     mode: 'inspect' as const,
@@ -136,11 +137,12 @@ function handleInspect(path: string, query: BinaryInspectQuery) {
     symbolCount: info.symbolCount,
     importCount: info.importCount,
     exportCount: info.exportCount,
-    ...(info.symbols.length ? { symbols: info.symbols } : {}),
-    ...(info.imports.length ? { imports: info.imports } : {}),
-    ...(info.exports.length ? { exports: info.exports } : {}),
-    ...(info.sections.length ? { sections: info.sections } : {}),
+    ...(detailed && info.symbols.length ? { symbols: info.symbols } : {}),
+    ...(detailed && info.imports.length ? { imports: info.imports } : {}),
+    ...(detailed && info.exports.length ? { exports: info.exports } : {}),
+    ...(detailed && info.sections.length ? { sections: info.sections } : {}),
     ...(info.libraries.length ? { libraries: info.libraries } : {}),
+    ...(detailed ? { detailed: true } : {}),
     ...(info.truncated ? { truncated: true } : {}),
     ...(info.notes.length ? { hints: info.notes } : {}),
   };
@@ -319,7 +321,10 @@ function handleStrings(path: string, query: BinaryInspectQuery) {
   const result = extractStrings(path, minLength, includeOffsets, scanOffset);
 
   if (!result.success) {
-    return createErrorResult(result.error ?? 'strings extraction failed', query);
+    return createErrorResult(
+      result.error ?? 'strings extraction failed',
+      query
+    );
   }
 
   // Two complementary, lossless cursors:

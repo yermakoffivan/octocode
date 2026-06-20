@@ -83,12 +83,51 @@ pub fn structural_search(
     outcome.map_err(|message| Error::new(Status::InvalidArg, message))
 }
 
+/// Detailed structural search. Unlike `structuralSearch`, unsupported
+/// extensions and invalid queries are represented as status + diagnostics so
+/// callers can distinguish true empty results from weak evidence.
+#[napi(js_name = "structuralSearchDetailed")]
+pub fn structural_search_detailed(
+    content: String,
+    file_path: String,
+    pattern: Option<String>,
+    rule: Option<String>,
+) -> Result<crate::structural::StructuralSearchDetailedResult> {
+    let ext = crate::file_extension::get_extension_internal(&file_path, true, "txt");
+    std::panic::catch_unwind(|| {
+        crate::structural::search_detailed(
+            &content,
+            &file_path,
+            &ext,
+            pattern.as_deref(),
+            rule.as_deref(),
+        )
+    })
+    .map_err(|_| {
+        Error::new(
+            Status::GenericFailure,
+            "structural detailed search failed on pathological input",
+        )
+    })
+}
+
 #[napi(js_name = "structuralSearchFiles")]
 pub fn structural_search_files(
     options: crate::structural::StructuralSearchFilesOptions,
 ) -> Result<crate::structural::StructuralSearchFilesResult> {
     std::panic::catch_unwind(|| crate::structural::search_files(options))
         .unwrap_or_else(|_| Err("structural file search failed on pathological input".to_string()))
+        .map_err(|message| Error::new(Status::InvalidArg, message))
+}
+
+#[napi(js_name = "structuralSearchFilesDetailed")]
+pub fn structural_search_files_detailed(
+    options: crate::structural::StructuralSearchFilesOptions,
+) -> Result<crate::structural::StructuralSearchFilesDetailedResult> {
+    std::panic::catch_unwind(|| crate::structural::search_files_detailed(options))
+        .unwrap_or_else(|_| {
+            Err("structural detailed file search failed on pathological input".to_string())
+        })
         .map_err(|message| Error::new(Status::InvalidArg, message))
 }
 

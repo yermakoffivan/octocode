@@ -156,13 +156,7 @@ const LOCAL_CONTENT_ONLY_OPTIONS = new Set([
   'count-matches',
 ]);
 
-const GITHUB_ONLY_OPTIONS = new Set([
-  'owner',
-  'repo',
-  'filename',
-  'verbose',
-  'concise',
-]);
+const GITHUB_ONLY_OPTIONS = new Set(['owner', 'repo', 'filename', 'verbose']);
 const SHARED_LOCAL_OPTIONS = new Set(['exclude-dir', 'sort']);
 
 function listOption(value: string): string[] | undefined {
@@ -351,7 +345,9 @@ function buildLocalSearchQuery(
   return {
     keywords: query,
     path,
-    mode: getString(options, 'mode') || undefined,
+    mode:
+      getString(options, 'mode') ||
+      (getBool(options, 'concise') ? 'discovery' : undefined),
     fixedString: getBool(options, 'fixed-string') || undefined,
     perlRegex: getBool(options, 'perl-regex') || undefined,
     caseInsensitive: getBool(options, 'case-insensitive') || undefined,
@@ -413,6 +409,54 @@ function buildGithubQueries(
         : `Find content matches in ${target.owner}/${target.repo}`,
     reasoning: `CLI find command GitHub ${match} search`,
   }));
+}
+
+function collectConcisePaths(result: DirectToolResult): string[] {
+  const paths = new Set<string>();
+  const structured = result.structuredContent as
+    | {
+        readonly results?: readonly {
+          readonly data?: {
+            readonly files?: readonly unknown[];
+          };
+        }[];
+        readonly files?: readonly unknown[];
+      }
+    | undefined;
+  const files =
+    structured?.results?.flatMap(row => row.data?.files ?? []) ??
+    structured?.files ??
+    [];
+
+  for (const file of files) {
+    if (typeof file === 'string') {
+      paths.add(file);
+    } else if (file && typeof file === 'object') {
+      const maybePath = (file as { readonly path?: unknown }).path;
+      if (typeof maybePath === 'string') paths.add(maybePath);
+    }
+  }
+
+  return [...paths];
+}
+
+function printLocalConcise(
+  outputs: Array<{ label: string; toolName: string; result: DirectToolResult }>
+): void {
+  const paths = new Set<string>();
+  for (const output of outputs) {
+    for (const filePath of collectConcisePaths(output.result)) {
+      paths.add(filePath);
+    }
+  }
+
+  console.log();
+  if (paths.size === 0) {
+    console.log(`  ${dim('No matches found.')}`);
+  } else {
+    for (const filePath of paths) console.log(filePath);
+  }
+  console.log();
 }
 
 function validateValues(
@@ -735,8 +779,7 @@ export const findFilesCommand: CLICommand = {
     { name: 'verbose', description: 'Verbose GitHub search results' },
     {
       name: 'concise',
-      description:
-        'GitHub only: flat "owner/repo:path" list, no snippets — cheapest orientation',
+      description: 'Flat path list, no snippets — cheapest orientation',
     },
     { name: 'json', description: 'Output raw JSON results' },
   ],
@@ -893,7 +936,9 @@ export const findFilesCommand: CLICommand = {
         }
       }
 
-      if (outputs.length === 1) {
+      if (getBool(args.options, 'concise') && effectiveSource === 'local') {
+        printLocalConcise(outputs);
+      } else if (outputs.length === 1) {
         printDirectToolResult(outputs[0]!.result, jsonOutput);
       } else {
         printComposite(outputs, jsonOutput);

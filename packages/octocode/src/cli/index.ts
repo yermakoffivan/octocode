@@ -1,3 +1,6 @@
+import { existsSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs, hasHelpFlag, hasVersionFlag } from './parser.js';
 import { EXIT } from './exit-codes.js';
 import type { CLICommand, CLICommandSpec, ParsedArgs } from './types.js';
@@ -69,6 +72,36 @@ const KNOWN_TOP_LEVEL_OPTIONS = new Set([
   'context',
 ]);
 
+let staleBuildWarningShown = false;
+
+function maybeWarnAboutStaleBuild(): void {
+  if (staleBuildWarningShown || process.env.OCTOCODE_NO_STALE_BUILD_WARNING) {
+    return;
+  }
+  staleBuildWarningShown = true;
+
+  const currentFile = fileURLToPath(import.meta.url);
+  if (!currentFile.includes(`${path.sep}out${path.sep}`)) return;
+
+  const sourceFile = path.resolve(
+    path.dirname(currentFile),
+    '..',
+    '..',
+    'src',
+    'cli',
+    'index.ts'
+  );
+  if (!existsSync(sourceFile)) return;
+
+  const builtMtime = statSync(currentFile).mtimeMs;
+  const sourceMtime = statSync(sourceFile).mtimeMs;
+  if (sourceMtime <= builtMtime + 1000) return;
+
+  console.error(
+    '  Warning: built CLI output looks older than src/cli/index.ts. Run `yarn build` before dogfooding source edits.'
+  );
+}
+
 function showVersion(): void {
   const version =
     typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown';
@@ -76,6 +109,8 @@ function showVersion(): void {
 }
 
 export async function runCLI(argv?: string[]): Promise<boolean> {
+  maybeWarnAboutStaleBuild();
+
   // Declare the CLI surface before any config is read: local tools are always
   // enabled here (ENABLE_LOCAL is MCP-only) and clone defaults to enabled.
   setRuntimeSurface('cli');
@@ -114,6 +149,13 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
       const staticCommand = findStaticCommandHelp(args.command);
       if (staticCommand) {
         showCommandHelp(staticCommand);
+        return true;
+      }
+
+      const { loadCommand } = await loadCommandsModule();
+      const liveCommand = await loadCommand(args.command);
+      if (liveCommand) {
+        showCommandHelp(liveCommand);
         return true;
       }
 

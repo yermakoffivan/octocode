@@ -172,10 +172,11 @@ export async function showHelp(): Promise<void> {
       '<query> [path|owner/repo]',
       'find files by name/path/content'
     ),
+    quick('diff', '<left> <right>', 'compare two files (local or GitHub refs)'),
     quick(
       'lsp',
-      '<file> --type <type> --symbol <s> --line <n>',
-      'identity: defs, refs, callers, hover (local)'
+      '<file> --type <type> --symbol <s>',
+      'identity: defs, refs, callers, hover; --line optional'
     ),
     quick('repo', '<keywords...>', 'discover GitHub repositories'),
     quick('pr', '<owner/repo[#N]|PR-URL>', 'list PRs or deep-read one PR'),

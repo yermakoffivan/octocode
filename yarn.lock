@@ -1496,21 +1496,27 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@octocodeai/octocode-benchmark@workspace:packages/octocode-benchmark":
+  version: 0.0.0-use.local
+  resolution: "@octocodeai/octocode-benchmark@workspace:packages/octocode-benchmark"
+  languageName: unknown
+  linkType: soft
+
 "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core":
   version: 16.4.0
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=d6d0f2&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=5e7120&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/81c6d177554dd7ada8a04483250193f7eef965a8850c806b88b937d85b1d9a8af29430ba5a6c7f002f6632bc2acc66f2d91c727da0a44532f1bdc11c5329174f
+  checksum: 10c0/1511043920c83f28fe5f48e2ad9d547135dbe3b84beb62c4ae6cbc9d4c59bb990e17a2b8aaad5ec1e4678eb40d3eda9062b67297abbb0244421ef1eebf64acc0
   languageName: node
   linkType: hard
 
 "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=octocode%40workspace%3Apackages%2Foctocode":
   version: 16.4.0
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=d6d0f2&locator=octocode%40workspace%3Apackages%2Foctocode"
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=5e7120&locator=octocode%40workspace%3Apackages%2Foctocode"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/81c6d177554dd7ada8a04483250193f7eef965a8850c806b88b937d85b1d9a8af29430ba5a6c7f002f6632bc2acc66f2d91c727da0a44532f1bdc11c5329174f
+  checksum: 10c0/1511043920c83f28fe5f48e2ad9d547135dbe3b84beb62c4ae6cbc9d4c59bb990e17a2b8aaad5ec1e4678eb40d3eda9062b67297abbb0244421ef1eebf64acc0
   languageName: node
   linkType: hard
 

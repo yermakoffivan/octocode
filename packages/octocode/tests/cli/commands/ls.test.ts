@@ -99,6 +99,41 @@ describe('ls command', () => {
     expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
+  it('applies simple file filters to GitHub tree output', async () => {
+    executeDirectTool.mockResolvedValueOnce({
+      isError: false,
+      content: [],
+      structuredContent: {
+        results: [
+          {
+            data: {
+              structure: [
+                {
+                  dir: 'src',
+                  folders: ['components', 'docs'],
+                  files: ['index.ts', 'index.test.ts', 'README.md'],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    await run(['facebook/react/src'], {
+      ext: 'ts',
+      pattern: 'index*',
+      'files-only': true,
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    const output = vi.mocked(console.log).mock.calls.flat().join('\n');
+    expect(output).toContain('index.ts');
+    expect(output).toContain('index.test.ts');
+    expect(output).not.toContain('README.md');
+    expect(output).not.toContain('components');
+  });
+
   it('exposes --symbols and --kind options', () => {
     expect(lsCommand.options?.some(o => o.name === 'symbols')).toBe(true);
     expect(lsCommand.options?.some(o => o.name === 'kind')).toBe(true);

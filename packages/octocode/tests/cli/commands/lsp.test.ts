@@ -128,4 +128,41 @@ describe('lsp command', () => {
     expect(output).toContain('countLines');
     expect(output).toContain('utils/core/lines.ts');
   });
+
+  it('infers --line with a local fixed-string search when omitted', async () => {
+    executeDirectTool
+      .mockResolvedValueOnce({
+        isError: false,
+        content: [],
+        structuredContent: {
+          results: [
+            {
+              data: {
+                files: [{ matches: [{ line: 42 }] }],
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce(
+        lspEnvelope({ kind: 'definition', locations: [] })
+      );
+
+    await run({ line: false });
+
+    expect(executeDirectTool).toHaveBeenNthCalledWith(
+      1,
+      'localSearchCode',
+      expect.objectContaining({
+        queries: [expect.objectContaining({ keywords: 'runCLI' })],
+      })
+    );
+    expect(executeDirectTool).toHaveBeenNthCalledWith(
+      2,
+      'lspGetSemantics',
+      expect.objectContaining({
+        queries: [expect.objectContaining({ lineHint: 42 })],
+      })
+    );
+  });
 });

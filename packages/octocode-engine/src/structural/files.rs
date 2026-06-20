@@ -7,9 +7,12 @@ use ignore::WalkBuilder;
 
 use super::language::AgLanguage;
 use super::matcher::compile_matcher;
-use super::query::StructuralQuery;
+use super::query::{invalid_query_explanation, StructuralQuery};
 use super::types::{
-    StructuralSearchFileResult, StructuralSearchFilesOptions, StructuralSearchFilesResult,
+    structural_query_fingerprint, StructuralDetailedMatch, StructuralDiagnostic,
+    StructuralSearchDetailedFileResult, StructuralSearchFileResult,
+    StructuralSearchFilesDetailedResult, StructuralSearchFilesOptions, StructuralSearchFilesResult,
+    STRUCTURAL_ANALYZER, STRUCTURAL_ANALYZER_VERSION,
 };
 use crate::signatures::languages;
 use crate::types::RipgrepSearchOptions;
@@ -125,6 +128,310 @@ pub fn search_files(
     })
 }
 
+pub fn search_files_detailed(
+    options: StructuralSearchFilesOptions,
+) -> Result<StructuralSearchFilesDetailedResult, String> {
+    let StructuralSearchFilesOptions {
+        path,
+        pattern,
+        rule,
+        include,
+        exclude_dir,
+        max_files,
+        max_file_bytes,
+    } = options;
+    let pattern_ref = pattern.as_deref();
+    let rule_ref = rule.as_deref();
+    let query_fingerprint = structural_query_fingerprint(pattern_ref, rule_ref);
+    let query = match StructuralQuery::new(pattern_ref, rule_ref) {
+        Ok(query) => query,
+        Err(message) => {
+            let diagnostic = StructuralDiagnostic::new(
+                "structural.query.invalid",
+                "error",
+                "match",
+                message.clone(),
+            )
+            .with_path(path.clone())
+            .with_recovery("Provide exactly one non-empty structural pattern or YAML rule.");
+            return Ok(StructuralSearchFilesDetailedResult {
+                files: Vec::new(),
+                total_matches: 0,
+                parsed_files: 0,
+                skipped_by_pre_filter: 0,
+                skipped_unsupported: 0,
+                skipped_unreadable: 0,
+                skipped_large: 0,
+                analyzer: STRUCTURAL_ANALYZER.to_owned(),
+                analyzer_version: STRUCTURAL_ANALYZER_VERSION.to_owned(),
+                status: "parserFailed".to_owned(),
+                query: invalid_query_explanation(pattern_ref, rule_ref, &message),
+                diagnostics: vec![diagnostic],
+                warnings: Vec::new(),
+            });
+        }
+    };
+
+    let root = PathBuf::from(&path);
+    let include = include.unwrap_or_default();
+    let exclude_dir = exclude_dir.unwrap_or_else(default_exclude_dirs);
+    let max_files = max_files.map(|n| n as usize).unwrap_or(2_000);
+    let max_file_bytes = max_file_bytes.map(|n| n as u64).unwrap_or(1_000_000);
+    let anchor = query.literal_anchor();
+    let query_explanation = query.explanation();
+
+    let overrides = build_overrides(&root, &include)?;
+    let candidate_files = collect_files(&root, overrides, &exclude_dir, max_files, false)?;
+    let matching_paths = if let Some(anchor) = anchor {
+        Some(matching_anchor_paths(
+            &root,
+            &include,
+            &exclude_dir,
+            anchor,
+        )?)
+    } else {
+        None
+    };
+
+    let mut matchers = BTreeMap::new();
+    let mut files = Vec::new();
+    let mut total_matches = 0u32;
+    let mut parsed_files = 0u32;
+    let mut skipped_by_pre_filter = 0u32;
+    let mut skipped_unsupported = 0u32;
+    let mut skipped_unreadable = 0u32;
+    let mut skipped_large = 0u32;
+    let mut compile_failures = 0u32;
+
+    for file_path in candidate_files {
+        let path_string = file_path.to_string_lossy().to_string();
+        if matching_paths
+            .as_ref()
+            .is_some_and(|paths| !paths.contains(path_string.as_str()))
+        {
+            skipped_by_pre_filter += 1;
+            files.push(skipped_file(
+                path_string,
+                "skippedByPreFilter",
+                "preFilter",
+                StructuralDiagnostic::new(
+                    "structural.prefilter.skipped",
+                    "info",
+                    "scan",
+                    "Literal anchor was absent, so AST parsing was skipped.",
+                )
+                .with_recovery("Remove the literal prefilter by using a rule with no safe anchor if every file must be parsed."),
+            ));
+            continue;
+        }
+
+        let ext = extension_for_path(&file_path).unwrap_or_default();
+        let Some(entry) = languages::find_entry(&ext) else {
+            skipped_unsupported += 1;
+            files.push(skipped_file(
+                path_string.clone(),
+                "unsupported",
+                "unsupportedExtension",
+                StructuralDiagnostic::new(
+                    "structural.language.unsupported",
+                    "warning",
+                    "parse",
+                    format!("Structural search does not support .{ext} files."),
+                )
+                .with_path(path_string)
+                .with_recovery(
+                    "Use text search for this extension or add a tree-sitter grammar mapping.",
+                ),
+            ));
+            continue;
+        };
+
+        let metadata = match fs::metadata(&file_path) {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                skipped_unreadable += 1;
+                files.push(skipped_file(
+                    path_string.clone(),
+                    "unreadable",
+                    "metadata",
+                    StructuralDiagnostic::new(
+                        "structural.file.unreadable",
+                        "warning",
+                        "scan",
+                        format!("Could not read file metadata: {err}."),
+                    )
+                    .with_path(path_string)
+                    .with_recovery(
+                        "Retry if the file still exists and permissions allow reading it.",
+                    ),
+                ));
+                continue;
+            }
+        };
+
+        if metadata.len() > max_file_bytes {
+            skipped_large += 1;
+            files.push(skipped_file(
+                path_string.clone(),
+                "truncated",
+                "maxFileBytes",
+                StructuralDiagnostic::new(
+                    "structural.file.tooLarge",
+                    "warning",
+                    "scan",
+                    format!(
+                        "File is {} bytes, above the structural search limit of {max_file_bytes} bytes.",
+                        metadata.len()
+                    ),
+                )
+                .with_path(path_string)
+                .with_recovery("Raise maxFileBytes or inspect the file with a narrower text search first."),
+            ));
+            continue;
+        }
+
+        let content = match fs::read_to_string(&file_path) {
+            Ok(content) => content,
+            Err(err) => {
+                skipped_unreadable += 1;
+                files.push(skipped_file(
+                    path_string.clone(),
+                    "unreadable",
+                    "read",
+                    StructuralDiagnostic::new(
+                        "structural.file.unreadable",
+                        "warning",
+                        "scan",
+                        format!("Could not read file content as UTF-8: {err}."),
+                    )
+                    .with_path(path_string)
+                    .with_recovery("Use binary inspection or text search for non-UTF-8 content."),
+                ));
+                continue;
+            }
+        };
+
+        if !matchers.contains_key(&ext) {
+            let lang = AgLanguage::new(&ext, entry);
+            matchers.insert(ext.clone(), compile_matcher(&lang, query));
+        }
+        let Some(compiled) = matchers.get(&ext) else {
+            compile_failures += 1;
+            files.push(skipped_file(
+                path_string.clone(),
+                "parserFailed",
+                "queryCompile",
+                StructuralDiagnostic::new(
+                    "structural.matcher.missing",
+                    "error",
+                    "match",
+                    "Structural matcher was unavailable after compilation.",
+                )
+                .with_path(path_string)
+                .with_recovery(
+                    "Retry the search; this indicates an internal matcher lifecycle issue.",
+                ),
+            ));
+            continue;
+        };
+        let run = match compiled {
+            Ok(run) => run,
+            Err(message) => {
+                compile_failures += 1;
+                files.push(skipped_file(
+                    path_string.clone(),
+                    "parserFailed",
+                    "queryCompile",
+                    StructuralDiagnostic::new(
+                        "structural.query.compileFailed",
+                        "error",
+                        "match",
+                        message.clone(),
+                    )
+                    .with_path(path_string)
+                    .with_recovery("Check the structural pattern or YAML rule against this file's language grammar."),
+                ));
+                continue;
+            }
+        };
+
+        let matches: Vec<StructuralDetailedMatch> = run(&content)
+            .into_iter()
+            .map(|matched| {
+                StructuralDetailedMatch::from_match(&path_string, &query_fingerprint, matched)
+            })
+            .collect();
+        parsed_files += 1;
+        total_matches = total_matches.saturating_add(matches.len() as u32);
+        files.push(StructuralSearchDetailedFileResult {
+            path: path_string,
+            status: "ok".to_owned(),
+            language_id: entry.language_id.map(str::to_owned),
+            skipped_reason: None,
+            matches,
+            diagnostics: Vec::new(),
+        });
+    }
+
+    let mut warnings = Vec::new();
+    if anchor.is_none() {
+        warnings.push(format!(
+            "No literal anchor in the {} — parsed all {parsed_files} supported candidate file(s) with no text pre-filter.",
+            if query.is_rule() { "rule" } else { "pattern" }
+        ));
+    } else if skipped_by_pre_filter > 0 {
+        warnings.push(format!(
+            "Pre-filter skipped parsing {skipped_by_pre_filter} file(s); parsed {parsed_files}."
+        ));
+    }
+    if skipped_unsupported > 0 {
+        warnings.push(format!(
+            "Skipped {skipped_unsupported} candidate file(s) with unsupported extensions."
+        ));
+    }
+    if skipped_unreadable > 0 {
+        warnings.push(format!(
+            "Skipped {skipped_unreadable} unreadable or vanished candidate file(s)."
+        ));
+    }
+    if skipped_large > 0 {
+        warnings.push(format!(
+            "Skipped {skipped_large} candidate file(s) larger than {max_file_bytes} bytes."
+        ));
+    }
+
+    let status = if compile_failures > 0 {
+        "parserFailed"
+    } else if parsed_files == 0
+        && skipped_unsupported > 0
+        && skipped_by_pre_filter == 0
+        && skipped_unreadable == 0
+        && skipped_large == 0
+    {
+        "unsupported"
+    } else if skipped_unsupported > 0 || skipped_unreadable > 0 || skipped_large > 0 {
+        "partial"
+    } else {
+        "ok"
+    };
+
+    Ok(StructuralSearchFilesDetailedResult {
+        files,
+        total_matches,
+        parsed_files,
+        skipped_by_pre_filter,
+        skipped_unsupported,
+        skipped_unreadable,
+        skipped_large,
+        analyzer: STRUCTURAL_ANALYZER.to_owned(),
+        analyzer_version: STRUCTURAL_ANALYZER_VERSION.to_owned(),
+        status: status.to_owned(),
+        query: query_explanation,
+        diagnostics: Vec::new(),
+        warnings,
+    })
+}
+
 fn matching_anchor_paths(
     root: &Path,
     include: &[String],
@@ -185,6 +492,16 @@ fn collect_candidate_files(
     exclude_dir: &[String],
     max_files: usize,
 ) -> Result<Vec<PathBuf>, String> {
+    collect_files(root, overrides, exclude_dir, max_files, true)
+}
+
+fn collect_files(
+    root: &Path,
+    overrides: Override,
+    exclude_dir: &[String],
+    max_files: usize,
+    supported_only: bool,
+) -> Result<Vec<PathBuf>, String> {
     let metadata = fs::metadata(root).map_err(|err| {
         format!(
             "Cannot access structural search path '{}': {err}",
@@ -193,7 +510,7 @@ fn collect_candidate_files(
     })?;
 
     if metadata.is_file() {
-        return Ok(if file_is_candidate(root, &overrides) {
+        return Ok(if file_is_candidate(root, &overrides, supported_only) {
             vec![root.to_path_buf()]
         } else {
             Vec::new()
@@ -229,20 +546,39 @@ fn collect_candidate_files(
             continue;
         }
         let path = entry.into_path();
-        if extension_for_path(&path).is_some_and(|ext| languages::find_entry(&ext).is_some()) {
+        if !supported_only
+            || extension_for_path(&path).is_some_and(|ext| languages::find_entry(&ext).is_some())
+        {
             out.push(path);
         }
     }
     Ok(out)
 }
 
-fn file_is_candidate(path: &Path, overrides: &Override) -> bool {
-    extension_for_path(path).is_some_and(|ext| languages::find_entry(&ext).is_some())
-        && !overrides.matched(path, false).is_ignore()
+fn file_is_candidate(path: &Path, overrides: &Override, supported_only: bool) -> bool {
+    !overrides.matched(path, false).is_ignore()
+        && (!supported_only
+            || extension_for_path(path).is_some_and(|ext| languages::find_entry(&ext).is_some()))
 }
 
 fn extension_for_path(path: &Path) -> Option<String> {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(str::to_ascii_lowercase)
+}
+
+fn skipped_file(
+    path: String,
+    status: &str,
+    skipped_reason: &str,
+    diagnostic: StructuralDiagnostic,
+) -> StructuralSearchDetailedFileResult {
+    StructuralSearchDetailedFileResult {
+        path,
+        status: status.to_owned(),
+        language_id: None,
+        skipped_reason: Some(skipped_reason.to_owned()),
+        matches: Vec::new(),
+        diagnostics: vec![diagnostic],
+    }
 }

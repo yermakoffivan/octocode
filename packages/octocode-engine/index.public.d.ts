@@ -528,6 +528,8 @@ export interface RipgrepMatch {
   column: number
   /** Assembled match + context window, truncated to `max_snippet_chars`. */
   value: string
+  /** Frequency for `onlyMatching + countUnique` values. */
+  count?: number
 }
 
 export interface RipgrepParseOptions {
@@ -607,6 +609,16 @@ export interface RipgrepSearchOptions {
    */
   onlyMatching?: boolean
   /**
+   * With `onlyMatching`, collapse repeated matched values per file while
+   * keeping the first occurrence anchor.
+   */
+  unique?: boolean
+  /**
+   * With `onlyMatching`, collapse repeated values per file and attach a
+   * frequency count to each returned match. Sorted by count descending.
+   */
+  countUnique?: boolean
+  /**
    * With `onlyMatching`, widen each span by this many characters on each side
    * (char-boundary safe), marking trimmed sides with `…`. 0/unset = bare span.
    */
@@ -678,6 +690,60 @@ export interface StructuralMatch {
   metavars: Record<string, Array<string>>
 }
 
+export interface StructuralDiagnostic {
+  code: string
+  severity: 'info' | 'warning' | 'error' | string
+  stage:
+    | 'snapshot'
+    | 'regionize'
+    | 'scan'
+    | 'parse'
+    | 'match'
+    | 'minify'
+    | 'sanitize'
+    | 'lsp'
+    | 'paginate'
+    | string
+  message: string
+  path?: string
+  recovery?: string
+}
+
+export interface StructuralQueryExplanation {
+  kind: 'pattern' | 'rule' | 'invalid' | string
+  source: string
+  literalAnchor?: string
+  preFilter: 'literal-anchor' | 'disabled' | 'unavailable' | string
+  unsafeReason?: string
+  diagnostics: Array<StructuralDiagnostic>
+}
+
+export interface StructuralDetailedMatch extends StructuralMatch {
+  id: string
+  nodeKind?: string
+  confidence: 'exact-ast' | 'partial-ast' | 'fallback-text' | string
+}
+
+export interface StructuralSearchDetailedResult {
+  path: string
+  analyzer: string
+  analyzerVersion: string
+  status:
+    | 'ok'
+    | 'partial'
+    | 'unsupported'
+    | 'ambiguous'
+    | 'parserFailed'
+    | 'fallback'
+    | 'truncated'
+    | 'stale'
+    | string
+  languageId?: string
+  query: StructuralQueryExplanation
+  matches: Array<StructuralDetailedMatch>
+  diagnostics: Array<StructuralDiagnostic>
+}
+
 /**
  * Structural (AST) search — octocode's L2 layer. Resolves the grammar from
  * `file_path`'s extension and matches an Octocode structural `pattern` OR a YAML `rule`
@@ -687,12 +753,20 @@ export interface StructuralMatch {
  */
 export declare function structuralSearch(content: string, filePath: string, pattern?: string | undefined | null, rule?: string | undefined | null): Array<StructuralMatch>
 
+/**
+ * Detailed structural search. Unsupported extensions and invalid queries return
+ * status + diagnostics instead of being collapsed into a thrown legacy error.
+ */
+export declare function structuralSearchDetailed(content: string, filePath: string, pattern?: string | undefined | null, rule?: string | undefined | null): StructuralSearchDetailedResult
+
 export interface StructuralSearchFileResult {
   path: string
   matches: Array<StructuralMatch>
 }
 
 export declare function structuralSearchFiles(options: StructuralSearchFilesOptions): StructuralSearchFilesResult
+
+export declare function structuralSearchFilesDetailed(options: StructuralSearchFilesOptions): StructuralSearchFilesDetailedResult
 
 export interface StructuralSearchFilesOptions {
   path: string
@@ -711,6 +785,31 @@ export interface StructuralSearchFilesResult {
   skippedByPreFilter: number
   skippedUnreadable: number
   skippedLarge: number
+  warnings: Array<string>
+}
+
+export interface StructuralSearchDetailedFileResult {
+  path: string
+  status: string
+  languageId?: string
+  skippedReason?: string
+  matches: Array<StructuralDetailedMatch>
+  diagnostics: Array<StructuralDiagnostic>
+}
+
+export interface StructuralSearchFilesDetailedResult {
+  files: Array<StructuralSearchDetailedFileResult>
+  totalMatches: number
+  parsedFiles: number
+  skippedByPreFilter: number
+  skippedUnsupported: number
+  skippedUnreadable: number
+  skippedLarge: number
+  analyzer: string
+  analyzerVersion: string
+  status: string
+  query: StructuralQueryExplanation
+  diagnostics: Array<StructuralDiagnostic>
   warnings: Array<string>
 }
 

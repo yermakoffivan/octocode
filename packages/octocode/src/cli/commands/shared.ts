@@ -28,7 +28,10 @@ export const MCP_CLIENT_IDS = {
 type MCPClient = (typeof MCP_CLIENT_IDS)[keyof typeof MCP_CLIENT_IDS];
 
 export function normalizeMCPClient(value: string): MCPClient | null {
-  return MCP_CLIENT_IDS[value.trim().toLowerCase()] ?? null;
+  const key = value.trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(MCP_CLIENT_IDS, key)
+    ? MCP_CLIENT_IDS[key as keyof typeof MCP_CLIENT_IDS]
+    : null;
 }
 
 export function formatSupportedMCPClients(): string {

@@ -83,7 +83,9 @@ const MINIFIER_FUNCTION_EXPORTS = [
   'extractJsSymbols',
   'findInFileReferences',
   'getSupportedJsTsExtensions',
+  'structuralSearchDetailed',
   'structuralSearchFiles',
+  'structuralSearchFilesDetailed',
   'getSupportedStructuralExtensions',
   'inspectBinaryNative',
   'extractBinaryStringsNative',
@@ -519,6 +521,94 @@ describe('structuralSearchFiles', () => {
       expect(result.files[0].path).toContain('a.ts');
       expect(result.files[0].matches[0].metavars.X).toEqual(['value']);
       expect(result.skippedByPreFilter).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('structuralSearchDetailed', () => {
+  it('distinguishes true empty results from unsupported extensions', () => {
+    const empty = addon!.structuralSearchDetailed(
+      'const x = 1;\n',
+      'a.ts',
+      'target($X)',
+      null
+    );
+    expect(empty.status).toBe('ok');
+    expect(empty.matches).toHaveLength(0);
+    expect(empty.diagnostics).toHaveLength(0);
+
+    const unsupported = addon!.structuralSearchDetailed(
+      'target(value);\n',
+      'note.txt',
+      'target($X)',
+      null
+    );
+    expect(unsupported.status).toBe('unsupported');
+    expect(unsupported.matches).toHaveLength(0);
+    expect(unsupported.diagnostics[0]!.code).toBe(
+      'structural.language.unsupported'
+    );
+  });
+
+  it('returns query diagnostics for invalid detailed queries', () => {
+    const result = addon!.structuralSearchDetailed(
+      'target(value);\n',
+      'a.ts',
+      'target($X)',
+      'rule: {}'
+    );
+
+    expect(result.status).toBe('parserFailed');
+    expect(result.query.kind).toBe('invalid');
+    expect(result.diagnostics[0]!.code).toBe('structural.query.invalid');
+    expect(result.diagnostics[0]!.recovery).toContain('exactly one');
+  });
+
+  it('returns stable exact-ast match IDs', () => {
+    const first = addon!.structuralSearchDetailed(
+      'target(value);\n',
+      'a.ts',
+      'target($X)',
+      null
+    );
+    const second = addon!.structuralSearchDetailed(
+      'target(value);\n',
+      'a.ts',
+      'target($X)',
+      null
+    );
+
+    expect(first.matches).toHaveLength(1);
+    expect(first.matches[0]!.id).toBe(second.matches[0]!.id);
+    expect(first.matches[0]!.confidence).toBe('exact-ast');
+  });
+});
+
+describe('structuralSearchFilesDetailed', () => {
+  it('reports prefilter skips and unsupported files explicitly', () => {
+    const root = mkdtempSync(join(tmpdir(), 'octocode-structural-detailed-'));
+    try {
+      writeFileSync(join(root, 'a.ts'), 'target(value);\n');
+      writeFileSync(join(root, 'b.ts'), 'other(value);\n');
+      writeFileSync(join(root, 'note.txt'), 'target(value);\n');
+
+      const result = addon!.structuralSearchFilesDetailed({
+        path: root,
+        pattern: 'target($X)',
+        maxFiles: 10,
+      });
+
+      expect(result.totalMatches).toBe(1);
+      expect(result.parsedFiles).toBe(1);
+      expect(result.skippedByPreFilter).toBe(1);
+      expect(result.skippedUnsupported).toBe(1);
+      expect(result.query.literalAnchor).toBe('target');
+      expect(result.files.some(file => file.status === 'skippedByPreFilter')).toBe(
+        true
+      );
+      expect(result.files.some(file => file.status === 'unsupported')).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

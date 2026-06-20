@@ -13,13 +13,17 @@ mod octo;
 mod query;
 mod types;
 
-pub use files::search_files;
-pub use types::{StructuralMatch, StructuralSearchFilesOptions, StructuralSearchFilesResult};
+pub use files::{search_files, search_files_detailed};
+pub use types::{
+    StructuralDetailedMatch, StructuralDiagnostic, StructuralMatch, StructuralSearchDetailedResult,
+    StructuralSearchFilesDetailedResult, StructuralSearchFilesOptions, StructuralSearchFilesResult,
+};
 
 use crate::signatures::languages;
 use language::AgLanguage;
 use matcher::compile_matcher;
-use query::StructuralQuery;
+use query::{invalid_query_explanation, StructuralQuery};
+use types::{structural_query_fingerprint, STRUCTURAL_ANALYZER, STRUCTURAL_ANALYZER_VERSION};
 
 /// Run a structural search over `content`, parsed with the grammar resolved
 /// from `ext`. Exactly one of `pattern` / `rule` must be `Some`.
@@ -46,6 +50,104 @@ pub fn search(
     let lang = AgLanguage::new(ext, entry);
     let run = compile_matcher(&lang, query)?;
     Ok(run(content))
+}
+
+pub fn search_detailed(
+    content: &str,
+    file_path: &str,
+    ext: &str,
+    pattern: Option<&str>,
+    rule: Option<&str>,
+) -> StructuralSearchDetailedResult {
+    let query_fingerprint = structural_query_fingerprint(pattern, rule);
+    let query = match StructuralQuery::new(pattern, rule) {
+        Ok(query) => query,
+        Err(message) => {
+            let diagnostic = StructuralDiagnostic::new(
+                "structural.query.invalid",
+                "error",
+                "match",
+                message.clone(),
+            )
+            .with_path(file_path)
+            .with_recovery("Provide exactly one non-empty structural pattern or YAML rule.");
+            return StructuralSearchDetailedResult {
+                path: file_path.to_owned(),
+                analyzer: STRUCTURAL_ANALYZER.to_owned(),
+                analyzer_version: STRUCTURAL_ANALYZER_VERSION.to_owned(),
+                status: "parserFailed".to_owned(),
+                language_id: None,
+                query: invalid_query_explanation(pattern, rule, &message),
+                matches: Vec::new(),
+                diagnostics: vec![diagnostic],
+            };
+        }
+    };
+
+    let query_explanation = query.explanation();
+    let Some(entry) = languages::find_entry(ext) else {
+        let diagnostic = StructuralDiagnostic::new(
+            "structural.language.unsupported",
+            "warning",
+            "parse",
+            format!("Structural search does not support .{ext} files."),
+        )
+        .with_path(file_path)
+        .with_recovery("Use text search for this extension or add a tree-sitter grammar mapping.");
+        return StructuralSearchDetailedResult {
+            path: file_path.to_owned(),
+            analyzer: STRUCTURAL_ANALYZER.to_owned(),
+            analyzer_version: STRUCTURAL_ANALYZER_VERSION.to_owned(),
+            status: "unsupported".to_owned(),
+            language_id: None,
+            query: query_explanation,
+            matches: Vec::new(),
+            diagnostics: vec![diagnostic],
+        };
+    };
+
+    let lang = AgLanguage::new(ext, entry);
+    let run = match compile_matcher(&lang, query) {
+        Ok(run) => run,
+        Err(message) => {
+            let diagnostic = StructuralDiagnostic::new(
+                "structural.query.compileFailed",
+                "error",
+                "match",
+                message.clone(),
+            )
+            .with_path(file_path)
+            .with_recovery(
+                "Check the structural pattern or YAML rule against this file's language grammar.",
+            );
+            return StructuralSearchDetailedResult {
+                path: file_path.to_owned(),
+                analyzer: STRUCTURAL_ANALYZER.to_owned(),
+                analyzer_version: STRUCTURAL_ANALYZER_VERSION.to_owned(),
+                status: "parserFailed".to_owned(),
+                language_id: entry.language_id.map(str::to_owned),
+                query: query_explanation,
+                matches: Vec::new(),
+                diagnostics: vec![diagnostic],
+            };
+        }
+    };
+
+    let matches = run(content)
+        .into_iter()
+        .map(|matched| StructuralDetailedMatch::from_match(file_path, &query_fingerprint, matched))
+        .collect();
+
+    StructuralSearchDetailedResult {
+        path: file_path.to_owned(),
+        analyzer: STRUCTURAL_ANALYZER.to_owned(),
+        analyzer_version: STRUCTURAL_ANALYZER_VERSION.to_owned(),
+        status: "ok".to_owned(),
+        language_id: entry.language_id.map(str::to_owned),
+        query: query_explanation,
+        matches,
+        diagnostics: Vec::new(),
+    }
 }
 
 #[cfg(test)]
@@ -252,6 +354,78 @@ mod tests {
 
         assert_eq!(result.total_matches, 1);
         assert_eq!(result.files.len(), 1);
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn detailed_search_distinguishes_empty_from_unsupported() {
+        let empty = search_detailed("const x = 1;\n", "a.ts", "ts", Some("target($X)"), None);
+        assert_eq!(empty.status, "ok");
+        assert!(empty.matches.is_empty());
+        assert!(empty.diagnostics.is_empty());
+
+        let unsupported = search_detailed(
+            "target(value);\n",
+            "note.txt",
+            "txt",
+            Some("target($X)"),
+            None,
+        );
+        assert_eq!(unsupported.status, "unsupported");
+        assert!(unsupported.matches.is_empty());
+        assert_eq!(
+            unsupported.diagnostics[0].code,
+            "structural.language.unsupported"
+        );
+    }
+
+    #[test]
+    fn detailed_search_reports_invalid_query_with_recovery() {
+        let result = search_detailed("x\n", "a.ts", "ts", Some("foo($X)"), Some("rule: {}"));
+        assert_eq!(result.status, "parserFailed");
+        assert_eq!(result.query.kind, "invalid");
+        assert_eq!(result.diagnostics[0].code, "structural.query.invalid");
+        assert!(result.diagnostics[0].recovery.is_some());
+    }
+
+    #[test]
+    fn detailed_search_match_ids_are_stable() {
+        let content = "target(value);\n";
+        let first = search_detailed(content, "a.ts", "ts", Some("target($X)"), None);
+        let second = search_detailed(content, "a.ts", "ts", Some("target($X)"), None);
+        assert_eq!(first.matches.len(), 1);
+        assert_eq!(first.matches[0].id, second.matches[0].id);
+        assert_eq!(first.matches[0].confidence, "exact-ast");
+    }
+
+    #[test]
+    fn detailed_file_search_explains_prefilter_and_unsupported_files() {
+        let root = temp_root("detailed_files");
+        fs::write(root.join("a.ts"), "target(value);\n").expect("write a");
+        fs::write(root.join("b.ts"), "other(value);\n").expect("write b");
+        fs::write(root.join("note.txt"), "target(value);\n").expect("write txt");
+
+        let result = search_files_detailed(StructuralSearchFilesOptions {
+            path: root.to_string_lossy().to_string(),
+            pattern: Some("target($X)".to_owned()),
+            rule: None,
+            include: None,
+            exclude_dir: None,
+            max_files: Some(10),
+            max_file_bytes: None,
+        })
+        .expect("detailed file search");
+
+        assert_eq!(result.total_matches, 1);
+        assert_eq!(result.parsed_files, 1);
+        assert_eq!(result.skipped_by_pre_filter, 1);
+        assert_eq!(result.skipped_unsupported, 1);
+        assert_eq!(result.query.literal_anchor.as_deref(), Some("target"));
+        assert!(result
+            .files
+            .iter()
+            .any(|file| file.status == "skippedByPreFilter"));
+        assert!(result.files.iter().any(|file| file.status == "unsupported"));
         fs::remove_dir_all(root).expect("cleanup");
     }
 

@@ -99,6 +99,19 @@ type LspLocation =
       readonly isDefinition?: boolean;
     };
 
+type SearchLineResult = {
+  readonly isError?: boolean;
+  readonly structuredContent?: {
+    readonly results?: readonly {
+      readonly data?: {
+        readonly files?: readonly {
+          readonly matches?: readonly { readonly line?: number }[];
+        }[];
+      };
+    }[];
+  };
+};
+
 function semanticExitCode(category: string | undefined): number | undefined {
   switch (category) {
     case 'symbolNotFound':
@@ -233,12 +246,44 @@ function printLspToolResult(result: LspToolResult, jsonOutput: boolean): void {
   console.log();
 }
 
+async function inferLineHint(uri: string, symbolName: string): Promise<number> {
+  const result = (await executeDirectTool('localSearchCode', {
+    queries: [
+      {
+        keywords: symbolName,
+        path: uri,
+        fixedString: true,
+        maxFiles: 1,
+        maxMatchesPerFile: 1,
+        itemsPerPage: 1,
+        mainResearchGoal: 'Find LSP line anchor',
+        researchGoal: `Find ${symbolName} in ${uri}`,
+        reasoning: 'CLI lsp auto-line fallback',
+      },
+    ],
+  })) as SearchLineResult;
+
+  if (result.isError) {
+    throw new Error(`Could not infer --line for ${symbolName}.`);
+  }
+
+  const line =
+    result.structuredContent?.results?.[0]?.data?.files?.[0]?.matches?.[0]
+      ?.line;
+  if (typeof line !== 'number') {
+    throw new Error(
+      `Could not infer --line for ${symbolName}; run grep or ls --symbols and pass --line explicitly.`
+    );
+  }
+  return line;
+}
+
 export const lspCommand: CLICommand = {
   name: 'lsp',
   description:
     'Run LSP semantic research (symbol identity) for a local source file — definitions, references, callers, hover. For a file/dir outline use the `symbols` command.',
   usage:
-    'lsp <file> --type <type> --symbol <name> --line <n> [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
+    'lsp <file> --type <type> --symbol <name> [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
   options: [
     {
       name: 'type',
@@ -254,7 +299,8 @@ export const lspCommand: CLICommand = {
     {
       name: 'line',
       hasValue: true,
-      description: 'Line hint for the symbol (required)',
+      description:
+        'Line hint for the symbol; inferred with a local fixed-string search when omitted',
     },
     {
       name: 'workspace-root',
@@ -297,7 +343,7 @@ export const lspCommand: CLICommand = {
     const jsonOutput = getBool(args.options, 'json');
     const rawType = getString(args.options, 'type');
     const symbolName = getString(args.options, 'symbol');
-    const lineHint = parsePositiveInt(getString(args.options, 'line'));
+    let lineHint = parsePositiveInt(getString(args.options, 'line'));
 
     if (!target) {
       printUsageError('Provide a local source file path.', jsonOutput);
@@ -318,7 +364,7 @@ export const lspCommand: CLICommand = {
     // rejected centrally before we get here).
     if (!symbolName && !lineHint) {
       printUsageError(
-        '--symbol and --line are required. For a file/dir outline, use: ls <file|dir> --symbols',
+        '--symbol is required. For a file/dir outline, use: ls <file|dir> --symbols',
         jsonOutput
       );
       process.exitCode = EXIT.USAGE;
@@ -332,15 +378,6 @@ export const lspCommand: CLICommand = {
       process.exitCode = EXIT.USAGE;
       return;
     }
-    if (!lineHint) {
-      printUsageError(
-        "--line <n> is required for this --type (the symbol's line from a prior grep or `ls --symbols` hit — do not guess).",
-        jsonOutput
-      );
-      process.exitCode = EXIT.USAGE;
-      return;
-    }
-
     const uri = path.resolve(target);
     if (existsSync(uri) && statSync(uri).isDirectory()) {
       printUsageError('Provide a file path, not a directory.', jsonOutput);
@@ -356,6 +393,22 @@ export const lspCommand: CLICommand = {
     );
     const depth = parsePositiveInt(getString(args.options, 'depth'));
     const format = getString(args.options, 'format');
+
+    try {
+      if (!lineHint && symbolName) {
+        lineHint = await inferLineHint(uri, symbolName);
+        if (!jsonOutput) {
+          process.stderr.write(
+            `  ${dim(`Inferred line ${lineHint} for ${symbolName} ...`)}\n`
+          );
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      printUsageError(message, jsonOutput);
+      process.exitCode = EXIT.USAGE;
+      return;
+    }
 
     if (!jsonOutput) {
       process.stderr.write(

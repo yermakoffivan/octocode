@@ -36,6 +36,11 @@ function envelope(data: Record<string, unknown>) {
   };
 }
 
+function lastQuery() {
+  const call = executeDirectTool.mock.calls.at(-1);
+  return (call?.[1] as { queries: Array<Record<string, unknown>> }).queries[0];
+}
+
 describe('binary command scan-window continuation', () => {
   let stderr: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
@@ -52,7 +57,7 @@ describe('binary command scan-window continuation', () => {
   });
 
   function stderrText() {
-    return stderr.mock.calls.map(c => String(c[0])).join('');
+    return stderr.mock.calls.map((c: unknown[]) => String(c[0])).join('');
   }
 
   it('surfaces the lossless continuation cursor on stderr (survives stdout | grep)', async () => {
@@ -82,9 +87,24 @@ describe('binary command scan-window continuation', () => {
   it('threads --scan-offset into the strings query', async () => {
     executeDirectTool.mockResolvedValue(envelope({ mode: 'strings' }));
     await run(['big.bin'], { strings: true, 'scan-offset': '67108864' });
-    const call = executeDirectTool.mock.calls.at(-1);
-    const q = (call?.[1] as { queries: Array<Record<string, unknown>> })
-      .queries[0];
+    const q = lastQuery();
     expect(q.scanOffset).toBe(67108864);
+  });
+
+  it('threads --detailed into inspect queries only when requested', async () => {
+    executeDirectTool.mockResolvedValue(envelope({ mode: 'inspect' }));
+    await run(['addon.node'], { inspect: true, detailed: true });
+
+    expect(lastQuery()).toMatchObject({
+      mode: 'inspect',
+      detailed: true,
+    });
+  });
+
+  it('keeps inspect concise by default', async () => {
+    executeDirectTool.mockResolvedValue(envelope({ mode: 'inspect' }));
+    await run(['addon.node'], { inspect: true });
+
+    expect(lastQuery().detailed).toBeUndefined();
   });
 });

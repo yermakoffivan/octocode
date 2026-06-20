@@ -196,6 +196,7 @@ pub(crate) fn assemble_file(
                 line: m.line_number,
                 column: m.column,
                 value,
+                count: None,
             }
         })
         .collect();

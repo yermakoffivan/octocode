@@ -27,6 +27,8 @@ pub struct RipgrepMatch {
     pub column: u32,
     /// Assembled match + context window, truncated to `max_snippet_chars`.
     pub value: String,
+    /// Frequency for this value when `count_unique` is enabled.
+    pub count: Option<u32>,
 }
 
 #[napi(object)]
@@ -127,6 +129,12 @@ pub struct RipgrepSearchOptions {
     /// side (char-boundary safe), marking trimmed sides with `…`. 0/unset =
     /// the bare matched span.
     pub match_window: Option<u32>,
+    /// With `only_matching`, collapse duplicate values per file, preserving
+    /// first-occurrence order and anchor.
+    pub unique: Option<bool>,
+    /// With `only_matching`, collapse duplicate values and attach their
+    /// frequency, sorted by count descending.
+    pub count_unique: Option<bool>,
 }
 
 // ── filesystem query types ───────────────────────────────────────────────────

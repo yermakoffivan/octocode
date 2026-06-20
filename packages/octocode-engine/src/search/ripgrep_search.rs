@@ -11,6 +11,7 @@
 //! the exact `RipgrepParseResult` shape the `--json` parser produced, so the
 //! result is byte-identical to the previous `rg --json` execution path.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -179,6 +180,7 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
                         line: line_number,
                         column,
                         value,
+                        count: None,
                     });
                 }
                 true
@@ -191,6 +193,7 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
                     line: line_number,
                     column: 0,
                     value: line_text,
+                    count: None,
                 });
             }
         } else {
@@ -390,6 +393,33 @@ fn sort_recs(opts: &RipgrepSearchOptions, recs: &mut [FileRec]) {
     }
 }
 
+fn collapse_unique_matches(matches: Vec<RipgrepMatch>, include_counts: bool) -> Vec<RipgrepMatch> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut unique: Vec<RipgrepMatch> = Vec::new();
+
+    for mut matched in matches {
+        if let Some(index) = seen.get(matched.value.as_str()).copied() {
+            if include_counts {
+                let next = unique[index].count.unwrap_or(1).saturating_add(1);
+                unique[index].count = Some(next);
+            }
+            continue;
+        }
+
+        if include_counts {
+            matched.count = Some(1);
+        }
+        seen.insert(matched.value.clone(), unique.len());
+        unique.push(matched);
+    }
+
+    if include_counts {
+        unique.sort_by(|a, b| b.count.unwrap_or(1).cmp(&a.count.unwrap_or(1)));
+    }
+
+    unique
+}
+
 fn build_result(
     opts: &RipgrepSearchOptions,
     mode: Mode,
@@ -406,14 +436,23 @@ fn build_result(
     let total_matched_lines: u32 = recs.iter().map(|r| r.matched_lines).sum();
 
     let only_matching = opts.only_matching.unwrap_or(false);
+    let unique = opts.unique.unwrap_or(false) || opts.count_unique.unwrap_or(false);
+    let count_unique = opts.count_unique.unwrap_or(false);
     let files: Vec<RipgrepFile> = recs
         .into_iter()
         .map(|r| match mode {
-            Mode::Normal if only_matching => RipgrepFile {
-                path: r.path,
-                match_count: r.om_matches.len() as u32,
-                matches: r.om_matches,
-            },
+            Mode::Normal if only_matching => {
+                let matches = if unique {
+                    collapse_unique_matches(r.om_matches, count_unique)
+                } else {
+                    r.om_matches
+                };
+                RipgrepFile {
+                    path: r.path,
+                    match_count: matches.len() as u32,
+                    matches,
+                }
+            }
             Mode::Normal => assemble_file(r.path, &r.entry, context_lines, max_snippet),
             // files-only / files-without-match: path list, matchCount 1, no
             // snippets — exactly what the old plain-text parser produced.
@@ -465,6 +504,15 @@ fn build_result(
 /// `fixed_string` is not set.
 pub(crate) fn search(opts: RipgrepSearchOptions) -> Result<RipgrepParseResult> {
     let mode = resolve_mode(&opts);
+
+    if (opts.unique.unwrap_or(false) || opts.count_unique.unwrap_or(false))
+        && !opts.only_matching.unwrap_or(false)
+    {
+        return Err(Error::new(
+            Status::InvalidArg,
+            "unique/countUnique require onlyMatching:true",
+        ));
+    }
 
     let case_sensitive = opts.case_sensitive.unwrap_or(false);
     let case_insensitive = !case_sensitive && opts.case_insensitive.unwrap_or(false);
@@ -854,6 +902,52 @@ mod tests {
         o.match_window = Some(2);
         let r = search(o).expect("ok");
         assert!(r.files[0].matches[0].value.contains("HIT"));
+    }
+
+    #[test]
+    fn only_matching_unique_keeps_distinct_values_in_first_occurrence_order() {
+        let t = TmpDir::new();
+        t.write("a.txt", "ab ab cd ab cd ef\n");
+        let mut o = opts(t.path(), r"\w+");
+        o.only_matching = Some(true);
+        o.unique = Some(true);
+        let r = search(o).expect("ok");
+        let vals: Vec<&str> = r.files[0]
+            .matches
+            .iter()
+            .map(|m| m.value.as_str())
+            .collect();
+        assert_eq!(vals, vec!["ab", "cd", "ef"]);
+        assert!(r.files[0].matches.iter().all(|m| m.count.is_none()));
+    }
+
+    #[test]
+    fn only_matching_count_unique_attaches_frequency_sorted_descending() {
+        let t = TmpDir::new();
+        t.write("a.txt", "ab ab cd ab cd ef\n");
+        let mut o = opts(t.path(), r"\w+");
+        o.only_matching = Some(true);
+        o.count_unique = Some(true);
+        let r = search(o).expect("ok");
+        let vals: Vec<(&str, Option<u32>)> = r.files[0]
+            .matches
+            .iter()
+            .map(|m| (m.value.as_str(), m.count))
+            .collect();
+        assert_eq!(
+            vals,
+            vec![("ab", Some(3)), ("cd", Some(2)), ("ef", Some(1))]
+        );
+    }
+
+    #[test]
+    fn unique_requires_only_matching() {
+        let t = TmpDir::new();
+        t.write("a.txt", "ab ab\n");
+        let mut o = opts(t.path(), "ab");
+        o.unique = Some(true);
+        let err = search(o).expect_err("unique without onlyMatching is invalid");
+        assert!(err.reason.contains("onlyMatching:true"));
     }
 
     #[test]

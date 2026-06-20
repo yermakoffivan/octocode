@@ -1,3 +1,5 @@
+use super::types::{StructuralDiagnostic, StructuralQueryExplanation};
+
 #[derive(Clone, Copy)]
 pub(super) struct StructuralQuery<'a> {
     pattern: Option<&'a str>,
@@ -33,6 +35,74 @@ impl<'a> StructuralQuery<'a> {
             (_, Some(rule)) => derive_rule_anchor(rule),
             _ => None,
         }
+    }
+
+    pub(super) fn explanation(self) -> StructuralQueryExplanation {
+        let literal_anchor = self.literal_anchor().map(str::to_owned);
+        let unsafe_reason = self.unsafe_prefilter_reason().map(str::to_owned);
+        let mut diagnostics = Vec::new();
+        if let Some(reason) = unsafe_reason.as_deref() {
+            diagnostics.push(
+                StructuralDiagnostic::new(
+                    "structural.prefilter.disabled",
+                    "info",
+                    "scan",
+                    format!("Literal prefilter disabled: {reason}."),
+                )
+                .with_recovery("The engine will parse candidate files instead of trusting a single text anchor."),
+            );
+        }
+
+        StructuralQueryExplanation {
+            kind: if self.is_rule() { "rule" } else { "pattern" }.to_owned(),
+            source: self.source().unwrap_or_default().to_owned(),
+            literal_anchor,
+            pre_filter: if self.literal_anchor().is_some() {
+                "literal-anchor".to_owned()
+            } else {
+                "disabled".to_owned()
+            },
+            unsafe_reason,
+            diagnostics,
+        }
+    }
+
+    fn source(self) -> Option<&'a str> {
+        self.pattern.or(self.rule)
+    }
+
+    fn unsafe_prefilter_reason(self) -> Option<&'static str> {
+        let rule = self.rule?;
+        if rule.contains("not:") {
+            return Some("`not:` can match files that do not contain the negated literal");
+        }
+        if rule.contains("any:") {
+            return Some(
+                "`any:` can match through multiple alternatives, so one literal anchor is unsafe",
+            );
+        }
+        None
+    }
+}
+
+pub(super) fn invalid_query_explanation(
+    pattern: Option<&str>,
+    rule: Option<&str>,
+    message: &str,
+) -> StructuralQueryExplanation {
+    StructuralQueryExplanation {
+        kind: "invalid".to_owned(),
+        source: pattern.or(rule).unwrap_or_default().to_owned(),
+        literal_anchor: None,
+        pre_filter: "unavailable".to_owned(),
+        unsafe_reason: None,
+        diagnostics: vec![StructuralDiagnostic::new(
+            "structural.query.invalid",
+            "error",
+            "match",
+            message.to_owned(),
+        )
+        .with_recovery("Provide exactly one non-empty structural pattern or YAML rule.")],
     }
 }
 

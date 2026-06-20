@@ -366,6 +366,21 @@ describe('toolCommand', () => {
     expect(output).toContain('Tool input must be a JSON object');
   });
 
+  it('gives a specific error when localSearchCode keywords is an array', async () => {
+    const { toolCommand } = await import('../../src/cli/tool-command.js');
+
+    await toolCommand.handler!({
+      command: 'tools',
+      args: ['localSearchCode'],
+      options: { queries: '{"path":".","keywords":["runCLI"]}' },
+    });
+
+    const output = consoleSpy.mock.calls.flat().join('\n');
+    expect(output).toContain('localSearchCode.keywords must be a string');
+    expect(output).toContain('ghSearchCode uses keywords as an array');
+    expect(process.exitCode).toBe(2);
+  });
+
   it('builds tools context from MCP instructions and tool schemas (--full)', async () => {
     const { getToolsContextString } =
       await import('../../src/cli/tool-command.js');

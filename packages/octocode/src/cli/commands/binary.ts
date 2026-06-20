@@ -75,7 +75,7 @@ export const binaryCommand: CLICommand = {
   description:
     'Inspect archives, compressed files, and binaries — inspect structure, list/unzip entries, decompress, or read strings',
   usage:
-    'binary <file> [--inspect | --list | --strings | --decompress | --extract <entry>] [--match <s>] [--min-length <n>] [--max-entries <n>] [--format <fmt>] [--verbose] [--offsets] [--page <n>] [--json]',
+    'binary <file> [--inspect | --list | --strings | --decompress | --extract <entry>] [--detailed] [--match <s>] [--min-length <n>] [--max-entries <n>] [--format <fmt>] [--verbose] [--offsets] [--page <n>] [--json]',
   options: [
     { name: 'list', description: 'List archive entries (.zip/.tar.*/.jar/…)' },
     {
@@ -86,7 +86,12 @@ export const binaryCommand: CLICommand = {
     {
       name: 'inspect',
       description:
-        'Structure of a native binary: format, arch, symbols, imports, exports, sections, deps',
+        'Structure of a native binary: format, arch, counts, and deps',
+    },
+    {
+      name: 'detailed',
+      description:
+        'inspect: include full symbols/imports/exports/sections arrays',
     },
     {
       name: 'strings',
@@ -183,6 +188,8 @@ export const binaryCommand: CLICommand = {
       if (getBool(options, 'verbose')) query.verbose = true;
       const maxEntries = posIntOption(getString(options, 'max-entries'));
       if (maxEntries) query.maxEntries = maxEntries;
+    } else if (mode === 'inspect') {
+      if (getBool(options, 'detailed')) query.detailed = true;
     } else if (mode === 'extract') {
       query.archiveFile = getString(options, 'extract');
       if (match) query.matchString = match;

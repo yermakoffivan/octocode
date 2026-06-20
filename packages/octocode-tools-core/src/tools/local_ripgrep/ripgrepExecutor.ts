@@ -12,7 +12,10 @@ import { getHints } from '../../hints/index.js';
 import { buildSearchResult } from './ripgrepResultBuilder.js';
 import { preflightValidateRipgrepPattern } from './patternValidation.js';
 import { attachRawResponseChars } from '../../utils/response/charSavings.js';
-import { contextUtils, type RipgrepSearchOptions } from '../../utils/contextUtils.js';
+import {
+  contextUtils,
+  type RipgrepSearchOptions,
+} from '../../utils/contextUtils.js';
 
 /** Map the validated tool query onto the native engine's search options. */
 function toSearchOptions(
@@ -46,6 +49,8 @@ function toSearchOptions(
     sortReverse: query.sortReverse,
     maxSnippetChars: query.matchContentLength,
     onlyMatching: query.onlyMatching,
+    unique: query.unique,
+    countUnique: query.countUnique,
     matchWindow: query.matchWindow,
   };
 }
@@ -159,11 +164,17 @@ export async function executeRipgrepSearchInternal(
   const files: LocalSearchCodeFile[] = parsed.files.map(f => ({
     path: f.path,
     matchCount: f.matchCount,
-    matches: f.matches.map(m => ({
-      line: m.line,
-      column: m.column,
-      value: m.value,
-    })),
+    matches: f.matches.map(m => {
+      const match = {
+        line: m.line,
+        column: m.column,
+        value: m.value,
+      } as NonNullable<LocalSearchCodeFile['matches']>[number] & {
+        count?: number;
+      };
+      if (m.count !== undefined) match.count = m.count;
+      return match;
+    }),
   }));
 
   const responseChars = estimateResponseChars(files);

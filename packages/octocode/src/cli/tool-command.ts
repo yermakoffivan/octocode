@@ -121,6 +121,44 @@ function getInputText(toolName: string, args: ParsedArgs): string | undefined {
     : args.args[1];
 }
 
+function getPayloadQueries(rawPayload: unknown): unknown[] {
+  if (Array.isArray(rawPayload)) return rawPayload;
+  if (rawPayload && typeof rawPayload === 'object') {
+    const queries = (rawPayload as { readonly queries?: unknown }).queries;
+    if (Array.isArray(queries)) return queries;
+    return [rawPayload];
+  }
+  return [];
+}
+
+function validateRawToolFootguns(toolName: string, inputText: string): void {
+  if (toolName !== 'localSearchCode') return;
+
+  let rawPayload: unknown;
+  try {
+    rawPayload = JSON.parse(inputText) as unknown;
+  } catch {
+    return;
+  }
+
+  const badIndex = getPayloadQueries(rawPayload).findIndex(
+    query =>
+      query &&
+      typeof query === 'object' &&
+      Array.isArray((query as { readonly keywords?: unknown }).keywords)
+  );
+  if (badIndex === -1) return;
+
+  throw new DirectToolInputError(
+    'localSearchCode.keywords must be a string, not an array.',
+    [
+      'Use {"path":".","keywords":"runCLI"} for localSearchCode.',
+      'GitHub ghSearchCode uses keywords as an array; localSearchCode does not.',
+      `Run tools ${toolName} --scheme before raw calls.`,
+    ]
+  );
+}
+
 export function truncateDescription(desc: string, maxLen: number): string {
   if (desc.length <= maxLen) return desc;
   const cut = desc.lastIndexOf(' ', maxLen - 1);
@@ -700,6 +738,7 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
   }
 
   try {
+    validateRawToolFootguns(tool.name, inputText);
     const input = prepareDirectToolInputFromJsonText(tool.name, inputText, {
       sourceLabel: 'octocode',
       onUnknownFields: (unknownFields, queryIndex) => {

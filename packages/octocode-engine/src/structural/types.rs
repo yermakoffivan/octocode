@@ -19,6 +19,42 @@ pub struct StructuralMatch {
 }
 
 #[napi(object)]
+pub struct StructuralDiagnostic {
+    pub code: String,
+    pub severity: String,
+    pub stage: String,
+    pub message: String,
+    pub path: Option<String>,
+    pub recovery: Option<String>,
+}
+
+#[napi(object)]
+pub struct StructuralQueryExplanation {
+    pub kind: String,
+    pub source: String,
+    pub literal_anchor: Option<String>,
+    pub pre_filter: String,
+    pub unsafe_reason: Option<String>,
+    pub diagnostics: Vec<StructuralDiagnostic>,
+}
+
+/// A structural match with stable evidence metadata. Existing
+/// `StructuralMatch` remains unchanged for the legacy APIs; detailed APIs add
+/// IDs and confidence without forcing old callers to carry metadata.
+#[napi(object)]
+pub struct StructuralDetailedMatch {
+    pub id: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub start_col: u32,
+    pub end_col: u32,
+    pub text: String,
+    pub metavars: HashMap<String, Vec<String>>,
+    pub node_kind: Option<String>,
+    pub confidence: String,
+}
+
+#[napi(object)]
 pub struct StructuralSearchFilesOptions {
     pub path: String,
     pub pattern: Option<String>,
@@ -44,4 +80,130 @@ pub struct StructuralSearchFilesResult {
     pub skipped_unreadable: u32,
     pub skipped_large: u32,
     pub warnings: Vec<String>,
+}
+
+#[napi(object)]
+pub struct StructuralSearchDetailedResult {
+    pub path: String,
+    pub analyzer: String,
+    pub analyzer_version: String,
+    pub status: String,
+    pub language_id: Option<String>,
+    pub query: StructuralQueryExplanation,
+    pub matches: Vec<StructuralDetailedMatch>,
+    pub diagnostics: Vec<StructuralDiagnostic>,
+}
+
+#[napi(object)]
+pub struct StructuralSearchDetailedFileResult {
+    pub path: String,
+    pub status: String,
+    pub language_id: Option<String>,
+    pub skipped_reason: Option<String>,
+    pub matches: Vec<StructuralDetailedMatch>,
+    pub diagnostics: Vec<StructuralDiagnostic>,
+}
+
+#[napi(object)]
+pub struct StructuralSearchFilesDetailedResult {
+    pub files: Vec<StructuralSearchDetailedFileResult>,
+    pub total_matches: u32,
+    pub parsed_files: u32,
+    pub skipped_by_pre_filter: u32,
+    pub skipped_unsupported: u32,
+    pub skipped_unreadable: u32,
+    pub skipped_large: u32,
+    pub analyzer: String,
+    pub analyzer_version: String,
+    pub status: String,
+    pub query: StructuralQueryExplanation,
+    pub diagnostics: Vec<StructuralDiagnostic>,
+    pub warnings: Vec<String>,
+}
+
+pub(super) const STRUCTURAL_ANALYZER: &str = "octocode-structural";
+pub(super) const STRUCTURAL_ANALYZER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+impl StructuralDiagnostic {
+    pub(super) fn new(
+        code: impl Into<String>,
+        severity: impl Into<String>,
+        stage: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            severity: severity.into(),
+            stage: stage.into(),
+            message: message.into(),
+            path: None,
+            recovery: None,
+        }
+    }
+
+    pub(super) fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+
+    pub(super) fn with_recovery(mut self, recovery: impl Into<String>) -> Self {
+        self.recovery = Some(recovery.into());
+        self
+    }
+}
+
+impl StructuralDetailedMatch {
+    pub(super) fn from_match(
+        path: &str,
+        query_fingerprint: &str,
+        matched: StructuralMatch,
+    ) -> Self {
+        let id = stable_match_id(path, query_fingerprint, &matched);
+        Self {
+            id,
+            start_line: matched.start_line,
+            end_line: matched.end_line,
+            start_col: matched.start_col,
+            end_col: matched.end_col,
+            text: matched.text,
+            metavars: matched.metavars,
+            node_kind: None,
+            confidence: "exact-ast".to_owned(),
+        }
+    }
+}
+
+pub(super) fn structural_query_fingerprint(pattern: Option<&str>, rule: Option<&str>) -> String {
+    match (pattern, rule) {
+        (Some(pattern), None) => stable_hash_hex(&["pattern", pattern]),
+        (None, Some(rule)) => stable_hash_hex(&["rule", rule]),
+        (Some(pattern), Some(rule)) => stable_hash_hex(&["both", pattern, rule]),
+        (None, None) => stable_hash_hex(&["none"]),
+    }
+}
+
+fn stable_match_id(path: &str, query_fingerprint: &str, matched: &StructuralMatch) -> String {
+    stable_hash_hex(&[
+        STRUCTURAL_ANALYZER,
+        STRUCTURAL_ANALYZER_VERSION,
+        path,
+        query_fingerprint,
+        &matched.start_line.to_string(),
+        &matched.end_line.to_string(),
+        &matched.start_col.to_string(),
+        &matched.end_col.to_string(),
+    ])
+}
+
+fn stable_hash_hex(parts: &[&str]) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for part in parts {
+        for byte in part.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
 }
