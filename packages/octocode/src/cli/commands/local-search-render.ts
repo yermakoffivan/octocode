@@ -49,7 +49,8 @@ function formatMetavars(
  */
 export function renderLocalResults(
   sc: LocalSearchResult,
-  limit: number
+  limit: number,
+  contextLines = 0
 ): string {
   const data = sc?.results?.[0]?.data;
   const pagination = data?.pagination;
@@ -67,12 +68,34 @@ export function renderLocalResults(
     const countSuffix = count != null ? `  ${dim(`(${count} matches)`)}` : '';
     lines.push(`  ${c('cyan', bold(f.path ?? ''))}${countSuffix}`);
     (f.matches ?? []).slice(0, 5).forEach(m => {
-      const lineNum = m.line != null ? m.line : '?';
-      const snippet = (m.value ?? '').trim().slice(0, 120);
       const metavars = formatMetavars(m.metavars);
-      lines.push(
-        `    ${c('yellow', `L${lineNum}:`)} ${snippet}${metavars ? ` ${dim(metavars)}` : ''}`
-      );
+      const metaSuffix = metavars ? ` ${dim(metavars)}` : '';
+      const physical = (m.value ?? '').split('\n');
+      // With a context window the value is `before… + matchLine + after…`.
+      // Number each physical line so the gutter aligns with the text it labels
+      // (only the match line gets the `Lnn:` colon; context lines are dimmed)
+      // instead of stamping the match's line number on the before-context row.
+      if (contextLines > 0 && physical.length > 1 && m.line != null) {
+        // Before-context count is deterministic: line numbers are contiguous,
+        // so it is min(contextLines, matchLine - 1).
+        const before = Math.min(contextLines, m.line - 1);
+        const startLine = m.line - before;
+        physical.forEach((text, k) => {
+          const ln = startLine + k;
+          const body = text.replace(/\s+$/, '').slice(0, 120);
+          if (ln === m.line) {
+            lines.push(`    ${c('yellow', `L${ln}:`)} ${body}${metaSuffix}`);
+          } else {
+            lines.push(`    ${dim(`L${ln} `)} ${dim(body)}`);
+          }
+        });
+      } else {
+        const lineNum = m.line != null ? m.line : '?';
+        const snippet = (m.value ?? '').trim().slice(0, 120);
+        lines.push(
+          `    ${c('yellow', `L${lineNum}:`)} ${snippet}${metaSuffix}`
+        );
+      }
     });
   }
   if (total > shown.length) {

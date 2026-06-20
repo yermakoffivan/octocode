@@ -174,8 +174,9 @@ pub fn inspect(buf: &[u8], size_truncated: bool) -> BinaryInspectInfo {
         Ok(Object::Archive(ar)) => {
             let members = capped(ar.members().into_iter().map(|m| m.to_string()));
             info.sections = members.items;
-            info.notes
-                .push("ar archive — entries listed as sections; use mode=list to extract".to_string());
+            info.notes.push(
+                "ar archive — entries listed as sections; use mode=list to extract".to_string(),
+            );
         }
         Ok(Object::Unknown(_)) | Err(_) => note_unrecognized(&mut info),
         Ok(_) => {
@@ -282,11 +283,7 @@ fn inspect_pe(pe: &goblin::pe::PE, info: &mut BinaryInspectInfo) {
     info.imports = imports.items;
     info.import_count = imports.total;
 
-    let exports = capped(
-        pe.exports
-            .iter()
-            .map(|e| e.name.unwrap_or("").to_string()),
-    );
+    let exports = capped(pe.exports.iter().map(|e| e.name.unwrap_or("").to_string()));
     info.exports = exports.items;
     info.export_count = exports.total;
 

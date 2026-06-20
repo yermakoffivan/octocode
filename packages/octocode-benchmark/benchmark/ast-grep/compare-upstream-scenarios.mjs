@@ -101,6 +101,7 @@ function parseArgs(argv) {
     filesPerScenario: 80,
     maxFileBytes: 350_000,
     repeats: 3,
+    warmups: 1,
     keepCorpus: false,
     json: false,
     strict: false,
@@ -121,6 +122,7 @@ function parseArgs(argv) {
     else if (arg === '--files-per-scenario') out.filesPerScenario = Number(next())
     else if (arg === '--max-file-bytes') out.maxFileBytes = Number(next())
     else if (arg === '--repeats') out.repeats = Number(next())
+    else if (arg === '--warmups') out.warmups = Number(next())
     else if (arg === '--keep-corpus') out.keepCorpus = true
     else if (arg === '--json') out.json = true
     else if (arg === '--strict') out.strict = true
@@ -141,6 +143,9 @@ function parseArgs(argv) {
   if (!Number.isInteger(out.repeats) || out.repeats < 1) {
     throw new Error('--repeats must be a positive integer')
   }
+  if (!Number.isInteger(out.warmups) || out.warmups < 0) {
+    throw new Error('--warmups must be a non-negative integer')
+  }
   return out
 }
 
@@ -155,6 +160,7 @@ Options:
   --files-per-scenario <n>  Deterministic file sample size per scenario (default: 80)
   --max-file-bytes <n>      Skip very large files (default: 350000)
   --repeats <n>             Fixed command repetitions; reports median ms (default: 3)
+  --warmups <n>             Unmeasured warmup runs before fixed repetitions (default: 1)
   --keep-corpus             Keep temp corpora for inspection
   --json                    Print JSON summary instead of a table
   --strict                  Exit non-zero when match counts differ
@@ -311,11 +317,18 @@ function fileExtension(path) {
   return index >= 0 ? name.slice(index + 1).toLowerCase() : ''
 }
 
+function hasHiddenPathSegment(path) {
+  return path
+    .split(/[\\/]/)
+    .some(segment => segment.startsWith('.') && segment !== '.' && segment !== '..')
+}
+
 function selectFiles(repoPath, testCase, options) {
   const tracked = gitTrackedFiles(repoPath) ?? walkFiles(repoPath)
   const allowed = new Set(testCase.extensions)
   const files = []
   for (const rel of tracked.sort()) {
+    if (hasHiddenPathSegment(rel)) continue
     if (!allowed.has(fileExtension(rel))) continue
     const abs = join(repoPath, rel)
     let stat
@@ -395,6 +408,21 @@ function assertStableCounts(label, runs) {
   }
 }
 
+function assertWarmupCounts(label, runs, warmups) {
+  if (warmups.length === 0) return
+  const first = runs[0]
+  for (const run of warmups) {
+    if (run.matches !== first.matches || run.files !== first.files) {
+      throw new Error(
+        `${label} warmup produced different counts than measured runs: ${JSON.stringify({
+          warmups: warmups.map(({ matches, files }) => ({ matches, files })),
+          measured: runs.map(({ matches, files }) => ({ matches, files })),
+        })}`
+      )
+    }
+  }
+}
+
 let engineModule = null
 function loadEngine() {
   if (!engineModule) {
@@ -422,7 +450,7 @@ function runAstGrepOnce(corpusDir, testCase) {
     corpusDir,
   ])
   if (result.error) throw result.error
-  if (result.status !== 0 && !result.stdout.trim()) {
+  if (result.status !== 0 && !(result.status === 1 && !result.stderr.trim())) {
     throw new Error(result.stderr.trim() || `${AST_GREP_BIN} exited ${result.status}`)
   }
   const matches = parseAstGrepJson(result.stdout)
@@ -433,17 +461,12 @@ function runAstGrepOnce(corpusDir, testCase) {
   }
 }
 
-function runAstGrep(corpusDir, testCase, repeats) {
-  const runs = Array.from({ length: repeats }, () => runAstGrepOnce(corpusDir, testCase))
+function runAstGrep(corpusDir, testCase, options) {
+  const warmups = Array.from({ length: options.warmups }, () => runAstGrepOnce(corpusDir, testCase))
+  const runs = Array.from({ length: options.repeats }, () => runAstGrepOnce(corpusDir, testCase))
   assertStableCounts('ast-grep', runs)
-  return {
-    durationMs: median(runs.map(run => run.durationMs)),
-    minMs: Math.min(...runs.map(run => run.durationMs)),
-    maxMs: Math.max(...runs.map(run => run.durationMs)),
-    repeats,
-    matches: runs[0].matches,
-    files: runs[0].files,
-  }
+  assertWarmupCounts('ast-grep', runs, warmups)
+  return summarizeRuns(runs, warmups)
 }
 
 function ruleFor(testCase) {
@@ -475,12 +498,17 @@ function runRawNativeOnce(corpusDir, testCase, maxFileBytes) {
 }
 
 function runRawNative(corpusDir, testCase, options) {
+  const warmups = Array.from(
+    { length: options.warmups },
+    () => runRawNativeOnce(corpusDir, testCase, options.maxFileBytes),
+  )
   const runs = Array.from(
     { length: options.repeats },
     () => runRawNativeOnce(corpusDir, testCase, options.maxFileBytes),
   )
   assertStableCounts('octocode raw native', runs)
-  return summarizeRuns(runs)
+  assertWarmupCounts('octocode raw native', runs, warmups)
+  return summarizeRuns(runs, warmups)
 }
 
 function parseStructuredSearchResult(structured) {
@@ -527,13 +555,18 @@ async function runLocalSearchToolOnce(corpusDir, testCase) {
   }
 }
 
-async function runLocalSearchTool(corpusDir, testCase, repeats) {
+async function runLocalSearchTool(corpusDir, testCase, options) {
+  const warmups = []
+  for (let i = 0; i < options.warmups; i++) {
+    warmups.push(await runLocalSearchToolOnce(corpusDir, testCase))
+  }
   const runs = []
-  for (let i = 0; i < repeats; i++) {
+  for (let i = 0; i < options.repeats; i++) {
     runs.push(await runLocalSearchToolOnce(corpusDir, testCase))
   }
   assertStableCounts('octocode localSearchCode tool', runs)
-  return summarizeRuns(runs)
+  assertWarmupCounts('octocode localSearchCode tool', runs, warmups)
+  return summarizeRuns(runs, warmups)
 }
 
 function parseOctocodeJson(output) {
@@ -579,25 +612,33 @@ function runOctocodeOnce(octocode, corpusDir, testCase) {
   }
 }
 
-function runOctocode(octocode, corpusDir, testCase, repeats) {
-  const runs = Array.from({ length: repeats }, () => runOctocodeOnce(octocode, corpusDir, testCase))
+function runOctocode(octocode, corpusDir, testCase, options) {
+  const warmups = Array.from(
+    { length: options.warmups },
+    () => runOctocodeOnce(octocode, corpusDir, testCase),
+  )
+  const runs = Array.from({ length: options.repeats }, () => runOctocodeOnce(octocode, corpusDir, testCase))
   assertStableCounts('octocode', runs)
-  return {
-    durationMs: median(runs.map(run => run.durationMs)),
-    minMs: Math.min(...runs.map(run => run.durationMs)),
-    maxMs: Math.max(...runs.map(run => run.durationMs)),
-    repeats,
-    matches: runs[0].matches,
-    files: runs[0].files,
-  }
+  assertWarmupCounts('octocode', runs, warmups)
+  return summarizeRuns(runs, warmups)
 }
 
-function summarizeRuns(runs) {
+function summarizeRuns(runs, warmups = []) {
+  const runDurationsMs = runs.map(run => run.durationMs)
+  const warmupDurationsMs = warmups.map(run => run.durationMs)
   return {
-    durationMs: median(runs.map(run => run.durationMs)),
-    minMs: Math.min(...runs.map(run => run.durationMs)),
-    maxMs: Math.max(...runs.map(run => run.durationMs)),
+    durationMs: median(runDurationsMs),
+    minMs: Math.min(...runDurationsMs),
+    maxMs: Math.max(...runDurationsMs),
     repeats: runs.length,
+    warmups: warmups.length,
+    ...(warmupDurationsMs.length > 0 ? {
+      warmupMedianMs: median(warmupDurationsMs),
+      warmupMinMs: Math.min(...warmupDurationsMs),
+      warmupMaxMs: Math.max(...warmupDurationsMs),
+    } : {}),
+    runDurationsMs,
+    warmupDurationsMs,
     matches: runs[0].matches,
     files: runs[0].files,
     ...(runs[0].parsedFiles !== undefined ? { parsedFiles: runs[0].parsedFiles } : {}),
@@ -620,24 +661,25 @@ function printTable(summary) {
   console.log(`ast-grep: ${summary.versions.astGrepVersion}`)
   console.log(`octocode: ${summary.versions.octocodeVersion}`)
   console.log(`repoDir: ${summary.repoDir}`)
-  console.log(`repeats: ${summary.options.repeats} fixed runs; displayed ms is median`)
-  console.log(`node/process note: public octocode grep includes Node startup, CLI routing, tool wrappers, result shaping, JSON serialization, and native addon load. Raw native and direct tool lanes isolate that overhead.`)
-  console.log(`\n${pad('Scenario', 28)} ${pad('kind', 19)} ${pad('files', 7)} ${pad('hash', 10)} ${pad('lane', 28)} ${pad('ms', 9)} ${pad('matches', 8)} status`)
-  console.log('-'.repeat(126))
+  console.log(`warmups: ${summary.options.warmups}; repeats: ${summary.options.repeats} fixed measured runs; displayed ms is measured median after warmup`)
+  console.log(`warm ms: median warmup duration. It is shown separately and excluded from measured ms.`)
+  console.log(`node/process note: public octocode grep still pays Node process startup on every measured run. localSearchCode adds validation, sanitization, pagination, and result shaping. Raw native isolates matcher cost.`)
+  console.log(`\n${pad('Scenario', 28)} ${pad('kind', 19)} ${pad('files', 7)} ${pad('hash', 10)} ${pad('lane', 28)} ${pad('warm ms', 9)} ${pad('ms', 9)} ${pad('matches', 8)} status`)
+  console.log('-'.repeat(137))
   for (const row of summary.rows) {
     if (row.skipped) {
-      console.log(`${pad(row.scenario, 28)} ${pad('-', 19)} ${pad('-', 7)} ${pad('-', 10)} ${pad('-', 28)} ${pad('-', 9)} ${pad('-', 8)} SKIP ${row.skipped}`)
+      console.log(`${pad(row.scenario, 28)} ${pad('-', 19)} ${pad('-', 7)} ${pad('-', 10)} ${pad('-', 28)} ${pad('-', 9)} ${pad('-', 9)} ${pad('-', 8)} SKIP ${row.skipped}`)
       continue
     }
     if (row.error) {
       for (const lane of layerRows(row)) {
-        console.log(`${pad(row.scenario, 28)} ${pad(row.kind, 19)} ${pad(row.selectedFiles, 7)} ${pad(row.corpusHash?.slice(0, 8) ?? '-', 10)} ${pad(lane.name, 28)} ${pad(lane.ms, 9)} ${pad(lane.matches, 8)} ${lane.status}`)
+        console.log(`${pad(row.scenario, 28)} ${pad(row.kind, 19)} ${pad(row.selectedFiles, 7)} ${pad(row.corpusHash?.slice(0, 8) ?? '-', 10)} ${pad(lane.name, 28)} ${pad(lane.warmMs, 9)} ${pad(lane.ms, 9)} ${pad(lane.matches, 8)} ${lane.status}`)
       }
-      console.log(`${pad(row.scenario, 28)} ${pad(row.kind, 19)} ${pad(row.selectedFiles, 7)} ${pad(row.corpusHash?.slice(0, 8) ?? '-', 10)} ${pad('error', 28)} ${pad('-', 9)} ${pad('-', 8)} ERROR ${row.error}`)
+      console.log(`${pad(row.scenario, 28)} ${pad(row.kind, 19)} ${pad(row.selectedFiles, 7)} ${pad(row.corpusHash?.slice(0, 8) ?? '-', 10)} ${pad('error', 28)} ${pad('-', 9)} ${pad('-', 9)} ${pad('-', 8)} ERROR ${row.error}`)
       continue
     }
     for (const lane of layerRows(row)) {
-      console.log(`${pad(row.scenario, 28)} ${pad(row.kind, 19)} ${pad(row.selectedFiles, 7)} ${pad(row.corpusHash.slice(0, 8), 10)} ${pad(lane.name, 28)} ${pad(lane.ms, 9)} ${pad(lane.matches, 8)} ${lane.status}`)
+      console.log(`${pad(row.scenario, 28)} ${pad(row.kind, 19)} ${pad(row.selectedFiles, 7)} ${pad(row.corpusHash.slice(0, 8), 10)} ${pad(lane.name, 28)} ${pad(lane.warmMs, 9)} ${pad(lane.ms, 9)} ${pad(lane.matches, 8)} ${lane.status}`)
     }
   }
   console.log(`\nsummary: ${summary.okRows} compared, ${summary.diffRows} count differences, ${summary.errorRows} errors, ${summary.skippedRows} skipped`)
@@ -656,6 +698,7 @@ function layerRows(row) {
     .filter(([, value]) => value)
     .map(([name, value]) => ({
       name,
+      warmMs: value.warmupMedianMs === undefined ? '-' : value.warmupMedianMs.toFixed(1),
       ms: value.durationMs.toFixed(1),
       matches: value.matches,
       status:
@@ -716,10 +759,10 @@ for (const scenario of scenarios) {
     selectedFiles = files.length
     selectedBytes = corpus.bytes
     hash = corpusHash(files)
-    astGrep = runAstGrep(corpus.dir, testCase, options.repeats)
+    astGrep = runAstGrep(corpus.dir, testCase, options)
     rawNative = runRawNative(corpus.dir, testCase, options)
-    localSearchCode = await runLocalSearchTool(corpus.dir, testCase, options.repeats)
-    octocodeCli = runOctocode(octocode, corpus.dir, testCase, options.repeats)
+    localSearchCode = await runLocalSearchTool(corpus.dir, testCase, options)
+    octocodeCli = runOctocode(octocode, corpus.dir, testCase, options)
     rows.push({
       scenario: scenario.name,
       codebase: scenario.codebase,
@@ -775,6 +818,7 @@ const summary = {
     filesPerScenario: options.filesPerScenario,
     maxFileBytes: options.maxFileBytes,
     repeats: options.repeats,
+    warmups: options.warmups,
     scenario: options.scenario,
   },
   rows,

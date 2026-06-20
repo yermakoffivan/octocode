@@ -24,13 +24,74 @@ use ignore::WalkBuilder;
 use napi::{Error, Result, Status};
 
 use crate::ripgrep_parser::{assemble_file, strip_trailing_newline, FileEntry, RawMatch};
-use crate::types::{RipgrepFile, RipgrepParseResult, RipgrepSearchOptions, RipgrepStats};
+use crate::types::{
+    RipgrepFile, RipgrepMatch, RipgrepParseResult, RipgrepSearchOptions, RipgrepStats,
+};
 use crate::utf8_offsets::byte_to_char_offset_inner;
 
 const DEFAULT_MAX_SNIPPET_CHARS: u32 = 500;
 
+/// Cap on emitted spans per line in only-matching mode, so a pathological
+/// minified line with a huge number of hits can't blow up the result. The true
+/// submatch count is still reported in stats.
+const MAX_ONLY_MATCHING_PER_LINE: u32 = 1000;
+
 fn to_napi_err<E: std::fmt::Display>(e: E) -> Error {
     Error::new(Status::GenericFailure, e.to_string())
+}
+
+/// Largest char boundary `<= i` (clamped to `s.len()`).
+fn floor_char_boundary(s: &str, i: usize) -> usize {
+    let mut i = i.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Smallest char boundary `>= i` (clamped to `s.len()`).
+fn ceil_char_boundary(s: &str, i: usize) -> usize {
+    let mut i = i.min(s.len());
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+/// Slice the matched span `[start, end)` (byte offsets) out of `line`,
+/// optionally widened by `window` characters on each side. Always returns a
+/// valid UTF-8 substring; trimmed sides are marked with `…`.
+fn span_value(line: &str, start: usize, end: usize, window: usize) -> String {
+    let start = floor_char_boundary(line, start);
+    let end = ceil_char_boundary(line, end).max(start);
+    if window == 0 {
+        return line[start..end].to_owned();
+    }
+    // Step back `window` chars from `start`.
+    let mut left = start;
+    for _ in 0..window {
+        if left == 0 {
+            break;
+        }
+        left = floor_char_boundary(line, left - 1);
+    }
+    // Step forward `window` chars from `end`.
+    let mut right = end;
+    for _ in 0..window {
+        if right >= line.len() {
+            break;
+        }
+        right = ceil_char_boundary(line, right + 1);
+    }
+    let mut out = String::new();
+    if left > 0 {
+        out.push('…');
+    }
+    out.push_str(&line[left..right]);
+    if right < line.len() {
+        out.push('…');
+    }
+    out
 }
 
 /// Output mode. The CLI builder applied these with a fixed precedence
@@ -67,6 +128,8 @@ struct FileRec {
     matched_lines: u32,
     /// Number of individual matches (submatches) across all matched lines.
     submatches: u32,
+    /// only-matching spans (empty unless `only_matching` is set).
+    om_matches: Vec<RipgrepMatch>,
     /// Metadata timestamp captured for non-path sort keys.
     sort_time: Option<SystemTime>,
 }
@@ -78,6 +141,12 @@ struct CollectSink<'a, M: Matcher> {
     entry: &'a mut FileEntry,
     submatches: u32,
     matched_lines: u32,
+    /// When set, collect one span per submatch (rg -o) instead of the line.
+    only_matching: bool,
+    /// Chars of context around each span in only-matching mode.
+    match_window: usize,
+    /// Accumulated only-matching spans for this file.
+    om_matches: Vec<RipgrepMatch>,
 }
 
 impl<M: Matcher> Sink for CollectSink<'_, M> {
@@ -89,33 +158,66 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
         let line_cow = String::from_utf8_lossy(bytes);
         let line_text = strip_trailing_newline(&line_cow).to_owned();
 
-        // rg reports the submatch start as a BYTE offset within the line; convert
-        // to a 0-based UTF-16 char column so multibyte lines line up with JS
-        // string indices (mirrors the --json parser's column convention).
-        let byte_col = self
-            .matcher
-            .find(bytes)
-            .ok()
-            .flatten()
-            .map(|m| m.start())
-            .unwrap_or(0);
-        let column = byte_to_char_offset_inner(&line_text, byte_col) as u32;
-
         // Count submatches on this line for --count-matches. A matched line has
         // at least one match even if find_iter is conservative.
         let mut count: u32 = 0;
-        let _ = self.matcher.find_iter(bytes, |_m| {
-            count = count.saturating_add(1);
-            true
-        });
+
+        if self.only_matching {
+            // Emit one span per submatch with its own UTF-16 column, rather than
+            // one whole-line match. find_iter yields non-overlapping matches L→R.
+            let matcher = self.matcher;
+            let window = self.match_window;
+            let om = &mut self.om_matches;
+            let _ = matcher.find_iter(bytes, |m| {
+                count = count.saturating_add(1);
+                if count <= MAX_ONLY_MATCHING_PER_LINE {
+                    let value = span_value(&line_text, m.start(), m.end(), window);
+                    let column =
+                        byte_to_char_offset_inner(&line_text, m.start().min(line_text.len()))
+                            as u32;
+                    om.push(RipgrepMatch {
+                        line: line_number,
+                        column,
+                        value,
+                    });
+                }
+                true
+            });
+            // A matched line with no enumerable submatch (e.g. zero-width or
+            // multiline block) still yields one span: the whole line.
+            if count == 0 {
+                count = 1;
+                self.om_matches.push(RipgrepMatch {
+                    line: line_number,
+                    column: 0,
+                    value: line_text,
+                });
+            }
+        } else {
+            // rg reports the submatch start as a BYTE offset within the line;
+            // convert to a 0-based UTF-16 char column so multibyte lines line up
+            // with JS string indices (mirrors the --json parser's convention).
+            let byte_col = self
+                .matcher
+                .find(bytes)
+                .ok()
+                .flatten()
+                .map(|m| m.start())
+                .unwrap_or(0);
+            let column = byte_to_char_offset_inner(&line_text, byte_col) as u32;
+            let _ = self.matcher.find_iter(bytes, |_m| {
+                count = count.saturating_add(1);
+                true
+            });
+            self.entry.raw_matches.push(RawMatch {
+                line_text,
+                line_number,
+                column,
+            });
+        }
+
         self.submatches = self.submatches.saturating_add(count.max(1));
         self.matched_lines = self.matched_lines.saturating_add(1);
-
-        self.entry.raw_matches.push(RawMatch {
-            line_text,
-            line_number,
-            column,
-        });
         Ok(true)
     }
 
@@ -192,11 +294,14 @@ fn collect<M: Matcher>(
     matcher: &M,
     mode: Mode,
 ) -> Result<(Vec<FileRec>, u32)> {
-    let context_lines = if mode == Mode::Normal {
+    let only_matching = opts.only_matching.unwrap_or(false);
+    // only-matching emits bare spans; ripgrep's `-o` ignores `-C` context too.
+    let context_lines = if mode == Mode::Normal && !only_matching {
         opts.context_lines.unwrap_or(0)
     } else {
         0
     };
+    let match_window = opts.match_window.unwrap_or(0) as usize;
 
     let mut sb = SearcherBuilder::new();
     sb.line_number(true)
@@ -228,19 +333,26 @@ fn collect<M: Matcher>(
         let path: &Path = dent.path();
 
         let mut entry = FileEntry::new();
-        let (submatches, matched_lines) = {
+        let (submatches, matched_lines, om_matches) = {
             let mut sink = CollectSink {
                 matcher,
                 entry: &mut entry,
                 submatches: 0,
                 matched_lines: 0,
+                only_matching,
+                match_window,
+                om_matches: Vec::new(),
             };
             // Per-file IO errors (permission denied, mid-file invalid UTF-8 under
             // PCRE2 utf mode, etc.) just skip that file — rg behaves the same.
             if searcher.search_path(matcher, path, &mut sink).is_err() {
                 continue;
             }
-            (sink.submatches, sink.matched_lines)
+            (
+                sink.submatches,
+                sink.matched_lines,
+                std::mem::take(&mut sink.om_matches),
+            )
         };
         files_searched += 1;
 
@@ -256,6 +368,7 @@ fn collect<M: Matcher>(
             entry,
             matched_lines,
             submatches,
+            om_matches,
             sort_time: capture_sort_time(opts, &dent),
         });
     }
@@ -292,9 +405,15 @@ fn build_result(
     let total_submatches: u32 = recs.iter().map(|r| r.submatches).sum();
     let total_matched_lines: u32 = recs.iter().map(|r| r.matched_lines).sum();
 
+    let only_matching = opts.only_matching.unwrap_or(false);
     let files: Vec<RipgrepFile> = recs
         .into_iter()
         .map(|r| match mode {
+            Mode::Normal if only_matching => RipgrepFile {
+                path: r.path,
+                match_count: r.om_matches.len() as u32,
+                matches: r.om_matches,
+            },
             Mode::Normal => assemble_file(r.path, &r.entry, context_lines, max_snippet),
             // files-only / files-without-match: path list, matchCount 1, no
             // snippets — exactly what the old plain-text parser produced.
@@ -658,5 +777,91 @@ mod tests {
         t.write("a.txt", "nothing here\n");
         let r = search(opts(t.path(), "absent")).expect("ok");
         assert!(r.files.is_empty());
+    }
+
+    // ── only-matching (rg -o) ───────────────────────────────────────────────
+
+    #[test]
+    fn only_matching_emits_one_match_per_submatch() {
+        let t = TmpDir::new();
+        t.write("a.txt", "ab ab ab\n");
+        let mut o = opts(t.path(), "ab");
+        o.only_matching = Some(true);
+        let r = search(o).expect("ok");
+        let f = &r.files[0];
+        assert_eq!(f.match_count, 3);
+        assert_eq!(f.matches.len(), 3);
+        assert!(f.matches.iter().all(|m| m.value == "ab"));
+        assert!(f.matches.iter().all(|m| m.line == 1));
+    }
+
+    #[test]
+    fn only_matching_value_is_the_span_not_the_line() {
+        let t = TmpDir::new();
+        t.write("a.txt", "prefix_NEEDLE_suffix\n");
+        let mut o = opts(t.path(), "NEEDLE");
+        o.only_matching = Some(true);
+        let r = search(o).expect("ok");
+        assert_eq!(r.files[0].matches.len(), 1);
+        assert_eq!(r.files[0].matches[0].value, "NEEDLE");
+        // column is the 0-based UTF-16 offset of the span start.
+        assert_eq!(r.files[0].matches[0].column, 7);
+    }
+
+    #[test]
+    fn only_matching_enumerates_every_hit_on_one_minified_line() {
+        let t = TmpDir::new();
+        // The motivating case: a minified one-liner with many host tokens that
+        // line-mode search can only *count*, never enumerate.
+        t.write(
+            "bundle.js",
+            "a=\"x.cursor.sh\";b=\"y.cursor.sh\";c=\"z.cursor.sh\";\n",
+        );
+        let mut o = opts(t.path(), r"\w+\.cursor\.sh");
+        o.only_matching = Some(true);
+        let r = search(o).expect("ok");
+        let vals: Vec<&str> = r.files[0]
+            .matches
+            .iter()
+            .map(|m| m.value.as_str())
+            .collect();
+        assert_eq!(vals, vec!["x.cursor.sh", "y.cursor.sh", "z.cursor.sh"]);
+    }
+
+    #[test]
+    fn only_matching_window_widens_span_with_surrounding_context() {
+        let t = TmpDir::new();
+        t.write("a.txt", "leftcontext_HIT_rightcontext\n");
+        let mut o = opts(t.path(), "HIT");
+        o.only_matching = Some(true);
+        o.match_window = Some(4);
+        let r = search(o).expect("ok");
+        let v = &r.files[0].matches[0].value;
+        assert!(v.contains("HIT"), "{v}");
+        assert!(v.contains("ext_") && v.contains("_rig"), "{v}");
+        // window trims both sides, so ellipsis markers are present.
+        assert!(v.starts_with('…') && v.ends_with('…'), "{v}");
+    }
+
+    #[test]
+    fn only_matching_window_is_char_boundary_safe_on_multibyte() {
+        let t = TmpDir::new();
+        // Multibyte chars on both sides of the hit: window slicing must never
+        // panic by cutting a codepoint in half.
+        t.write("u.txt", "café→HIT←déjà\n");
+        let mut o = opts(t.path(), "HIT");
+        o.only_matching = Some(true);
+        o.match_window = Some(2);
+        let r = search(o).expect("ok");
+        assert!(r.files[0].matches[0].value.contains("HIT"));
+    }
+
+    #[test]
+    fn only_matching_default_off_keeps_whole_line_value() {
+        let t = TmpDir::new();
+        t.write("a.txt", "prefix_NEEDLE_suffix\n");
+        let r = search(opts(t.path(), "NEEDLE")).expect("ok");
+        // Without only_matching the value is the full line, unchanged.
+        assert_eq!(r.files[0].matches[0].value, "prefix_NEEDLE_suffix");
     }
 }

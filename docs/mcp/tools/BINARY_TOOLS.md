@@ -78,9 +78,12 @@ Takes no parameters beyond `path`. Returns identity (`format`, `description`, `m
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `minLength` | `8` | Minimum printable run length. Raise (12–16) to surface symbols/URLs only. |
-| `includeOffsets` | `false` | Prefix each string with its hex byte offset. |
+| `includeOffsets` | `false` | Prefix each string with its absolute hex byte offset. |
+| `scanOffset` | `0` | Absolute byte offset to start the scan window. Follow the returned `nextScanOffset` cursor to page through a large binary losslessly. |
 
-Recovers both ASCII and UTF-16 (LE/BE) runs — the wide strings GNU `strings -a` misses. Files over 64MB are scanned over their leading prefix only (`scanTruncated: true`).
+Recovers both ASCII and UTF-16 (LE/BE) runs — the wide strings GNU `strings -a` misses.
+
+**Lossless scan pagination.** Each call scans a 64MB window; it never discards the tail of a large binary. When more of the file remains, the result carries `nextScanOffset` (an absolute byte offset) — re-call with `scanOffset` set to it to keep scanning. The window is rewound to a safe break, so **no string is ever split across a window boundary** and there are no duplicates. `nextScanOffset` is absent at EOF.
 
 ---
 

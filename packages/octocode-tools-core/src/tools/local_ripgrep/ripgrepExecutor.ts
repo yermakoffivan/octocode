@@ -45,6 +45,8 @@ function toSearchOptions(
     sort: query.sort,
     sortReverse: query.sortReverse,
     maxSnippetChars: query.matchContentLength,
+    onlyMatching: query.onlyMatching,
+    matchWindow: query.matchWindow,
   };
 }
 

@@ -164,12 +164,14 @@ export const contextUtils = {
   extractBinaryStringsNative(
     path: string,
     minLength: number,
-    includeOffsets: boolean
+    includeOffsets: boolean,
+    scanOffset = 0
   ): NativeContextUtils.BinaryStrings {
     return loadNative().extractBinaryStringsNative(
       path,
       minLength,
-      includeOffsets
+      includeOffsets,
+      scanOffset
     );
   },
 

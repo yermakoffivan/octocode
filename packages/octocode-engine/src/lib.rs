@@ -1,5 +1,5 @@
-mod bindings;
 mod binary;
+mod bindings;
 mod lsp;
 mod minify;
 mod search;

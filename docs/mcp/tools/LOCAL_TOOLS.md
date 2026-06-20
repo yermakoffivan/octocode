@@ -116,6 +116,8 @@ Fast content search powered by ripgrep.
 | `rule` | YAML relational rule (`not`/`inside`/`has`/`all`/`any`). Add `stopBy: end` for ancestor/descendant relations. **Only with `mode:"structural"`**. |
 | `filesOnly` | Return matching file paths only. |
 | `filesWithoutMatch` | Return files that do not match. Mutually exclusive with `filesOnly`. |
+| `onlyMatching` | Return only the matched substring(s), one entry per hit, instead of the whole line — the way to enumerate every hit on a minified one-liner. |
+| `matchWindow` | With `onlyMatching`, widen each matched span by this many characters of context on each side (… marks trimmed sides). 0 = bare match. Requires `onlyMatching`. |
 | `contextLines` | Lines around each match. Max 100. |
 | `matchContentLength` | Max characters per individual match snippet. Default 200, max 100000. |
 | `maxFiles` | Hard cap on matched files. |

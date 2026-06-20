@@ -600,6 +600,17 @@ export interface RipgrepSearchOptions {
   sortReverse?: boolean
   /** Max Unicode chars per assembled snippet (default 500). */
   maxSnippetChars?: number
+  /**
+   * Emit one match per submatch with `value` set to the matched span (not the
+   * whole line) — ripgrep's `-o`/`--only-matching`. Enumerates every hit on a
+   * minified one-liner that line mode can only count.
+   */
+  onlyMatching?: boolean
+  /**
+   * With `onlyMatching`, widen each span by this many characters on each side
+   * (char-boundary safe), marking trimmed sides with `…`. 0/unset = bare span.
+   */
+  matchWindow?: number
 }
 
 export interface RipgrepStats {

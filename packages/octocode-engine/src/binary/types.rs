@@ -49,7 +49,11 @@ pub struct BinaryStrings {
     pub strings: Vec<String>,
     /// Total runs found before any display capping.
     pub total_found: u32,
-    /// True when the file was larger than the scan cap and only its prefix was
-    /// scanned.
+    /// True when more of the file remains to scan beyond this window — follow
+    /// `next_scan_offset`. Lossless continuation cursor, **not** a data-loss
+    /// flag (the old fixed-cap meaning): every byte is reachable by paging.
     pub truncated: bool,
+    /// Absolute byte offset to start the next scan window, or `None` at EOF.
+    /// Rewound to a safe break so no string is split across windows.
+    pub next_scan_offset: Option<u32>,
 }

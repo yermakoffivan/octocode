@@ -97,7 +97,7 @@ yarn workspace @octocodeai/octocode-benchmark ast:compare:upstream -- --sync-rep
 The same runner is also available under the explicit layer-benchmark alias:
 
 ```bash
-yarn workspace @octocodeai/octocode-benchmark ast:compare:layers -- --sync-repos --scenario gin-middleware-routing --files-per-scenario 1 --repeats 3
+yarn workspace @octocodeai/octocode-benchmark ast:compare:layers -- --sync-repos --scenario gin-middleware-routing --files-per-scenario 1 --warmups 1 --repeats 3
 ```
 
 The runner uses
@@ -107,7 +107,7 @@ that same corpus. Determinism guards:
 
 - scenario repositories are pinned to exact commits in the manifest
 - files are selected by sorted `git ls-files`
-- `--files-per-scenario`, `--max-file-bytes`, and `--repeats` are fixed inputs
+- `--files-per-scenario`, `--max-file-bytes`, `--warmups`, and `--repeats` are fixed inputs
 - the output includes a corpus SHA-256 prefix
 - match counts must stay stable across repeats
 
@@ -123,11 +123,18 @@ It reports four timing lanes:
 - `octocode localSearchCode tool`: direct tool path, including path/security validation, result shaping, pagination metadata, hints, and sanitization.
 - `octocode grep CLI`: public CLI path, including Node process startup, CLI routing, native addon load, tool wrappers, result shaping, JSON serialization, and process exit.
 
+The corpus selector skips git-tracked hidden path segments so the default run
+compares files both public CLIs traverse by default.
+
 Swift/Alamofire is recorded but skipped until Octocode structural grep supports
 Swift. Use `--strict` when a CI job should fail on match-count differences.
-Displayed timings are median wall-clock milliseconds over the fixed repeat
-count, so counts and corpus identity are deterministic while timings remain
-machine/load dependent.
+Displayed timings are median wall-clock milliseconds over the fixed measured
+repeat count after warmup. The table also prints `warm ms` so Node/native-module
+warmup effects are visible instead of hidden in the measured median. Counts and
+corpus identity are deterministic while timings remain machine/load dependent.
+On larger corpora, the `localSearchCode tool` and `octocode grep CLI` lanes
+intentionally include sanitizer/result-shaping overhead; use `octocode raw
+native` to isolate matcher cost.
 
 ## Recipe 5: Validate Node/NAPI structural grep
 

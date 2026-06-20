@@ -64,6 +64,88 @@ describe('renderLocalResults match counts', () => {
     expect(renderLocalResults(sc, 10)).toContain('(2 matches)');
   });
 
+  it('numbers each context line accurately so the gutter is not offset to the match line', () => {
+    // Regression: the match line gutter (L3:) was printed on the row that
+    // actually showed the *before-context* line, with the real match dumped on
+    // the next unlabeled row — looked line-offset though `line` was accurate.
+    const sc = {
+      results: [
+        {
+          data: {
+            files: [
+              {
+                path: 'ctx.txt',
+                matchCount: 1,
+                matches: [
+                  {
+                    line: 3,
+                    value:
+                      'LINE TWO before\nthe NEEDLE is here\nLINE four after',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const rows = renderLocalResults(sc, 10, 1).split('\n');
+    const matchRow = rows.find(r => r.includes('the NEEDLE is here')) ?? '';
+    const beforeRow = rows.find(r => r.includes('LINE TWO before')) ?? '';
+    const afterRow = rows.find(r => r.includes('LINE four after')) ?? '';
+    expect(matchRow).toContain('L3');
+    // before-context is line 2 — must NOT be mislabeled with the match's L3.
+    expect(beforeRow).toContain('L2');
+    expect(beforeRow).not.toContain('L3');
+    expect(afterRow).toContain('L4');
+    // each source line on its own row — match not concatenated with context.
+    expect(matchRow).not.toContain('LINE TWO before');
+  });
+
+  it('clamps the start line when the match is near the top of the file', () => {
+    const sc = {
+      results: [
+        {
+          data: {
+            files: [
+              {
+                path: 'top.txt',
+                matchCount: 1,
+                matches: [{ line: 1, value: 'first MATCH line\nsecond line' }],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const rows = renderLocalResults(sc, 10, 2).split('\n');
+    const matchRow = rows.find(r => r.includes('first MATCH line')) ?? '';
+    const afterRow = rows.find(r => r.includes('second line')) ?? '';
+    expect(matchRow).toContain('L1');
+    expect(afterRow).toContain('L2');
+  });
+
+  it('keeps single-line snippets on one labeled row when no context is requested', () => {
+    const sc = {
+      results: [
+        {
+          data: {
+            files: [
+              {
+                path: 'a.ts',
+                matchCount: 1,
+                matches: [{ line: 5, value: 'const x = 1;' }],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const out = renderLocalResults(sc, 10);
+    expect(out).toContain('L5:');
+    expect(out).toContain('const x = 1;');
+  });
+
   it('renders structural metavariable captures when present', () => {
     const sc = {
       results: [

@@ -215,6 +215,11 @@ grep <path> --rule <yaml>                  AST relational rule (local only)
     --hidden / --no-ignore
     --files-only / --files-without-match
     --count-lines / --count-matches
+    --only-matching     return only the matched substring(s), one per hit, not
+                        the whole line — enumerates every hit on a minified
+                        one-liner (local only)
+    --match-window <n>  with --only-matching, chars of context kept each side of
+                        the match (… marks trimmed sides); 0 = bare match (local only)
     --multiline / --multiline-dotall
     --match-length <n>  characters kept per match snippet (local only)
     --max-matches <n>   max matches per file (local only)
@@ -236,6 +241,8 @@ Examples:
 octocode grep runCLI src
 octocode grep executeDirectTool src --type ts --mode discovery
 octocode grep 'runCLI\s*\(' packages/octocode/src --perl-regex --context 1 --max-files 2
+octocode grep '\w+\.cursor\.sh' bundle.min.js --only-matching            # enumerate every hit on a minified one-liner
+octocode grep 'api\d' bundle.min.js --only-matching --match-window 12     # matched span + surrounding context
 octocode grep "useState" facebook/react --type ts
 octocode grep "executeCloneRepo" bgauryy/octocode-mcp --concise
 octocode grep src --pattern 'eval($X)'
@@ -516,7 +523,10 @@ binary <file>
     --max-entries <n>    list: cap entries
     --format <fmt>       decompress: force compression format
     --verbose            list: include size and mtime
-    --offsets            strings: prefix each with hex byte offset
+    --offsets            strings: prefix each with hex byte offset (absolute)
+    --scan-offset <n>    strings: byte offset to start the scan window — follow
+                         the nextScanOffset cursor to page a large binary
+                         losslessly (no string is split across windows)
     --char-offset <n>    strings/decompress/extract text continuation offset
     --char-length <n>    strings/decompress/extract text window length
     --page <n>
@@ -524,6 +534,8 @@ binary <file>
 ```
 
 Inspection is fully native (no `file`/`xxd`/`strings`/binutils needed). Native binaries and unrecognized files default to `--inspect`; use `--list` before `--extract` — do not guess entry names.
+
+`--strings` scans a 64MB window at a time and never discards the tail of a large binary: when more remains it prints a `nextScanOffset` cursor (and an `⚠` continuation hint to stderr). Re-run with `--scan-offset <n>` to keep scanning; the window is rewound to a safe break so no string is ever split across the boundary.
 
 Examples:
 
@@ -533,6 +545,7 @@ octocode binary archive.zip --extract src/index.ts
 octocode binary release.tar.gz --decompress
 octocode binary lib.node                 # inspect: format, symbols, deps
 octocode binary lib.node --strings --min-length 12
+octocode binary huge.bin --strings --scan-offset 67108863   # page past the first 64MB window
 ```
 
 ### unzip

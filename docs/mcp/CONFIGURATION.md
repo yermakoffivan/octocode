@@ -112,7 +112,6 @@ Env-only options:
 | `OCTOCODE_TOKEN` | unset | Highest-priority GitHub token. |
 | `GH_TOKEN` | unset | Second-priority GitHub token. |
 | `GITHUB_TOKEN` | unset | Third-priority GitHub token. |
-| `OCTOCODE_HOME` | platform default | Base directory for config, credentials, sessions, stats, logs, and repo cache. Defaults: macOS `~/.octocode`, Windows `%APPDATA%\octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/octocode`. |
 | `OCTOCODE_BULK_QUERY_TIMEOUT_MS` | `60000` | Per-query timeout inside a bulk tool call (ms). |
 | `OCTOCODE_TOOL_TIMEOUT_MS` | `60000` | Outer timeout for the entire tool call (ms). |
 | `OCTOCODE_COMMAND_CHECK_TIMEOUT_MS` | `5000` | System command availability check timeout (ms). |
@@ -136,13 +135,13 @@ Env-only options:
 - Auth tokens are env-only. Do not put tokens in `.octocoderc`.
 - `TOOLS_TO_RUN` is a strict whitelist and overrides `ENABLE_TOOLS` and `DISABLE_TOOLS`.
 - **Surface-specific local/clone defaults.** The CLI always enables local tools (`ENABLE_LOCAL` is ignored) and enables clone by default. The MCP server honors `ENABLE_LOCAL` (default on) and disables clone by default. An explicit `ENABLE_CLONE=false` disables clone in either surface; clone always requires local enabled.
-- LSP requires local tools enabled. If `OCTOCODE_LSP_CONFIG` is unset, Octocode checks `<workspace>/.octocode/lsp-servers.json`, then `${OCTOCODE_HOME}/lsp-servers.json`.
+- LSP requires local tools enabled. If `OCTOCODE_LSP_CONFIG` is unset, Octocode checks `<workspace>/.octocode/lsp-servers.json`, then `<octocode-home>/lsp-servers.json`.
 - `WORKSPACE_ROOT` env overrides `local.workspaceRoot`.
 - `LOG=false` disables remote/session logging, but local usage stats may still be updated.
 
 ## Local State
 
-All state lives under Octocode home (`OCTOCODE_HOME` when set, otherwise the platform default):
+All state lives under Octocode home, a fixed per-platform directory (macOS `~/.octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/.octocode`, Windows `%APPDATA%\.octocode`):
 
 | Path | Purpose |
 |------|---------|

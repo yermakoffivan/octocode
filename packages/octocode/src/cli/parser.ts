@@ -63,6 +63,7 @@ const OPTIONS_WITH_VALUES = new Set([
   'exclude-dir',
   'filename',
   'match-length',
+  'match-window',
   'max-matches-per-file',
   'max-files',
   'match-page',
@@ -93,6 +94,7 @@ const OPTIONS_WITH_VALUES = new Set([
   'extract',
   'min-length',
   'max-entries',
+  'scan-offset',
 ]);
 
 const BOOLEAN_OPTIONS = new Set([
@@ -143,6 +145,7 @@ const BOOLEAN_OPTIONS = new Set([
   'sort-reverse',
   'count-lines',
   'count-matches',
+  'only-matching',
   'diff',
   'match-regex',
   'match-case-sensitive',

@@ -76,6 +76,7 @@ Every tool accepts **1–N bulk queries**; each query carries research context (
 
 ### Supported capabilities (what the schemas expose)
 
+- **Text search** — `localSearchCode` (native in-process ripgrep, `octocode-engine`). `onlyMatching:true` (CLI `grep --only-matching`) returns only the matched substring(s), one per hit, instead of the whole line — the way to **enumerate** every hit on a minified one-liner that line mode could only count; pair with `matchWindow` for surrounding context.
 - **Structural / AST search** — `localSearchCode mode:"structural"` via Octocode structural grep (tree-sitter, in `octocode-engine`): a code-shaped `pattern` (`$X` = one node, `$$$` = node list, e.g. `eval($X)`) **or** a YAML `rule` for what patterns can't express (`inside`/`has`/`not`/`all`/`any` — relational sub-rules need `stopBy: end`). Comments/strings never false-positive.
 - **LSP** — `lspGetSemantics` `type`: `definition · references · callers · callees · callHierarchy · hover · documentSymbols · typeDefinition · implementation`. Standalone (no IDE); TS/JS bundled, 30+ languages via installed servers.
 - **Binary** — `localBinaryInspect`: inspect / list / extract / decompress / strings over archives, compressed streams, native binaries. `inspect` (format/arch/symbols/imports/exports/sections/deps via `goblin`) and `strings` (ASCII + UTF-16) run natively in `octocode-engine` — no `file`/`strings`/binutils dependency.
@@ -114,6 +115,8 @@ request → interface registers tool (schema from octocode-core)
 ## Working in this repo
 
 **Methodology:** Plan → TDD (failing test → `yarn test` → fix) → `yarn lint` → verify. Prefer `octocode-local` MCP tools for research (LSP → local search → GitHub). Use Linux commands (`mv`/`cp`/`sed`) and batch file edits.
+
+> **🐙 IMPORTANT — dogfood the CLI for ALL file/research operations.** For reading, searching, finding, structure, history, and symbol navigation, drive the built CLI at `packages/octocode/out/octocode.js` (e.g. `node packages/octocode/out/octocode.js ls|cat|grep|find|lsp …`) instead of reaching for raw shell `cat`/`grep`/`find`. We use the product on the product — every session is a chance to surface real gaps and good flows. Log what feels great or broken in [`.octocode/CLI_OVERVIEW.md`](.octocode/CLI_OVERVIEW.md). (`yarn build` first; the `out/` is stale until you rebuild after core/CLI edits.)
 
 **No backward compatibility by default:** this repo carries **no deprecation or backward-compat burden** — refactor freely, rename, and delete dead paths instead of leaving shims. Add compat layers or migration aliases **only when the user explicitly asks**.
 

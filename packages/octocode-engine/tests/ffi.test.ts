@@ -565,7 +565,7 @@ describe('extractBinaryStringsNative', () => {
       const wide = Buffer.from('WideString', 'utf16le');
       writeFileSync(file, Buffer.concat([ascii, Buffer.from([0xff, 0xff]), wide]));
 
-      const res = addon!.extractBinaryStringsNative(file, 5, false);
+      const res = addon!.extractBinaryStringsNative(file, 5, false, 0);
       expect(res.strings).toContain('HelloAsciiWorld');
       expect(res.strings).toContain('WideString');
       expect(res.totalFound).toBeGreaterThanOrEqual(2);
@@ -580,7 +580,7 @@ describe('extractBinaryStringsNative', () => {
     try {
       const file = join(root, 'blob.bin');
       writeFileSync(file, Buffer.from([0, 0, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66]));
-      const res = addon!.extractBinaryStringsNative(file, 4, true);
+      const res = addon!.extractBinaryStringsNative(file, 4, true, 0);
       expect(res.strings[0]).toMatch(/^0x[0-9a-f]+: abcdef$/);
     } finally {
       rmSync(root, { recursive: true, force: true });

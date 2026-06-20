@@ -315,15 +315,20 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
 function handleStrings(path: string, query: BinaryInspectQuery) {
   const minLength = query.minLength ?? DEFAULT_MIN_STRING_LENGTH;
   const includeOffsets = query.includeOffsets ?? false;
-  const result = extractStrings(path, minLength, includeOffsets);
+  const scanOffset = query.scanOffset ?? 0;
+  const result = extractStrings(path, minLength, includeOffsets, scanOffset);
 
   if (!result.success) {
     return createErrorResult(result.error ?? 'strings extraction failed', query);
   }
 
-  // Longest-first (most meaningful) strings joined into one blob, then
-  // char-paginated exactly like decompress/extract so agents can window the
-  // whole output losslessly via charOffset/charLength instead of a hard cap.
+  // Two complementary, lossless cursors:
+  //  • charOffset/charLength — pages the strings *within* the current scan
+  //    window (the joined blob), exactly like decompress/extract.
+  //  • scanOffset/nextScanOffset — advances the scan *window* across the whole
+  //    file. The window is rewound to a safe break, so no string is split and
+  //    nothing past a fixed cap is discarded. Exhaust charOffset first, then
+  //    follow nextScanOffset to keep scanning.
   const content = (result.strings ?? []).join('\n');
   const defaultLimit = getOutputCharLimit();
   const paginated = paginateContent(
@@ -337,9 +342,12 @@ function handleStrings(path: string, query: BinaryInspectQuery) {
   if (paginated.nextCharOffset !== undefined) {
     hints.push(`charOffset=${paginated.nextCharOffset}`);
   }
-  if (result.truncated) {
+  // Only advance the scan window once this window's strings are fully paged out,
+  // so the two cursors don't fight.
+  const windowFullyRead = paginated.nextCharOffset === undefined;
+  if (result.nextScanOffset !== undefined && windowFullyRead) {
     hints.push(
-      'Binary larger than the 64MB scan cap — strings cover only its leading section. Raise minLength to cut noise, or use mode="inspect" for symbols/imports.'
+      `More of the file remains — continue scanning with scanOffset=${result.nextScanOffset} (lossless; no string is split across the boundary).`
     );
   }
 
@@ -351,7 +359,10 @@ function handleStrings(path: string, query: BinaryInspectQuery) {
     contentLength: content.length,
     totalFound: result.totalFound ?? 0,
     isPartial: paginated.isPartial,
-    ...(result.truncated ? { scanTruncated: true } : {}),
+    scanOffset,
+    ...(result.nextScanOffset !== undefined
+      ? { nextScanOffset: result.nextScanOffset }
+      : {}),
     ...(hints.length ? { hints } : {}),
   };
 }

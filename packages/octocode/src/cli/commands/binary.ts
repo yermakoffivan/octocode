@@ -17,6 +17,34 @@ const ARCHIVE_RE =
 // Single-stream compressed payloads → decompress.
 const COMPRESSED_RE = /\.(gz|bz2|xz|lzma|zst|zstd|lz4|br|lzfse)$/i;
 
+/**
+ * The strings scan window covered only part of the file — returns the absolute
+ * byte offset to continue from (lossless: no string is split across the
+ * boundary), or undefined at EOF. The cursor rides in structuredContent (a
+ * field), so a `binary --strings | grep` pipeline silently drops it; we surface
+ * the continuation on stderr (below), which survives stdout piping.
+ */
+function nextScanOffset(result: {
+  structuredContent?: unknown;
+}): number | undefined {
+  const sc = result?.structuredContent;
+  if (!sc || typeof sc !== 'object') return undefined;
+  const results = (sc as { results?: unknown }).results;
+  if (!Array.isArray(results)) return undefined;
+  for (const r of results) {
+    if (r == null || typeof r !== 'object') continue;
+    // The bulk envelope nests the handler payload under `data`; tolerate the
+    // cursor sitting either on the result row or inside its `data`.
+    const row = r as {
+      nextScanOffset?: unknown;
+      data?: { nextScanOffset?: unknown };
+    };
+    const n = row.nextScanOffset ?? row.data?.nextScanOffset;
+    if (typeof n === 'number') return n;
+  }
+  return undefined;
+}
+
 /** Auto-pick the inspection mode from the file extension. */
 function detectMode(file: string): BinaryMode {
   if (ARCHIVE_RE.test(file)) return 'list';
@@ -96,6 +124,12 @@ export const binaryCommand: CLICommand = {
       description: 'strings: prefix each string with its hex byte offset',
     },
     {
+      name: 'scan-offset',
+      hasValue: true,
+      description:
+        'strings: absolute byte offset to start the scan window — follow the nextScanOffset cursor to page a large binary losslessly (no string split across windows)',
+    },
+    {
       name: 'char-offset',
       hasValue: true,
       description:
@@ -160,6 +194,10 @@ export const binaryCommand: CLICommand = {
       const minLength = posIntOption(getString(options, 'min-length'));
       if (minLength) query.minLength = minLength;
       if (getBool(options, 'offsets')) query.includeOffsets = true;
+      const scanOffsetRaw = getString(options, 'scan-offset');
+      if (scanOffsetRaw && /^\d+$/.test(scanOffsetRaw)) {
+        query.scanOffset = parseInt(scanOffsetRaw, 10);
+      }
     }
 
     // Char-window pagination for the text-producing modes (strings/decompress/
@@ -192,6 +230,20 @@ export const binaryCommand: CLICommand = {
 
       printDirectToolResult(result, jsonOutput);
       markDirectToolFailure(result);
+
+      // The strings scan covers one window; more of the file is reachable
+      // losslessly via --scan-offset. Surface the continuation on stderr so it
+      // reaches the terminal even when stdout is piped through grep (the JSON
+      // consumer reads nextScanOffset itself, so stay silent in --json mode).
+      if (!jsonOutput) {
+        const next = nextScanOffset(result);
+        if (next !== undefined) {
+          process.stderr.write(
+            `\n  ${c('yellow', '⚠')} More of the file remains to scan (this is one window, not the whole file). Continue losslessly — no string is split across the boundary:\n` +
+              `      ${c('cyan', `binary ${file} --strings --scan-offset ${next}`)}\n`
+          );
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (jsonOutput) {

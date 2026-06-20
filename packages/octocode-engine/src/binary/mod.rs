@@ -24,9 +24,26 @@ pub fn inspect(path: &str) -> Result<BinaryInspectInfo, String> {
     Ok(inspect::inspect(&buf, truncated))
 }
 
-/// Extract printable ASCII + UTF-16 strings (≥ `min_len`) from `path`,
-/// longest-first, optionally prefixed with hex byte offsets.
-pub fn strings(path: &str, min_len: u32, include_offsets: bool) -> Result<BinaryStrings, String> {
-    let (buf, truncated) = read::read_capped(path, strings::SCAN_CAP)?;
-    Ok(strings::extract(&buf, min_len as usize, include_offsets, truncated))
+/// Extract printable ASCII + UTF-16 strings (≥ `min_len`) from the scan window
+/// of `path` beginning at `scan_offset`, longest-first, optionally prefixed with
+/// **absolute** hex byte offsets.
+///
+/// Scans one `SCAN_WINDOW`-sized window and returns a `next_scan_offset` cursor
+/// (rewound to a safe break) so the whole file is reachable losslessly by
+/// paging — no string is split across windows, and nothing past a fixed cap is
+/// silently discarded.
+pub fn strings(
+    path: &str,
+    min_len: u32,
+    include_offsets: bool,
+    scan_offset: u32,
+) -> Result<BinaryStrings, String> {
+    let (buf, at_eof) = read::read_window(path, scan_offset as u64, strings::SCAN_WINDOW)?;
+    Ok(strings::extract(
+        &buf,
+        min_len as usize,
+        include_offsets,
+        scan_offset,
+        at_eof,
+    ))
 }

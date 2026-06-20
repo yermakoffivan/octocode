@@ -48,7 +48,75 @@ Most tools cover one slice: searching the web, or grepping your repo. Octocode c
 - **Fast and self-contained.** Search, parsing, semantic navigation, and redaction run in one prebuilt **Rust engine**: quick on a laptop or a mega-repo, with no extra toolchain to install.
 - **Safe by default.** Every byte returned to the model is scanned and secrets redacted first (see [Security](#security)).
 
-**Get started:** [add Octocode to an AI assistant](#mcp) or [use it from the terminal](#cli), then [authenticate GitHub](#authentication-methods).
+### Get Started
+
+Add Octocode to an AI assistant with MCP, or run the same tools directly from
+your terminal with the CLI.
+
+**MCP fast install:**
+
+[<img src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Install in Cursor">](https://cursor.com/en/install-mcp?name=octocode&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJvY3RvY29kZS1tY3BAbGF0ZXN0Il19) [<img src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D) [<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D)
+
+```bash
+# Interactive installer for Cursor, Claude Code, Codex, VS Code, and more
+npx octocode install
+```
+
+**CLI fast install:**
+
+```bash
+# Run without installing globally
+npx octocode
+
+# Or install once on macOS/Linux
+brew install bgauryy/octocode/octocode
+octocode
+```
+
+Authenticate GitHub when you want private repositories or higher API limits:
+
+```bash
+npx octocode auth login
+```
+
+### Benchmarks
+
+Latest benchmark output:
+[packages/octocode-benchmark/output](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/output/).
+
+#### ast-grep Structural Comparison
+
+Bars show relative throughput. Higher is better; lower `ms` is better.
+
+What we tested: ast-grep CLI and Octocode structural grep on the same real
+repository files, using the same broad AST node-kind searches
+(`call_expression`, `call`, `method_invocation`). The goal was to check
+structural AST grep compatibility by match count, then measure where time is
+spent across Octocode's raw matcher, agent tool path, and public CLI.
+
+This benchmark does not test text grep, LSP navigation, rewriting, or the full
+ast-grep rule language. Those are separate capabilities.
+
+```text
+Octocode raw native  ████████████████████    5.0 ms median  │  3.0x faster  │  6/6 matched
+ast-grep CLI         ███████░░░░░░░░░░░░░   15.1 ms median  │  baseline     │  6/6 matched
+```
+
+`Octocode raw native` means the direct Rust/NAPI `structuralSearchFiles`
+matcher: parse and match only, with no tool validation, sanitizer, pagination,
+JSON shaping, or Node CLI startup. The agent-facing `localSearchCode` and public
+`octocode grep` paths are intentionally slower because they include those safety
+and DX layers.
+
+What was checked: we took ast-grep's benchmark scenario repo list, picked one
+deterministic file from each supported repo, asked both tools to find the same
+AST node kind in that file, verified identical match counts, then timed the
+median run.
+
+Benchmark files:
+[runner](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/benchmark/ast-grep/compare-upstream-scenarios.mjs) ·
+[scenario manifest](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/benchmark/ast-grep/upstream-outline-scenarios.json) ·
+[latest output](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/output/comparison.md)
 
 ---
 
@@ -204,13 +272,13 @@ environment variables  >  <octocode-home>/.octocoderc  >  built-in defaults
 2. **Global config**: `<octocode-home>/.octocoderc`, machine-wide defaults read by **both the CLI and the MCP server**.
 3. **Built-in defaults**: used when neither is set.
 
-**Octocode home** (`<octocode-home>`) holds the global config, encrypted credentials, sessions, stats, logs, and the clone cache. Override the location with `OCTOCODE_HOME`; otherwise:
+**Octocode home** (`<octocode-home>`) holds the global config, encrypted credentials, sessions, stats, logs, and the clone cache. Its location is fixed per platform (there is no override):
 
-| Platform | Default location |
-|----------|------------------|
+| Platform | Location |
+|----------|----------|
 | macOS | `~/.octocode` |
-| Linux | `${XDG_CONFIG_HOME:-~/.config}/octocode` |
-| Windows | `%APPDATA%\octocode` |
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/.octocode` |
+| Windows | `%APPDATA%\.octocode` |
 
 **Set in MCP** (env entries; these win over `.octocoderc`):
 
@@ -248,7 +316,6 @@ The **Scope** column shows where a setting applies: `Both`, or `MCP` (the CLI ig
 | `REQUEST_TIMEOUT` | `network.timeout` | `30000` | Both | Request timeout in ms (clamped `5000..300000`). |
 | `MAX_RETRIES` | `network.maxRetries` | `3` | Both | Retry attempts (clamped `0..10`). |
 | `OCTOCODE_OUTPUT_FORMAT` | `output.format` | `yaml` | Both | Response format: `yaml` or `json`. |
-| `OCTOCODE_HOME` | env only | platform default | Both | Octocode home location (see above). |
 
 > **Local and clone defaults differ by surface.** The **CLI** is a local terminal, so local tools are always enabled (`ENABLE_LOCAL` is ignored) and clone is enabled by default. The **MCP server** honors `ENABLE_LOCAL` (default on) and defaults clone to off, so a deployment can control what an assistant may touch. An explicit `ENABLE_CLONE=false` (env or `.octocoderc`) disables clone in either surface.
 

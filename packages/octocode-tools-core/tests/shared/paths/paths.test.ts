@@ -34,9 +34,8 @@ describe('paths', () => {
     vi.doUnmock('node:os');
   });
 
-  it('uses ~/.octocode on macOS when OCTOCODE_HOME is not set', async () => {
+  it('uses ~/.octocode on macOS', async () => {
     mockPlatform('darwin', '/Users/tester');
-    delete process.env.OCTOCODE_HOME;
     const mod = await import('../../../src/shared/paths.js');
 
     expect(mod.getDefaultOctocodeHome()).toBe('/Users/tester/.octocode');
@@ -53,52 +52,39 @@ describe('paths', () => {
     );
   });
 
-  it('uses AppData on Windows when OCTOCODE_HOME is not set', async () => {
+  it('uses %APPDATA%\\.octocode on Windows', async () => {
     mockPlatform('win32', 'C:\\Users\\TestUser');
     process.env.APPDATA = 'C:\\Users\\TestUser\\AppData\\Roaming';
-    delete process.env.OCTOCODE_HOME;
     const mod = await import('../../../src/shared/paths.js');
 
     expect(mod.paths.home.replaceAll('\\', '/')).toBe(
-      'C:/Users/TestUser/AppData/Roaming/octocode'
+      'C:/Users/TestUser/AppData/Roaming/.octocode'
     );
   });
 
-  it('uses XDG_CONFIG_HOME on Linux when available', async () => {
+  it('uses ${XDG_CONFIG_HOME}/.octocode on Linux when available', async () => {
     mockPlatform('linux', '/home/tester');
     process.env.XDG_CONFIG_HOME = '/xdg/config';
-    delete process.env.OCTOCODE_HOME;
     const mod = await import('../../../src/shared/paths.js');
 
-    expect(mod.paths.home).toBe('/xdg/config/octocode');
+    expect(mod.paths.home).toBe('/xdg/config/.octocode');
   });
 
-  it('uses ~/.config/octocode on Linux when XDG_CONFIG_HOME is unset', async () => {
+  it('uses ~/.config/.octocode on Linux when XDG_CONFIG_HOME is unset', async () => {
     mockPlatform('linux', '/home/tester');
-    delete process.env.OCTOCODE_HOME;
     delete process.env.XDG_CONFIG_HOME;
     const mod = await import('../../../src/shared/paths.js');
 
-    expect(mod.paths.home).toBe('/home/tester/.config/octocode');
+    expect(mod.paths.home).toBe('/home/tester/.config/.octocode');
   });
 
-  it('respects OCTOCODE_HOME override', async () => {
-    mockPlatform('linux', '/home/tester');
+  it('IGNORES OCTOCODE_HOME (no override): home stays the platform default', async () => {
+    mockPlatform('darwin', '/Users/tester');
     process.env.OCTOCODE_HOME = '/tmp/custom-octocode-home';
     const mod = await import('../../../src/shared/paths.js');
 
-    expect(mod.paths.home).toBe('/tmp/custom-octocode-home');
-    expect(mod.getOctocodeHome()).toBe('/tmp/custom-octocode-home');
-    expect(mod.paths.config).toBe('/tmp/custom-octocode-home/.octocoderc');
-    expect(mod.paths.cliConfig).toBe('/tmp/custom-octocode-home/config.json');
-  });
-
-  it('ignores blank OCTOCODE_HOME override', async () => {
-    mockPlatform('darwin', '/Users/tester');
-    process.env.OCTOCODE_HOME = ' ';
-    const mod = await import('../../../src/shared/paths.js');
-
     expect(mod.paths.home).toBe('/Users/tester/.octocode');
+    expect(mod.getDefaultOctocodeHome()).toBe('/Users/tester/.octocode');
   });
 
   it('ensureHome creates home with 0o700', async () => {

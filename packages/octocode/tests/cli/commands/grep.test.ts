@@ -65,6 +65,22 @@ describe('grep command', () => {
     expect(q.rule).toBeUndefined();
   });
 
+  it('rejects extra positionals in structural mode (arg[0] is the path, there are no keywords)', async () => {
+    // Foot-gun guard: `grep <keywords> <path> --pattern` silently used the
+    // keywords as the path. Structural takes a single PATH positional only.
+    await run(['someKeyword', 'src'], { pattern: 'x($Y)' });
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it('accepts a single path positional in structural mode', async () => {
+    await run(['src'], { pattern: 'x($Y)' });
+    expect(executeDirectTool).toHaveBeenCalledTimes(1);
+    const q = lastQuery();
+    expect(q.mode).toBe('structural');
+    expect(q.pattern).toBe('x($Y)');
+  });
+
   it('passes --mode through to localSearchCode', async () => {
     await run(['needle', 'src'], { mode: 'discovery' });
     const q = lastQuery();
@@ -178,6 +194,50 @@ describe('grep command', () => {
     await run(['needle', 'src'], { mode: 'discovery' });
     expect(executeDirectTool).toHaveBeenCalledTimes(1);
     expect(lastQuery().mode).toBe('discovery');
+  });
+
+  // Regression: an explicit `filesOnly: false` OVERRIDES discovery mode in
+  // localSearchCode, so it returns full snippets instead of paths-only. The CLI
+  // must never send a spurious `false` for toggles it didn't receive — absent
+  // flags must be `undefined` (same idiom as find.ts).
+  it('does not send filesOnly:false in --mode discovery (would defeat paths-only)', async () => {
+    await run(['needle', 'src'], { mode: 'discovery' });
+    const q = lastQuery();
+    expect(q.mode).toBe('discovery');
+    expect(q.filesOnly).toBeUndefined();
+  });
+
+  it('--concise maps to discovery and does not force filesOnly:false', async () => {
+    await run(['needle', 'src'], { concise: true });
+    const q = lastQuery();
+    expect(q.mode).toBe('discovery');
+    expect(q.filesOnly).toBeUndefined();
+  });
+
+  it('omits unset boolean toggles entirely (no spurious false sent to the tool)', async () => {
+    await run(['needle', 'src']);
+    const q = lastQuery();
+    for (const k of [
+      'filesOnly',
+      'filesWithoutMatch',
+      'countLinesPerFile',
+      'countMatchesPerFile',
+      'perlRegex',
+      'caseInsensitive',
+      'caseSensitive',
+      'wholeWord',
+      'invertMatch',
+      'hidden',
+      'noIgnore',
+      'multiline',
+      'multilineDotall',
+      'fixedString',
+    ]) {
+      expect(
+        q[k],
+        `${k} should be undefined when its flag is absent`
+      ).toBeUndefined();
+    }
   });
 
   it('passes familiar grep aliases through to localSearchCode', async () => {

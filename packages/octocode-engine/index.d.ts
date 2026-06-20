@@ -326,7 +326,16 @@ export interface BinaryInspectInfo {
 export interface BinaryStrings {
   strings: Array<string>
   totalFound: number
+  /**
+   * True when more of the file remains to scan beyond this window — follow
+   * `nextScanOffset`. A lossless continuation cursor, not a data-loss flag.
+   */
   truncated: boolean
+  /**
+   * Absolute byte offset to start the next scan window, or undefined at EOF.
+   * Rewound to a safe break so no string is split across windows.
+   */
+  nextScanOffset?: number
 }
 
 /**
@@ -340,10 +349,14 @@ export declare function inspectBinaryNative(path: string): BinaryInspectInfo
 
 /**
  * Native strings extraction. Recovers printable ASCII **and** UTF-16 (LE/BE)
- * runs of at least `minLength` from `path`, longest-first, optionally hex
- * offset-prefixed.
+ * runs of at least `minLength` from the scan window of `path` beginning at
+ * `scanOffset`, longest-first, optionally hex offset-prefixed (absolute offsets).
+ *
+ * Lossless pagination: `nextScanOffset` (when set) is the absolute byte offset
+ * of the next window, rewound to a safe break so no string is split across
+ * windows. Pass `scanOffset = 0` for the first window.
  */
-export declare function extractBinaryStringsNative(path: string, minLength: number, includeOffsets: boolean): BinaryStrings
+export declare function extractBinaryStringsNative(path: string, minLength: number, includeOffsets: boolean, scanOffset: number): BinaryStrings
 
 /** Check whether `command` is available on `PATH`. */
 export declare function isCommandAvailable(command: string): boolean
@@ -648,6 +661,17 @@ export interface RipgrepSearchOptions {
   sortReverse?: boolean
   /** Max Unicode chars per assembled snippet (default 500). */
   maxSnippetChars?: number
+  /**
+   * Emit one match per submatch with `value` set to the matched span (not the
+   * whole line) — ripgrep's `-o`/`--only-matching`. Enumerates every hit on a
+   * minified one-liner that line mode can only count.
+   */
+  onlyMatching?: boolean
+  /**
+   * With `onlyMatching`, widen each span by this many characters on each side
+   * (char-boundary safe), marking trimmed sides with `…`. 0/unset = bare span.
+   */
+  matchWindow?: number
 }
 
 export interface RipgrepStats {

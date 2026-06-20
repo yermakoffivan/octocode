@@ -102,6 +102,8 @@ interface LocalSearchOpts {
   matchContentLength?: number;
   maxFiles?: number;
   matchPage?: number;
+  onlyMatching?: boolean;
+  matchWindow?: number;
 }
 
 async function searchLocal(
@@ -136,6 +138,8 @@ async function searchLocal(
         matchContentLength: opts.matchContentLength,
         maxFiles: opts.maxFiles,
         matchPage: opts.matchPage,
+        onlyMatching: opts.onlyMatching,
+        matchWindow: opts.matchWindow,
         page: opts.page,
         itemsPerPage: opts.pageSize,
         mainResearchGoal: 'Search local codebase',
@@ -419,6 +423,17 @@ export const grepCommand: CLICommand = {
       description: 'Return total match counts per file (local only)',
     },
     {
+      name: 'only-matching',
+      description:
+        'Return only the matched substring(s), one per hit, instead of the whole line — enumerates every hit on a minified one-liner (local only)',
+    },
+    {
+      name: 'match-window',
+      hasValue: true,
+      description:
+        'With --only-matching, chars of context to keep on each side of the match, … marking trimmed sides (local only)',
+    },
+    {
       name: 'multiline',
       description: 'Allow matches to span lines (local only)',
     },
@@ -491,6 +506,20 @@ export const grepCommand: CLICommand = {
         return;
       }
 
+      // Foot-gun guard: in structural mode arg[0] IS the path and there are no
+      // text keywords. `grep <keywords> <path> --pattern …` would otherwise use
+      // the keywords as the path and fail with a cryptic "no such file".
+      if (args.args.length > 1) {
+        const err =
+          'Structural search (--pattern/--rule) takes a single local PATH as its only positional — it has no text keywords. ' +
+          `You passed ${args.args.length} (${args.args.join(' ')}). Try: grep ${args.args[args.args.length - 1]} --pattern "${patternOpt ?? ruleOpt}"`;
+        if (jsonOutput)
+          console.log(JSON.stringify({ success: false, error: err }));
+        else printCliError(err);
+        process.exitCode = EXIT.USAGE;
+        return;
+      }
+
       const ref = resolveRef(args.args[0] || '.');
       if (isGithubRef(ref)) {
         const err =
@@ -534,7 +563,15 @@ export const grepCommand: CLICommand = {
           console.log(JSON.stringify(sc, null, 2));
           return;
         }
-        console.log('\n' + renderLocalResults(sc, limitS) + '\n');
+        console.log(
+          '\n' +
+            renderLocalResults(
+              sc,
+              limitS,
+              ctxS ? parseInt(ctxS, 10) : undefined
+            ) +
+            '\n'
+        );
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         if (jsonOutput)
@@ -558,6 +595,8 @@ export const grepCommand: CLICommand = {
     const rawMatchLength = getString(options, 'match-length');
     const rawMaxFiles = getString(options, 'max-files');
     const rawMatchPage = getString(options, 'match-page');
+    const rawMatchWindow = getString(options, 'match-window');
+    const onlyMatching = getBool(options, 'only-matching') || undefined;
     const page = rawPage ? parseInt(rawPage, 10) : undefined;
     const pageSize = rawPageSize ? parseInt(rawPageSize, 10) : limit;
     const contextLines = rawContextLines
@@ -571,8 +610,11 @@ export const grepCommand: CLICommand = {
       : undefined;
     const maxFiles = rawMaxFiles ? parseInt(rawMaxFiles, 10) : undefined;
     const matchPage = rawMatchPage ? parseInt(rawMatchPage, 10) : undefined;
+    const matchWindow = rawMatchWindow
+      ? parseInt(rawMatchWindow, 10)
+      : undefined;
     const concise = getBool(options, 'concise');
-    const fixedString = getBool(options, 'fixed', 'fixed-string');
+    const fixedString = getBool(options, 'fixed', 'fixed-string') || undefined;
     // Local has no `concise`; discovery mode is the paths-only equivalent.
     const modeOpt =
       getString(options, 'mode') || (concise ? 'discovery' : undefined);
@@ -650,22 +692,28 @@ export const grepCommand: CLICommand = {
           contextLines,
           maxMatchesPerFile,
           fixedString,
-          perlRegex: getBool(options, 'perl-regex'),
-          caseInsensitive: getBool(options, 'case-insensitive'),
-          caseSensitive: getBool(options, 'case-sensitive'),
-          wholeWord: getBool(options, 'whole-word'),
-          invertMatch: getBool(options, 'invert-match'),
-          hidden: getBool(options, 'hidden'),
-          noIgnore: getBool(options, 'no-ignore'),
-          filesOnly: getBool(options, 'files-only'),
-          filesWithoutMatch: getBool(options, 'files-without-match'),
-          countLinesPerFile: getBool(options, 'count-lines'),
-          countMatchesPerFile: getBool(options, 'count-matches'),
-          multiline: getBool(options, 'multiline'),
-          multilineDotall: getBool(options, 'multiline-dotall'),
+          // `|| undefined` so an absent flag is omitted, never sent as `false`.
+          // A literal `filesOnly: false` would OVERRIDE mode:"discovery" and
+          // bring back full snippets — same idiom find.ts already uses.
+          perlRegex: getBool(options, 'perl-regex') || undefined,
+          caseInsensitive: getBool(options, 'case-insensitive') || undefined,
+          caseSensitive: getBool(options, 'case-sensitive') || undefined,
+          wholeWord: getBool(options, 'whole-word') || undefined,
+          invertMatch: getBool(options, 'invert-match') || undefined,
+          hidden: getBool(options, 'hidden') || undefined,
+          noIgnore: getBool(options, 'no-ignore') || undefined,
+          filesOnly: getBool(options, 'files-only') || undefined,
+          filesWithoutMatch:
+            getBool(options, 'files-without-match') || undefined,
+          countLinesPerFile: getBool(options, 'count-lines') || undefined,
+          countMatchesPerFile: getBool(options, 'count-matches') || undefined,
+          multiline: getBool(options, 'multiline') || undefined,
+          multilineDotall: getBool(options, 'multiline-dotall') || undefined,
           matchContentLength,
           maxFiles: maxFiles ?? limit,
           matchPage,
+          onlyMatching,
+          matchWindow,
           page,
           pageSize,
         });
@@ -673,7 +721,7 @@ export const grepCommand: CLICommand = {
           console.log(JSON.stringify(sc, null, 2));
           return;
         }
-        console.log('\n' + renderLocalResults(sc, limit) + '\n');
+        console.log('\n' + renderLocalResults(sc, limit, contextLines) + '\n');
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

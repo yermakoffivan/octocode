@@ -117,6 +117,16 @@ pub struct RipgrepSearchOptions {
     pub sort_reverse: Option<bool>,
     /// Max Unicode chars per assembled snippet (default 500).
     pub max_snippet_chars: Option<u32>,
+
+    // ── only-matching (rg -o) ──────────────────────────────────────────────
+    /// Emit one match per *submatch* with `value` set to the matched span
+    /// (not the whole line) — ripgrep's `-o`/`--only-matching`. The win on a
+    /// minified one-liner: line mode can only count hits, this enumerates them.
+    pub only_matching: Option<bool>,
+    /// With `only_matching`, widen each span by this many characters on each
+    /// side (char-boundary safe), marking trimmed sides with `…`. 0/unset =
+    /// the bare matched span.
+    pub match_window: Option<u32>,
 }
 
 // ── filesystem query types ───────────────────────────────────────────────────

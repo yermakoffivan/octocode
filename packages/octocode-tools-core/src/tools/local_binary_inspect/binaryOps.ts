@@ -39,27 +39,32 @@ export interface StringsResult {
   success: boolean;
   strings?: string[];
   totalFound?: number;
-  /** True when the binary was larger than the scan cap and only its prefix was scanned. */
+  /** True when more of the file remains to scan beyond this window (follow nextScanOffset). */
   truncated?: boolean;
+  /** Absolute byte offset for the next scan window, or undefined at EOF. */
+  nextScanOffset?: number;
   error?: string;
 }
 
 export function extractStrings(
   path: string,
   minLength: number,
-  includeOffsets: boolean
+  includeOffsets: boolean,
+  scanOffset = 0
 ): StringsResult {
   try {
     const result: BinaryStrings = contextUtils.extractBinaryStringsNative(
       path,
       minLength,
-      includeOffsets
+      includeOffsets,
+      scanOffset
     );
     return {
       success: true,
       strings: result.strings,
       totalFound: result.totalFound,
       truncated: result.truncated,
+      nextScanOffset: result.nextScanOffset,
     };
   } catch (error) {
     return {

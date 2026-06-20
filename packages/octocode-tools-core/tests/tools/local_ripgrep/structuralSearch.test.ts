@@ -88,16 +88,9 @@ describe('searchContentStructural', () => {
       pattern: 'target($X)',
       rule: undefined,
       include: undefined,
-      excludeDir: [
-        'node_modules',
-        'dist',
-        '.git',
-        'build',
-        'coverage',
-        '.next',
-        'out',
-        'target',
-      ],
+      // No directories are excluded by default — structural search must not
+      // silently skip node_modules/build/dist (see DEFAULT_STRUCTURAL_EXCLUDE_DIRS).
+      excludeDir: [],
       maxFiles: 10,
       maxFileBytes: 1_000_000,
     });
