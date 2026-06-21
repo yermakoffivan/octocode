@@ -9,7 +9,7 @@
 OQL is the typed research query object behind `octocode search`.
 
 Implementation status: this file is the contract to implement. Until the OQL
-runner lands, existing quick commands and raw `tools <name>` calls remain the
+runner lands, existing quick commands and raw `tools NAME` calls remain the
 current execution surface.
 
 This document is both:
@@ -1731,6 +1731,14 @@ not reference, type, implementation, or call-hierarchy proof.
     diagnostics.
 12. Existing path validation and secret sanitization remain in the execution
     path.
+13. Bulk input preserves per-query diagnostics, provenance, evidence, and
+    continuations.
+14. Boolean sugar normalizes away before planning.
+15. `not`/`xor` over provider candidates cannot return `proof` without a
+    complete universe or materialized proof.
+16. Legacy `invert` and `filesWithoutMatch` inputs normalize into canonical
+    `where.not`.
+17. `select` never changes result domains or triggers hidden fetches.
 
 </acceptance_gates>
 

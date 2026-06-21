@@ -16,14 +16,18 @@ OQL is a typed query object that compiles to existing Octocode capabilities. It
 is not a new raw DSL. The V1 contract is Markdown with XML-style tags so agents
 can chunk the prompt into stable instruction blocks. V1 has one canonical shape:
 `target`, `from`, `scope`, discriminated `where.kind`, `materialize`, `fetch`,
-`select`, `view`, `controls`, and executable `next.*` continuations.
+`select`, `view`, `controls`, result bounds, diagnostics, provenance,
+evidence, and executable `next.*` continuations. V1 also defines a bounded
+batch envelope for 1-5 independent queries.
 
 Command split:
 
-- `octocode search`: universal OQL runner.
+- `octocode search`: universal OQL runner to implement from this contract.
 - Existing quick commands (`grep`, `cat`, `ls`, `find`, and later `lsp`,
   `repo`, `pkg`, `pr`, `history`, `binary`, `diff`) remain aliases that should
   lower into canonical OQL after parity gates pass.
+- Until that runner lands, current quick commands and raw `tools NAME` calls
+  are the execution surface.
 
 Implementation split:
 
@@ -36,12 +40,15 @@ Implementation split:
 
 1. Add strict OQL V1 schema types.
 2. Build the normalizer: sugar in, canonical OQL out.
-3. Build planner with `PUSHDOWN`, `RESIDUAL`, `ROUTE`, and `UNSUPPORTED`.
+3. Build planner with predicate-node IDs and `PUSHDOWN`, `RESIDUAL`, `ROUTE`,
+   and `UNSUPPORTED`.
 4. Adapt canonical OQL to current local and GitHub V1 tools.
 5. Promote bounded remote-as-local from CLI behavior into tools-core.
 6. Standardize result envelope: `results`, `pagination`, executable `next`,
    `diagnostics`, `provenance`, and `evidence`.
-7. Wire CLI and MCP without duplicating logic.
+7. Add `--explain` with normalized query, per-predicate routing, defaults,
+   budgets, backend calls, materialization, diagnostics, and continuations.
+8. Wire CLI and MCP without duplicating logic.
 
 ## Editing Rules
 

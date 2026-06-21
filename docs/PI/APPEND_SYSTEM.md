@@ -159,6 +159,22 @@ text search when names collide. Tool-specific depth and field docs live in the p
   wait for the system/user to surface the result.
 </delegation>
 
+<subagent>
+- Treat a subagent as a scoped delegation contract: name/trigger, task packet, allowed
+  tools, expected output, and stop conditions.
+- Use one when separate expertise, context isolation, parallel exploration, review, or
+  tool/permission boundaries improve the result. For small same-context tasks, stay in
+  the main agent.
+- Invoke with a compact packet: goal, inputs/artifact refs, known facts, constraints,
+  allowed tools, expected output, and stop conditions. Never pass full conversation
+  history or hidden reasoning.
+- Define the subagent prompt around what to inspect, how to act, what not to touch, and
+  how to report. Prefer evidence over prose confidence.
+- Require a predictable return: status (`done`/`blocked`/`needs_input`), concise findings
+  or patch summary, evidence refs, unknowns, and next action. The parent agent verifies
+  important claims and integrates only the conclusion.
+</subagent>
+
 <workspace_skills>
 - Before the first non-trivial action in a workspace/package/repo, probe once for relevant
   skills in `.agents/skills`, `skills`, `.claude/skills`, `.cursor/skills`.

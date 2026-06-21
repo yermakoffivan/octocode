@@ -4,7 +4,7 @@
 > is probed live against the shipped napi binary — do not edit by hand. Run
 > `yarn matrix:check` to re-verify, or `yarn benchmark` for the full suite.
 
-**150 extensions** known to the engine — 61 with structural AST, 40 with a
+**150 extensions** known to the engine — 61 with structural AST, 47 with a
 signature outline, 56 with an LSP server, 89 minify-only.
 
 ## Rich formats — AST + signature + LSP
@@ -26,10 +26,10 @@ server). The minify column is the configured strategy.
 | `.erl` | `aggressive` | ✅ | ✅ tree-sitter | `erlang-ls` → `erlang` |
 | `.ex` | `aggressive` | ✅ | ✅ tree-sitter | `elixir-ls` → `elixir` |
 | `.exs` | `aggressive` | ✅ | ✅ tree-sitter | `elixir-ls` → `elixir` |
-| `.gemspec` | — | ✅ | ✅ tree-sitter | `ruby-lsp` → `ruby` |
+| `.gemspec` | `conservative` | ✅ | ✅ tree-sitter | `ruby-lsp` → `ruby` |
 | `.go` | `conservative` | ✅ | ✅ tree-sitter | `gopls` → `go` |
 | `.h` | `conservative` | ✅ | ✅ tree-sitter | `clangd` → `c` |
-| `.hcl` | — | ✅ | — | `terraform-ls` → `terraform` |
+| `.hcl` | `conservative` | ✅ | ✅ tree-sitter | `terraform-ls` → `terraform` |
 | `.hh` | `conservative` | ✅ | ✅ tree-sitter | — |
 | `.hpp` | `conservative` | ✅ | ✅ tree-sitter | `clangd` → `cpp` |
 | `.hrl` | `aggressive` | ✅ | ✅ tree-sitter | `erlang-ls` → `erlang` |
@@ -43,31 +43,31 @@ server). The minify column is the configured strategy.
 | `.jsonc` | `json` | ✅ | — | `vscode-json-language-server` → `json` |
 | `.jsx` | `terser` | ✅ | ✅ tree-sitter | `typescript-language-server` → `javascriptreact` |
 | `.kt` | `conservative` | ✅ | ✅ tree-sitter | `kotlin-language-server` → `kotlin` |
-| `.kts` | — | ✅ | ✅ tree-sitter | `kotlin-language-server` → `kotlin` |
+| `.kts` | `conservative` | ✅ | ✅ tree-sitter | `kotlin-language-server` → `kotlin` |
 | `.less` | `aggressive` | ✅ | — | `vscode-css-language-server` → `less` |
 | `.lua` | `aggressive` | ✅ | ✅ tree-sitter | `lua-language-server` → `lua` |
 | `.mjs` | `terser` | ✅ | ✅ tree-sitter | `typescript-language-server` → `javascript` |
-| `.ml` | — | ✅ | — | `ocamllsp` → `ocaml` |
-| `.mli` | — | ✅ | — | `ocamllsp` → `ocaml` |
+| `.ml` | `conservative` | ✅ | — | `ocamllsp` → `ocaml` |
+| `.mli` | `conservative` | ✅ | — | `ocamllsp` → `ocaml` |
 | `.mts` | `conservative` | ✅ | ✅ tree-sitter | `typescript-language-server` → `typescript` |
 | `.php` | `conservative` | ✅ | ✅ tree-sitter | `intelephense` → `php` |
-| `.proto` | `conservative` | ✅ | — | `protols` → `proto` |
+| `.proto` | `conservative` | ✅ | ✅ tree-sitter | `protols` → `proto` |
 | `.py` | `conservative` | ✅ | ✅ tree-sitter | `pylsp` → `python` |
 | `.pyi` | `conservative` | ✅ | ✅ tree-sitter | `pylsp` → `python` |
 | `.r` | `aggressive` | ✅ | ✅ tree-sitter | `r-languageserver` → `r` |
-| `.rake` | — | ✅ | ✅ tree-sitter | `ruby-lsp` → `ruby` |
+| `.rake` | `conservative` | ✅ | ✅ tree-sitter | `ruby-lsp` → `ruby` |
 | `.rb` | `conservative` | ✅ | ✅ tree-sitter | `ruby-lsp` → `ruby` |
 | `.rs` | `conservative` | ✅ | ✅ tree-sitter | `rust-analyzer` → `rust` |
-| `.ru` | — | ✅ | ✅ tree-sitter | `ruby-lsp` → `ruby` |
-| `.sbt` | — | ✅ | — | — |
-| `.sc` | — | ✅ | — | — |
-| `.scala` | `conservative` | ✅ | — | — |
+| `.ru` | `conservative` | ✅ | ✅ tree-sitter | `ruby-lsp` → `ruby` |
+| `.sbt` | — | ✅ | ✅ tree-sitter | — |
+| `.sc` | — | ✅ | ✅ tree-sitter | — |
+| `.scala` | `conservative` | ✅ | ✅ tree-sitter | — |
 | `.scss` | `aggressive` | ✅ | — | `vscode-css-language-server` → `scss` |
 | `.sh` | `conservative` | ✅ | ✅ tree-sitter | `bash-language-server` → `shellscript` |
 | `.sql` | `conservative` | ✅ | — | `sqls` → `sql` |
 | `.swift` | `conservative` | ✅ | ✅ tree-sitter | `sourcekit-lsp` → `swift` |
-| `.tf` | `conservative` | ✅ | — | `terraform-ls` → `terraform` |
-| `.tfvars` | `conservative` | ✅ | — | `terraform-ls` → `terraform` |
+| `.tf` | `conservative` | ✅ | ✅ tree-sitter | `terraform-ls` → `terraform` |
+| `.tfvars` | `conservative` | ✅ | ✅ tree-sitter | `terraform-ls` → `terraform` |
 | `.toml` | `conservative` | ✅ | — | `taplo` → `toml` |
 | `.ts` | `conservative` | ✅ | ✅ tree-sitter | `typescript-language-server` → `typescript` |
 | `.tsx` | `conservative` | ✅ | ✅ tree-sitter | `typescript-language-server` → `typescriptreact` |
