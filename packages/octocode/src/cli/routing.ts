@@ -107,3 +107,15 @@ export function refLabel(ref: Ref): string {
   const sub = ref.subpath ? `/${ref.subpath}` : '';
   return `${ref.owner}/${ref.repo}${sub}${branch}`;
 }
+
+/**
+ * The exact `clone` quick-command that brings a GitHub ref to disk so it can be
+ * searched/outlined locally. Preserves the subpath (sparse subtree) and branch
+ * the user already typed, so the suggestion is ready to paste — used by the
+ * local-only guards (structural grep, `ls --symbols`).
+ */
+export function cloneCommandFor(ref: GithubRef): string {
+  const branch = ref.branch ? `@${ref.branch}` : '';
+  const sub = ref.subpath ? `/${ref.subpath}` : '';
+  return `clone ${ref.owner}/${ref.repo}${sub}${branch}`;
+}

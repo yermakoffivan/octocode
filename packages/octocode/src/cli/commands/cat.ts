@@ -187,10 +187,6 @@ function printRawContent(result: DirectToolResult): boolean {
 
 export const catCommand: CLICommand = {
   name: 'cat',
-  description:
-    'Read file content from local paths and GitHub references with match, line, pagination, and minify controls',
-  usage:
-    'cat <path|github-ref> [--raw] [--mode none|standard|symbols] [--branch <ref>] [--match-string <s>] [--match-regex] [--match-case-sensitive] [--start-line <n>] [--end-line <n>] [--context-lines <n>] [--page-size <n>] [--page <n>] [--char-offset <n>] [--char-length <n>] [--full-content] [--content-type file|directory] [--force-refresh] [--json]',
   options: [
     {
       name: 'raw',

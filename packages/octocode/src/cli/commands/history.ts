@@ -170,10 +170,6 @@ function renderCommits(
 
 export const historyCommand: CLICommand = {
   name: 'history',
-  description:
-    'Commit history for a GitHub repo, directory, or file — who changed what, when (with the #PR → deep-read chain)',
-  usage:
-    'history <owner/repo[/path][@branch]> [--since <iso>] [--until <iso>] [--author <name>] [--branch <ref>] [--diff] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'since',

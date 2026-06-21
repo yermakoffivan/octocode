@@ -6,7 +6,7 @@ use ignore::overrides::{Override, OverrideBuilder};
 use ignore::WalkBuilder;
 
 use super::language::AgLanguage;
-use super::matcher::compile_matcher;
+use super::octo::compile_matcher;
 use super::query::{invalid_query_explanation, StructuralQuery};
 use super::types::{
     structural_query_fingerprint, StructuralDetailedMatch, StructuralDiagnostic,

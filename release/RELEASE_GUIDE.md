@@ -249,23 +249,62 @@ npm uses `os`, `cpu`, and `libc` fields on each platform package to install exac
 
 ### Pre-publish checks
 
+> **Versioned independently** (engine `16.5.x`, tools-core `16.3.x`, octocode-mcp `16.2.x`). For an engine-only release, bump `packages/octocode-engine/package.json` and use the engine's `version:sync`. Do **not** run `release/sync-packages-version.mjs` — it forces every package to octocode-mcp's version and would downgrade the engine.
+
+#### The engine is Rust → TS — verify both layers
+
+| Layer | Produced by | Output | Guarded by |
+|---|---|---|---|
+| Rust native | `napi build` (×6 targets) | one `.node` per `npm/<platform>/` | `platforms:check` |
+| JS/TS loader | `postbuild.cjs` restores `loader/{index.js,index.cjs,index.d.ts}` over the napi-generated files | root `index.*` (ESM `import` → `index.js`, CJS `require` → `index.cjs`) | `loader:check` |
+| TS build | `tsc` | `dist/` (security + lsp) | `tsc` / `verify` |
+
+The 6 `.npm` platform packages (`@octocodeai/octocode-engine-<platform>`) each carry exactly one `.node` and are exact-pinned in the root's `optionalDependencies`. The root tarball ships **no** `.node`.
+
+#### Engine readiness (from repo root)
+
 ```bash
-# 1. Bump the version in packages/octocode-mcp/package.json, then:
-#    Sync version to every package AND pin all internal deps to exact versions.
-node release/sync-packages-version.mjs --pin-for-publish
+# 1. Bump packages/octocode-engine/package.json (16.5.0 is taken → 16.5.1+).
+# 2. Propagate to Cargo + all 6 platform package.json. Run MANUALLY — the root is
+#    published with --ignore-scripts, which skips the prepublishOnly hook.
+yarn workspace @octocodeai/octocode-engine run version:sync
 
-# 2. Verify no workspace: or file: refs remain — npm publish will fail if any do:
-rg '"workspace:' packages/*/package.json packages/*/npm/*/package.json
-rg '"file:'      packages/*/package.json packages/*/npm/*/package.json
-# → both must be empty
+# 3. Rebuild all 6 native targets + TS (use matching CI runners for cross-compile):
+yarn workspace @octocodeai/octocode-engine run build:all
 
-# Root native package must NOT contain a .node:
-yarn workspace @octocodeai/octocode-engine run pack:check
+# 4. Fast gate: version + loader entries + tarball purity + 6 binaries.
+yarn workspace @octocodeai/octocode-engine run prepublish:verify
 
-# Each platform package must contain exactly one non-empty .node:
-yarn workspace @octocodeai/octocode-engine run platforms:check
+# 5. Full gate: cargo check/fmt/clippy/test/audit + tsc + vitest + benchmarks.
+yarn workspace @octocodeai/octocode-engine run verify
 
-# All tests pass:
+# 6. Prove both entry points load on this host:
+cd packages/octocode-engine
+node --input-type=module -e "const m=await import('./index.js'); if(typeof m.applyContentViewMinification!=='function')throw Error('ESM broken'); console.log('ESM OK')"
+node -e "if(typeof require('./index.cjs').applyContentViewMinification!=='function')throw Error('CJS broken'); console.log('CJS OK')"
+cd ../..
+```
+
+#### What each check catches
+
+| Check | Catches |
+|---|---|
+| `version:check` | Cargo / npm / 6-platform version drift |
+| `loader:check` | CJS in the ESM entry (the 16.5.0 bug), napi auto-gen drift, `loader/` ↔ root mismatch |
+| `pack:check` | a `.node` leaking into the root tarball |
+| `platforms:check` | missing / empty / duplicate `.node` in any platform dir |
+| `cargo clippy -D warnings`, `cargo fmt --check` | Rust lint / format (`cargo fmt --all` to fix) |
+| `cargo check` / `cargo test` | Rust compile + behavior |
+| ESM/CJS load (step 6) + post-publish smoke | entry points failing to import |
+
+> Why this matters: 16.5.0 shipped an auto-gen **CJS** `index.js` under `"type": "module"`, so every ESM `import` threw `require is not defined in ES module scope`. `loader:check` (now in `verify` and `prepublish:verify`) fails the build if that recurs; the `loader/` canonical sources make it self-heal.
+
+#### Monorepo ref hygiene (when releasing more than the engine)
+
+```bash
+rg '"workspace:|"file:' packages/*/package.json packages/*/npm/*/package.json
+# → must be empty for whatever you publish. (CLI keeps a dev file: dep on
+#   @octocodeai/octocode-core — pin it before publishing the CLI. Engine has none.)
 yarn verify
 ```
 
@@ -284,6 +323,8 @@ Dependencies must exist on npm before dependents. Publish in this order:
 ```
 
 ### Publish commands
+
+> The engine root uses `--ignore-scripts` (no rebuild at publish), which also skips `prepublishOnly` — so `version:sync` + `prepublish:verify` must already have been run above.
 
 ```bash
 npm whoami   # confirm auth

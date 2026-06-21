@@ -603,10 +603,6 @@ function printGithubPathFallbackHint(
 
 export const findFilesCommand: CLICommand = {
   name: 'find',
-  description:
-    'Find files and content matches across local paths and GitHub repositories',
-  usage:
-    'find <query> [path|owner/repo] [--owner <owner> --repo <repo>] [--source auto|local|github] [--search path|content|both] [--ext <list>] [--path <subpath>] [--limit <n>] [--page <n>] [--concise] [--json]',
   options: [
     {
       name: 'source',

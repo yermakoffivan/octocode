@@ -84,7 +84,20 @@ const RESERVED_SYMBOL_WORDS = new Set([
   'type',
   'var',
   'while',
+  // Literals and contextual keywords that are never resolvable symbols.
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'NaN',
+  'Infinity',
+  'this',
+  'super',
 ]);
+
+// A candidate is only an LSP-resolvable symbol when its *entire* value is one
+// bare identifier — anchored, no surrounding regex/punctuation/whitespace.
+const BARE_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 export async function buildSearchResult(
   parsedFiles: LocalSearchCodeFile[],
@@ -441,49 +454,65 @@ function lineRangeAroundMatch(match: FlowMatch): {
   };
 }
 
-function inferLspSymbolName(
+// LSP next-call inference is intentionally conservative: a wrong symbolName
+// sends the agent to resolve a bogus anchor. We only infer when the evidence is
+// an exact bare identifier, never from regex syntax, literals, dotted property
+// text, multi-token snippets, windowed context, or aggregate count output.
+export function inferLspSymbolName(
   match: FlowMatch | undefined,
   query: RipgrepQuery,
   searchEngine: LocalSearchEngine
 ): string | undefined {
-  const fromMetavar = firstIdentifierFromMetavars(match?.metavars);
-  if (fromMetavar) return fromMetavar;
-
-  if (searchEngine === 'structural') {
+  // Aggregate / count output has no single-symbol anchor.
+  if (
+    query.countLinesPerFile ||
+    query.countMatchesPerFile ||
+    query.countUnique ||
+    query.unique
+  ) {
     return undefined;
   }
 
-  const keywordSymbol = identifierFromSearchQuery(query.keywords);
-  if (keywordSymbol) return keywordSymbol;
+  // Structural search may only infer from a metavar whose full capture is one
+  // bare identifier (e.g. `$NAME` bound to `getUser`, never to `false`).
+  if (searchEngine === 'structural') {
+    return firstBareIdentifierMetavar(match?.metavars);
+  }
 
-  return identifierFromText(match?.value);
+  // Windowed matches carry surrounding context, not a clean token.
+  if (query.matchWindow) return undefined;
+
+  // onlyMatching returns the exact matched substring — infer when it is itself a
+  // bare identifier.
+  if (query.onlyMatching) {
+    return bareIdentifier(match?.value);
+  }
+
+  // Otherwise infer only from an exact bare-identifier query. This suppresses
+  // regex-like queries (`\w+_searched`), dotted fixed strings (`query.symbolName`),
+  // and multi-token snippets, none of which are a single bare identifier.
+  return bareIdentifier(query.keywords);
 }
 
-function firstIdentifierFromMetavars(
+function firstBareIdentifierMetavar(
   metavars: Record<string, string[]> | undefined
 ): string | undefined {
   if (!metavars) return undefined;
   for (const values of Object.values(metavars)) {
     for (const value of values) {
-      const symbol = identifierFromText(value);
+      const symbol = bareIdentifier(value);
       if (symbol) return symbol;
     }
   }
   return undefined;
 }
 
-function identifierFromText(value: unknown): string | undefined {
+function bareIdentifier(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  const candidates = trimmed.match(/[A-Za-z_$][\w$]*/g) ?? [];
-  return candidates.find(candidate => !RESERVED_SYMBOL_WORDS.has(candidate));
-}
-
-function identifierFromSearchQuery(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const first = value.trim().match(/[A-Za-z_$][\w$]*/)?.[0];
-  if (!first || RESERVED_SYMBOL_WORDS.has(first)) return undefined;
-  return first;
+  if (!BARE_IDENTIFIER.test(trimmed)) return undefined;
+  if (RESERVED_SYMBOL_WORDS.has(trimmed)) return undefined;
+  return trimmed;
 }
 
 function withoutUndefined(

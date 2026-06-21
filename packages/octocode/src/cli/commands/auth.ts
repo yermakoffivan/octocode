@@ -15,9 +15,6 @@ import { printAuthStatus, printLoginHint } from './shared.js';
 
 export const loginCommand: CLICommand = {
   name: 'login',
-  description: 'Authenticate with GitHub',
-  usage:
-    'login [--hostname <host>] [--git-protocol <ssh|https>] [--force] [--json]',
   options: [
     {
       name: 'hostname',
@@ -204,8 +201,6 @@ export const loginCommand: CLICommand = {
 
 export const logoutCommand: CLICommand = {
   name: 'logout',
-  description: 'Sign out from GitHub',
-  usage: 'logout [--hostname <host>] [--yes] [--json]',
   options: [
     {
       name: 'hostname',
@@ -302,8 +297,6 @@ export const logoutCommand: CLICommand = {
 
 export const authCommand: CLICommand = {
   name: 'auth',
-  description: 'Manage GitHub authentication',
-  usage: 'auth [login|logout|refresh] [--hostname <host>] [--json]',
   options: [
     {
       name: 'hostname',

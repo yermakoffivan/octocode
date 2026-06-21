@@ -19,6 +19,8 @@ import {
 // to a deterministic filesystem walk in ripgrepExecutor; the relevance scorer
 // runs in ripgrepResultBuilder. Keep tools-core overrides to tightening bounds
 // only, not redefining ranking fields.
+const REMOVED_CORE_FIELDS = ['semanticRanking'] as const;
+
 const queryOverrides = {
   contextLines: contextLinesField,
   matchContentLength: clampedInt(1, MAX_MATCH_CONTENT_LENGTH)
@@ -41,9 +43,14 @@ const queryOverrides = {
     ),
 } as const;
 
+const bulkQueryOverrides = {
+  ...queryOverrides,
+  semanticRanking: z.never().optional(),
+} as const;
+
 const RipgrepQueryShape = createQueryShapeSchema(
   CoreRipgrepQuerySchema,
-  queryOverrides
+  bulkQueryOverrides
 );
 
 // Structural-mode validation (exactly one of pattern/rule, reject ripgrep-only
@@ -52,7 +59,7 @@ const RipgrepQueryShape = createQueryShapeSchema(
 const LocalRipgrepBaseQuerySchema = describeQuerySchema(
   CoreRipgrepQuerySchema,
   queryOverrides,
-  { strict: true }
+  { strict: true, omit: REMOVED_CORE_FIELDS }
 );
 
 export const LocalRipgrepQuerySchema = LocalRipgrepBaseQuerySchema.superRefine(
@@ -61,6 +68,42 @@ export const LocalRipgrepQuerySchema = LocalRipgrepBaseQuerySchema.superRefine(
       unique?: boolean;
       countUnique?: boolean;
     };
+    if (ripgrepQuery.caseSensitive && ripgrepQuery.caseInsensitive) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'caseSensitive and caseInsensitive are mutually exclusive.',
+        path: ['caseSensitive'],
+      });
+    }
+    if (ripgrepQuery.fixedString && ripgrepQuery.perlRegex) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'fixedString and perlRegex are mutually exclusive.',
+        path: ['fixedString'],
+      });
+    }
+    if (ripgrepQuery.filesOnly && ripgrepQuery.filesWithoutMatch) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'filesOnly and filesWithoutMatch are mutually exclusive.',
+        path: ['filesOnly'],
+      });
+    }
+    if (ripgrepQuery.countLinesPerFile && ripgrepQuery.countMatchesPerFile) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'countLinesPerFile and countMatchesPerFile are mutually exclusive.',
+        path: ['countLinesPerFile'],
+      });
+    }
+    if (ripgrepQuery.multilineDotall && !ripgrepQuery.multiline) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'multilineDotall requires multiline=true.',
+        path: ['multilineDotall'],
+      });
+    }
     if (ripgrepQuery.mode === 'structural') {
       for (const field of ['unique', 'countUnique'] as const) {
         if (ripgrepQuery[field]) {

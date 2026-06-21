@@ -35,6 +35,15 @@ const commandLoaders: Record<string, CommandLoader> = {
   status: async () => (await import('./status.js')).statusCommand,
 };
 
+// Every command the CLI dispatches. Each MUST have a matching spec in
+// octocode-core (the single source of truth for help/usage/description) —
+// enforced by tests/cli/command-spec-coverage.test.ts so help never silently
+// falls back to a non-core source.
+export const REGISTERED_COMMAND_NAMES: readonly string[] = [
+  ...lightweightCommands.map(command => command.name),
+  ...Object.keys(commandLoaders),
+].filter((name, i, all) => all.indexOf(name) === i);
+
 export function findCommand(name: string): CLICommand | undefined {
   return lightweightCommands.find(command => command.name === name);
 }

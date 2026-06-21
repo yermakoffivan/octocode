@@ -58,6 +58,20 @@ describe('localSearchCode schema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('rejects removed semanticRanking input instead of accepting a no-op flag', () => {
+    const result = LocalRipgrepQuerySchema.safeParse({
+      ...baseQuery,
+      semanticRanking: true,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map(issue => issue.message).join('\n')).toMatch(
+        /Unrecognized key.*semanticRanking|unrecognized.*semanticRanking/i
+      );
+    }
+  });
+
   it('rejects unique matched values without onlyMatching', () => {
     const result = LocalRipgrepQuerySchema.safeParse({
       ...baseQuery,

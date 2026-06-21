@@ -18,9 +18,6 @@ const MODE_VALUES = new Set(['lean', 'full']);
 
 export const pkgCommand: CLICommand = {
   name: 'pkg',
-  description:
-    'Research an npm package (exact name → rich result + source repo) or a keyword query (→ lean candidate list)',
-  usage: 'pkg <package|keywords> [--mode lean|full] [--page <n>] [--json]',
   options: [
     {
       name: 'mode',

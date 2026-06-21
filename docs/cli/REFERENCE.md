@@ -233,6 +233,9 @@ grep <path> --rule <yaml>                  AST relational rule (local only)
 ```
 
 Text/regex runs locally or on GitHub. AST shape search (`--pattern`/`--rule`) is **local-only** — comments and strings never false-match.
+Quote structural patterns with single quotes so the shell does not expand `$A`,
+`$X`, or `$$$ARGS` before Octocode sees them. Once the shell has already
+expanded a metavariable, the CLI cannot recover the original pattern.
 For local searches, `--type` accepts short extensions and language aliases; for example `--type rust` maps to `.rs`, while `--type typescript` covers `.ts`, `.tsx`, `.mts`, and `.cts`.
 
 Examples:

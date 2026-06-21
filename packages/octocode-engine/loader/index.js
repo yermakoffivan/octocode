@@ -1,3 +1,11 @@
+// Hand-authored ESM facade for the engine. The package is "type": "module",
+// so the `import` / `default` export conditions resolve to this file. It must
+// stay ESM (import/export) — never the napi-rs CJS loader. The native binary is
+// loaded once by ./index.cjs (the `require` condition) and re-exported here.
+//
+// This is a CANONICAL SOURCE under loader/. `napi build` regenerates the root
+// index.js as a CJS loader; postbuild.cjs overwrites it back from this file.
+// When new native symbols are added in Rust, add matching `export const` lines.
 import nativeBinding from './index.cjs'
 
 export const SIGNATURES_ONLY_HINT = nativeBinding.SIGNATURES_ONLY_HINT
@@ -47,6 +55,8 @@ export const byteSliceContent = nativeBinding.byteSliceContent
 export const sliceContent = nativeBinding.sliceContent
 export const extractMatchingLines = nativeBinding.extractMatchingLines
 export const filterPatch = nativeBinding.filterPatch
+export const inspectBinaryNative = nativeBinding.inspectBinaryNative
+export const extractBinaryStringsNative = nativeBinding.extractBinaryStringsNative
 export const NativeLspClient = nativeBinding.NativeLspClient
 export const resolvePosition = nativeBinding.resolvePosition
 export const resolvePositionFromContent = nativeBinding.resolvePositionFromContent

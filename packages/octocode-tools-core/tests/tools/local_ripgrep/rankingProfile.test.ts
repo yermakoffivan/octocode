@@ -111,6 +111,27 @@ describe('scoreFile — the motivating broad-term example', () => {
     const ranked = rankFiles([many, one], 'relevance', ctx());
     expect(ranked.files[0]?.path).toBe('/repo/src/fallback.ts');
   });
+
+  it('adds candidate-local rare query token reasons when debug ranking is on', () => {
+    const common = file('/repo/src/common.ts', 10, ['const fallback = 1']);
+    const rare = file('/repo/src/rare.ts', 1, [
+      'const rankEvidence = fallback;',
+    ]);
+    const ranked = rankFiles(
+      [common, rare],
+      'relevance',
+      ctx({ keyword: 'fallback rankEvidence' }),
+      { debug: true }
+    );
+
+    const reasons = ranked.debug?.get('/repo/src/rare.ts')?.reasons.join(' ');
+    expect(reasons).toMatch(/rare query token: rankEvidence \(1\/2 files\)/);
+    expect(
+      ranked.debug?.get('/repo/src/common.ts')?.reasons.join(' ')
+    ).not.toMatch(
+      /rare query token/
+    );
+  });
 });
 
 describe('rankFiles — sort modes', () => {

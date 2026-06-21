@@ -1,34 +1,40 @@
 /**
- * Restores hand-authored public wrappers after `napi build`.
+ * Restores the hand-authored loaders after `napi build`.
  *
- * Runtime behavior must stay pure native/Rust: index.js only loads the compiled
- * .node addon from the local workspace or required optional platform package.
- * Generated napi-rs JS/type loader files are build artifacts and are discarded.
+ * Runtime behavior must stay pure native/Rust: the root loaders only load the
+ * compiled .node addon from the local workspace or the resolved optional
+ * platform package. `napi build` overwrites the root index.js/index.d.ts with a
+ * generated napi-rs CJS loader — which is wrong for a "type": "module" package
+ * (its `import` condition would load CJS syntax and crash). We discard those
+ * generated artifacts and copy the canonical loaders back from loader/.
+ *
+ * loader/ is the single source of truth and is never touched by napi-rs, so this
+ * restore is unconditional and always self-heals — no backup dotfiles, no
+ * "skip if already generated" guard.
  */
 'use strict'
 
-const {
-  copyFileSync,
-  existsSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} = require('fs')
+const { copyFileSync, existsSync, unlinkSync } = require('fs')
 const { join } = require('path')
 
 const root = join(__dirname, '..')
+const loaderDir = join(root, 'loader')
 
-function restorePublicFile(fileName, backupName) {
-  const filePath = join(root, fileName)
-  const backupPath = join(root, backupName)
+// Canonical hand-authored loaders, restored over whatever napi-rs generated.
+const LOADER_FILES = ['index.js', 'index.cjs', 'index.d.ts']
 
-  if (!existsSync(backupPath)) {
-    return
+function restoreLoaders() {
+  for (const fileName of LOADER_FILES) {
+    const sourcePath = join(loaderDir, fileName)
+    if (!existsSync(sourcePath)) {
+      throw new Error(
+        `Missing canonical loader source loader/${fileName}. ` +
+          `It is the source of truth restored after napi build — do not delete it.`
+      )
+    }
+    copyFileSync(sourcePath, join(root, fileName))
+    console.log(`restored ${fileName} from loader/`)
   }
-
-  writeFileSync(filePath, readFileSync(backupPath, 'utf8'), 'utf8')
-  unlinkSync(backupPath)
-  console.log(`public ${fileName} restored`)
 }
 
 function discardGeneratedFiles() {
@@ -75,9 +81,7 @@ function isDevBuild() {
   return process.env.npm_lifecycle_event === 'build:dev'
 }
 
-restorePublicFile('index.cjs', '.index.cjs.build-backup')
-restorePublicFile('index.js', '.index.js.build-backup')
-restorePublicFile('index.d.ts', '.index.d.ts.build-backup')
+restoreLoaders()
 discardGeneratedFiles()
 
 if (isDevBuild()) {

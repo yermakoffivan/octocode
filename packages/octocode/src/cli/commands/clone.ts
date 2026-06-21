@@ -20,10 +20,6 @@ function cloneLocalPath(structuredContent: unknown): string | undefined {
 
 export const cloneCommand: CLICommand = {
   name: 'clone',
-  description:
-    'Clone a GitHub repository or subtree locally (sparse) for repeated local search, reads, and LSP',
-  usage:
-    'clone <owner/repo[/path][@branch]|url> [--branch <ref>] [--force-refresh] [--json]',
   options: [
     {
       name: 'branch',

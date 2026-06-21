@@ -18,8 +18,6 @@ import { readAllClientConfigs, analyzeSyncState } from '../../features/sync.js';
 
 export const statusCommand: CLICommand = {
   name: 'status',
-  description: 'Show full Octocode health status (auth + MCPs + cache)',
-  usage: 'status [--hostname <host>] [--sync] [--json]',
   options: [
     {
       name: 'hostname',

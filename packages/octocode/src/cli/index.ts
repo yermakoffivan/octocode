@@ -152,10 +152,18 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
         return true;
       }
 
+      // A registered command always has a core spec (enforced by the
+      // command-spec-coverage test), so the branch above serves every real
+      // command. This fallback only covers a command that exists but is
+      // undocumented in core — render the minimal spec we can synthesize.
       const { loadCommand } = await loadCommandsModule();
       const liveCommand = await loadCommand(args.command);
       if (liveCommand) {
-        showCommandHelp(liveCommand);
+        showCommandHelp({
+          name: liveCommand.name,
+          description: '',
+          options: liveCommand.options,
+        });
         return true;
       }
 

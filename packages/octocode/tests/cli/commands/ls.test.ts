@@ -99,6 +99,15 @@ describe('ls command', () => {
     expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
+  it('--symbols on a GitHub ref suggests an actionable clone command (incl. subpath)', async () => {
+    await run(['facebook/react/packages/react'], { symbols: true });
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+    const msg = vi.mocked(console.error).mock.calls.flat().join(' ');
+    expect(msg).toContain('local-only');
+    expect(msg).toContain('clone facebook/react/packages/react');
+  });
+
   it('applies simple file filters to GitHub tree output', async () => {
     executeDirectTool.mockResolvedValueOnce({
       isError: false,
@@ -132,6 +141,48 @@ describe('ls command', () => {
     expect(output).toContain('index.test.ts');
     expect(output).not.toContain('README.md');
     expect(output).not.toContain('components');
+  });
+
+  it('applies simple file filters to GitHub JSON output', async () => {
+    executeDirectTool.mockResolvedValueOnce({
+      isError: false,
+      content: [],
+      structuredContent: {
+        results: [
+          {
+            data: {
+              structure: [
+                {
+                  dir: 'src',
+                  folders: ['components', 'docs'],
+                  files: ['index.ts', 'index.test.ts', 'README.md'],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    await run(['facebook/react/src'], {
+      ext: 'ts',
+      pattern: 'index*',
+      'files-only': true,
+      json: true,
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    const output = vi.mocked(console.log).mock.calls.flat().join('\n');
+    const parsed = JSON.parse(output) as {
+      results: Array<{
+        data: { structure: Array<{ files: string[]; folders: string[] }> };
+      }>;
+    };
+    expect(parsed.results[0]?.data.structure[0]?.files).toEqual([
+      'index.ts',
+      'index.test.ts',
+    ]);
+    expect(parsed.results[0]?.data.structure[0]?.folders).toEqual([]);
   });
 
   it('exposes --symbols and --kind options', () => {

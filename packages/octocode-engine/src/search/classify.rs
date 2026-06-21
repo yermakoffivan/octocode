@@ -287,13 +287,11 @@ fn position_to_byte(content: &str, line_starts: &[usize], line: u32, column: u32
     let slice = &content[line_start..line_end];
     // Walk `column` chars into the line, clamped to the line's content.
     let mut byte = line_start;
-    let mut chars = 0u32;
-    for (off, _) in slice.char_indices() {
-        if chars >= column {
+    for (chars, (off, _)) in slice.char_indices().enumerate() {
+        if chars >= column as usize {
             byte = line_start + off;
             break;
         }
-        chars += 1;
         byte = line_start + off;
     }
     Some(byte.min(content.len().saturating_sub(1)).max(line_start))
@@ -343,7 +341,10 @@ mod tests {
             matches!(decl.as_deref(), Some(KIND_DECLARATION) | Some(KIND_EXPORT)),
             "got {decl:?}"
         );
-        assert_eq!(classify_one(src, "rs", 2, 4).as_deref(), Some(KIND_CALLSITE));
+        assert_eq!(
+            classify_one(src, "rs", 2, 4).as_deref(),
+            Some(KIND_CALLSITE)
+        );
     }
 
     #[test]

@@ -174,9 +174,6 @@ function renderDiff(
 
 export const diffCommand: CLICommand = {
   name: 'diff',
-  description: 'Compare two files from local paths or GitHub refs',
-  usage:
-    'diff <left path|github-ref> <right path|github-ref> [--context-lines <n>] [--branch <ref>] [--json]',
   options: [
     {
       name: 'context-lines',

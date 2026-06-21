@@ -72,10 +72,6 @@ function resolveMode(
 
 export const binaryCommand: CLICommand = {
   name: 'binary',
-  description:
-    'Inspect archives, compressed files, and binaries — inspect structure, list/unzip entries, decompress, or read strings',
-  usage:
-    'binary <file> [--inspect | --list | --strings | --decompress | --extract <entry>] [--detailed] [--match <s>] [--min-length <n>] [--max-entries <n>] [--format <fmt>] [--verbose] [--offsets] [--page <n>] [--json]',
   options: [
     { name: 'list', description: 'List archive entries (.zip/.tar.*/.jar/…)' },
     {

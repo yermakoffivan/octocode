@@ -776,9 +776,6 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
 
 export const toolCommand: CLICommand = {
   name: 'tools',
-  description:
-    'Run an Octocode MCP tool directly using the same implementation under the hood',
-  usage: `tools <toolName> [--scheme] [--queries '<json-stringified-input>']`,
   options: [
     {
       name: 'queries',

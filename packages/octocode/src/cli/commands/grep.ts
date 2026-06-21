@@ -1,6 +1,11 @@
 import type { CLICommand } from '../types.js';
 import { getBool, getString } from '../options.js';
-import { resolveRef, isGithubRef, refLabel } from '../routing.js';
+import {
+  resolveRef,
+  isGithubRef,
+  refLabel,
+  cloneCommandFor,
+} from '../routing.js';
 import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
@@ -365,10 +370,6 @@ function isCloneHintEnabled(): boolean {
 
 export const grepCommand: CLICommand = {
   name: 'grep',
-  description:
-    'Search code by text/regex (ripgrep) across local paths and GitHub, OR by AST shape with --pattern/--rule through Octocode structural grep. One search command: text by default, structural when you pass --pattern or --rule (local-only).',
-  usage:
-    'grep <keywords> <path|github-ref> [text flags] | grep <path> --pattern <shape> | grep <path> --rule <yaml>  [--type <ext|lang>] [--mode paginated|discovery|detailed] [--concise] [--include <glob>] [--exclude <glob>] [--context-lines <n>|--context <n>] [--fixed|--fixed-string] [--perl-regex] [--case-insensitive|--case-sensitive] [--whole-word] [--only-matching [--unique|--count]] [--max-matches <n>] [--branch <ref>] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'pattern',
@@ -586,7 +587,8 @@ export const grepCommand: CLICommand = {
       const ref = resolveRef(args.args[0] || '.');
       if (isGithubRef(ref)) {
         const err =
-          'Structural search (--pattern/--rule) is local-only because Octocode parses files on disk. Clone the repo first, or drop the flag for text search.';
+          'Structural search (--pattern/--rule) is local-only because Octocode parses files on disk. ' +
+          `Clone first: \`${cloneCommandFor(ref)}\`, then rerun grep on the local clone path. Or drop the flag for text search.`;
         if (jsonOutput)
           console.log(JSON.stringify({ success: false, error: err }));
         else printCliError(err);

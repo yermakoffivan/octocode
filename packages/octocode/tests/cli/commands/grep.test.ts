@@ -97,6 +97,16 @@ describe('grep command', () => {
     expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
+  it('rejects structural search on a GitHub ref with an actionable clone command', async () => {
+    await run(['facebook/react'], { pattern: 'useState($X)' });
+
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+    const msg = vi.mocked(console.error).mock.calls.flat().join(' ');
+    expect(msg).toContain('local-only');
+    expect(msg).toContain('clone facebook/react');
+  });
+
   it('passes --mode through to localSearchCode', async () => {
     await run(['needle', 'src'], { mode: 'discovery' });
     const q = lastQuery();

@@ -91,6 +91,10 @@ export const RANK_WEIGHTS = {
   sourceDir: 1.5,
   // Penalize low-signal locations unless explicitly searched.
   lowSignalPathPenalty: -5,
+  // Candidate-local IDF: rewards rarer query tokens within the bounded
+  // candidate set, never by crawling or indexing the whole repo.
+  rareQueryTokenScale: 2,
+  rareQueryTokenCap: 3,
   // Match count must never dominate: saturate it.
   matchCountScale: 1.5,
   matchCountCap: 6,
@@ -323,11 +327,34 @@ export interface FileScore {
   reasons: string[];
 }
 
+type CandidateTermRarity = {
+  candidateCount: number;
+  fileTokens: ReadonlyMap<string, readonly string[]>;
+  documentFrequency: ReadonlyMap<string, number>;
+};
+
 function tokenFromKeyword(keyword?: string): string | undefined {
   if (!keyword) return undefined;
   // Take the first identifier-ish token of a regex/keyword for path/word checks.
   const m = /[A-Za-z_$][\w$]*/.exec(keyword);
   return m ? m[0] : undefined;
+}
+
+function queryTokensFromKeyword(
+  keyword: string | undefined,
+  caseSensitive?: boolean
+): string[] {
+  if (!keyword) return [];
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const match of keyword.matchAll(/[A-Za-z_$][\w$]*/g)) {
+    const raw = match[0];
+    const key = caseSensitive ? raw : raw.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tokens.push(raw);
+  }
+  return tokens;
 }
 
 function bestLineScore(
@@ -523,10 +550,82 @@ function saturatedMatchCount(matchCount: number, reasons: string[]): number {
   return capped;
 }
 
-/** Score one file. Pure and deterministic. */
-export function scoreFile(
-  file: LocalSearchCodeFile,
+function buildCandidateTermRarity(
+  files: LocalSearchCodeFile[],
   ctx: RankContext
+): CandidateTermRarity | undefined {
+  const queryTokens = queryTokensFromKeyword(ctx.keyword, ctx.caseSensitive);
+  if (queryTokens.length < 2 || files.length < 2) return undefined;
+
+  const fileTokens = new Map<string, readonly string[]>();
+  const documentFrequency = new Map<string, number>();
+
+  for (const file of files) {
+    const tokens = queryTokens.filter(token =>
+      fileContainsToken(file, token, ctx.caseSensitive)
+    );
+    if (tokens.length === 0) continue;
+    fileTokens.set(file.path, tokens);
+    for (const token of tokens) {
+      documentFrequency.set(token, (documentFrequency.get(token) ?? 0) + 1);
+    }
+  }
+
+  if (fileTokens.size === 0) return undefined;
+  return { candidateCount: files.length, fileTokens, documentFrequency };
+}
+
+function fileContainsToken(
+  file: LocalSearchCodeFile,
+  token: string,
+  caseSensitive?: boolean
+): boolean {
+  const flags = caseSensitive ? '' : 'i';
+  const re = new RegExp(`(^|[^\\w$])${escapeRegex(token)}([^\\w$]|$)`, flags);
+  for (const match of file.matches ?? []) {
+    if (re.test(match.value ?? '')) return true;
+  }
+  return re.test(file.path);
+}
+
+function candidateTermRarityScore(
+  file: LocalSearchCodeFile,
+  rarity: CandidateTermRarity | undefined,
+  reasons: string[]
+): number {
+  if (!rarity) return 0;
+  const tokens = rarity.fileTokens.get(file.path);
+  if (!tokens?.length) return 0;
+
+  let bestToken = '';
+  let bestScore = 0;
+  let bestDf = 0;
+  for (const token of tokens) {
+    const df = rarity.documentFrequency.get(token) ?? rarity.candidateCount;
+    if (df > rarity.candidateCount / 2) continue;
+    const idf = Math.log2((rarity.candidateCount + 1) / (df + 1));
+    const score = Math.min(
+      idf * RANK_WEIGHTS.rareQueryTokenScale,
+      RANK_WEIGHTS.rareQueryTokenCap
+    );
+    if (score > bestScore) {
+      bestScore = score;
+      bestToken = token;
+      bestDf = df;
+    }
+  }
+
+  if (bestScore <= 0) return 0;
+  reasons.push(
+    `rare query token: ${bestToken} (${bestDf}/${rarity.candidateCount} files)`
+  );
+  return bestScore;
+}
+
+function scoreFileWithRarity(
+  file: LocalSearchCodeFile,
+  ctx: RankContext,
+  rarity?: CandidateTermRarity
 ): FileScore {
   const profile = selectProfile(file.path, ctx.langType, ctx.profileOverride);
   const role = classifyPathRole(file.path);
@@ -551,6 +650,7 @@ export function scoreFile(
     reasons.push('low-signal path (penalized)');
   }
   score += saturatedMatchCount(file.matchCount ?? 0, reasons);
+  score += candidateTermRarityScore(file, rarity, reasons);
 
   return {
     score: Math.round(score * 100) / 100,
@@ -558,6 +658,14 @@ export function scoreFile(
     pathRole: role,
     reasons,
   };
+}
+
+/** Score one file. Pure and deterministic. */
+export function scoreFile(
+  file: LocalSearchCodeFile,
+  ctx: RankContext
+): FileScore {
+  return scoreFileWithRarity(file, ctx);
 }
 
 export interface RankResult {
@@ -605,13 +713,14 @@ export function rankFiles(
     candidates = [...files].sort(compareByMatchCount).slice(0, cap);
     cappedCandidates = files.length - cap;
   }
+  const rarity = buildCandidateTermRarity(candidates, ctx);
 
   // Per-file guard: a pathological file must never drop the whole result set.
   // On any scoring error the file is kept with a neutral score (sorts to the
   // bottom but is still returned) — ranking enriches, it never gates results.
   const scored = candidates.map(file => {
     try {
-      return { file, s: scoreFile(file, ctx) };
+      return { file, s: scoreFileWithRarity(file, ctx, rarity) };
     } catch {
       return { file, s: neutralScore() };
     }

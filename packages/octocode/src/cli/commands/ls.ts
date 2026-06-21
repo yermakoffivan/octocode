@@ -2,7 +2,12 @@ import path from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import type { CLICommand } from '../types.js';
 import { getBool, getString, posIntOption } from '../options.js';
-import { resolveRef, isGithubRef, refLabel } from '../routing.js';
+import {
+  resolveRef,
+  isGithubRef,
+  refLabel,
+  cloneCommandFor,
+} from '../routing.js';
 import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
@@ -14,6 +19,13 @@ interface TreeEntry {
   files?: string[];
   folders?: string[];
   summary?: string;
+}
+
+interface TreeFilterOptions {
+  pattern?: string;
+  extensions?: string[];
+  filesOnly?: boolean;
+  directoriesOnly?: boolean;
 }
 
 interface StructureResult {
@@ -202,12 +214,7 @@ function matchesNameFilters(
 
 function filterTreeData(
   data: Record<string, unknown> | undefined,
-  options: {
-    pattern?: string;
-    extensions?: string[];
-    filesOnly?: boolean;
-    directoriesOnly?: boolean;
-  }
+  options: TreeFilterOptions
 ): Record<string, unknown> | undefined {
   if (!data) return data;
   const filterEntry = (entry: TreeEntry): TreeEntry => ({
@@ -248,12 +255,24 @@ function filterTreeData(
   return filterEntry(data as TreeEntry) as Record<string, unknown>;
 }
 
+function filterStructureResult(
+  structured: LocalStructureResult | GithubStructureResult,
+  options: TreeFilterOptions
+): LocalStructureResult | GithubStructureResult {
+  return {
+    ...structured,
+    results: structured.results?.map(result => ({
+      ...result,
+      data: filterTreeData(
+        result.data as Record<string, unknown> | undefined,
+        options
+      ) as typeof result.data,
+    })),
+  };
+}
+
 export const lsCommand: CLICommand = {
   name: 'ls',
-  description:
-    'Show structure at any zoom: a directory tree (local or GitHub), or a code symbol outline when the target is a file or you pass --symbols (local-only). One command for "what is in here" and "what does this file define".',
-  usage:
-    'ls <path|github-ref> [--symbols] [--kind <kind>] [--depth <n>] [--branch <ref>] [--pattern <glob>] [--ext <list>] [--sort name|size|time|extension] [--reverse] [--files-only] [--dirs-only] [--hidden] [--limit <n>] [--page <n>] [--page-size <n>] [--json]',
   options: [
     {
       name: 'symbols',
@@ -279,7 +298,7 @@ export const lsCommand: CLICommand = {
     {
       name: 'pattern',
       hasValue: true,
-      description: 'Name filter — glob or substring, e.g. "*.ts" (local only)',
+      description: 'Name filter — glob or substring, e.g. "*.ts"',
     },
     {
       name: 'ext',
@@ -292,8 +311,8 @@ export const lsCommand: CLICommand = {
       description: 'Order: name (default), size, time, extension (local only)',
     },
     { name: 'reverse', description: 'Reverse the sort order (local only)' },
-    { name: 'files-only', description: 'List files only (local only)' },
-    { name: 'dirs-only', description: 'List directories only (local only)' },
+    { name: 'files-only', description: 'List files only' },
+    { name: 'dirs-only', description: 'List directories only' },
     { name: 'hidden', description: 'Include hidden dot-files (local only)' },
     {
       name: 'limit',
@@ -361,9 +380,10 @@ export const lsCommand: CLICommand = {
     // semantic symbol outline instead of a tree. Local-only — LSP can't run on
     // GitHub.
     const wantSymbols = getBool(options, 'symbols');
-    if (wantSymbols && isGh) {
+    if (wantSymbols && isGithubRef(ref)) {
       fail(
-        '--symbols is local-only — an LSP outline cannot run on GitHub. Clone the repo first, then `ls <path> --symbols`.'
+        '--symbols is local-only — an LSP outline cannot run on GitHub. ' +
+          `Clone first: \`${cloneCommandFor(ref)}\`, then \`ls <local-path> --symbols\`.`
       );
       return;
     }
@@ -423,17 +443,22 @@ export const lsCommand: CLICommand = {
         });
       }
 
-      if (jsonOutput) {
-        console.log(JSON.stringify(structured, null, 2));
-        return;
-      }
-
-      const data = filterTreeData(structured?.results?.[0]?.data, {
+      const treeFilters: TreeFilterOptions = {
         pattern: getString(options, 'pattern') || undefined,
         extensions: listOpt(getString(options, 'ext')),
         filesOnly: getBool(options, 'files-only'),
         directoriesOnly: getBool(options, 'dirs-only'),
-      });
+      };
+      const filteredStructured = filterStructureResult(structured, treeFilters);
+
+      if (jsonOutput) {
+        console.log(JSON.stringify(filteredStructured, null, 2));
+        return;
+      }
+
+      const data = filteredStructured?.results?.[0]?.data as
+        | Record<string, unknown>
+        | undefined;
       console.log('\n' + renderTree(data) + '\n');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

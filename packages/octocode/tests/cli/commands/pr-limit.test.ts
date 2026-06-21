@@ -30,6 +30,16 @@ function okEnvelope() {
   };
 }
 
+function prEnvelope(prs: Array<Record<string, unknown>>) {
+  return {
+    isError: false,
+    content: [],
+    structuredContent: {
+      results: [{ id: 'q1', data: { pull_requests: prs, pagination: {} } }],
+    },
+  };
+}
+
 function lastQuery() {
   const call = executeDirectTool.mock.calls.at(-1);
   return (call?.[1] as { queries: Array<Record<string, unknown>> }).queries[0];
@@ -47,6 +57,7 @@ describe('pr command limit alignment', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     process.exitCode = undefined;
   });
 
@@ -66,5 +77,32 @@ describe('pr command limit alignment', () => {
     await run(['vercel/next.js'], { limit: '2', 'page-size': '5', json: true });
 
     expect(lastQuery().limit).toBe(5);
+  });
+
+  it('labels closed PR timestamps with the closed date instead of recent update freshness', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-20T12:00:00Z'));
+    executeDirectTool.mockResolvedValue(
+      prEnvelope([
+        {
+          number: 123,
+          title: 'Old closed PR with fresh comments',
+          state: 'closed',
+          author: 'alice',
+          closedAt: '2025-01-01T00:00:00Z',
+          updatedAt: '2026-06-20T11:00:00Z',
+          createdAt: '2024-12-01T00:00:00Z',
+        },
+      ])
+    );
+
+    await run(['vercel/next.js#123']);
+
+    const output = vi
+      .mocked(console.log)
+      .mock.calls.map(call => String(call[0]))
+      .join('\n');
+    expect(output).toContain('closed 2025-01-01');
+    expect(output).not.toContain('updated 1h ago');
   });
 });

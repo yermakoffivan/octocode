@@ -10,13 +10,10 @@ import {
   printDirectToolResult,
 } from './direct-tool-output.js';
 
-const UNZIP_DESTINATION_PATTERN = join(paths.unzip, '<name>-<timestamp>');
 const UNZIP_EXAMPLE_PATH = join(paths.unzip, 'app.zip-<timestamp>');
 
 export const unzipCommand: CLICommand = {
   name: 'unzip',
-  description: `Unpack an archive to ${UNZIP_DESTINATION_PATTERN}, then run grep/find/ls/cat/ast/lsp on the contents`,
-  usage: 'unzip <archive> [--json]',
   options: [{ name: 'json', description: 'Output raw JSON results' }],
   handler: async args => {
     const file = args.args[0] ?? '';

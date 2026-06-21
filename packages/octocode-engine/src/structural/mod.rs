@@ -8,7 +8,6 @@
 
 mod files;
 mod language;
-mod matcher;
 mod octo;
 mod query;
 mod types;
@@ -21,7 +20,7 @@ pub use types::{
 
 use crate::signatures::languages;
 use language::AgLanguage;
-use matcher::compile_matcher;
+use octo::compile_matcher;
 use query::{invalid_query_explanation, StructuralQuery};
 use types::{structural_query_fingerprint, STRUCTURAL_ANALYZER, STRUCTURAL_ANALYZER_VERSION};
 

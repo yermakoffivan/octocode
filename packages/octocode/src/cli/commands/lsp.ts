@@ -280,10 +280,6 @@ async function inferLineHint(uri: string, symbolName: string): Promise<number> {
 
 export const lspCommand: CLICommand = {
   name: 'lsp',
-  description:
-    'Run LSP semantic research (symbol identity) for a local source file — definitions, references, callers, hover. For a file/dir outline use the `symbols` command.',
-  usage:
-    'lsp <file> --type <type> --symbol <name> [--line <n>] [--workspace-root <path>] [--page <n>] [--page-size <n>] [--context-lines <n>] [--depth <n>] [--format structured|compact] [--json]',
   options: [
     {
       name: 'type',

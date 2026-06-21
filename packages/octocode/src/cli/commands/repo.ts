@@ -238,9 +238,6 @@ function buildQuery(
 
 export const repoCommand: CLICommand = {
   name: 'repo',
-  description: 'Search GitHub repositories with research-oriented filters',
-  usage:
-    'repo <keywords...> [--topic <list>] [--language <lang>] [--owner <owner>] [--stars <range>] [--sort stars|forks|help-wanted-issues|updated|best-match] [--concise] [--verbose] [--json]',
   options: [
     {
       name: 'concise',

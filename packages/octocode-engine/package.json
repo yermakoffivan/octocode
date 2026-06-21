@@ -265,6 +265,9 @@
     "pack:check": "node scripts/check-pack-size.cjs",
     "platforms:check": "node scripts/check-platform-binaries.cjs",
     "version:check": "node scripts/check-version-consistency.cjs",
+    "version:sync": "node scripts/sync-versions.cjs",
+    "loader:check": "node scripts/check-loader-entries.cjs",
+    "prepublish:verify": "yarn version:check && yarn loader:check && yarn pack:check && yarn platforms:check",
     "binary-size:check": "node scripts/check-binary-size.cjs",
     "ast:check": "yarn workspace @octocodeai/octocode-benchmark ast:check",
     "lsp:check": "yarn workspace @octocodeai/octocode-benchmark lsp:check",
@@ -282,7 +285,8 @@
     "test:node:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:quiet": "vitest run",
-    "lint": "echo 'No TS source files to lint'",
+    "lint": "yarn lint:rust",
+    "lint:fix": "yarn fmt:rust",
     "lint:rust": "cargo clippy --all-targets --all-features -- -D warnings",
     "typecheck": "tsc --noEmit",
     "deps:rust": "cargo tree --duplicates",
@@ -291,9 +295,10 @@
     "audit:rust": "cargo audit -D unmaintained -D unsound -D yanked",
     "audit": "yarn audit:rust",
     "verify:rust": "yarn check:rust && yarn fmt:rust:check && yarn lint:rust && yarn test:rust && yarn deps:rust && yarn audit:rust",
-    "verify": "yarn verify:patterns && yarn typecheck && yarn verify:rust && yarn test && yarn benchmark && yarn pack:check && yarn version:check && yarn binary-size:check",
+    "verify": "yarn verify:patterns && yarn typecheck && yarn verify:rust && yarn test && yarn benchmark && yarn pack:check && yarn version:check && yarn loader:check && yarn binary-size:check",
     "readme:sync": "node ../../scripts/sync-package-readmes.mjs .",
-    "prepack": "yarn readme:sync"
+    "prepack": "yarn readme:sync",
+    "prepublishOnly": "yarn version:sync"
   },
   "dependencies": {
     "typescript": "^5.9.3",

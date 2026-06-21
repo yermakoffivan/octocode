@@ -204,6 +204,22 @@ function relativeTime(dateStr: string | undefined): string {
   return new Date(dateStr).toISOString().slice(0, 10);
 }
 
+function activityTime(pr: PRItem): string {
+  const events: Array<[label: string, date: string | undefined]> = [
+    ['merged', pr.mergedAt],
+    ['closed', pr.closedAt],
+    ['updated', pr.updatedAt],
+    ['opened', pr.createdAt],
+  ];
+
+  for (const [label, date] of events) {
+    const when = relativeTime(date);
+    if (when) return `${label} ${when}`;
+  }
+
+  return '';
+}
+
 function stateBadge(pr: PRItem): string {
   if (pr.state === 'merged' || pr.mergedAt) return c('magenta', 'merged');
   if (pr.state === 'closed' || pr.closedAt) return c('red', 'closed');
@@ -232,7 +248,7 @@ function renderList(sc: PRSearchResult, limit: number): string {
     const authorSeg = pr.author
       ? `  ${dim(`by ${authorName(pr.author)}`)}`
       : '';
-    const when = dim(relativeTime(pr.mergedAt ?? pr.updatedAt ?? pr.createdAt));
+    const when = dim(activityTime(pr));
     const tags = labelNames(pr.labels);
     const labelStr = tags.length ? dim(` [${tags.join(', ')}]`) : '';
     lines.push(`  ${num}  ${state}  ${title}${labelStr}${authorSeg}  ${when}`);
@@ -292,7 +308,7 @@ function renderDetail(sc: PRSearchResult): string {
     base !== '?'
       ? `${dim('→')} ${base}${head !== '?' ? ` ${dim('←')} ${head}` : ''}`
       : '',
-    dim(relativeTime(pr.mergedAt ?? pr.updatedAt ?? pr.createdAt)),
+    dim(activityTime(pr)),
   ].filter(Boolean);
   lines.push(`  ${metaParts.join('  ')}`);
 
@@ -585,10 +601,6 @@ async function fetchPRDetail(
 
 export const prCommand: CLICommand = {
   name: 'pr',
-  description:
-    'Search and view pull requests — list with filters or deep-dive a single PR',
-  usage:
-    'pr <owner/repo[#N] | PR-URL> [--pr <n>] [--state open|closed|merged] [--concise] [--patches] [--comments] [--commits] [--deep] [--json]',
   options: [
     {
       name: 'pr',
