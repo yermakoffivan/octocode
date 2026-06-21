@@ -269,7 +269,14 @@ octocode grep src --pattern 'eval($X)'
 octocode grep packages/react --repo facebook/react --pattern 'useState($$$ARGS)' --type js
 octocode grep packages/octocode/src --pattern 'console.log($$$ARGS)' --type ts
 octocode grep packages/octocode/src --pattern '$A && $A()' --type ts
-octocode grep src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement\n    stopBy: end'
+# --rule is YAML. In single quotes `\n` stays LITERAL — use $'...' (bash/zsh
+# interpret \n) or paste a real multiline string:
+octocode grep src --rule $'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement\n    stopBy: end'
+octocode grep src --rule 'rule:
+  pattern: await $C
+  inside:
+    kind: for_statement
+    stopBy: end'
 ```
 
 ### find
@@ -391,14 +398,14 @@ For one-step remote-as-local research, use `cat`, `ls`, `grep`, `find`, or `lsp`
 
 ### cache
 
-Materialize remote files, trees, or whole repos into Octocode's `<octocode-home>/tmp/` storage and print agent-facing local-tool hints. Files and API-fetched trees land in `tmp/tree`; git clones land in `tmp/clone`.
+      Materialize remote files, trees, or whole repos into Octocode's `<octocode-home>/tmp/` storage and print agent-facing local-tool hints. Files and API-fetched trees land in `tmp/tree`; git clones land in `tmp/clone`. `cache fetch` checks existing local materialization first; use `--force-refresh` only when you need to bypass it.
 
-```
-cache fetch <owner/repo[@ref]> [path]
-    --depth file|tree|clone  requested materialization depth (default: tree with path, clone without path)
-    --branch <ref>           branch, tag, or SHA
-    --force-refresh          bypass existing tmp materialization and refresh
-    --json
+      ```
+      cache fetch <owner/repo[@ref]> [path]
+          --depth file|tree|clone  requested materialization depth (default: file with path, clone without path)
+          --branch <ref>           branch, tag, or SHA
+          --force-refresh          bypass existing tmp materialization and refresh
+          --json
 
 cache status [--json]
 cache clear --clone|--repos|--tree|--binary|--unzip|--all [--json]
@@ -406,11 +413,22 @@ cache clear --clone|--repos|--tree|--binary|--unzip|--all [--json]
 
 Examples:
 
-```bash
-octocode cache fetch facebook/react packages/react
-octocode cache fetch facebook/react packages/react/index.js --depth file
-octocode cache status
-```
+      ```bash
+      octocode cache fetch facebook/react packages/react
+      octocode cache fetch facebook/react packages/react --depth tree
+      octocode cache fetch facebook/react packages/react/index.js --depth file
+      octocode cache status
+      ```
+
+      After `cache fetch`, continue locally with the returned absolute path:
+
+      ```bash
+      octocode ls <localPath>
+      octocode find useState <localPath> --search both
+      octocode grep "useState" <localPath>
+      octocode cat <localPath>/index.js
+      octocode lsp <localPath>/index.js --type references --symbol useState --line <lineHint>
+      ```
 
 ### pr
 

@@ -1,8 +1,8 @@
 # Workflow — Engineering Research Recipes
 
-Step-focused recipes built only on the native octocode toolset (CLI or MCP — same engine). For the Clean-Architecture principles, the six dimensions, gates, and the artifact, see [SKILL.md](../SKILL.md). For flags and the CLI↔MCP map, see [context_cli_mcp_commands.md](./context_cli_mcp_commands.md). For AST patterns, see [context_ast_pattern_cookbook.md](./context_ast_pattern_cookbook.md).
+Step-focused recipes built on the native octocode toolset. Prefer the CLI quick commands; use MCP/raw tools only when the CLI is unavailable or a schema-exact field is needed. For the Clean-Architecture principles, the six dimensions, gates, and the artifact, see [SKILL.md](../SKILL.md). For flags and the CLI/MCP fallback map, see [context_cli_mcp_commands.md](./context_cli_mcp_commands.md). For AST patterns, see [context_ast_pattern_cookbook.md](./context_ast_pattern_cookbook.md).
 
-Notation: each step names the **job**; run it with whichever transport you chose. Shorthand: `grep`=`octocode grep`/`localSearchCode`, `lsp …`=`octocode lsp`/`lspGetSemantics`, `ast`=`octocode ast`/`localSearchCode(mode:"structural")`, `symbols`=`octocode symbols`/`documentSymbols`, `cat`=`octocode cat`/`localGetFileContent`, `ls`/`find`=structure/file tools.
+Notation: each step names the **job**; default to CLI quick commands and use MCP/raw tools only when needed. Shorthand: `grep`=`octocode grep`/`localSearchCode`, `lsp …`=`octocode lsp`/`lspGetSemantics`, `ast`=`octocode grep --pattern/--rule`/`localSearchCode(mode:"structural")`, `symbols`=`octocode ls --symbols` or `octocode cat --mode symbols`/`documentSymbols`, `cat`=`octocode cat`/`localGetFileContent`, `ls`/`find`=structure/file tools.
 
 ---
 
@@ -15,7 +15,8 @@ Notation: each step names the **job**; run it with whichever transport you chose
 | "Where is X defined?" | `grep X` → `lsp definition` |
 | "Who calls function X?" | `grep X` → `lsp callers` |
 | "All usages of type/var X?" | `grep X` → `lsp references` |
-| "Is export X dead?" | `lsp references` (exclude decl) = 0 → cross-check `ast` import search |
+| "Is export X dead?" | `search target:"research"` candidate row → `lsp references` (exclude decl) + `ast` import search proof |
+| "Are there unused files/deps?" | `search target:"research"` candidate rows → knip or exact manifest/import proof before deletion |
 | "Read this function" | `cat --match-string "X" --mode none` |
 | "Trace flow A → B" | `grep` → `lsp definition` → `lsp callers/callees` → hop |
 | "Architecture hotspots?" | fan-in (`lsp references` count) ∩ large span (`symbols`) ∩ churn — *approximation, flag it* |
@@ -56,12 +57,16 @@ Notation: each step names the **job**; run it with whichever transport you chose
 2. `lsp references` (exclude declaration) → split test vs production. For cross-package reach use `lsp callers`; `references` only covers the same package (see the reliability note above — load consumers before trusting a low count).
 3. Few prod refs + tests present = safe. Many = plan carefully → Workflow 11.
 
-### 4 — Dead export validation
+### 4 — Dead export / package-drift validation
 
-1. `lsp references` excluding declaration → 0 = candidate — **but a zero may just be open-file scope**, so load likely consumers first (batch `documentSymbols`/`definition` on them, or `symbols`/`cat`) and re-query before treating it as evidence.
-2. `ast` import-statement search for the name → none = no static import.
-3. `grep` the name broadly → catch dynamic/computed/re-exported usage.
-4. 0 across **all three** = confirmed dead (this triangulation is what makes it safe — the lone `lsp` zero is not). Any hit = dismiss.
+1. Run Smart OQL first for the candidate universe:
+   `octocode search --query '{"target":"research","from":{"kind":"local","path":"."},"params":{"goal":"find unused exports, transitive dead code, unused files, and package drift","mode":"analyze"}}' --json`.
+2. Use `data.symbols` (`symbol`, `kind`, `file`, `line`, `directRefs`, `externalRefs`, `retainedBy`, `verdict`) to choose high-value rows. Treat the envelope as candidate evidence, especially when counts greatly exceed knip.
+3. For each deletion candidate, run `lsp references` excluding declaration — **but a zero may just be open-file scope**, so load likely consumers first (batch `documentSymbols`/`definition` on them, or `symbols`/`cat`) and re-query before treating it as evidence.
+4. `ast` import-statement search for the name → none = no static import.
+5. `grep` the name broadly → catch dynamic/computed/re-exported usage.
+6. 0 across Smart OQL + LSP + AST + broad grep = confirmed dead. Any reachable/static hit = dismiss or lower confidence.
+7. For unused files/dependencies, confirm with knip or exact manifest/import evidence before deleting; Smart OQL's entrypoint graph is useful but not framework-complete.
 
 ### 5 — Code-smell sweep
 
@@ -146,6 +151,6 @@ Notation: each step names the **job**; run it with whichever transport you chose
 
 ## History recipes (the "why")
 
-- **Why did this change?** `history <owner/repo/path>` → a headline with `(#NNN)` → `pr <owner/repo#NNN> --deep`.
+- **Why did this change?** `history <owner/repo/path>` → a headline with `(#NNN)` → `pr <owner/repo#NNN> --json`; add `--patches --file <path>` or `--deep` only when needed.
 - **Which PR introduced X?** `pr <owner/repo> --state merged --sort created --order asc` → oldest merged first.
 - Use history to recover the rationale behind a contract or boundary before you change it.

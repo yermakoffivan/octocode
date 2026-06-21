@@ -1,6 +1,6 @@
 # Context — External Measurement Tools
 
-These cover what the native octocode toolset can't: **measurement** (metrics, type-coverage %), **graph rules** (cycles, layers, instability), framework-aware dead code, linting, type checking, and security scanning. The native tools handle shapes (AST) and relationships (LSP); reach here when a claim needs a number or a whole-graph rule (see [SKILL.md](../SKILL.md) §4 and [checklist_quality_signals.md](./checklist_quality_signals.md)).
+These cover what the native octocode toolset can't fully prove: **measurement** (metrics, type-coverage %), **graph rules** (cycles, layers, instability), framework-aware dead code, linting, type checking, and security scanning. The native tools handle shapes (AST), relationships (LSP), and Smart OQL candidate reachability/package-drift rows; reach here when a claim needs a number, a framework-complete graph, or a whole-graph rule (see [SKILL.md](../SKILL.md) §4 and [checklist_quality_signals.md](./checklist_quality_signals.md)).
 
 **Ask the user before running.** Use `npx` (JS/TS) or `pip`/`pipx` (Python) — avoid global installs.
 
@@ -9,7 +9,7 @@ These cover what the native octocode toolset can't: **measurement** (metrics, ty
 | Native gap | Tool |
 |------------|------|
 | Dependency cycles, layer rules, instability/SDP | `dep-cruiser` |
-| Framework-aware dead exports/files/deps | `knip` |
+| Framework-aware dead exports/files/deps | Smart OQL `target:"research"` first, `knip` to confirm framework graph semantics |
 | Type-safety % (typed vs `any`) | `type-coverage` |
 | Cyclomatic complexity threshold | `eslint --rule '{"complexity":["error",10]}'` |
 | Type errors | `tsc` (TS) / `mypy` / `pyright` (Py) |
@@ -46,7 +46,7 @@ npx stylelint --formatter json "**/*.css"
 
 ## knip — Framework-aware dead code
 
-100+ plugins (Next.js, Remix, Angular) detect framework-specific usage that LSP `references` + `ast` import search can't see.
+100+ plugins (Next.js, Remix, Angular) detect framework-specific usage that Smart OQL's candidate graph and LSP `references` + `ast` import search may not see. Use Smart OQL first to get `symbol/kind/file/line/directRefs/externalRefs/retainedBy/verdict` rows, then use knip when deletion safety depends on framework entrypoints, workspace/package rules, or dependency manifests.
 
 ```bash
 npx knip
@@ -82,7 +82,7 @@ npx depcruise --no-config --output-type err --affected HEAD src/
 
 ## Python Tools
 
-Use these for Python codebases. `octocode ast --type py` handles structural Python smells (see [context_ast_pattern_cookbook.md](./context_ast_pattern_cookbook.md)); these tools add linting, type checking, and security scanning on top.
+Use these for Python codebases. `octocode grep <path> --pattern/--rule ... --type py` handles structural Python smells (see [context_ast_pattern_cookbook.md](./context_ast_pattern_cookbook.md)); these tools add linting, type checking, and security scanning on top.
 
 ### ruff — Fast Python linter + formatter
 
