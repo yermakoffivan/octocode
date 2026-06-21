@@ -130,6 +130,6 @@ describe('searchContentStructural', () => {
 
     expect(result.status).toBe('error');
     expect(result.error).toContain('Invalid structural pattern');
-    expect(result.hints?.join('\n')).toContain('Use $X');
+    expect(result.hints).toBeUndefined();
   });
 });

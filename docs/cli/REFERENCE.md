@@ -654,7 +654,7 @@ Shows auth state, token presence/source, MCP client install health, and cache in
 
 ## Tool Runner
 
-`octocode tools` imports the canonical public catalog from `octocode-mcp/public`; the CLI does not maintain separate tool schemas.
+`octocode tools` uses the canonical direct-tool catalog from `@octocodeai/octocode-tools-core/direct`; the CLI does not maintain separate tool schemas.
 
 Raw tool calls use `--queries`. Legacy `--input` is not supported, and unsupported tool flags are rejected before execution.
 

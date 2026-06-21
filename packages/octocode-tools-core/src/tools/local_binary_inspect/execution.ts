@@ -47,7 +47,6 @@ export async function executeInspectBinary(
       }),
     {
       toolName: TOOL_NAMES.LOCAL_BINARY_INSPECT,
-      peerHints: true,
     },
     args
   );

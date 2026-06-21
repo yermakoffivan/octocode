@@ -75,18 +75,17 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
               .optional(),
             totalMatchesCapped: z.boolean().optional(),
             hasMore: z.boolean(),
+            nextPage: z.number().optional(),
             uniqueFileCount: z.number().optional(),
           })
           .optional(),
       }),
     })
   ),
-  hints: z.array(z.string()).optional(),
   emptyQueries: z
     .array(
       z.object({
         id: z.string(),
-        hints: z.array(z.string()).optional(),
         nonExistentScope: z.literal(true).optional(),
       })
     )
@@ -96,7 +95,6 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
       z.object({
         id: z.string(),
         error: z.string(),
-        hints: z.array(z.string()).optional(),
       })
     )
     .optional(),

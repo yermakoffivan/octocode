@@ -4,9 +4,7 @@ import type {
   ToolSuccessResult,
   ToolInvocationCallback,
 } from '../types/toolResults.js';
-import type { HintContext } from '../types/metadata.js';
 import type { ProviderResponse } from '../providers/types.js';
-import { getHints } from '../hints/index.js';
 import { logSessionError } from '../session.js';
 import { TOOL_ERRORS } from '../errors/domainErrors.js';
 import {
@@ -33,12 +31,6 @@ export async function invokeCallbackSafely(
 }
 
 interface SuccessResultOptions {
-  hintContext?: HintContext;
-
-  prefixHints?: string[];
-
-  extraHints?: string[];
-
   rawResponse?: unknown;
 }
 
@@ -50,7 +42,7 @@ export function createSuccessResult<T extends object>(
   },
   data: T,
   hasContent: boolean,
-  toolName: string,
+  _toolName: string,
   options?: SuccessResultOptions
 ): ToolSuccessResult & T {
   const status = hasContent ? undefined : ('empty' as const);
@@ -59,26 +51,6 @@ export function createSuccessResult<T extends object>(
     ...(status !== undefined ? { status } : {}),
     ...data,
   } as ToolSuccessResult & T;
-
-  // Successful results carry their evidence in structured fields and the
-  // schema's own field guidance; per-call hint boilerplate is redundant token
-  // waste. Hints are emitted only for empty-result recovery (errors get theirs
-  // via createErrorResult). prefix/extra hints are recovery aids too, so they
-  // are kept only on the empty path.
-  const isEmpty = status === 'empty';
-  const recoveryHints = isEmpty
-    ? getHints(toolName, 'empty', options?.hintContext)
-    : [];
-  const prefixHints = isEmpty ? options?.prefixHints || [] : [];
-  const extraHints = isEmpty ? options?.extraHints || [] : [];
-
-  const allHints = [
-    ...new Set([...prefixHints, ...recoveryHints, ...extraHints]),
-  ].filter((h): h is string => typeof h === 'string' && h.trim().length > 0);
-
-  if (allHints.length > 0) {
-    result.hints = allHints;
-  }
 
   return options?.rawResponse === undefined
     ? result
@@ -104,11 +76,7 @@ export function handleProviderError(
     retryAfter: apiResult.rateLimit?.retryAfter,
   };
 
-  const externalHints = Array.isArray(apiResult.hints) ? apiResult.hints : [];
-
   const errorResult = createErrorResult(apiError, query, {
-    hintSourceError: apiError,
-    customHints: externalHints,
     rawResponse:
       apiResult.rawResponseChars ??
       apiResult.data ??

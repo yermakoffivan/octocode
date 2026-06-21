@@ -210,18 +210,9 @@ async function handleList(path: string, query: BinaryInspectQuery) {
   const result = await listArchiveEntries(path, verbose);
 
   if (!result.success) {
-    const missingHint = result.missingCommands?.length
-      ? [`Install a missing backend: ${result.missingCommands.join(', ')}`]
-      : [];
     return createErrorResult(
       result.stderr || 'All archive backends failed',
-      query,
-      {
-        customHints: [
-          ...missingHint,
-          'Run mode="inspect" first to confirm this is an archive.',
-        ],
-      }
+      query
     );
   }
 
@@ -262,15 +253,7 @@ async function handleExtract(path: string, query: BinaryInspectQuery) {
   const result = await extractArchiveEntry(path, archiveFile);
 
   if (!result.success) {
-    const missingHint = result.missingCommands?.length
-      ? [`Install a missing backend: ${result.missingCommands.join(', ')}`]
-      : [];
-    return createErrorResult(result.stderr || 'Extraction failed', query, {
-      customHints: [
-        ...missingHint,
-        'Run mode="list" first — entry names are case-sensitive.',
-      ],
-    });
+    return createErrorResult(result.stderr || 'Extraction failed', query);
   }
 
   let content = result.stdout;
@@ -325,12 +308,7 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
   const result = await decompressFile(path, query.format ?? 'auto');
 
   if (!result.success) {
-    return createErrorResult(result.error ?? 'Decompression failed', query, {
-      customHints: [
-        'For multi-entry archives (.tar.gz, .zip etc.) use mode="list" or mode="extract".',
-        'Set format explicitly: gzip|bzip2|xz|lzma|zstd|lz4|brotli|lzfse',
-      ],
-    });
+    return createErrorResult(result.error ?? 'Decompression failed', query);
   }
 
   let content = result.content ?? '';
@@ -449,17 +427,7 @@ async function handleUnpack(path: string, query: BinaryInspectQuery) {
   if (!result.success) {
     return createErrorResult(
       `Unpack failed: ${result.stderr || 'no backend could extract this archive'}`,
-      query,
-      {
-        customHints: [
-          'unpack handles archives (.zip/.jar/.tar.*/.7z/.deb/.dmg…). For a single-stream file use mode="decompress"; for a native binary use mode="strings".',
-          ...(result.missingCommands?.length
-            ? [
-                `Missing backends: ${result.missingCommands.join(', ')} — install one (e.g. unzip, bsdtar, 7z).`,
-              ]
-            : []),
-        ],
-      }
+      query
     );
   }
 

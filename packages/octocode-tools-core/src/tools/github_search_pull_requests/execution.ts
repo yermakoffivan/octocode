@@ -32,7 +32,6 @@ import {
   executeProviderOperation,
 } from '../providerExecution.js';
 import {
-  hasExpensiveContentRequest,
   normalizePullRequestContentRequest,
 } from './contentRequest.js';
 import { shapePullRequestForContent } from './contentResponse.js';
@@ -112,42 +111,20 @@ export async function searchMultipleGitHubPullRequests(
           );
 
           if (isGitHubAPIError(result)) {
-            const isRateLimited =
-              result.status === 429 ||
-              result.error?.toString().toLowerCase().includes('rate limit') ||
-              false;
             return createErrorResult(result, query, {
               toolName: TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
-              hintContext: {
-                type: 'commits',
-                path,
-                isRateLimited,
-                status: result.status,
-                retryAfter: result.retryAfter,
-              },
-              hintSourceError: result,
             });
           }
 
-          const { commits, pagination } = result.data;
+          const { commits } = result.data;
           const hasContent = commits.length > 0;
 
-          // Success-path navigation hints (next-page / merge-commit PR refs)
-          // are dropped centrally by createSuccessResult; the evidence lives in
-          // the structured commits + pagination fields. Empty-path recovery
-          // hints come from getHints('empty') via hintContext below.
           return createSuccessResult(
             query,
             result.data as unknown as Record<string, unknown>,
             hasContent,
             TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
             {
-              hintContext: {
-                type: 'commits',
-                path,
-                matchCount: commits.length,
-                hasMorePages: pagination.hasMore,
-              },
               rawResponse: result.rawResponseChars,
             }
           );
@@ -159,46 +136,11 @@ export async function searchMultipleGitHubPullRequests(
         const contentRequest = normalizePullRequestContentRequest(
           effectiveQuery as never
         );
-        const downgradeHints: string[] = [];
         const hasPrNumber = effectiveQuery.prNumber !== undefined;
-
-        if (!hasPrNumber && hasExpensiveContentRequest(contentRequest)) {
-          downgradeHints.push(
-            'Broad PR search returns metadata only. Re-call with prNumber and content selectors (body, changedFiles, patches, comments, commits) or reviewMode="full" to fetch PR content.'
-          );
-        }
 
         if (!hasPrNumber) {
           (effectiveQuery as { content?: unknown }).content = undefined;
           (effectiveQuery as { reviewMode?: unknown }).reviewMode = undefined;
-        }
-
-        const hasTextQuery =
-          !hasPrNumber &&
-          ((effectiveQuery.keywordsToSearch?.length ?? 0) > 0 ||
-            Boolean(effectiveQuery.query));
-        const looksLikeArchaeology =
-          hasTextQuery &&
-          !effectiveQuery.created &&
-          (effectiveQuery.state === 'merged' ||
-            (effectiveQuery as { merged?: boolean }).merged === true);
-        if (
-          looksLikeArchaeology &&
-          !effectiveQuery.sort &&
-          !effectiveQuery.order
-        ) {
-          downgradeHints.push(
-            'To find the PR that first introduced a feature: sort:"created" order:"asc". Use match:["title"] for title-only and query:\'"exact phrase"\' for phrase matching.'
-          );
-        } else if (
-          hasTextQuery &&
-          !effectiveQuery.created &&
-          !effectiveQuery.sort &&
-          !effectiveQuery.order
-        ) {
-          downgradeHints.push(
-            'Archaeology tip: add state:"merged" sort:"created" order:"asc" to find the oldest matching merged PR. Use match:["title"] for title-only matching.'
-          );
         }
 
         const hasValidParams =
@@ -285,34 +227,12 @@ export async function searchMultipleGitHubPullRequests(
 
         // Per-call result/file-change/matchString hints were computed only from
         // populated results and dropped centrally by createSuccessResult on the
-        // success path; they are removed as dead code. downgradeHints are
-        // query-shape guidance that still flow on the empty-recovery path.
-        const shaped = buildPRSearchOutput(
-          {
-            data: resultData,
-            pullRequests,
-            extraHints: [...downgradeHints],
-          },
-          effectiveQuery as PartialPRQuery
-        );
-
         return createSuccessResult(
           effectiveQuery,
-          shaped.data,
+          resultData as unknown as Record<string, unknown>,
           hasContent,
           TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
           {
-            hintContext: {
-              matchCount: shapedPullRequests.length,
-              state: effectiveQuery.state,
-              owner: effectiveQuery.owner,
-              repo: effectiveQuery.repo,
-              author: effectiveQuery.author,
-              keywords: effectiveQuery.keywordsToSearch,
-              prNumber: effectiveQuery.prNumber,
-              prMatch: effectiveQuery.match,
-            },
-            extraHints: shaped.extraHints,
             rawResponse: providerResult.response.rawResponseChars,
           }
         );
@@ -333,19 +253,8 @@ export async function searchMultipleGitHubPullRequests(
         'total_count',
         'error',
       ] satisfies Array<keyof GitHubSearchPullRequestsToolResult>,
-      peerHints: true,
     },
     args
   );
 }
 
-export function buildPRSearchOutput(
-  input: {
-    data: Record<string, unknown>;
-    pullRequests: Array<Record<string, unknown>>;
-    extraHints: string[];
-  },
-  _query: PartialPRQuery
-): { data: Record<string, unknown>; extraHints: string[] } {
-  return { data: input.data, extraHints: input.extraHints };
-}

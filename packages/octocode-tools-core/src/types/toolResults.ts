@@ -4,7 +4,6 @@ export type QueryStatus = 'empty' | 'error';
 
 interface ToolResult {
   status?: QueryStatus;
-  hints?: string[];
   [key: string]: unknown;
 }
 
@@ -55,7 +54,6 @@ export interface ProcessedBulkResult {
   data?: Record<string, unknown>;
   error?: string | GitHubAPIError;
   status?: QueryStatus;
-  hints?: readonly string[] | string[];
   [key: string]: unknown;
 }
 
@@ -72,7 +70,6 @@ export interface QueryError {
 
 export interface StructuredToolResponse {
   data?: unknown;
-  hints?: string[];
   instructions?: string;
   [key: string]: unknown;
 }

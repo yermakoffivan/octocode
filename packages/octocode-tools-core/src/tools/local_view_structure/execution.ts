@@ -47,7 +47,6 @@ export async function executeViewStructure(
         'folders',
         'entries',
       ] satisfies Array<keyof LocalViewStructureToolResult>,
-      peerHints: true,
     },
     args
   );

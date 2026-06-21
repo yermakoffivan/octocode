@@ -53,7 +53,6 @@ function normalizeStructureErrorResult(
       ? { statusCode: apiError.status }
       : {}),
     ...(typeof apiError?.type === 'string' ? { errorType: apiError.type } : {}),
-    ...(Array.isArray(result.hints) ? { hints: result.hints } : {}),
   };
 }
 
@@ -115,16 +114,10 @@ export async function exploreMultipleRepositoryStructures(
           return normalizeStructureErrorResult(providerResult.result, query);
         }
 
-        const originalHasContent =
-          Object.keys(providerResult.response.data.structure ?? {}).length > 0;
         const filteredStructure = filterStructure(
           providerResult.response.data.structure
         );
         const hasContent = Object.keys(filteredStructure).length > 0;
-        const wasFilteredToEmpty = originalHasContent && !hasContent;
-        const wasTruncated = Boolean(
-          providerResult.response.data.summary?.truncated
-        );
         const resultData = mapRepoStructureProviderResult(
           providerResult.response.data,
           query,
@@ -132,56 +125,12 @@ export async function exploreMultipleRepositoryStructures(
           resolvedBranch
         );
 
-        const branchFallback =
-          'branchFallback' in resultData
-            ? resultData.branchFallback
-            : undefined;
-        const apiHints = providerResult.response.data.hints || [];
-        const branchHints: string[] = branchFallback
-          ? [
-              `WARNING: Branch '${String((branchFallback as { requestedBranch: string }).requestedBranch)}' not found. Showing '${String((branchFallback as { actualBranch: string }).actualBranch)}' (default branch). Re-query with the correct branch name if branch-specific results are required.`,
-            ]
-          : [];
-        const entryCount = Object.values(filteredStructure).reduce(
-          (sum, entry) => sum + entry.files.length + entry.folders.length,
-          0
-        );
-
-        // Successful structure results carry their evidence in structured
-        // fields (incl. the `pagination` object); per-call pagination/next-step
-        // hints are redundant token waste on success and are dropped centrally
-        // by createSuccessResult. Provider `apiHints` are forwarded as recovery
-        // aids and remain gated on the success path.
-        const shaped = buildRepoStructureOutput(
-          {
-            data: resultData as Record<string, unknown>,
-            entryCount,
-            wasTruncated,
-            extraHints: apiHints,
-          },
-          query
-        );
-
         return createSuccessResult(
           query,
-          shaped.data,
+          resultData as unknown as Record<string, unknown>,
           hasContent,
           TOOL_NAMES.GITHUB_VIEW_REPO_STRUCTURE,
           {
-            hintContext: {
-              entryCount,
-              path: query.path,
-              depth: query.maxDepth,
-              branch: query.branch,
-              wasFilteredToEmpty,
-              flagFiles: Object.values(filteredStructure).flatMap(entry =>
-                entry.files.filter(f =>
-                  /(Mode|Config|Flag|Feature)\.[A-Za-z0-9]+$/.test(f)
-                )
-              ),
-            },
-            prefixHints: branchHints,
-            extraHints: shaped.extraHints,
             rawResponse: providerResult.response.rawResponseChars,
           }
         );
@@ -204,26 +153,8 @@ export async function exploreMultipleRepositoryStructures(
         'structure',
         'error',
       ] satisfies Array<keyof GitHubViewRepoStructureToolResult>,
-      peerHints: true,
     },
     args
   );
 }
 
-export function buildRepoStructureOutput(
-  input: {
-    data: Record<string, unknown>;
-    entryCount: number;
-    wasTruncated: boolean;
-    extraHints: string[];
-  },
-  _query: PartialRepoStructureQuery
-): { data: Record<string, unknown>; extraHints: string[] } {
-  // Next-path / navigation hints on the success path are redundant token waste
-  // (the structure itself lists the paths) and are dropped centrally by
-  // createSuccessResult. Forward only the caller-supplied (provider) hints.
-  return {
-    data: input.data,
-    extraHints: input.extraHints,
-  };
-}

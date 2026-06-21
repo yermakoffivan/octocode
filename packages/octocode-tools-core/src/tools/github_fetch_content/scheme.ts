@@ -22,6 +22,8 @@ const PaginationInfoSchema = z.object({
   currentPage: z.number(),
   totalPages: z.number(),
   hasMore: z.boolean(),
+  nextPage: z.number().optional(),
+  nextMatchPage: z.number().optional(),
   charOffset: z.number().optional(),
   charLength: z.number().optional(),
   totalChars: z.number().optional(),
@@ -111,7 +113,6 @@ export const GitHubFetchContentOutputLocalSchema = z.object({
       directories: z.array(GitHubFetchDirectoryEntrySchema).optional(),
     })
   ),
-  hints: z.array(z.string()).optional(),
   errors: z
     .array(
       z.object({
@@ -120,7 +121,6 @@ export const GitHubFetchContentOutputLocalSchema = z.object({
         repo: z.string().optional(),
         path: z.string().optional(),
         error: z.string(),
-        hints: z.array(z.string()).optional(),
       })
     )
     .optional(),

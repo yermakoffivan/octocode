@@ -30,7 +30,6 @@ import {
   isLanguageServerAvailable,
 } from '@octocodeai/octocode-engine/lsp/manager';
 import { executeLspGetSemantics } from '../../../octocode-tools-core/src/tools/lsp/semantic_content/execution.js';
-import { hints as semanticToolHints } from '../../../octocode-tools-core/src/tools/lsp/semantic_content/hints.js';
 import {
   LspGetSemanticsOutputSchema,
   LspGetSemanticsQuerySchema,
@@ -728,23 +727,6 @@ describe('new public LSP tool execution', () => {
       queries: [],
     } as never);
     expect(result).toBeDefined();
-  });
-
-  it('exposes direct hint branches for the public LSP tool', () => {
-    expect(semanticToolHints.empty({ symbolName: 'target' })).toEqual(
-      expect.arrayContaining([expect.stringContaining('localSearchCode')])
-    );
-    expect(semanticToolHints.empty({ type: 'hover' } as never)).toEqual(
-      expect.arrayContaining([expect.stringContaining('localSearchCode')])
-    );
-    expect(semanticToolHints.error({ errorType: 'lsp_unavailable' })).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Language server unavailable'),
-      ])
-    );
-    expect(semanticToolHints.error({ errorType: 'symbol_not_found' })).toEqual(
-      expect.arrayContaining([expect.stringContaining('localSearchCode')])
-    );
   });
 
   it('sets isAmbiguous when symbol occurs multiple times and lineHint is far from resolved position', async () => {

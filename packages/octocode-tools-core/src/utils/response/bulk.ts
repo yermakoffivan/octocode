@@ -84,7 +84,7 @@ function createBulkResponse<
   queries: Array<TQuery>,
   pagination?: BulkResponsePagination
 ): CallToolResult {
-  const topLevelFields = ['results', 'hints', 'base', 'shared'];
+  const topLevelFields = ['results', 'base', 'shared'];
   const resultFields = ['id', 'status', 'data'];
   const fullKeysPriority = [
     ...new Set([
@@ -150,8 +150,6 @@ function createBulkResponse<
     };
   }
 
-  const aggregatedHints = config.peerHints ? dedupePeerHints(flatQueries) : [];
-
   const responseData: BulkToolResponse = { results: flatQueries };
 
   if (Array.isArray(responseData.results)) {
@@ -164,22 +162,6 @@ function createBulkResponse<
       responseData.results as Array<{ data?: unknown }>
     );
     if (shared) responseData.shared = shared;
-  }
-
-  const postPaginationHints = config.peerHints
-    ? dedupePeerHints(
-        Array.isArray(responseData.results)
-          ? (responseData.results as FlatQueryResult[])
-          : []
-      )
-    : [];
-
-  const mergedHints = config.peerHints
-    ? Array.from(new Set([...aggregatedHints, ...postPaginationHints]))
-    : aggregatedHints;
-
-  if (mergedHints.length > 0) {
-    responseData.hints = mergedHints;
   }
 
   const formattedText = createResponseFormat(responseData, fullKeysPriority);
@@ -327,26 +309,6 @@ function appendResponsePagination<T extends Record<string, unknown>>(
   };
 }
 
-function dedupePeerHints(queries: FlatQueryResult[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const q of queries) {
-    const data = q.data as Record<string, unknown> | undefined;
-    const raw =
-      data && Array.isArray(data.hints) ? (data.hints as unknown[]) : [];
-    for (const h of raw) {
-      if (typeof h === 'string' && h.trim().length > 0 && !seen.has(h)) {
-        seen.add(h);
-        out.push(h);
-      }
-    }
-    if (data && 'hints' in data) {
-      delete (data as Record<string, unknown>).hints;
-    }
-  }
-  return out;
-}
-
 function recordBulkCharSavings(
   toolName: string,
   results: Array<{
@@ -443,14 +405,6 @@ async function processBulkQueries<TQuery extends object>(
   return { results, errors };
 }
 
-function filterHints(hints: unknown): string[] | undefined {
-  if (!Array.isArray(hints)) return undefined;
-  const filtered = hints.filter(
-    (h): h is string => typeof h === 'string' && h.trim().length > 0
-  );
-  return filtered.length > 0 ? filtered : undefined;
-}
-
 function extractToolData(result: ProcessedBulkResult): Record<string, unknown> {
   const excludedKeys = new Set([
     'status',
@@ -468,12 +422,7 @@ function extractToolData(result: ProcessedBulkResult): Record<string, unknown> {
   const toolData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(result)) {
     if (!excludedKeys.has(key)) {
-      if (key === 'hints') {
-        const filtered = filterHints(value);
-        if (filtered) toolData[key] = filtered;
-      } else {
-        toolData[key] = value;
-      }
+      toolData[key] = value;
     }
   }
 

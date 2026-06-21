@@ -83,6 +83,9 @@ export function transformCodeSearchResult(
       currentPage: data.pagination?.currentPage || 1,
       totalPages: data.pagination?.totalPages || 1,
       hasMore: data.pagination?.hasMore || false,
+      ...(data.pagination?.hasMore
+        ? { nextPage: (data.pagination?.currentPage || 1) + 1 }
+        : {}),
       totalMatches: data.pagination?.totalMatches,
       entriesPerPage: (data.pagination as { perPage?: number } | undefined)
         ?.perPage,
@@ -125,6 +128,9 @@ export function transformRepoSearchResult(
       currentPage: data.pagination?.currentPage || 1,
       totalPages: data.pagination?.totalPages || 1,
       hasMore: data.pagination?.hasMore || false,
+      ...(data.pagination?.hasMore
+        ? { nextPage: (data.pagination?.currentPage || 1) + 1 }
+        : {}),
       totalMatches: data.pagination?.totalMatches,
       entriesPerPage: (data.pagination as { perPage?: number } | undefined)
         ?.perPage,

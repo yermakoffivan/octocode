@@ -25,7 +25,6 @@ export * from './github/repoStructure.js';
 export * from './github/repoStructurePagination.js';
 export * from './github/repoStructureRecursive.js';
 export * from './github/responseHeaders.js';
-export * from './hints/types.js';
 export * from './providers/capabilities.js';
 export * from './providers/factory.js';
 export * from './providers/github/githubContent.js';
@@ -107,7 +106,6 @@ export * from './tools/toolNames.js';
 export * from './tools/utils.js';
 export * from './types/bulk.js';
 export * from './types/execution.js';
-export * from './types/metadata.js';
 export * from './types/promise.js';
 export * from './types/responseTypes.js';
 export * from './types/server.js';
@@ -206,8 +204,6 @@ export type {
   GitHubAPIResponse,
 } from './github/githubAPI.js';
 
-export { HINTS, hasDynamicHints } from './hints/dynamic.js';
-
 export {
   summarizeEntries,
   paginateEntries,
@@ -216,23 +212,6 @@ export {
 } from './tools/local_view_structure/structureResponse.js';
 
 export type { ExecResult } from './utils/core/types.js';
-
-export { getHints } from './hints/index.js';
-
-export { hints as ghSearchCodeHints } from './tools/github_search_code/hints.js';
-export { hints as githubFetchContentHints } from './tools/github_fetch_content/hints.js';
-export { hints as ghViewRepoStructureHints } from './tools/github_view_repo_structure/hints.js';
-export { hints as githubSearchReposHints } from './tools/github_search_repos/hints.js';
-export { hints as ghSearchPRsHints } from './tools/github_search_pull_requests/hints.js';
-export { hints as ghCloneRepoHints } from './tools/github_clone_repo/hints.js';
-export { hints as localRipgrepHints } from './tools/local_ripgrep/hints.js';
-export { hints as localViewStructureHints } from './tools/local_view_structure/hints.js';
-export { hints as localFindFilesHints } from './tools/local_find_files/hints.js';
-export { hints as localFetchContentHints } from './tools/local_fetch_content/hints.js';
-export { hints as lspSemanticContentHints } from './tools/lsp/semantic_content/hints.js';
-export { hints as npmSearchHints } from './tools/package_search/hints.js';
-
-export { getDynamicHints as getDynamicToolHints } from './hints/dynamic.js';
 
 export {
   securityRegistry,

@@ -24,11 +24,6 @@ import type { z } from 'zod';
 
 type CloneRepoQuery = z.infer<typeof CloneRepoQueryLocalSchema>;
 
-const CLONE_FAILURE_HINTS = [
-  'Verify the owner/repo (and branch) exist — use ghSearchRepos to confirm the repository name.',
-  'For private repositories, ensure the GitHub token is set and has repo read access.',
-];
-
 export async function executeCloneRepo(
   args: ToolExecutionArgs<PartialCloneRepoQuery>
 ): Promise<CallToolResult> {
@@ -64,8 +59,7 @@ export async function executeCloneRepo(
               error instanceof Error ? error.message : String(error);
             return createErrorResult(
               `Clone failed for ${query.owner}/${query.repo}: ${message}`,
-              query,
-              { customHints: CLONE_FAILURE_HINTS }
+              query
             );
           }
 
@@ -95,7 +89,6 @@ export async function executeCloneRepo(
     {
       toolName: TOOL_NAMES.GITHUB_CLONE_REPO,
       keysPriority: ['resolvedBranch', 'localPath', 'cached', 'error'],
-      peerHints: true,
     },
     args
   );

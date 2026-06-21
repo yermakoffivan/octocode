@@ -2,7 +2,6 @@ import type { BulkFinalizer } from '../../types/bulk.js';
 import type { FlatQueryResult } from '../../types/toolResults.js';
 import {
   collectFlatErrors,
-  dedupeHints,
   formatFinalizedResponse,
   type QueryWithPagination,
 } from '../../utils/response/groupedFinalizer.js';
@@ -194,28 +193,16 @@ function setMatches(
   return { ...group, matches };
 }
 
-function collectPeerHints(results: readonly FlatQueryResult[]): string[] {
-  return dedupeHints(
-    results.flatMap(result => {
-      const raw = result.data.hints;
-      return Array.isArray(raw)
-        ? raw.filter((hint): hint is string => typeof hint === 'string')
-        : [];
-    })
-  );
-}
-
 export function buildGhSearchCodeFinalizer<
   TQuery extends QueryWithPagination,
 >(): BulkFinalizer<TQuery, GitHubCodeSearchOutputLocal> {
-  return ({ queries, results, config }) => {
+  return ({ queries, results }) => {
     const perQueryGroups: PerQueryGroups[] = [];
     let upstreamPagination: CodeSearchPagination | undefined;
     let upstreamPaginationQueries = 0;
 
     const emptyQueries: Array<{
       id: string;
-      hints: string[];
       nonExistentScope?: true;
     }> = [];
 
@@ -228,15 +215,8 @@ export function buildGhSearchCodeFinalizer<
         0
       );
       if (totalMatches === 0) {
-        const rawHints = (res.data as { hints?: unknown }).hints;
-        const perQueryHints = Array.isArray(rawHints)
-          ? (rawHints as unknown[]).filter(
-              (h): h is string => typeof h === 'string' && h.trim().length > 0
-            )
-          : [];
         emptyQueries.push({
           id: res.id,
-          hints: perQueryHints,
           ...(flat.nonExistentScope ? { nonExistentScope: true as const } : {}),
         });
       }
@@ -265,9 +245,6 @@ export function buildGhSearchCodeFinalizer<
     );
 
     const errors = collectFlatErrors(results);
-    const hints = dedupeHints(
-      config.peerHints ? collectPeerHints(results) : []
-    );
     const resultPagination =
       upstreamPagination && upstreamPaginationQueries === 1
         ? upstreamPagination
@@ -287,18 +264,12 @@ export function buildGhSearchCodeFinalizer<
       results: resultRecords,
     };
 
-    if (hints.length > 0) responseData.hints = hints;
     if (emptyQueries.length > 0) {
-      const topLevelHints = new Set(hints);
       responseData.emptyQueries = emptyQueries.map(
-        ({ id, hints: queryHints, nonExistentScope }) => {
-          const uniqueHints = queryHints.filter(h => !topLevelHints.has(h));
-          return {
-            id,
-            ...(uniqueHints.length > 0 ? { hints: uniqueHints } : {}),
-            ...(nonExistentScope ? { nonExistentScope } : {}),
-          };
-        }
+        ({ id, nonExistentScope }) => ({
+          id,
+          ...(nonExistentScope ? { nonExistentScope } : {}),
+        })
       );
     }
     if (errors.length > 0) responseData.errors = errors;
@@ -319,7 +290,6 @@ export function buildGhSearchCodeFinalizer<
         'pathOnly',
         'matchIndices',
         'pagination',
-        'hints',
         'emptyQueries',
         'errors',
       ],

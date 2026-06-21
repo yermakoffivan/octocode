@@ -1,5 +1,4 @@
 import { open, readFile, stat } from 'fs/promises';
-import { getHints } from '../../hints/index.js';
 import { extractMatchingLines } from './contentExtractor.js';
 import { contextUtils } from '../../utils/contextUtils.js';
 import { ContentSanitizer } from '@octocodeai/octocode-engine/contentSanitizer';
@@ -70,9 +69,6 @@ function validateExtractionOptions(
       status: 'error',
       error:
         'Cannot use fullContent with matchString — these are mutually exclusive extraction methods. Choose ONE: fullContent=true to read the entire file, OR matchString to extract matching sections, OR startLine+endLine for a known line range.',
-      hints: [
-        'fullContent and matchString are mutually exclusive. Pick one — matchString is more token-efficient when you know what to look for.',
-      ],
     };
     return result;
   }
@@ -82,9 +78,6 @@ function validateExtractionOptions(
       status: 'error',
       error:
         'Cannot use fullContent with startLine/endLine — these are mutually exclusive extraction methods. Choose ONE: fullContent=true to read the entire file, OR startLine+endLine for a known line range, OR matchString to extract matching sections.',
-      hints: [
-        'fullContent and startLine/endLine are mutually exclusive. Pick one extraction mode so line ranges are never silently ignored.',
-      ],
     };
     return result;
   }
@@ -94,9 +87,6 @@ function validateExtractionOptions(
       status: 'error',
       error:
         'Cannot use matchString with startLine/endLine — these are mutually exclusive extraction methods. Choose ONE: matchString to extract matching sections, OR startLine+endLine for a known line range, OR fullContent=true to read the entire file.',
-      hints: [
-        'matchString and startLine/endLine are mutually exclusive. Use matchString for search-driven extraction or startLine/endLine for a known range.',
-      ],
     };
     return result;
   }
@@ -107,20 +97,12 @@ function validateExtractionOptions(
     return {
       status: 'error',
       error: `startLine=${query.startLine} provided without endLine — both are required for line-range extraction.`,
-      hints: [
-        `Add endLine to complete the range, e.g. endLine=${query.startLine! + 50}.`,
-        'Use matchString for search-driven extraction when you do not know the exact end line.',
-      ],
     };
   }
   if (hasEndLine && !hasStartLine) {
     return {
       status: 'error',
       error: `endLine=${query.endLine} provided without startLine — both are required for line-range extraction.`,
-      hints: [
-        `Add startLine to complete the range, e.g. startLine=1.`,
-        'Use matchString for search-driven extraction when you do not know the exact start line.',
-      ],
     };
   }
 
@@ -150,7 +132,6 @@ async function getFileStatsOrError(
         extra: {
           resolvedPath: absolutePath,
         },
-        hintContext: { path: query.path },
       }) as LocalGetFileContentToolResult,
     };
   }
@@ -182,7 +163,6 @@ function createLargeFileErrorResult(
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
     extra: { resolvedPath: absolutePath },
-    hintContext: { fileSize: fileSizeKB * 1024, isLarge: true },
   }) as LocalGetFileContentToolResult;
 }
 
@@ -195,7 +175,6 @@ function createBinaryFileErrorResult(
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
     extra: { resolvedPath: absolutePath },
-    customHints: ['Binary or non-UTF-8 content.'],
   }) as LocalGetFileContentToolResult;
 }
 
@@ -283,7 +262,6 @@ async function readFileContentOrError(
     return {
       errorResult: createErrorResult(toolError, query, {
         toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
-        hintContext: { path: query.path },
         extra: { resolvedPath: absolutePath },
       }) as LocalGetFileContentToolResult,
     };
@@ -291,27 +269,13 @@ async function readFileContentOrError(
 }
 
 function createNoMatchesResult(
-  query: FetchContentQuery,
+  _query: FetchContentQuery,
   totalLines: number
 ): LocalGetFileContentToolResult {
-  const hints: string[] = [
-    `No matches for "${query.matchString}" in ${query.path} (${totalLines} line${totalLines === 1 ? '' : 's'} scanned).`,
-  ];
-  if (query.matchStringIsRegex) {
-    hints.push('Regex is per-line only — verify the pattern fits on one line.');
-  } else {
-    hints.push(
-      'Try matchStringIsRegex=true for pattern matching (e.g. "export.*function").'
-    );
-  }
-  if (query.matchStringCaseSensitive) {
-    hints.push('caseSensitive=true is active — disable for fuzzier matching.');
-  }
   return {
     status: 'empty',
     errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
     totalLines,
-    hints,
   };
 }
 
@@ -390,8 +354,7 @@ function buildLineRangeExtractionState(
         status: 'empty',
         totalLines,
         errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
-        hints: [
-          ...getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
+        warnings: [
           `startLine ${requestedStartLine} is greater than endLine ${requestedEndLine} — startLine must be ≤ endLine`,
           `Use startLine=1 to ${totalLines} with startLine ≤ endLine for a valid range`,
         ],
@@ -406,8 +369,7 @@ function buildLineRangeExtractionState(
         status: 'empty',
         totalLines,
         errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
-        hints: [
-          ...getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
+        warnings: [
           `Requested startLine ${requestedStartLine} exceeds file length (${totalLines} lines)`,
           `Use startLine=1 to ${totalLines} for valid range`,
         ],
@@ -471,7 +433,6 @@ function buildSuccessResult(
     return {
       status: 'empty',
       totalLines,
-      hints: getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
     };
   }
 

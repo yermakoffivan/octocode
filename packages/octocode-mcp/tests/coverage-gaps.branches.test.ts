@@ -96,28 +96,6 @@ vi.mock(
   }
 );
 
-describe('hints/dynamic — getDynamicHints with explicit context (line 46)', () => {
-  it('passes provided context through to the hint generator', async () => {
-    const { getDynamicHints } =
-      await import('../../octocode-tools-core/src/hints/dynamic.js');
-
-    const hints = getDynamicHints('localSearchCode', 'hasResults', {
-      hasResults: true,
-      resultCount: 3,
-    });
-    expect(Array.isArray(hints)).toBe(true);
-  });
-
-  it('returns [] for an unknown toolName regardless of context', async () => {
-    const { getDynamicHints } =
-      await import('../../octocode-tools-core/src/hints/dynamic.js');
-    const hints = getDynamicHints('nonExistentTool_xyz', 'hasResults', {
-      hasResults: true,
-    });
-    expect(hints).toEqual([]);
-  });
-});
-
 describe('toolMetadata/gateway — getDescription unknown tool (line 19)', () => {
   it('returns empty string for a tool not in DESCRIPTIONS', async () => {
     vi.resetModules();

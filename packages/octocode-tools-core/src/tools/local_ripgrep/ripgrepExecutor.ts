@@ -8,7 +8,6 @@ import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import type { LocalSearchCodeFile } from '@octocodeai/octocode-core/types';
 import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-types';
-import { getHints } from '../../hints/index.js';
 import { buildSearchResult } from './ripgrepResultBuilder.js';
 import { preflightValidateRipgrepPattern } from './patternValidation.js';
 import { attachRawResponseChars } from '../../utils/response/charSavings.js';
@@ -220,16 +219,6 @@ export async function executeRipgrepSearchInternal(
         searchEngine: 'rg',
         stats,
         warnings: [...validationWarnings, ...chunkingWarnings],
-        hints: getHints(TOOL_NAMES.LOCAL_RIPGREP, 'empty', {
-          keywords: query.keywords,
-          path: query.path,
-          langType: query.langType,
-          include: query.include,
-          excludeDir: query.excludeDir,
-          fixedString: query.fixedString,
-          caseSensitive: query.caseSensitive,
-          mode: query.mode,
-        } as Record<string, unknown>),
       } as LocalSearchCodeToolResult,
       responseChars
     );

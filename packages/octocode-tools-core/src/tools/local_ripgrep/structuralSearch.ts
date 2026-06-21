@@ -103,11 +103,6 @@ export async function searchContentStructural(
       query,
       {
         toolName: TOOL_NAMES.LOCAL_RIPGREP,
-        customHints: [
-          query.rule
-            ? 'Check the YAML rule shape. Relational sub-rules (inside/has) need `stopBy: end` to walk all ancestors/descendants, else they silently match nothing.'
-            : 'Check the pattern syntax. Use $X for a single node, $$$ARGS for a list. The pattern must be a complete code fragment for the target language.',
-        ],
       }
     ) as LocalSearchCodeToolResult;
   }

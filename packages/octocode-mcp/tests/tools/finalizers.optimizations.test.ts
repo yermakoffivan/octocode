@@ -4,7 +4,7 @@ import { buildGhSearchCodeFinalizer } from '../../../octocode-tools-core/src/too
 import type { FlatQueryResult } from '../../../octocode-tools-core/src/types/toolResults.js';
 
 describe('ghGetFileContent finalizer — optimization fixes', () => {
-  it('FIX #1: does not emit top-level "Partial content ... Use startLine=..." hint when the file is partial (info already in fields)', () => {
+  it('FIX #1: preserves partial-content fields when the file is partial (info lives in fields)', () => {
     const finalizer = buildGithubFetchContentFinalizer();
     const queries = [
       {
@@ -38,51 +38,6 @@ describe('ghGetFileContent finalizer — optimization fixes', () => {
     expect(file?.isPartial).toBe(true);
     expect(file?.totalLines).toBe(79);
     expect(file?.endLine).toBe(4);
-
-    const hints = out.structuredContent.hints ?? [];
-    expect(
-      hints.some(h => /^Partial content for .* Use startLine=/.test(h))
-    ).toBe(false);
-  });
-
-  it('FIX #2: emits dynamic 404 hints when the failure carries an HTTP status, even with a generic error string', () => {
-    const finalizer = buildGithubFetchContentFinalizer();
-    const queries = [
-      {
-        id: 'q1',
-        owner: 'facebook',
-        repo: 'react',
-        path: 'this_file_does_not_exist.md',
-      },
-    ];
-    const results: FlatQueryResult[] = [
-      {
-        id: 'q1',
-        status: 'error',
-        data: {
-          error: {
-            error: 'Provider error',
-            type: 'http',
-            status: 404,
-          },
-        },
-      },
-    ];
-
-    const out = finalizer({
-      queries,
-      results,
-      config: { toolName: 'ghGetFileContent' },
-    });
-
-    const errors = out.structuredContent.errors;
-    expect(errors).toBeDefined();
-    expect(errors).toHaveLength(1);
-    expect(errors?.[0]?.hints).toBeDefined();
-    const hintBlob = (errors?.[0]?.hints ?? []).join(' | ');
-    expect(hintBlob.toLowerCase()).toMatch(
-      /owner|repo|path|branch|not found|verify/
-    );
   });
 });
 

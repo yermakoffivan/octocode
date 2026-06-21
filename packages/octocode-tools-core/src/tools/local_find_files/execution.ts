@@ -34,7 +34,6 @@ export async function executeFindFiles(
       }),
     {
       toolName: TOOL_NAMES.LOCAL_FIND_FILES,
-      peerHints: true,
     },
     args
   );

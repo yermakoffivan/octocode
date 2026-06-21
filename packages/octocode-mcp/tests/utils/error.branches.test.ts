@@ -1,8 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
-
-vi.mock('../../../octocode-tools-core/src/hints/index.js', () => ({
-  getHints: vi.fn(() => ['mock-hint']),
-}));
+import { describe, it, expect } from 'vitest';
 
 import { createErrorResult } from '../../../octocode-tools-core/src/utils/response/error.js';
 import { ToolError } from '../../../octocode-tools-core/src/errors/ToolError.js';
@@ -35,23 +31,6 @@ describe('createErrorResult - branch coverage', () => {
       };
       const result = createErrorResult(apiError, baseQuery);
       expect(result.error).toBe(apiError);
-      expect(result.hints!.some(h => h.includes('Add repo scope'))).toBe(true);
-    });
-
-    it('should skip GitHub hints extraction when hintSourceError is provided', () => {
-      const apiError = { error: 'Forbidden', type: 'FORBIDDEN' };
-      const hintSourceError = {
-        error: 'Rate limit exceeded',
-        type: 'http' as const,
-        rateLimitRemaining: 0,
-        rateLimitReset: Date.now() + 60000,
-      };
-      const result = createErrorResult(apiError, baseQuery, {
-        hintSourceError,
-      });
-      expect(result.error).toBe(apiError);
-      expect(result.hints!.some(h => h.includes('Rate limit:'))).toBe(true);
-      // 'API Error' echo removed — hintSourceError rate-limit hint present but no raw error string echoed
     });
   });
 
@@ -72,45 +51,13 @@ describe('createErrorResult - branch coverage', () => {
     });
   });
 
-  describe('extra.hints merging', () => {
-    it('should merge hints from extra.hints array', () => {
+  describe('extra fields merging', () => {
+    it('should spread extra fields into result', () => {
       const result = createErrorResult('some error', baseQuery, {
-        extra: { hints: ['extra-hint-1', 'extra-hint-2'] },
-      });
-      expect(result.hints).toBeDefined();
-      expect(result.hints!.includes('extra-hint-1')).toBe(true);
-      expect(result.hints!.includes('extra-hint-2')).toBe(true);
-    });
-
-    it('should ignore extra.hints when not an array', () => {
-      const result = createErrorResult('some error', baseQuery, {
-        extra: { hints: 'not-an-array' as any },
-      });
-      expect(result.hints).toBeUndefined();
-    });
-
-    it('should spread extra fields into result (excluding hints)', () => {
-      const result = createErrorResult('some error', baseQuery, {
-        extra: { cwd: '/test', resolvedPath: '/test/file.ts', hints: [] },
+        extra: { cwd: '/test', resolvedPath: '/test/file.ts' },
       });
       expect(result.cwd).toBe('/test');
       expect(result.resolvedPath).toBe('/test/file.ts');
-    });
-  });
-
-  describe('hintSourceError path', () => {
-    it('should extract hints from hintSourceError with retryAfter', () => {
-      const hintSourceError = {
-        error: 'Secondary Rate limit',
-        type: 'http' as const,
-        retryAfter: 60,
-      };
-      const result = createErrorResult('main error', baseQuery, {
-        hintSourceError,
-      });
-      expect(
-        result.hints!.some(h => h.includes('Retry after 60 seconds'))
-      ).toBe(true);
     });
   });
 
@@ -141,23 +88,6 @@ describe('createErrorResult - branch coverage', () => {
         toolName: '',
       });
       expect(result.error).toBe('Tool failed');
-    });
-  });
-
-  describe('rateLimitReset NaN handling (line 53 false branch)', () => {
-    it('should skip rate-limit hint when rateLimitReset is NaN', () => {
-      const hintSourceError = {
-        error: 'Rate limit',
-        type: 'http' as const,
-        rateLimitRemaining: 0,
-        rateLimitReset: NaN,
-      };
-      const result = createErrorResult('main error', baseQuery, {
-        hintSourceError,
-      });
-      const rateHints =
-        result.hints?.filter(h => h.includes('Rate limit:')) ?? [];
-      expect(rateHints).toHaveLength(0);
     });
   });
 });

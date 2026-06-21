@@ -43,7 +43,6 @@ import {
   resolveSymbolAnchor,
   type SymbolAnchor,
 } from '../shared/resolveSymbolAnchor.js';
-import { semanticHints } from './hints.js';
 import { contextUtils } from '../../../utils/contextUtils.js';
 
 /**
@@ -143,7 +142,6 @@ export async function executeLspGetSemantics(
     },
     {
       toolName: LSP_GET_SEMANTIC_CONTENT_TOOL_NAME,
-      peerHints: true,
       minQueryTimeoutMs: 30_000,
     },
     args
@@ -362,10 +360,7 @@ async function getSemanticContent(
       typeof anchor.error.error === 'string'
         ? anchor.error.error
         : 'Symbol anchor resolution failed';
-    const anchorHints = Array.isArray(anchor.error.hints)
-      ? (anchor.error.hints as string[])
-      : undefined;
-    return failedAnchorEnvelope(query, message, anchorHints);
+    return failedAnchorEnvelope(query, message);
   }
 
   const workspaceRoot =
@@ -601,9 +596,6 @@ async function getDocumentSymbols(
       ...(empty ? { empty } : {}),
     },
     pagination,
-    // Success carries its evidence in structured fields; hints are recovery
-    // aids emitted only on the empty/unavailable path.
-    ...(empty ? { hints: semanticHints('documentSymbols', false) } : {}),
   };
 }
 
@@ -790,9 +782,6 @@ function locationsEnvelope(
           reason: `${provider} returned no locations`,
         },
     ...(complete ? { pagination } : {}),
-    // Success carries its evidence in structured fields; hints are recovery
-    // aids emitted only on the empty path.
-    ...(complete ? {} : { hints: semanticHints(query.type, false) }),
   };
 }
 
@@ -851,18 +840,12 @@ function referencesEnvelope(
       ...(empty ? { empty } : {}),
     },
     pagination,
-    // Success carries its evidence in structured fields; hints are recovery
-    // aids emitted only on the empty path. The native-source caveat is retained
-    // there because it explains why cross-file refs are absent.
-    ...(empty
+    // The native-source caveat is retained on the empty path because it
+    // explains why cross-file refs are absent.
+    ...(empty && native
       ? {
-          hints: [
-            ...(native
-              ? [
-                  'source: native (oxc) — same-file references only; install a language server for cross-file references.',
-                ]
-              : []),
-            ...semanticHints('references', false),
+          warnings: [
+            'source: native (oxc) — same-file references only; install a language server for cross-file references.',
           ],
         }
       : {}),
@@ -913,7 +896,7 @@ function nativeReferences(
 }
 
 async function hoverEnvelope(
-  query: SymbolAnchoredSemanticQuery,
+  _query: SymbolAnchoredSemanticQuery,
   anchor: SymbolAnchor,
   hover: unknown
 ): Promise<LspSemanticEnvelope> {
@@ -932,9 +915,6 @@ async function hoverEnvelope(
           category: 'noHover',
           reason: 'hoverProvider returned no hover content',
         },
-    // Success carries its evidence in structured fields; hints are recovery
-    // aids emitted only on the empty path.
-    ...(complete ? {} : { hints: semanticHints(query.type, false) }),
   };
 }
 
@@ -1051,10 +1031,6 @@ async function callsEnvelope(
         : {}),
     },
     pagination,
-    // Success carries its evidence in structured fields (incl. the
-    // `completeness` object that already flags depth truncation); hints are
-    // recovery aids emitted only on the empty path.
-    ...(calls.length === 0 ? { hints: semanticHints(query.type, false) } : {}),
   };
 }
 
@@ -1325,8 +1301,7 @@ function emptyCategoryForReason(
 
 function failedAnchorEnvelope(
   query: LspGetSemanticsQuery,
-  reason: string,
-  hints?: string[]
+  reason: string
 ): LspSemanticEnvelope {
   const uri = query.uri ?? '';
   return {
@@ -1338,7 +1313,6 @@ function failedAnchorEnvelope(
       category: emptyCategoryForReason(query.type, reason),
       reason,
     },
-    hints: hints?.length ? hints : semanticHints(query.type, false),
   };
 }
 
@@ -1358,7 +1332,6 @@ function emptyEnvelope(
       category: emptyCategoryForReason(type, reason),
       reason,
     },
-    hints: semanticHints(type, false),
   };
 }
 

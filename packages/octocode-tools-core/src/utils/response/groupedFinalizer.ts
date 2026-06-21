@@ -181,18 +181,6 @@ export function paginateGroupsCharWindow<TGroup, TItem>({
   };
 }
 
-export function dedupeHints(hints: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const hint of hints) {
-    if (typeof hint === 'string' && hint.trim().length > 0 && !seen.has(hint)) {
-      seen.add(hint);
-      result.push(hint);
-    }
-  }
-  return result;
-}
-
 function unwrapProviderError(value: unknown): {
   message: string;
   status?: number;
@@ -215,8 +203,8 @@ function unwrapProviderError(value: unknown): {
 
 export function collectFlatErrors(
   results: readonly FlatQueryResult[]
-): Array<{ id: string; error: string; hints?: string[] }> {
-  const errors: Array<{ id: string; error: string; hints?: string[] }> = [];
+): Array<{ id: string; error: string }> {
+  const errors: Array<{ id: string; error: string }> = [];
   for (const result of results) {
     if (result.status !== 'error') continue;
     const { message, status } = unwrapProviderError(
@@ -224,16 +212,9 @@ export function collectFlatErrors(
     );
     const errorMessage =
       status !== undefined ? `${message} (HTTP ${status})` : message;
-    const hints = Array.isArray(result.data.hints)
-      ? result.data.hints.filter(
-          (hint): hint is string =>
-            typeof hint === 'string' && hint.trim().length > 0
-        )
-      : undefined;
     errors.push({
       id: result.id,
       error: errorMessage,
-      ...(hints && hints.length > 0 ? { hints } : {}),
     });
   }
   return errors;

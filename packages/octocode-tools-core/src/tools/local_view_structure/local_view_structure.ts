@@ -1,5 +1,4 @@
 import { formatFileSize, parseFileSize } from '../../utils/file/size.js';
-import { getHints } from '../../hints/index.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
   validateToolPath,
@@ -58,7 +57,6 @@ export async function viewStructure(
       status: 'error',
       error: toolError.message,
       errorCode: toolError.errorCode,
-      hints: getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'error'),
     };
   }
 }
@@ -163,26 +161,6 @@ function viewStructureNative(
       : []),
   ];
   const isEmpty = totalEntries === 0;
-  const queryPattern =
-    typeof (query as { pattern?: unknown }).pattern === 'string'
-      ? (query as { pattern?: string }).pattern
-      : undefined;
-  const hasFilter =
-    (query.extensions?.length ?? 0) > 0 || Boolean(queryPattern);
-  const fileCount = filteredEntries.filter(e => e.type === 'file').length;
-  const extensionMiss = hasFilter && fileCount === 0 && !isEmpty;
-  const emptyHintCtx = {
-    entryCount: totalEntries,
-    path: query.path,
-    extensions: query.extensions,
-    pattern: queryPattern,
-  } as Record<string, unknown>;
-  // Hints are emitted only for empty / extension-miss recovery. A successful
-  // (non-empty) listing carries its evidence in the structured fields.
-  const recoveryHints =
-    isEmpty || extensionMiss
-      ? getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'empty', emptyHintCtx)
-      : [];
   const summary = summarizeEntries(filteredEntries);
 
   return attachRawResponseChars(
@@ -195,7 +173,6 @@ function viewStructureNative(
           ? { pagination }
           : {}),
         ...(warnings.length > 0 && { warnings }),
-        ...(recoveryHints.length > 0 ? { hints: recoveryHints } : {}),
       },
       query
     ),
@@ -297,11 +274,6 @@ function createNativeAccessErrorResult(
   );
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_VIEW_STRUCTURE,
-    customHints: isNotFound
-      ? [`Path not found: ${basePath}`]
-      : isPermission
-        ? [`Permission denied: ${basePath}`]
-        : [`Cannot access path: ${basePath}`],
   }) as LocalViewStructureToolResult;
 }
 

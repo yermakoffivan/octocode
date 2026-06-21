@@ -77,7 +77,6 @@ export async function fetchMultipleGitHubFileContents(
     },
     {
       toolName: TOOL_NAMES.GITHUB_FETCH_CONTENT,
-      peerHints: true,
       finalize: buildGithubFetchContentFinalizer<FileContentInputQuery>(),
     },
     args
@@ -93,13 +92,7 @@ async function handleDirectoryFetch(
   if (!(config.local.enabled && config.local.enableClone)) {
     return createErrorResult(
       'Directory fetch requires local clone support. Set ENABLE_LOCAL=true and ENABLE_CLONE=true.',
-      query,
-      {
-        customHints: [
-          'File mode still works without clone support.',
-          'For MCP directory materialization, enable clone support before using type="directory".',
-        ],
-      }
+      query
     );
   }
 
@@ -208,12 +201,6 @@ async function handleFileFetch(
     TOOL_NAMES.GITHUB_FETCH_CONTENT,
     {
       rawResponse: providerResult.response.rawResponseChars,
-      hintContext: {
-        path: query.path,
-        branch: query.branch,
-        isPartial: providerResult.response.data.isPartial,
-        endLine: providerResult.response.data.endLine,
-      },
     }
   );
 }

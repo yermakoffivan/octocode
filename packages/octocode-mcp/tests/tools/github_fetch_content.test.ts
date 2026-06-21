@@ -88,6 +88,22 @@ describe('GitHub Fetch Content Tool', () => {
     vi.resetAllMocks();
   });
 
+  it('registers as a read-only remote tool', () => {
+    expect(mockServer.registrations).toContainEqual(
+      expect.objectContaining({
+        name: TOOL_NAMES.GITHUB_FETCH_CONTENT,
+        options: expect.objectContaining({
+          annotations: expect.objectContaining({
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: true,
+          }),
+        }),
+      })
+    );
+  });
+
   describe('Success scenarios', () => {
     it('should handle single valid file request', async () => {
       mockProvider.getFileContent.mockResolvedValue({

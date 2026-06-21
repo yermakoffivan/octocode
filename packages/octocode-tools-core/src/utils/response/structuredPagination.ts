@@ -115,49 +115,6 @@ function createOutputPagination(
   };
 }
 
-function withPaginationHints(
-  data: Record<string, unknown>,
-  pagination: PaginationInfo,
-  kind: 'output' | 'response',
-  options: { autoPaginated: boolean; requestedLength: number }
-): Record<string, unknown> {
-  const existingHints = Array.isArray(data.hints)
-    ? data.hints.filter((hint): hint is string => typeof hint === 'string')
-    : [];
-  const charOffset = pagination.charOffset ?? 0;
-  const charLength = pagination.charLength ?? 0;
-  const totalChars = pagination.totalChars ?? 0;
-  const nextOffset = charOffset + charLength;
-  const pageSummaryHint = `Page ${pagination.currentPage}/${pagination.totalPages} (${charLength} of ${totalChars} chars)`;
-  const continuationHint =
-    kind === 'response'
-      ? `Use responseCharOffset=${nextOffset} to continue this paginated bulk response.`
-      : `Use charOffset=${nextOffset} to continue this paginated result.`;
-  const autoPaginationHint = `Auto-paginated: Output (${totalChars} chars) exceeds ${options.requestedLength} char limit.`;
-  const nextHints = [...existingHints];
-
-  if (
-    options.autoPaginated &&
-    pagination.hasMore &&
-    !nextHints.includes(autoPaginationHint)
-  ) {
-    nextHints.push(autoPaginationHint);
-  }
-
-  if (!nextHints.includes(pageSummaryHint)) {
-    nextHints.push(pageSummaryHint);
-  }
-
-  if (pagination.hasMore && !nextHints.includes(continuationHint)) {
-    nextHints.push(continuationHint);
-  }
-
-  return {
-    ...data,
-    hints: nextHints,
-  };
-}
-
 function buildCollectionSegments(
   target: Record<string, unknown>,
   configs: CollectionConfig[]
@@ -770,18 +727,6 @@ function pageToolDataValue(
         { field: 'packages', kind: 'array' },
       ]);
       break;
-    case TOOL_NAMES.GITHUB_CLONE_REPO:
-      page = paginateConfiguredObjectValue(data, request, [
-        {
-          field: 'hints',
-          kind: 'array',
-          itemPaginator: (item, nestedRequest) =>
-            typeof item === 'string'
-              ? paginateStringValue(item, nestedRequest)
-              : null,
-        },
-      ]);
-      break;
     case TOOL_NAMES.LOCAL_RIPGREP:
       page = paginateConfiguredObjectValue(data, request, [
         {
@@ -900,21 +845,13 @@ function paginateFlatQueryResult(
   );
   const dataValue =
     dataPage.paginated && isPlainObject(dataPage.value)
-      ? withPaginationHints(
-          {
-            ...dataPage.value,
-            outputPagination: dataPagination,
-            ...(toolName === TOOL_NAMES.LOCAL_FIND_FILES && {
-              charPagination: dataPagination,
-            }),
-          },
-          dataPagination,
-          'output',
-          {
-            autoPaginated: false,
-            requestedLength: request.length,
-          }
-        )
+      ? {
+          ...dataPage.value,
+          outputPagination: dataPagination,
+          ...(toolName === TOOL_NAMES.LOCAL_FIND_FILES && {
+            charPagination: dataPagination,
+          }),
+        }
       : dataPage.value;
 
   return {
@@ -970,18 +907,10 @@ export function applyQueryOutputPagination(
     page.totalChars,
     request.length
   );
-  const nextData = withPaginationHints(
-    {
-      ...page.value,
-      outputPagination: pagination,
-    },
-    pagination,
-    'output',
-    {
-      autoPaginated: !request.explicit,
-      requestedLength: request.length,
-    }
-  );
+  const nextData = {
+    ...page.value,
+    outputPagination: pagination,
+  };
 
   return {
     ...queryResult,

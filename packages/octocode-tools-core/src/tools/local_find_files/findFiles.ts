@@ -1,4 +1,3 @@
-import { getHints } from '../../hints/index.js';
 import {
   validateToolPath,
   createErrorResult,
@@ -35,25 +34,6 @@ function computeEffectiveExcludeDirs(
   const rawExcludeDirs = excludeDir ?? DEFAULT_FIND_EXCLUDE_DIRS;
   const searchPathParts = new Set(searchPath.split('/').filter(Boolean));
   return rawExcludeDirs.filter(dir => !searchPathParts.has(dir));
-}
-
-// Empty-result recovery hints only. A successful (non-empty) find emits no
-// hints — the evidence is in the structured files[]/pagination fields.
-function buildEmptyFindFilesHints(ctx: {
-  query: FindFilesQuery;
-  totalFiles: number;
-  hasConfigFiles: boolean;
-}): string[] {
-  const { query, totalFiles, hasConfigFiles } = ctx;
-  return getHints(TOOL_NAMES.LOCAL_FIND_FILES, 'empty', {
-    fileCount: totalFiles,
-    hasConfigFiles,
-    path: query.path,
-    names: query.names,
-    modifiedWithin: query.modifiedWithin,
-    sizeGreater: query.sizeGreater,
-    sizeLess: query.sizeLess,
-  } as Record<string, unknown>);
 }
 
 export async function findFiles(
@@ -132,11 +112,6 @@ export async function findFiles(
     const paginatedFiles = filesForOutput.slice(startIdx, endIdx);
 
     const finalFiles = paginatedFiles;
-    const configFilePatterns =
-      /\.(config|rc|env|json|ya?ml|toml|ini)$|^(\..*rc|config\.|\.env)/i;
-    const hasConfigFiles = finalFiles.some(f =>
-      configFilePatterns.test(f.path.split('/').pop() || '')
-    );
 
     const nativeWarnings = [
       ...nativeResult.warnings,
@@ -162,15 +137,6 @@ export async function findFiles(
         ...(wasFileCapped ? { totalFilesFound: discoveredFileCount } : {}),
       },
       ...(allWarnings.length > 0 && { warnings: allWarnings }),
-      ...(totalFiles === 0
-        ? {
-            hints: buildEmptyFindFilesHints({
-              query,
-              totalFiles,
-              hasConfigFiles,
-            }),
-          }
-        : {}),
     };
 
     return attachRawResponseChars(

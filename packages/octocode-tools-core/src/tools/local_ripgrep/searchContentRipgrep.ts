@@ -49,14 +49,6 @@ export async function searchContentRipgrep(
         status: 'error',
         error: errorMessage,
         errorCode: LOCAL_TOOL_ERROR_CODES.OUTPUT_TOO_LARGE,
-        hints: [
-          'Output exceeded 10MB - your pattern matched too broadly. Think about why results exploded:',
-          'Is the pattern too generic? Make it specific to target what you actually need',
-          'Searching everything? Add langType filters or path restrictions to focus scope',
-          'For node_modules: Target specific packages rather than searching the entire directory',
-          'Need file names only? FIND_FILES searches metadata without reading content',
-          'Strategy: Start with filesOnly=true to see what matched, then narrow before reading content',
-        ],
       } as LocalSearchCodeToolResult;
     }
 

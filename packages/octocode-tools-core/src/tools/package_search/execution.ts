@@ -12,7 +12,6 @@ import type {
 } from '../../utils/package/common.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import { createSuccessResult, createErrorResult } from '../utils.js';
-import { getHints } from '../../hints/index.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import type { ToolExecutionArgs } from '../../types/execution.js';
 
@@ -129,12 +128,6 @@ export async function searchPackages(
         if (isNpmSearchError(apiResult)) {
           return createErrorResult(apiResult.error, query, {
             rawResponse: apiResult,
-            customHints: [
-              ...(apiResult.hints ?? []),
-              ...getHints(TOOL_NAMES.PACKAGE_SEARCH, 'error', {
-                originalError: apiResult.error,
-              }),
-            ],
           });
         }
 
@@ -150,15 +143,6 @@ export async function searchPackages(
           isKeyword
         );
 
-        // Success results discard per-call hints (createSuccessResult keeps
-        // hints only on the empty path), so only build the empty-recovery
-        // hints here. Pagination/keyword/exact hints were dead on success.
-        const extraHints = !hasContent
-          ? getHints(TOOL_NAMES.PACKAGE_SEARCH, 'empty', {
-              name: query.packageName,
-            } as never)
-          : [];
-
         const data = {
           packages,
           pagination,
@@ -170,23 +154,18 @@ export async function searchPackages(
           hasContent,
           TOOL_NAMES.PACKAGE_SEARCH,
           {
-            extraHints,
             rawResponse: apiResult.rawResponseChars ?? apiResult,
           }
         );
       } catch (error) {
         return createErrorResult(error, query, {
-          customHints: getHints(TOOL_NAMES.PACKAGE_SEARCH, 'error', {
-            originalError:
-              error instanceof Error ? error.message : String(error),
-          }),
+          toolName: TOOL_NAMES.PACKAGE_SEARCH,
         });
       }
     },
     {
       toolName: TOOL_NAMES.PACKAGE_SEARCH,
       keysPriority: ['packages', 'pagination', 'error'],
-      peerHints: true,
     },
     args
   );

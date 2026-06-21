@@ -58,8 +58,6 @@ vi.mock('../../octocode-tools-core/src/tools/toolMetadata/state.js', () => ({
         GITHUB_VIEW_REPO_STRUCTURE: 'ghViewRepoStructure',
       },
       tools: {},
-      baseHints: { hasResults: [], empty: [] },
-      genericErrorHints: [],
       baseSchema: {
         id: '',
         mainResearchGoal: '',

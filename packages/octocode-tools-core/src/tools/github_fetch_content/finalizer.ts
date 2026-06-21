@@ -9,7 +9,6 @@ import type {
 } from '../../types/toolResults.js';
 import {
   collectFlatErrors,
-  dedupeHints,
   formatFinalizedResponse,
   type QueryWithPagination,
 } from '../../utils/response/groupedFinalizer.js';
@@ -87,23 +86,14 @@ function readStringArray(value: unknown): string[] | undefined {
   return strings.length > 0 ? strings : undefined;
 }
 
-function collectPeerHints(results: readonly FlatQueryResult[]): string[] {
-  return dedupeHints(
-    results.flatMap(result => {
-      const raw = result.data.hints;
-      return Array.isArray(raw)
-        ? raw.filter((hint): hint is string => typeof hint === 'string')
-        : [];
-    })
-  );
-}
-
 const OPTIONAL_PAGINATION_NUMERIC_FIELDS = [
   'charOffset',
   'charLength',
   'totalChars',
   'nextCharOffset',
   'nextBlockChar',
+  'nextPage',
+  'nextMatchPage',
   'filesPerPage',
   'totalFiles',
   'entriesPerPage',
@@ -248,23 +238,6 @@ function buildGroups(
   return Array.from(groups.values());
 }
 
-function errorHints(error: string, status?: number): string[] | undefined {
-  const lower = error.toLowerCase();
-  if (status === 404 || lower.includes('not found') || lower.includes('404')) {
-    return [
-      'Verify owner/repo/path/branch.',
-      'Use ghViewRepoStructure to confirm the path.',
-    ];
-  }
-  if (status === 403 || lower.includes('forbidden') || lower.includes('403')) {
-    return ['Check token permissions or repository visibility.'];
-  }
-  if (status === 429 || lower.includes('rate limit')) {
-    return ['Retry after reset or authenticate with a higher-limit token.'];
-  }
-  return undefined;
-}
-
 function collectFileErrors(
   results: readonly FlatQueryResult[],
   queries: readonly PartialFileContentQuery[]
@@ -279,7 +252,6 @@ function collectFileErrors(
       repo: query?.repo,
       path: query?.path ? String(query.path) : undefined,
       error: error.error,
-      hints: errorHints(error.error),
     };
   });
 }
@@ -287,16 +259,12 @@ function collectFileErrors(
 export function buildGithubFetchContentFinalizer<
   TQuery extends PartialFileContentQuery,
 >(): BulkFinalizer<TQuery, GitHubFetchContentOutputLocal> {
-  return ({ queries, results, config }) => {
+  return ({ queries, results }) => {
     const groups = buildGroups(results, queries);
 
     const errors = collectFileErrors(results, queries);
-    const hints = dedupeHints(
-      config.peerHints ? collectPeerHints(results) : []
-    );
     const responseData: FileContentResponse = { results: groups };
 
-    if (hints.length > 0) responseData.hints = hints;
     if (errors && errors.length > 0) responseData.errors = errors;
 
     return formatFinalizedResponse<GitHubFetchContentOutputLocal>(
@@ -315,7 +283,6 @@ export function buildGithubFetchContentFinalizer<
         'endLine',
         'isPartial',
         'pagination',
-        'hints',
         'errors',
       ],
       groups.length === 0 && Boolean(errors && errors.length > 0)
