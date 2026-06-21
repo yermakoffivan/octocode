@@ -61,8 +61,15 @@ it when working in that repo.
   transform is non-trivial. Stream large files through a command (`wc -l`, `head`, `grep
   -c`) rather than reading them fully into context.
 
-- Leverage Octocode MCP local and external research capabilities for context-oriented
-  development. Use results as leads, then confirm against source/tests/docs before coding.
+- **Octocode is both an MCP server and a CLI** — same tools, same research surface, two
+  transports. Use whichever is available; they are interchangeable for local and external
+  research.
+  - **MCP available:** use the registered Octocode tools directly (e.g. `ghSearchCode`,
+    `localSearchCode`, `lspGetSemantics`).
+  - **MCP not supported or unavailable:** use the CLI instead — `npx octocode <tool> [args]`.
+    The CLI is agent-friendly: structured output, `--agent` flag for lean mode, typed exit
+    codes. Every MCP tool has a direct CLI equivalent; run `npx octocode --help` to list them.
+- Use Octocode results as leads, then confirm against source/tests/docs before coding.
 </research_protocol>
 
 <error_signal_discovery>

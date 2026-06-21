@@ -65,11 +65,12 @@ npx octocode install
 **CLI fast install:**
 
 ```bash
-# Run without installing globally
+# Run the CLI without installing globally
 npx octocode
 
-# Or install once on macOS/Linux
-brew install bgauryy/octocode/octocode
+# Or install once with Homebrew
+brew tap bgauryy/octocode
+brew install octocode
 octocode
 ```
 
@@ -216,19 +217,23 @@ Set tokens and options as `env` entries here, or machine-wide in `.octocoderc`. 
 
 ## CLI
 
-The CLI exposes the same research engine without an MCP client. Use quick commands for humans, or call raw tools from scripts and CI.
+The CLI exposes the same research engine without an MCP client. Use quick commands for humans, or call raw tools from scripts and CI. It is agent-friendly by design: `npx octocode --help`, `npx octocode context`, and `npx octocode tools <name> --scheme` publish the research protocol, tool descriptions, and exact schemas, while command output returns compact anchors, pagination, and follow-up hints that guide agents through evidence-first research.
 
 ### Install
 
 ```bash
-brew install bgauryy/octocode/octocode
-# or
-npm install -g octocode
+# Run the CLI without installing globally
+npx octocode
+
+# Or install once with Homebrew
+brew tap bgauryy/octocode
+brew install octocode
+octocode
 ```
 
 ```bash
-octocode login
-octocode status
+npx octocode auth login
+npx octocode status
 ```
 
 ### All Commands
