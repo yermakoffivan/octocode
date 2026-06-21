@@ -1,6 +1,6 @@
 # Octocode Query Language Implementation Plan
 
-**Status:** implementation plan for the north-star OQL contract.
+**Status:** implementation plan for the canonical OQL contract.
 
 Authoritative contract:
 https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OCTOCODE_QUERY_LANGUAGE.md
@@ -163,7 +163,7 @@ The contract package can be depended on by `octocode-core` and
 
 Before implementing behavior:
 
-1. Keep `OCTOCODE_QUERY_LANGUAGE.md` as the only north-star language contract.
+1. Keep `OCTOCODE_QUERY_LANGUAGE.md` as the only canonical language contract.
 2. Add an OQL schema export in `octocode-core`, or create a pure
    `@octocodeai/octocode-query-language` package and re-export it from core.
 3. Add fixture examples for every V1 target first: `code`, `content`,
@@ -189,9 +189,9 @@ Tasks:
 
 Done when:
 
-- `README.md` points only to the north-star contract and this plan.
+- `README.md` points only to the canonical contract and this plan.
 - No runtime code points agents at stale docs; live schema guidance points to
-  `tools <name> --scheme`.
+  `tools NAME --scheme`.
 
 ### 1. OQL Schema And Normalizer
 
@@ -212,12 +212,13 @@ Tasks:
   - `repo: "owner/name"` -> GitHub source object.
   - GitHub `path` -> `scope.path`.
   - local-only `path` -> `from:{kind:"local",path}`.
-  - `materialize: "auto"` -> full materialization policy.
+  - `materialize: "auto"` -> `materialize:{mode:"auto"}`.
   - top-level `text`, `regex`, `pattern`, and `rule` -> canonical
     `where.kind` predicates.
 - Reject impossible states early:
   - `pattern` with `rule`.
-  - local-only predicates with `materialize:"never"` over external sources.
+  - local-only predicates with `materialize.mode:"never"` over external
+    sources.
   - V2/V3 targets in the V1 schema.
   - unbounded materialization.
 - Preserve bulk support rules: one OQL call can contain one query or a bounded
@@ -285,8 +286,8 @@ Tests:
 - Local text -> `localSearchCode`.
 - Local AST -> `localSearchCode mode:"structural"`.
 - GitHub text -> provider pushdown when enough.
-- GitHub AST + `materialize:"auto"` -> `ROUTE`.
-- GitHub AST + `materialize:"never"` -> `UNSUPPORTED`.
+- GitHub AST + `materialize.mode:"auto"` -> `ROUTE`.
+- GitHub AST + `materialize.mode:"never"` -> `UNSUPPORTED`.
 - Mixed path/text/AST plans preserve all predicates.
 
 ### 4. Execution Adapters
@@ -395,7 +396,7 @@ Goal: expose OQL without making CLI/MCP own logic.
 
 CLI:
 
-- Add `octocode search --query '<json>'`.
+- Add `octocode search --query JSON`.
 - Add `octocode search --scheme`.
 - Add `octocode search --explain`.
 - V1 keeps existing quick commands on their current implementation.
@@ -411,7 +412,7 @@ MCP:
 
 Raw tools:
 
-- Keep `tools <name> --queries` as a compatibility and debugging runner.
+- Keep `tools NAME --queries` as a compatibility and debugging runner.
 - Document that raw tool batches are per-tool and currently capped at five
   queries.
 
@@ -572,7 +573,7 @@ The first useful OQL release is:
 4. `target:"content"`, `target:"structure"`, and `target:"files"` over local
    and GitHub sources.
 5. GitHub pushdown for valid code/content/tree/file plans.
-6. `materialize:"auto"` and `materialize:"required"` for bounded GitHub
+6. `materialize.mode:"auto"` and `materialize.mode:"required"` for bounded GitHub
    repo/path/ref scopes.
 7. Remote-as-local proof for AST, PCRE2, exact matching, repeatable reads, and
    provider-gap verification.

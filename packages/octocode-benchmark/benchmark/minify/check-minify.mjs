@@ -235,7 +235,7 @@ function syntheticSampleFor(ext) {
   if (ext === 'cs') {
     return languageSynthetic('/* generated fixture */\nclass Fixture {\n  int Value(int input) { return input + 1; }\n}\n')
   }
-  if (['kt', 'kotlin'].includes(ext)) {
+  if (['kt', 'kts', 'kotlin'].includes(ext)) {
     return languageSynthetic('// generated fixture\nfun value(input: Int): Int {\n  return input + 1\n}\n')
   }
   if (ext === 'swift') {
@@ -250,7 +250,7 @@ function syntheticSampleFor(ext) {
   if (ext === 'gradle') {
     return languageSynthetic('// generated fixture\nplugins {\n  id "java"\n}\n')
   }
-  if (['rb', 'ruby'].includes(ext)) {
+  if (['rb', 'rake', 'gemspec', 'ru', 'ruby'].includes(ext)) {
     return languageSynthetic('# generated fixture\ndef value(input)\n  input + 1\nend\n')
   }
   if (ext === 'php') {
@@ -268,7 +268,7 @@ function syntheticSampleFor(ext) {
   if (['ps1', 'psd1', 'psm1'].includes(ext)) {
     return languageSynthetic('# generated fixture\nfunction Get-Value {\n  param($InputObject)\n  $InputObject + 1\n}\n')
   }
-  if (['tf', 'tfvars'].includes(ext)) {
+  if (['tf', 'hcl', 'tfvars'].includes(ext)) {
     return languageSynthetic('# generated fixture\nvariable "name" {\n  default = "octocode"\n}\n')
   }
   if (['gql', 'graphql'].includes(ext)) {
@@ -288,6 +288,9 @@ function syntheticSampleFor(ext) {
   }
   if (['fs', 'fsx'].includes(ext)) {
     return languageSynthetic('// generated fixture\nlet value input = input + 1\n')
+  }
+  if (['ml', 'mli'].includes(ext)) {
+    return languageSynthetic('(* generated fixture *)\nlet value input = input + 1\n')
   }
   if (['vhd', 'vhdl'].includes(ext)) {
     return languageSynthetic('-- generated fixture\nentity value is\nend value;\n')

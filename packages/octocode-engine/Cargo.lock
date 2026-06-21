@@ -964,7 +964,7 @@ dependencies = [
 
 [[package]]
 name = "octocode-engine"
-version = "16.5.0"
+version = "16.5.1"
 dependencies = [
  "goblin",
  "grep",
