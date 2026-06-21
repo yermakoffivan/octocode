@@ -34,9 +34,28 @@ function parseGithubRef(input: string): GithubRef | null {
     }
   }
 
+  // owner/repo@branch[/path] — branch immediately after the repo.
   const atMatch = trimmed.match(/^([^/]+)\/([^/@]+)@([^/]+)(?:\/(.+))?$/);
   if (atMatch) {
     const [, owner, repo, branch, subpath] = atMatch;
+    if (owner && repo) {
+      return {
+        kind: 'github',
+        owner,
+        repo,
+        subpath: subpath ?? '',
+        branch: branch ?? undefined,
+        raw: trimmed,
+      };
+    }
+  }
+
+  // owner/repo/path@branch — trailing branch after the subpath. This is the
+  // form documented in top-level help and emitted by refLabel/cloneCommandFor,
+  // so it must round-trip back through the parser.
+  const trailingAtMatch = trimmed.match(/^([^/@]+)\/([^/@]+)\/(.+)@([^/@]+)$/);
+  if (trailingAtMatch) {
+    const [, owner, repo, subpath, branch] = trailingAtMatch;
     if (owner && repo) {
       return {
         kind: 'github',

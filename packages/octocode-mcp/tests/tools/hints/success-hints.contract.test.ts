@@ -109,7 +109,7 @@ describe('lspGetSemantics — success handoff hints', () => {
       await import('../../../../octocode-tools-core/src/tools/lsp/semantic_content/hints.js');
     const hints = semanticHints('definition', true);
     expect(hints.join('\n')).toContain('localGetFileContent');
-    expect(hints.join('\n')).toContain('references');
+    expect(hints.join('\n')).toContain('callers');
   });
 
   it('semanticHints returns lineHint guidance on successful documentSymbols', async () => {

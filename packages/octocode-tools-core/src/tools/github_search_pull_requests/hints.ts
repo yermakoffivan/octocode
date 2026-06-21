@@ -54,16 +54,14 @@ export const hints: ToolHintGenerators = {
 
     return [
       state === 'merged'
-        ? 'No merged PRs matched — widen the date range or remove author/label filters.'
-        : 'Remove filters one at a time to find what is too narrow.',
+        ? 'No merged PRs — widen the date range or remove filters.'
+        : 'Remove filters one at a time.',
       ...(query && !alreadyTitleScope
         ? [
             'For title-only matching use match:["title"] with sort:"best-match".',
           ]
         : !query
-          ? [
-              'Add a keyword (keywordsToSearch) to narrow by title or body text.',
-            ]
+          ? ['Add keywordsToSearch to narrow by title/body.']
           : []),
     ];
   },

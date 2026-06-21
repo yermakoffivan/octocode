@@ -20,14 +20,14 @@ export const hints: ToolHintGenerators = {
       const scoped: string[] = [
         hasFilters
           ? 'Remove path/filename/extension first, then retry keywords.'
-          : `No results in ${owner}/${repo} — large or popular repos often require narrowing: add extension, filename, or path to reduce scope. Repo may also be unindexed (new/private/recently renamed). Fall back to ghGetFileContent with a known path, or ghViewRepoStructure to discover paths.`,
+          : `No results in ${owner}/${repo}. Narrow with extension/filename/path; repo may be unindexed (new/private). Fall back to ghViewRepoStructure or ghGetFileContent with a known path.`,
         'GitHub code search indexes the default branch only.',
       ];
       // When clone is enabled, a repo that GitHub's index can't see is still
       // fully searchable locally: clone it, then use the local tools.
       if (ctx.cloneEnabled && !hasFilters) {
         scoped.push(
-          `If ${owner}/${repo} is unindexed, clone it with ghCloneRepo (owner="${owner}", repo="${repo}") and research locally with localSearchCode, localGetFileContent, and lspGetSemantics.`
+          `If ${owner}/${repo} is unindexed, clone it (ghCloneRepo) then use localSearchCode + localGetFileContent.`
         );
       }
       return scoped;
@@ -48,7 +48,7 @@ export const hints: ToolHintGenerators = {
 
     if (out.length === 0 && keywords && keywords.length > 0) {
       out.push(
-        'Scope to owner/repo, split into one-keyword queries, or try a shorter exact term. For large repos (react, webpack, electron), narrow with extension="ts" or path="src".'
+        'Scope to owner/repo, split into one-keyword queries, or try a shorter exact term; narrow large repos with extension or path.'
       );
     }
 

@@ -19,8 +19,7 @@ export const hints: ToolHintGenerators = {
         typeof c.totalLines === 'number' ? c.totalLines : undefined;
       const tailLine = totalLines ? Math.max(1, totalLines - 200) : undefined;
       const hints: string[] = [
-        `File${kb} too large — use matchString or startLine+endLine for a slice.`,
-        `Or minify="symbols" for a skeleton index, then startLine/endLine.`,
+        `File${kb} too large — use matchString, startLine+endLine, or minify="symbols" for a skeleton.`,
       ];
       if (tailLine && totalLines) {
         hints.push(`Tail: startLine=${tailLine}, endLine=${totalLines}.`);

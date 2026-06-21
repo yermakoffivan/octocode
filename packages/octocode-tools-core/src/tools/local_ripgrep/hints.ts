@@ -5,9 +5,9 @@ export const hints: ToolHintGenerators = {
     const c = ctx as Record<string, unknown>;
     if (c.mode === 'structural') {
       return [
-        'No structural matches. The pattern must be a complete code fragment for the target language; use $X for a single node, $$$ARGS for a list.',
-        'For relational rules (inside/has/not), add `stopBy: end` so the sub-rule walks all ancestors/descendants — without it the rule silently matches nothing.',
-        'Verify the file extension is one the engine parses (ts/tsx/js/py/go/rs/java/c/cpp/cs/sh), and widen the path.',
+        'No structural matches — the pattern must be a complete code fragment; $X = one node, $$$ARGS = a list.',
+        'Relational rules (inside/has/not) need `stopBy: end` — without it they silently match nothing.',
+        'Verify the extension is AST-supported (ts/tsx/js/py/go/rs/java/c/cpp/cs/sh) and widen the path.',
       ];
     }
     const path = typeof c.path === 'string' ? c.path : undefined;
