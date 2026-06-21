@@ -24,6 +24,7 @@ import {
   ensureCloneParentDir,
   evictExpiredTrees,
 } from '../tools/github_clone_repo/cache.js';
+import { getExtension } from '../utils/file/filters.js';
 
 export const MAX_DIRECTORY_FILES = 50;
 
@@ -149,7 +150,7 @@ export async function fetchDirectoryContents(
       if (item.type !== 'file') return false;
       if (!item.download_url) return false;
       if (item.size > MAX_FILE_SIZE) return false;
-      const ext = getExtension(item.name);
+      const ext = getExtension(item.name, { lowercase: true, leadingDot: true });
       if (BINARY_EXTENSIONS.has(ext)) return false;
       return true;
     })
@@ -404,10 +405,4 @@ function safeFileSize(path: string): number {
   } catch {
     return 0;
   }
-}
-
-function getExtension(filename: string): string {
-  const lastDot = filename.lastIndexOf('.');
-  if (lastDot === -1) return '';
-  return filename.substring(lastDot).toLowerCase();
 }

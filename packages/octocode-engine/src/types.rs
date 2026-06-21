@@ -166,6 +166,9 @@ pub struct FileSystemQueryOptions {
     pub show_hidden: Option<bool>,
     /// Match basename globs, OR-combined.
     pub names: Option<Vec<String>>,
+    /// Match file extensions, OR-combined. Values may include a leading dot.
+    /// Directories are preserved so recursive structure views can keep context.
+    pub extensions: Option<Vec<String>>,
     /// Match full path glob.
     pub path_pattern: Option<String>,
     /// Rust regex against basename.

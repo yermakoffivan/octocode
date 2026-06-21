@@ -3,6 +3,7 @@ import { getBool, getString } from '../options.js';
 import { resolveRef, isGithubRef, refLabel } from '../routing.js';
 import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT } from '../exit-codes.js';
+import { formatGithubFailure } from '../github-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 
 interface CommitAuthor {
@@ -102,12 +103,13 @@ async function fetchCommits(
   if (result.isError) {
     const errText =
       result.content[0]?.type === 'text' ? result.content[0].text : '';
-    if (/401|403|auth/i.test(errText)) {
-      throw new Error(
-        `GitHub auth error: ${errText}. Set GITHUB_TOKEN, OCTOCODE_TOKEN, or GH_TOKEN.`
-      );
-    }
-    throw new Error(`GitHub commit history error: ${errText}`);
+    const sub = opts.path ? `/${opts.path}` : '';
+    throw new Error(
+      formatGithubFailure(errText, {
+        target: `${owner}/${repo}${sub}`,
+        genericLabel: 'GitHub commit history error',
+      })
+    );
   }
 
   return result.structuredContent as CommitsResult;

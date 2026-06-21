@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'vitest';
+import { buildGithubFetchContentFinalizer } from '../../../src/tools/github_fetch_content/finalizer.js';
+import type { FlatQueryResult } from '../../../src/types/toolResults.js';
+
+type Query = {
+  id: string;
+  owner: string;
+  repo: string;
+  branch?: string;
+  path: string;
+  minify?: 'none' | 'standard' | 'symbols';
+  type?: 'file' | 'directory';
+};
+
+function run(queries: Query[], results: FlatQueryResult[]) {
+  const finalizer = buildGithubFetchContentFinalizer<Query>();
+  return finalizer({ queries, results } as never);
+}
+
+describe('github fetch content finalizer next.continueChars', () => {
+  it('emits a ready continuation query when char pagination hasMore', () => {
+    const query: Query = {
+      id: 'q1',
+      owner: 'octo',
+      repo: 'engine',
+      branch: 'main',
+      path: 'src/big.ts',
+      minify: 'standard',
+    };
+    const result: FlatQueryResult = {
+      id: 'q1',
+      status: 'success',
+      data: {
+        path: 'src/big.ts',
+        content: 'chunk-1',
+        pagination: {
+          currentPage: 1,
+          totalPages: 3,
+          hasMore: true,
+          charOffset: 0,
+          charLength: 2000,
+          totalChars: 6000,
+          nextCharOffset: 2000,
+        },
+      },
+    };
+
+    const out = run([query], [result]);
+    const file = (out.structuredContent.results as Array<{ files?: unknown[] }>)[0]
+      ?.files?.[0] as {
+      next?: { continueChars?: { tool: string; query: Record<string, unknown> } };
+    };
+
+    expect(file.next?.continueChars).toEqual({
+      tool: 'ghGetFileContent',
+      query: {
+        owner: 'octo',
+        repo: 'engine',
+        branch: 'main',
+        path: 'src/big.ts',
+        charOffset: 2000,
+        charLength: 2000,
+        minify: 'standard',
+      },
+    });
+  });
+
+  it('omits next when there is no further page', () => {
+    const query: Query = {
+      id: 'q1',
+      owner: 'octo',
+      repo: 'engine',
+      path: 'src/small.ts',
+    };
+    const result: FlatQueryResult = {
+      id: 'q1',
+      status: 'success',
+      data: {
+        path: 'src/small.ts',
+        content: 'all',
+        pagination: {
+          currentPage: 1,
+          totalPages: 1,
+          hasMore: false,
+          charOffset: 0,
+          charLength: 3,
+          totalChars: 3,
+        },
+      },
+    };
+
+    const out = run([query], [result]);
+    const file = (out.structuredContent.results as Array<{ files?: unknown[] }>)[0]
+      ?.files?.[0] as { next?: unknown };
+
+    expect(file.next).toBeUndefined();
+  });
+});

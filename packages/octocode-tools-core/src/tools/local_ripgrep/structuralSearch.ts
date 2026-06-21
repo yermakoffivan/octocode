@@ -19,6 +19,11 @@ const DEFAULT_STRUCTURAL_EXCLUDE_DIRS: string[] = [];
 const DEFAULT_MAX_STRUCTURAL_FILES = 2000;
 const MAX_STRUCTURAL_FILE_BYTES = 1_000_000;
 
+// Guidance appended to the typed `warnings` channel when a structural search
+// parses fine but matches nothing — the usual cause is an incomplete pattern.
+const ZERO_MATCH_GUIDANCE =
+  '0 structural matches. A pattern matches a complete AST node — a class/function usually needs a body (add `$$$BODY`), and Python/TS definitions may carry a return type (`-> $RET:`) or decorators the pattern must include. For partial or relational matches use a YAML `rule` instead of `pattern`.';
+
 /**
  * Native structural search filters candidate files by `include` globs (or scans
  * every supported extension when none are given). `langType` is the ergonomic
@@ -96,9 +101,10 @@ export async function searchContentStructural(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const langType = query.langType || 'source';
     return createErrorResult(
       new Error(
-        `Invalid structural ${query.rule ? 'rule' : 'pattern'}: ${message}`
+        `Invalid structural ${query.rule ? 'rule' : 'pattern'}: ${message} — patterns must be valid ${langType} and match a complete node; a class/def usually needs a body (add \`$$$BODY\`). See QUERY-LANGUAGE.md.`
       ),
       query,
       {
@@ -118,16 +124,21 @@ export async function searchContentStructural(
         column: match.startCol,
         endColumn: match.endCol,
         metavars: match.metavars,
+        // Precise per-capture ranges → an agent can feed a capture straight to
+        // lspGetSemantics (uri + line) without re-searching for the symbol.
+        ...(match.metavarRanges && Object.keys(match.metavarRanges).length > 0
+          ? { metavarRanges: match.metavarRanges }
+          : {}),
       })),
     })
   );
 
   const stats: SearchStats = { matchCount: nativeResult.totalMatches };
-  return await buildSearchResult(
-    files,
-    query,
-    'structural',
-    nativeResult.warnings,
-    stats
-  );
+  // A successful-but-empty structural search is almost always an incomplete
+  // pattern; surface remediation through the typed warnings channel (not hints).
+  const warnings = [...nativeResult.warnings];
+  if (files.length === 0 || nativeResult.totalMatches === 0) {
+    warnings.push(ZERO_MATCH_GUIDANCE);
+  }
+  return await buildSearchResult(files, query, 'structural', warnings, stats);
 }

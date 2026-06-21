@@ -80,10 +80,10 @@ describe('localViewStructure native filter pushdown', () => {
     ]);
   });
 
-  it('does not pre-cap extension filters before TypeScript filtering', async () => {
+  it('pushes extension filters into the native query before capping', async () => {
     const queryFileSystem = vi.fn().mockReturnValue({
-      entries: [fileEntry('alpha.txt', 'txt'), fileEntry('beta.ts', 'ts')],
-      totalDiscovered: 2,
+      entries: [fileEntry('beta.ts', 'ts')],
+      totalDiscovered: 1,
       wasCapped: false,
       skipped: 0,
       permissionDenied: 0,
@@ -103,9 +103,10 @@ describe('localViewStructure native filter pushdown', () => {
 
     expect(queryFileSystem).toHaveBeenCalledWith(
       expect.objectContaining({
+        extensions: ['ts'],
         names: undefined,
         entryType: 'f',
-        limit: 10000,
+        limit: 2,
       })
     );
     expect(result.entries?.map(entry => entry.path)).toEqual(['/repo/beta.ts']);

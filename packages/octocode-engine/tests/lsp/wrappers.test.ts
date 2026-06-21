@@ -165,6 +165,43 @@ describe('TypeScript wrappers delegate to nativeBinding only', () => {
     });
   });
 
+  it('resolves import-location definitions through local JS/TS modules', async () => {
+    await withMockedNative(async () => {
+      const { resolveImportAliasDefinitions } = await import(
+        '../../src/lsp/resolver.js'
+      );
+      const root = await mkdtemp(
+        path.join(os.tmpdir(), 'octocode-engine-import-alias-')
+      );
+      const importer = path.join(root, 'importer.ts');
+      const target = path.join(root, 'target.ts');
+      await writeFile(importer, "import { original as target } from './target.js';\n");
+      await writeFile(target, 'export const original = 1;\n');
+
+      const [resolved] = await resolveImportAliasDefinitions({
+        anchorUri: importer,
+        symbolName: 'target',
+        locations: [
+          {
+            uri: importer,
+            range: {
+              start: { line: 0, character: 9 },
+              end: { line: 0, character: 15 },
+            },
+            content: "import { original as target } from './target.js';",
+          },
+        ],
+      });
+
+      expect(resolved).toMatchObject({
+        uri: target,
+        displayRange: { startLine: 1, endLine: 1 },
+        content: 'export const original = 1;',
+      });
+      await rm(root, { recursive: true, force: true });
+    });
+  });
+
   it('uses supplied document content for LSP requests that open a file', async () => {
     await withMockedNative(async mock => {
       const { LSPClient } = await import('../../src/lsp/client.js');

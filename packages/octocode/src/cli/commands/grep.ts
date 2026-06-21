@@ -9,6 +9,7 @@ import {
 import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
+import { formatGithubFailure } from '../github-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 import { getConfigSync } from '@octocodeai/octocode-tools-core/config';
 import {
@@ -75,7 +76,17 @@ function listOption(value: string | undefined): string[] | undefined {
 }
 
 function structuralShellExpansionError(shape: string): string | undefined {
-  if (/\$\d|\$\(|\$\s/.test(shape)) {
+  // Strip valid ast-grep metavariables before sniffing for shell-expansion
+  // artifacts. Otherwise the `\$\s` check below matches the trailing `$` of an
+  // unnamed `$$$` ellipsis when whitespace follows it (e.g. `{ $$$ }`), falsely
+  // rejecting a correctly single-quoted pattern. `$1` (a shell positional),
+  // `$(...)` (command substitution), and a lone dangling `$ ` survive the strip
+  // and are still flagged.
+  const withoutMetavars = shape
+    .replace(/\$\$\$[A-Za-z_]\w*/g, '') // $$$NAME — named multi
+    .replace(/\$\$\$/g, '') // $$$ — anonymous multi
+    .replace(/\$[A-Za-z_]\w*/g, ''); // $NAME — named single
+  if (/\$\d|\$\(|\$\s/.test(withoutMetavars)) {
     return "Structural pattern looks shell-expanded. Wrap metavariables in single quotes, e.g. --pattern 'useEffect($$$ARGS)'.";
   }
   if (!shape.includes('$') && /[A-Za-z_][\w.]*\([^)]*\b\d{5,}\b/.test(shape)) {
@@ -274,12 +285,13 @@ async function searchGithub(
   if (result.isError) {
     const errText =
       result.content[0]?.type === 'text' ? result.content[0].text : '';
-    if (/401|403|auth/i.test(errText)) {
-      throw new Error(
-        `GitHub auth error: ${errText}. Set GITHUB_TOKEN, OCTOCODE_TOKEN, or GH_TOKEN.`
-      );
-    }
-    throw new Error(`GitHub search error: ${errText}`);
+    const sub = subpath ? `/${subpath}` : '';
+    throw new Error(
+      formatGithubFailure(errText, {
+        target: `${owner}/${repo}${sub}`,
+        genericLabel: 'GitHub search error',
+      })
+    );
   }
 
   return result.structuredContent as GithubCodeResult;

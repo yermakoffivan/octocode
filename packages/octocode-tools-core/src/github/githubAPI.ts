@@ -94,7 +94,7 @@ export interface HistoryResult {
   path?: string;
   commits: HistoryCommit[];
   pagination: {
-    page: number;
+    currentPage: number;
     perPage: number;
     hasMore: boolean;
     nextPage?: number;
@@ -181,6 +181,13 @@ export type OptimizedCodeSearchResult = {
   };
 
   nonExistentScope?: boolean;
+
+  /**
+   * GitHub returned `incomplete_results: true` (the search index timed out or
+   * could not fully complete). Empty or partial `items` may be a FALSE NEGATIVE
+   * — distinct from a genuine no-match. Surfaced so callers aren't blind.
+   */
+  incompleteResults?: boolean;
 };
 
 export interface PRCommentItem {

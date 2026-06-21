@@ -39,7 +39,6 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
       data: z.object({
         files: z.array(
           z.object({
-            id: z.string(),
             owner: z.string(),
             repo: z.string(),
             path: z.string(),
@@ -87,9 +86,11 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
       z.object({
         id: z.string(),
         nonExistentScope: z.literal(true).optional(),
+        incompleteResults: z.literal(true).optional(),
       })
     )
     .optional(),
+  warnings: z.array(z.string()).optional(),
   errors: z
     .array(
       z.object({

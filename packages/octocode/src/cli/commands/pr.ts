@@ -3,6 +3,7 @@ import { getBool, getString } from '../options.js';
 import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
+import { formatGithubFailure } from '../github-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 
 interface PRLabel {
@@ -504,12 +505,12 @@ async function fetchPRList(
   if (result.isError) {
     const errText =
       result.content[0]?.type === 'text' ? result.content[0].text : '';
-    if (/401|403|auth/i.test(errText)) {
-      throw new Error(
-        `GitHub auth error: ${errText}. Set GITHUB_TOKEN, OCTOCODE_TOKEN, or GH_TOKEN.`
-      );
-    }
-    throw new Error(`GitHub PR search error: ${errText}`);
+    throw new Error(
+      formatGithubFailure(errText, {
+        target: `${owner}/${repo}`,
+        genericLabel: 'GitHub PR search error',
+      })
+    );
   }
 
   return result.structuredContent as PRSearchResult;
@@ -585,15 +586,15 @@ async function fetchPRDetail(
   if (result.isError) {
     const errText =
       result.content[0]?.type === 'text' ? result.content[0].text : '';
-    if (/401|403|auth/i.test(errText)) {
-      throw new Error(
-        `GitHub auth error: ${errText}. Set GITHUB_TOKEN, OCTOCODE_TOKEN, or GH_TOKEN.`
-      );
-    }
     if (/404|not found/i.test(errText)) {
       throw new Error(`PR #${prNumber} not found in ${owner}/${repo}`);
     }
-    throw new Error(`GitHub PR fetch error: ${errText}`);
+    throw new Error(
+      formatGithubFailure(errText, {
+        target: `${owner}/${repo}#${prNumber}`,
+        genericLabel: 'GitHub PR fetch error',
+      })
+    );
   }
 
   return result.structuredContent as PRSearchResult;

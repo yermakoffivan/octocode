@@ -2,6 +2,18 @@ use std::collections::HashMap;
 
 use napi_derive::napi;
 
+/// Precise position of one captured metavariable node. Line is 1-based (usable
+/// as an `lspGetSemantics` `lineHint`); columns are 0-based char offsets — the
+/// same convention as `StructuralMatch.start_col`.
+#[napi(object)]
+pub struct MetavarRange {
+    pub text: String,
+    pub line: u32,
+    pub column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+}
+
 /// One structural match. Line numbers are 1-based so `start_line` can be fed
 /// directly as an `lspGetSemantics` `lineHint`; columns are 0-based char
 /// offsets (tree-sitter native).
@@ -16,6 +28,9 @@ pub struct StructuralMatch {
     /// `$$$ARGS` yields the full list of captured nodes. Keyed by the bare
     /// metavar name (no leading `$`).
     pub metavars: HashMap<String, Vec<String>>,
+    /// Per-capture precise ranges, parallel to `metavars` (same keys, same
+    /// order). Lets an agent hand a capture straight to LSP without re-search.
+    pub metavar_ranges: HashMap<String, Vec<MetavarRange>>,
 }
 
 #[napi(object)]
@@ -50,6 +65,7 @@ pub struct StructuralDetailedMatch {
     pub end_col: u32,
     pub text: String,
     pub metavars: HashMap<String, Vec<String>>,
+    pub metavar_ranges: HashMap<String, Vec<MetavarRange>>,
     pub node_kind: Option<String>,
     pub confidence: String,
 }
@@ -167,6 +183,7 @@ impl StructuralDetailedMatch {
             end_col: matched.end_col,
             text: matched.text,
             metavars: matched.metavars,
+            metavar_ranges: matched.metavar_ranges,
             node_kind: None,
             confidence: "exact-ast".to_owned(),
         }

@@ -93,6 +93,7 @@ export function transformCodeSearchResult(
     },
     repositoryContext: data._researchContext?.repositoryContext,
     nonExistentScope: data.nonExistentScope,
+    incompleteResults: data.incompleteResults,
   };
 }
 

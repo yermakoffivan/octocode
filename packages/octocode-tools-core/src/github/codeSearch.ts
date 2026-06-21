@@ -126,6 +126,12 @@ async function searchGitHubCodeAPIInternal(
       result.data.total_count
     );
 
+    // GitHub sets incomplete_results:true when the code-search index timed out
+    // or could not fully complete. The HTTP status is still 200, so without
+    // this flag an empty/partial result is indistinguishable from a true
+    // no-match. Propagate it so the agent isn't blind to index degradation.
+    const incompleteResults = result.data.incomplete_results === true;
+
     const reportedTotalMatches = optimizedResult.total_count;
     const totalMatches = Math.min(reportedTotalMatches, 1000);
     const totalPages = Math.min(Math.ceil(totalMatches / perPage), 10);
@@ -137,6 +143,7 @@ async function searchGitHubCodeAPIInternal(
       data: {
         total_count: optimizedResult.total_count,
         items: optimizedResult.items,
+        ...(incompleteResults ? { incompleteResults: true } : {}),
         repository: optimizedResult.repository,
         matchLocations: optimizedResult.matchLocations,
         minified: optimizedResult.minified,

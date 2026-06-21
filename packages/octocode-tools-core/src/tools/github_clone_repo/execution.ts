@@ -63,14 +63,44 @@ export async function executeCloneRepo(
             );
           }
 
+          const totalSize = getDirectorySizeBytes(result.localPath);
+
+          const location: Record<string, unknown> = {
+            kind: query.sparsePath ? 'tree' : 'repo',
+            localPath: result.localPath,
+            repoRoot: result.localPath,
+            source: 'clone',
+            cached: result.cached,
+            complete: !query.sparsePath,
+            resolvedBranch: result.branch,
+            ...(query.sparsePath ? { requestedPath: query.sparsePath } : {}),
+          };
+
+          const next: Record<string, unknown> = {
+            localSearch: {
+              tool: 'localSearchCode',
+              query: {
+                path: result.localPath,
+                keywords: 'TODO',
+                mode: 'discovery',
+              },
+            },
+            viewStructure: {
+              tool: 'localViewStructure',
+              query: { path: result.localPath },
+            },
+          };
+
           const resultData: Record<string, unknown> = {
             owner: query.owner,
             repo: query.repo,
             localPath: result.localPath,
-            ...(result.cached ? { cached: true } : {}),
-            ...(query.branch !== result.branch
-              ? { resolvedBranch: result.branch }
-              : {}),
+            resolvedBranch: result.branch,
+            cached: result.cached,
+            ...(query.sparsePath ? { sparsePath: query.sparsePath } : {}),
+            totalSize,
+            location,
+            next,
           };
 
           // Always a content result (hasContent=true); per-call next-step
@@ -81,14 +111,23 @@ export async function executeCloneRepo(
             true,
             TOOL_NAMES.GITHUB_CLONE_REPO,
             {
-              rawResponse: getDirectorySizeBytes(result.localPath),
+              rawResponse: totalSize,
             }
           );
         },
       }),
     {
       toolName: TOOL_NAMES.GITHUB_CLONE_REPO,
-      keysPriority: ['resolvedBranch', 'localPath', 'cached', 'error'],
+      keysPriority: [
+        'localPath',
+        'resolvedBranch',
+        'cached',
+        'sparsePath',
+        'totalSize',
+        'fileCount',
+        'location',
+        'error',
+      ],
     },
     args
   );

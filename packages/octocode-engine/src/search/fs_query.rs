@@ -22,6 +22,7 @@ struct CompiledQuery {
     min_depth: u32,
     show_hidden: bool,
     name_globs: Vec<Regex>,
+    extensions: Vec<String>,
     path_glob: Option<Regex>,
     regex: Option<Regex>,
     entry_type: Option<String>,
@@ -89,6 +90,7 @@ impl CompiledQuery {
         let root = PathBuf::from(options.path);
         let mut warnings = Vec::new();
         let name_globs = compile_globs(options.names.unwrap_or_default(), "names", &mut warnings);
+        let extensions = normalize_extensions(options.extensions.unwrap_or_default());
         let path_glob = match options.path_pattern {
             Some(pattern) => Some(compile_glob(&pattern, "pathPattern").map_err(|err| err.reason)?),
             None => None,
@@ -117,6 +119,7 @@ impl CompiledQuery {
             min_depth,
             show_hidden: options.show_hidden.unwrap_or(true),
             name_globs,
+            extensions,
             path_glob,
             regex,
             entry_type: options.entry_type,
@@ -256,6 +259,9 @@ fn matches_query(path: &Path, metadata: &fs::Metadata, query: &CompiledQuery) ->
             return false;
         }
     }
+    if !query.extensions.is_empty() && !matches_extension(path, metadata, &query.extensions) {
+        return false;
+    }
     if let Some(entry_type) = &query.entry_type {
         let matches_type = match entry_type.as_str() {
             "f" => metadata.is_file(),
@@ -288,6 +294,14 @@ fn matches_query(path: &Path, metadata: &fs::Metadata, query: &CompiledQuery) ->
     }
 
     true
+}
+
+fn matches_extension(path: &Path, metadata: &fs::Metadata, extensions: &[String]) -> bool {
+    if extensions.is_empty() || metadata.is_dir() {
+        return true;
+    }
+    let extension = get_extension_internal(&file_name(path), true, "");
+    !extension.is_empty() && extensions.iter().any(|allowed| allowed == &extension)
 }
 
 fn matches_time_filters(metadata: &fs::Metadata, query: &CompiledQuery) -> bool {
@@ -493,6 +507,14 @@ fn parse_size(raw: &str) -> Option<u64> {
     Some((value * multiplier).round() as u64)
 }
 
+fn normalize_extensions(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
 fn compile_globs(values: Vec<String>, label: &str, warnings: &mut Vec<String>) -> Vec<Regex> {
     values
         .into_iter()
@@ -629,6 +651,31 @@ mod tests {
 
         assert_eq!(result.entries.len(), 1);
         assert_eq!(result.entries[0].name, "a.ts");
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn filters_files_by_extension_without_pruning_directories() {
+        let root = temp_root("extension");
+        fs::create_dir_all(root.join("src")).expect("create src");
+        File::create(root.join("src/a.TS")).expect("create ts");
+        File::create(root.join("src/b.rs")).expect("create rs");
+
+        let result = query_file_system_inner(FileSystemQueryOptions {
+            path: root.to_string_lossy().to_string(),
+            recursive: Some(true),
+            extensions: Some(vec![".ts".to_owned()]),
+            ..Default::default()
+        })
+        .expect("query");
+
+        let mut names = result
+            .entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        assert_eq!(names, vec!["a.TS", "src"]);
         fs::remove_dir_all(root).expect("cleanup");
     }
 

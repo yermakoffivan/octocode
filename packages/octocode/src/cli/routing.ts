@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 export type LocalRef = { kind: 'local'; path: string };
@@ -104,6 +104,25 @@ export function resolveRef(input: string, branchOverride?: string): Ref {
   const localPath = path.resolve(trimmed);
   if (existsSync(localPath)) {
     return { kind: 'local', path: localPath };
+  }
+
+  // A path-shaped miss whose LEADING segment is an existing local directory is
+  // almost certainly a local path with a typo (e.g. `src/foo/Bar.ts` after a
+  // rename) — route it local so the caller reports a precise "file not found"
+  // rather than a confusing GitHub "repository not found (owner=src...)". A
+  // genuine owner/repo shorthand (e.g. `facebook/react/index.js`) has a leading
+  // segment that does NOT exist on disk, so it still falls through to GitHub.
+  if (trimmed.includes('/')) {
+    const firstSegment = trimmed.split('/')[0];
+    if (firstSegment) {
+      const firstSegmentPath = path.resolve(firstSegment);
+      if (
+        existsSync(firstSegmentPath) &&
+        statSync(firstSegmentPath).isDirectory()
+      ) {
+        return { kind: 'local', path: localPath };
+      }
+    }
   }
 
   const gh = parseGithubRef(trimmed);

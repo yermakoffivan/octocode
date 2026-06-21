@@ -41,6 +41,14 @@ type FileEntry = {
   matchNotFound?: boolean;
   searchedFor?: string;
   cached?: boolean;
+  next?: FileContentNextMap;
+};
+
+type FileContentNextMap = {
+  continueChars?: {
+    tool: 'ghGetFileContent';
+    query: Record<string, unknown>;
+  };
 };
 
 type DirectoryEntry = {
@@ -139,10 +147,43 @@ function ensureGroup(
   return created;
 }
 
+function buildContinueChars(
+  pagination: PaginationInfo | undefined,
+  query: PartialFileContentQuery
+): FileContentNextMap | undefined {
+  if (
+    !pagination ||
+    !pagination.hasMore ||
+    pagination.nextCharOffset === undefined
+  ) {
+    return undefined;
+  }
+  // Same `next.continueChars` shape convention as localSearchCode/localGetFileContent;
+  // built from the data already present so the agent can fetch the next page.
+  return {
+    continueChars: {
+      tool: 'ghGetFileContent',
+      query: {
+        owner: query.owner,
+        repo: query.repo,
+        ...(query.branch !== undefined ? { branch: query.branch } : {}),
+        path: query.path,
+        charOffset: pagination.nextCharOffset,
+        ...(pagination.charLength !== undefined
+          ? { charLength: pagination.charLength }
+          : {}),
+        ...(query.minify !== undefined ? { minify: query.minify } : {}),
+      },
+    },
+  };
+}
+
 function readFileEntry(
   data: Record<string, unknown>,
   query: PartialFileContentQuery
 ): FileEntry {
+  const pagination = readPagination(data.pagination);
+  const next = buildContinueChars(pagination, query);
   return {
     path: readString(data.path) ?? String(query.path ?? ''),
     content: typeof data.content === 'string' ? data.content : '',
@@ -162,7 +203,8 @@ function readFileEntry(
     sourceChars: readNumber(data.sourceChars),
     sourceBytes: readNumber(data.sourceBytes),
     resolvedBranch: readString(data.resolvedBranch),
-    pagination: readPagination(data.pagination),
+    pagination,
+    ...(next ? { next } : {}),
     ...(data.isPartial === true ? { isPartial: true } : {}),
     startLine: readNumber(data.startLine),
     endLine: readNumber(data.endLine),

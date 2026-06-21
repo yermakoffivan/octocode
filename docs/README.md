@@ -45,6 +45,20 @@ Install, run, and manage Octocode from the terminal.
 
 ---
 
+## Query Language
+
+Design notes for the current and future `octocode grep` / `octocode search`
+language.
+
+| Doc | When to read |
+|-----|--------------|
+| [Query Language Docs](https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/README.md) | Folder map, decision summary, and implementation checklist |
+| [Octocode Query Language](https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OCTOCODE_QUERY_LANGUAGE.md) | North-star typed query language for local grep plus GitHub/npm/external search |
+| [Grep Query Reference](https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/QUERY-LANGUAGE.md) | Current `octocode grep` / `localSearchCode` schema reference |
+| [Optimization Plan](https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OPTIMIZATION-PLAN.md) | Engine and planner roadmap behind the query-language vision |
+
+---
+
 ## Guides
 
 | Doc | When to read |

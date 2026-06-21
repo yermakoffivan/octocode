@@ -69,6 +69,9 @@ export interface CodeSearchResult {
   };
 
   nonExistentScope?: boolean;
+
+  /** Provider's search index did not fully complete (GitHub incomplete_results) — empty/partial results may be a false negative. */
+  incompleteResults?: boolean;
 }
 
 export interface FileContentResult {

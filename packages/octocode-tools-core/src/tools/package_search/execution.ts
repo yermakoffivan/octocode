@@ -41,32 +41,114 @@ function cleanRelativePath(
   return clean.length > 0 ? clean : undefined;
 }
 
+/**
+ * Normalize the many repository URL shapes npm packages carry
+ * (ssh://git@…, git+https://…, git://…, git@host:owner/repo) into a
+ * canonical `https://host/owner/repo` form. Falls back to the cleaned
+ * original when the shape is unrecognized.
+ */
+function normalizeRepoUrl(
+  url: string | null | undefined
+): string | undefined {
+  if (!url) return undefined;
+  let u = url.trim();
+  if (!u) return undefined;
+
+  // Strip leading VCS prefixes: git+https://, git+ssh://, git+ (etc.)
+  u = u.replace(/^git\+/, '');
+  // Drop a trailing .git suffix.
+  const stripGit = (s: string): string => s.replace(/\.git$/, '');
+
+  // scp-like syntax: git@github.com:owner/repo(.git)
+  const scpMatch = u.match(/^[^@/]+@([^:/]+):(.+)$/);
+  if (scpMatch && scpMatch[1] && scpMatch[2]) {
+    return stripGit(`https://${scpMatch[1]}/${scpMatch[2]}`);
+  }
+
+  // ssh://git@host/owner/repo, git://host/owner/repo, https://host/owner/repo
+  const schemeMatch = u.match(/^(?:ssh|git|https?):\/\/(.+)$/);
+  if (schemeMatch && schemeMatch[1]) {
+    // Drop any userinfo (e.g. git@) from the authority component.
+    const rest = schemeMatch[1].replace(/^[^@/]+@/, '');
+    return stripGit(`https://${rest}`);
+  }
+
+  // Bare owner/repo or unknown shape: return cleaned form unchanged.
+  return stripGit(u);
+}
+
+function resolveGitHubOwnerRepo(
+  repoUrl: string | undefined
+): { owner: string; repo: string } | undefined {
+  if (!repoUrl) return undefined;
+  const match = repoUrl.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/#?]+)/i
+  );
+  if (!match || !match[1] || !match[2]) return undefined;
+  return { owner: match[1], repo: match[2] };
+}
+
 type PackageData = {
   name: string;
   version?: string;
   description?: string;
   license?: string;
-  weeklyDownloads?: number;
+  downloads?: number;
   repository?: string;
   repositoryDirectory?: string;
+  next?: Record<string, unknown>;
 };
+
+function buildNext(
+  repoUrl: string | undefined,
+  repositoryDirectory: string | undefined
+): Record<string, unknown> | undefined {
+  const gh = resolveGitHubOwnerRepo(repoUrl);
+  if (!gh) return undefined;
+  const { owner, repo } = gh;
+  const next: Record<string, unknown> = {
+    viewRepoStructure: {
+      tool: 'ghViewRepoStructure',
+      query: {
+        owner,
+        repo,
+        ...(repositoryDirectory ? { path: repositoryDirectory } : {}),
+      },
+    },
+    searchCode: {
+      tool: 'ghSearchCode',
+      query: { owner, repo },
+    },
+    cloneRepo: {
+      tool: 'ghCloneRepo',
+      query: {
+        owner,
+        repo,
+        ...(repositoryDirectory ? { sparsePath: repositoryDirectory } : {}),
+      },
+    },
+  };
+  return next;
+}
 
 function formatPackageData(pkg: PackageResult): PackageData {
   const name = getPackageName(pkg);
-  const url = getPackageRepo(pkg);
+  const url = normalizeRepoUrl(getPackageRepo(pkg));
   const data: PackageData = { name };
   if (isNpm(pkg)) {
     if (pkg.version && pkg.version !== 'unknown') data.version = pkg.version;
     if (pkg.description) data.description = pkg.description;
     if (pkg.license) data.license = pkg.license;
     if (typeof pkg.weeklyDownloads === 'number')
-      data.weeklyDownloads = pkg.weeklyDownloads;
+      data.downloads = pkg.weeklyDownloads;
   }
   if (url) data.repository = url;
   const root = cleanRelativePath(
     isNpm(pkg) ? pkg.repositoryDirectory : undefined
   );
   if (root) data.repositoryDirectory = root;
+  const next = buildNext(url, root);
+  if (next) data.next = next;
   return data;
 }
 

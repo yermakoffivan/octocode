@@ -15,8 +15,9 @@ import {
   withMaterializationHints,
 } from '../remote-local.js';
 
-// Relational / identity queries only. For a file or directory outline
-// (documentSymbols) use `ls <file|dir> --symbols` instead.
+// Relational / identity queries only. The file/dir OUTLINE (documentSymbols) is
+// intentionally served by `ls <file|dir> --symbols`, not here — see
+// OUTLINE_TYPES for the dedicated redirect.
 const LSP_TYPES = [
   'definition',
   'references',
@@ -27,6 +28,12 @@ const LSP_TYPES = [
   'typeDefinition',
   'implementation',
 ] as const;
+
+// `documentSymbols` is a valid lspGetSemantics type (so agents see it advertised
+// in the tool schema), but the `lsp` shortcut deliberately routes outlines to
+// `ls --symbols`. Recognize it explicitly so the user gets a clear redirect
+// instead of a confusing "not a valid --type" listing that omits it.
+const OUTLINE_TYPES = new Set(['documentSymbols', 'documentSymbol']);
 
 type LspType = (typeof LSP_TYPES)[number];
 
@@ -310,6 +317,19 @@ export const lspCommand: CLICommand = {
 
     if (!target) {
       printUsageError('Provide a local source file path.', jsonOutput);
+      process.exitCode = EXIT.USAGE;
+      return;
+    }
+
+    // documentSymbols is a real lspGetSemantics type, but the outline lives in
+    // `ls --symbols` here — give a direct, actionable redirect rather than the
+    // generic "not a valid --type" error that wouldn't even list it.
+    if (rawType && OUTLINE_TYPES.has(rawType)) {
+      const fileArg = target || '<file|dir>';
+      printUsageError(
+        `documentSymbols (file/dir outline) isn't available via lsp — use: ls ${fileArg} --symbols`,
+        jsonOutput
+      );
       process.exitCode = EXIT.USAGE;
       return;
     }

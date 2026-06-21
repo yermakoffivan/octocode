@@ -47,9 +47,10 @@ export const NpmSearchOutputLocalSchema = z
                       version: z.string().optional(),
                       description: z.string().optional(),
                       license: z.string().optional(),
-                      weeklyDownloads: z.number().optional(),
+                      downloads: z.number().optional(),
                       repository: z.string().optional(),
                       repositoryDirectory: z.string().optional(),
+                      next: z.record(z.string(), z.unknown()).optional(),
                     })
                     .passthrough()
                 )

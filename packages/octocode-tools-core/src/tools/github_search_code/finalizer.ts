@@ -19,7 +19,6 @@ type PerQueryGroups = {
 };
 
 type CodeSearchFileResult = {
-  id: string;
   owner: string;
   repo: string;
   path: string;
@@ -41,6 +40,7 @@ function readPerQueryFlat(result: FlatQueryResult): CodeSearchFlatResult {
     results: Array.isArray(data?.results) ? data.results : [],
     pagination: data?.pagination,
     ...(data?.nonExistentScope ? { nonExistentScope: true } : {}),
+    ...(data?.incompleteResults ? { incompleteResults: true } : {}),
   };
 }
 
@@ -92,7 +92,6 @@ function flattenGroupsToFiles(
         continue;
       }
       byFile.set(key, {
-        id: `${group.owner}/${group.repo}:${match.path}`,
         owner: group.owner,
         repo: group.repo,
         path: match.path,
@@ -204,12 +203,15 @@ export function buildGhSearchCodeFinalizer<
     const emptyQueries: Array<{
       id: string;
       nonExistentScope?: true;
+      incompleteResults?: true;
     }> = [];
+    let anyIncompleteResults = false;
 
     results.forEach((res, _index) => {
       if (res.status === 'error') return;
 
       const flat = readPerQueryFlat(res);
+      if (flat.incompleteResults) anyIncompleteResults = true;
       const totalMatches = flat.results.reduce(
         (sum, group) => sum + group.matches.length,
         0
@@ -218,6 +220,9 @@ export function buildGhSearchCodeFinalizer<
         emptyQueries.push({
           id: res.id,
           ...(flat.nonExistentScope ? { nonExistentScope: true as const } : {}),
+          ...(flat.incompleteResults
+            ? { incompleteResults: true as const }
+            : {}),
         });
       }
       const groups = flat.results;
@@ -266,13 +271,25 @@ export function buildGhSearchCodeFinalizer<
 
     if (emptyQueries.length > 0) {
       responseData.emptyQueries = emptyQueries.map(
-        ({ id, nonExistentScope }) => ({
+        ({ id, nonExistentScope, incompleteResults }) => ({
           id,
           ...(nonExistentScope ? { nonExistentScope } : {}),
+          ...(incompleteResults ? { incompleteResults } : {}),
         })
       );
     }
     if (errors.length > 0) responseData.errors = errors;
+
+    // GitHub's index did not fully complete for at least one query — empty or
+    // partial results may be a false negative, NOT a true absence. Surface it
+    // as a visible warning so the agent distinguishes "no match" from "search
+    // degraded" and can retry, narrow scope, or search the repo locally.
+    if (anyIncompleteResults) {
+      responseData.warnings = [
+        ...(Array.isArray(responseData.warnings) ? responseData.warnings : []),
+        'GitHub code search returned incomplete_results: the search index did not fully complete. Empty or partial results may be a false negative — retry, narrow scope (owner/repo/path), or materialize the repo and search locally before concluding absence.',
+      ];
+    }
 
     return formatFinalizedResponse<GitHubCodeSearchOutputLocal>(
       responseData,
@@ -291,6 +308,9 @@ export function buildGhSearchCodeFinalizer<
         'matchIndices',
         'pagination',
         'emptyQueries',
+        'nonExistentScope',
+        'incompleteResults',
+        'warnings',
         'errors',
       ],
       groups.length === 0 && errors.length > 0

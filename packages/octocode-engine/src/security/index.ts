@@ -36,6 +36,16 @@ export {
   shouldIgnoreFile,
 } from './ignoredPathFilter.js';
 
+export {
+  DISCOVERY_IGNORED_FILE_EXTENSIONS,
+  DISCOVERY_IGNORED_FILE_NAMES,
+  DISCOVERY_IGNORED_FOLDER_NAMES,
+  getDiscoveryExtension,
+  shouldIgnoreDiscoveryDir,
+  shouldIgnoreDiscoveryFile,
+} from './discoveryFilter.js';
+export type { DiscoveryExtensionOptions } from './discoveryFilter.js';
+
 export { redactPath } from './pathUtils.js';
 
 export {

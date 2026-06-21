@@ -6,7 +6,7 @@ use tree_sitter::{Language, Node, Parser, Tree};
 
 use super::language::AgLanguage;
 use super::query::StructuralQuery;
-use super::types::StructuralMatch;
+use super::types::{MetavarRange, StructuralMatch};
 
 pub(super) type OctoCompiledMatcher = Box<dyn Fn(&str) -> Vec<StructuralMatch>>;
 
@@ -22,6 +22,7 @@ pub(super) fn compile_matcher(
                     vec![to_structural_match(
                         tree.root_node(),
                         content,
+                        HashMap::new(),
                         HashMap::new(),
                     )]
                 })
@@ -45,11 +46,13 @@ pub(super) fn compile_matcher(
                     }
                     let mut captures = CaptureEnv::default();
                     if compiled.matches(candidate, content, &mut captures) {
+                        let (values, ranges) = captures.into_maps();
                         matches.push(to_structural_match_with_index(
                             candidate,
                             content,
                             &line_index,
-                            captures.into_map(),
+                            values,
+                            ranges,
                         ));
                     }
                 });
@@ -80,11 +83,13 @@ pub(super) fn compile_matcher(
                     }
                     let mut captures = CaptureEnv::default();
                     if compiled.matches(candidate, &document, &mut captures) {
+                        let (values, ranges) = captures.into_maps();
                         matches.push(to_structural_match_with_index(
                             candidate,
                             content,
                             &line_index,
-                            captures.into_map(),
+                            values,
+                            ranges,
                         ));
                     }
                 });
@@ -125,6 +130,7 @@ fn collect_kind_matches(root: Node<'_>, kind: &str, content: &str) -> Vec<Struct
                 candidate,
                 content,
                 &line_index,
+                HashMap::new(),
                 HashMap::new(),
             ));
         }
@@ -190,34 +196,52 @@ impl CandidatePlan {
     }
 }
 
+/// Raw capture position: (start_row, start_byte_col, end_row, end_byte_col),
+/// tree-sitter native. Converted to 1-based line + char column at build time.
+type RawRange = (u32, u32, u32, u32);
+
+fn raw_range(node: Node<'_>) -> RawRange {
+    let start = node.start_position();
+    let end = node.end_position();
+    (
+        start.row as u32,
+        start.column as u32,
+        end.row as u32,
+        end.column as u32,
+    )
+}
+
 #[derive(Default, Clone)]
 struct CaptureEnv {
     values: HashMap<String, Vec<String>>,
+    ranges: HashMap<String, Vec<RawRange>>,
 }
 
 impl CaptureEnv {
-    fn capture_one(&mut self, name: &str, text: String) -> bool {
+    fn capture_one(&mut self, name: &str, text: String, range: RawRange) -> bool {
         match self.values.get(name) {
             Some(existing) => existing.as_slice() == [text.as_str()],
             None => {
                 self.values.insert(name.to_owned(), vec![text]);
+                self.ranges.insert(name.to_owned(), vec![range]);
                 true
             }
         }
     }
 
-    fn capture_many(&mut self, name: &str, texts: Vec<String>) -> bool {
+    fn capture_many(&mut self, name: &str, texts: Vec<String>, ranges: Vec<RawRange>) -> bool {
         match self.values.get(name) {
             Some(existing) => existing == &texts,
             None => {
                 self.values.insert(name.to_owned(), texts);
+                self.ranges.insert(name.to_owned(), ranges);
                 true
             }
         }
     }
 
-    fn into_map(self) -> HashMap<String, Vec<String>> {
-        self.values
+    fn into_maps(self) -> (HashMap<String, Vec<String>>, HashMap<String, Vec<RawRange>>) {
+        (self.values, self.ranges)
     }
 }
 
@@ -377,8 +401,15 @@ impl CompiledPattern {
                     capture.clone(),
                     vec![node_text(tag_name, content).to_owned()],
                 );
+                let mut metavar_ranges_raw = HashMap::new();
+                metavar_ranges_raw.insert(capture.clone(), vec![raw_range(tag_name)]);
                 Some(structural_match_from_byte_range_with_index(
-                    content, line_index, start_byte, end_byte, metavars,
+                    content,
+                    line_index,
+                    start_byte,
+                    end_byte,
+                    metavars,
+                    metavar_ranges_raw,
                 ))
             }
             SpecialPattern::KeyValuePair {
@@ -395,8 +426,15 @@ impl CompiledPattern {
                     value_capture.clone(),
                     vec![node_text(value, content).to_owned()],
                 );
+                let mut metavar_ranges_raw = HashMap::new();
+                metavar_ranges_raw.insert(key_capture.clone(), vec![raw_range(key)]);
+                metavar_ranges_raw.insert(value_capture.clone(), vec![raw_range(value)]);
                 Some(to_structural_match_with_index(
-                    candidate, content, line_index, metavars,
+                    candidate,
+                    content,
+                    line_index,
+                    metavars,
+                    metavar_ranges_raw,
                 ))
             }
         }
@@ -414,7 +452,11 @@ impl CompiledPattern {
                 let Some(tag_name) = html_tag_name_node(candidate) else {
                     return false;
                 };
-                captures.capture_one(capture, node_text(tag_name, content).to_owned())
+                captures.capture_one(
+                    capture,
+                    node_text(tag_name, content).to_owned(),
+                    raw_range(tag_name),
+                )
             }
             SpecialPattern::KeyValuePair {
                 key_capture,
@@ -423,8 +465,15 @@ impl CompiledPattern {
                 let Some((key, value)) = key_value_nodes(candidate) else {
                     return false;
                 };
-                captures.capture_one(key_capture, node_text(key, content).to_owned())
-                    && captures.capture_one(value_capture, node_text(value, content).to_owned())
+                captures.capture_one(
+                    key_capture,
+                    node_text(key, content).to_owned(),
+                    raw_range(key),
+                ) && captures.capture_one(
+                    value_capture,
+                    node_text(value, content).to_owned(),
+                    raw_range(value),
+                )
             }
         }
     }
@@ -439,9 +488,11 @@ impl CompiledPattern {
     ) -> bool {
         if let Some(meta) = meta_from_node(pattern, pattern_source, self.expando) {
             return match meta {
-                MetaVar::Single(name) => {
-                    captures.capture_one(&name, node_text(candidate, candidate_source).to_owned())
-                }
+                MetaVar::Single(name) => captures.capture_one(
+                    &name,
+                    node_text(candidate, candidate_source).to_owned(),
+                    raw_range(candidate),
+                ),
                 MetaVar::IgnoredSingle => true,
                 MetaVar::Multi(_) | MetaVar::IgnoredMulti => false,
             };
@@ -553,7 +604,11 @@ impl CompiledPattern {
                     .iter()
                     .map(|node| node_text(*node, candidate_source).to_owned())
                     .collect();
-                if !branch.capture_many(name, texts) {
+                let ranges = candidate_children[..take]
+                    .iter()
+                    .map(|node| raw_range(*node))
+                    .collect();
+                if !branch.capture_many(name, texts, ranges) {
                     continue;
                 }
             }
@@ -907,7 +962,11 @@ fn matches_descendant_candidate(
     if rule.matches_candidate(child) {
         let mut branch = captures.clone();
         if rule.matches(child, document, &mut branch) {
-            if !branch.capture_one("secondary", node_text(child, document.content).to_owned()) {
+            if !branch.capture_one(
+                "secondary",
+                node_text(child, document.content).to_owned(),
+                raw_range(child),
+            ) {
                 return rule.stop_by_end && matches_descendant(rule, child, document, captures);
             }
             *captures = branch;
@@ -931,7 +990,11 @@ fn matches_ancestor(
         if rule.matches_candidate(node) {
             let mut branch = captures.clone();
             if rule.matches(node, document, &mut branch) {
-                if !branch.capture_one("secondary", node_text(node, document.content).to_owned()) {
+                if !branch.capture_one(
+                    "secondary",
+                    node_text(node, document.content).to_owned(),
+                    raw_range(node),
+                ) {
                     parent = node.parent();
                     continue;
                 }
@@ -1059,13 +1122,48 @@ impl LineIndex {
     }
 }
 
+/// Converts raw tree-sitter capture positions into `MetavarRange`s (1-based
+/// line, char column), pairing each range with its captured text by index.
+fn build_metavar_ranges(
+    content: &str,
+    line_index: &LineIndex,
+    values: &HashMap<String, Vec<String>>,
+    raw: HashMap<String, Vec<RawRange>>,
+) -> HashMap<String, Vec<MetavarRange>> {
+    raw.into_iter()
+        .map(|(name, ranges)| {
+            let texts = values.get(&name);
+            let mapped = ranges
+                .into_iter()
+                .enumerate()
+                .map(|(i, (sr, sc, er, ec))| MetavarRange {
+                    text: texts
+                        .and_then(|t| t.get(i))
+                        .cloned()
+                        .unwrap_or_default(),
+                    line: sr + 1,
+                    column: line_index.point_column_to_char_column(
+                        content, sr as usize, sc as usize,
+                    ) as u32,
+                    end_line: er + 1,
+                    end_column: line_index.point_column_to_char_column(
+                        content, er as usize, ec as usize,
+                    ) as u32,
+                })
+                .collect();
+            (name, mapped)
+        })
+        .collect()
+}
+
 fn to_structural_match(
     node: Node<'_>,
     content: &str,
     metavars: HashMap<String, Vec<String>>,
+    metavar_ranges_raw: HashMap<String, Vec<RawRange>>,
 ) -> StructuralMatch {
     let line_index = LineIndex::new(content);
-    to_structural_match_with_index(node, content, &line_index, metavars)
+    to_structural_match_with_index(node, content, &line_index, metavars, metavar_ranges_raw)
 }
 
 fn to_structural_match_with_index(
@@ -1073,9 +1171,11 @@ fn to_structural_match_with_index(
     content: &str,
     line_index: &LineIndex,
     metavars: HashMap<String, Vec<String>>,
+    metavar_ranges_raw: HashMap<String, Vec<RawRange>>,
 ) -> StructuralMatch {
     let start = node.start_position();
     let end = node.end_position();
+    let metavar_ranges = build_metavar_ranges(content, line_index, &metavars, metavar_ranges_raw);
     StructuralMatch {
         start_line: (start.row as u32) + 1,
         end_line: (end.row as u32) + 1,
@@ -1083,6 +1183,7 @@ fn to_structural_match_with_index(
         end_col: line_index.point_column_to_char_column(content, end.row, end.column) as u32,
         text: node_text(node, content).to_owned(),
         metavars,
+        metavar_ranges,
     }
 }
 
@@ -1092,9 +1193,11 @@ fn structural_match_from_byte_range_with_index(
     start_byte: usize,
     end_byte: usize,
     metavars: HashMap<String, Vec<String>>,
+    metavar_ranges_raw: HashMap<String, Vec<RawRange>>,
 ) -> StructuralMatch {
     let (start_line, start_col) = line_index.byte_to_line_col(content, start_byte);
     let (end_line, end_col) = line_index.byte_to_line_col(content, end_byte);
+    let metavar_ranges = build_metavar_ranges(content, line_index, &metavars, metavar_ranges_raw);
     StructuralMatch {
         start_line: start_line as u32,
         end_line: end_line as u32,
@@ -1105,6 +1208,7 @@ fn structural_match_from_byte_range_with_index(
             .unwrap_or_default()
             .to_owned(),
         metavars,
+        metavar_ranges,
     }
 }
 

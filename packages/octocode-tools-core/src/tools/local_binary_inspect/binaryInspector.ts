@@ -7,6 +7,7 @@ import {
   validateToolPath,
   createErrorResult,
 } from '../../utils/file/toolHelpers.js';
+import { contextUtils } from '../../utils/contextUtils.js';
 import { applyPagination } from '../../utils/pagination/core.js';
 import { getOutputCharLimit } from '../../utils/pagination/charLimit.js';
 import type { BinaryInspectQuery } from './scheme.js';
@@ -102,27 +103,12 @@ function filterByMatchString(
   matchString: string,
   contextLines: number
 ): string | null {
-  const lines = content.split('\n');
-  const pattern = new RegExp(matchString, 'i');
-  const included = new Set<number>();
-
-  for (let i = 0; i < lines.length; i++) {
-    if (pattern.test(lines[i] ?? '')) {
-      for (
-        let c = Math.max(0, i - contextLines);
-        c <= Math.min(lines.length - 1, i + contextLines);
-        c++
-      ) {
-        included.add(c);
-      }
-    }
-  }
-
-  const result = Array.from(included)
-    .sort((a, b) => a - b)
-    .map(idx => lines[idx] ?? '');
-
-  return result.length ? result.join('\n') : null;
+  const result = contextUtils.extractMatchingLines(content, matchString, {
+    isRegex: true,
+    caseSensitive: false,
+    contextLines,
+  });
+  return result.lines.length > 0 ? result.lines.join('\n') : null;
 }
 
 interface ContentCharPagination {

@@ -107,4 +107,11 @@ describe('binary command scan-window continuation', () => {
 
     expect(lastQuery().detailed).toBeUndefined();
   });
+
+  it('threads an explicit --char-length into the strings query', async () => {
+    executeDirectTool.mockResolvedValue(envelope({ mode: 'strings' }));
+    await run(['big.bin'], { strings: true, 'char-length': '123' });
+
+    expect(lastQuery().charLength).toBe(123);
+  });
 });

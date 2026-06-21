@@ -12,6 +12,7 @@ import {
 import { c, bold, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
+import { formatGithubFailure } from '../github-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 import { outlineSymbols } from './symbol-outline.js';
 import {
@@ -135,15 +136,10 @@ async function fetchGithubTree(
   if (result.isError) {
     const errText =
       result.content[0]?.type === 'text' ? result.content[0].text : '';
-    if (/401|403|auth/i.test(errText)) {
-      throw new Error(
-        `GitHub auth error: ${errText}. Set GITHUB_TOKEN, OCTOCODE_TOKEN, or GH_TOKEN.`
-      );
-    }
-    if (/404|not found/i.test(errText)) {
-      throw new Error(`Not found on GitHub: ${owner}/${repo}/${subpath}`);
-    }
-    throw new Error(`GitHub API error: ${errText}`);
+    const sub = subpath ? `/${subpath}` : '';
+    throw new Error(
+      formatGithubFailure(errText, { target: `${owner}/${repo}${sub}` })
+    );
   }
 
   return result.structuredContent as GithubStructureResult;

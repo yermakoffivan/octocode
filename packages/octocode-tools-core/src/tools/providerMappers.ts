@@ -173,6 +173,8 @@ export interface CodeSearchFlatResult {
   pagination?: CodeSearchPagination;
 
   nonExistentScope?: boolean;
+
+  incompleteResults?: boolean;
 }
 
 function countMetadata(
@@ -284,6 +286,7 @@ export function mapCodeSearchProviderResult(
   const result: CodeSearchFlatResult = {
     results: Array.from(groups.values()),
     ...(data.nonExistentScope ? { nonExistentScope: true } : {}),
+    ...(data.incompleteResults ? { incompleteResults: true } : {}),
   };
 
   if (data.pagination && data.pagination.totalPages > 1) {
@@ -423,6 +426,14 @@ export function mapPullRequestToolQuery(query: PartialPRQuery) {
     interactions: query.interactions,
     draft: query.draft,
     match: query.match,
+    milestone: query.milestone,
+    language: query.language,
+    checks: query.checks,
+    review: query.review,
+    locked: query.locked,
+    visibility: query.visibility,
+    teamMentions: query['team-mentions'],
+    project: query.project,
     archived: (query as Record<string, unknown>).archived as
       | boolean
       | undefined,
@@ -625,6 +636,7 @@ export function mapFileContentToolQuery(query: LocalFileContentQuery) {
       fullContent || !query.matchString ? undefined : String(query.matchString),
     contextLines: (query as { contextLines?: number }).contextLines ?? 5,
     fullContent,
+    forceRefresh: Boolean((query as { forceRefresh?: boolean }).forceRefresh),
     charOffset: query.charOffset,
     charLength: query.charLength,
     minify: query.minify,

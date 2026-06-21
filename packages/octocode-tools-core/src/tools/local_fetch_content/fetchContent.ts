@@ -497,6 +497,23 @@ function buildSuccessResult(
     nextBlockChar = findNextBlockBoundary(outputContent, cutPos, queryPath);
   }
 
+  // Ready continuation query for the next char page. Same shape convention as
+  // localSearchCode's `next` map (see ripgrepResultBuilder buildSearchNextMap).
+  const next =
+    pagination.hasMore && pagination.nextCharOffset !== undefined
+      ? {
+          continueChars: {
+            tool: 'localGetFileContent' as const,
+            query: {
+              path: queryPath,
+              charOffset: pagination.nextCharOffset,
+              charLength: effectiveCharLength ?? pagination.charLength,
+              minify: query.minify,
+            },
+          },
+        }
+      : undefined;
+
   return {
     path: queryPath,
     content: pagination.paginatedContent,
@@ -521,6 +538,7 @@ function buildSuccessResult(
         ...(nextBlockChar !== undefined && { nextBlockChar }),
       },
     }),
+    ...(next ? { next } : {}),
     ...(warnings.length > 0 && { warnings }),
   };
 }

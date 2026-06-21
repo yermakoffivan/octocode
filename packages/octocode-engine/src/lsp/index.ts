@@ -11,7 +11,11 @@ export {
   type LspStatusInput,
   type LspStatusResult,
 } from './manager.js';
-export { SymbolResolver } from './resolver.js';
+export {
+  resolveImportAliasDefinitions,
+  SymbolResolver,
+  type ImportAliasDefinitionInput,
+} from './resolver.js';
 export { safeReadFile, validateLSPServerPath } from './validation.js';
 export { resolveWorkspaceRootForFile } from './workspaceRoot.js';
 export type {

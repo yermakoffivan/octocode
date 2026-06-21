@@ -28,6 +28,27 @@ describe('exit codes', () => {
       expect(classifyToolErrorText('Bad credentials')).toBe(EXIT.AUTH);
     });
 
+    it('detects not-found failures', () => {
+      expect(
+        classifyToolErrorText('Repository, resource, or path not found (HTTP 404)')
+      ).toBe(EXIT.NOT_FOUND);
+      expect(
+        classifyToolErrorText(
+          'Could not determine default branch for a/b. The repository may not exist, require authentication, or be inaccessible.'
+        )
+      ).toBe(EXIT.NOT_FOUND);
+    });
+
+    // The bare word "authentication" in an ambiguous not-found message must not
+    // be misclassified as an auth failure.
+    it('does not treat ambiguous "authentication" wording as an auth failure', () => {
+      expect(
+        classifyToolErrorText(
+          'The repository may not exist, require authentication, or be inaccessible.'
+        )
+      ).not.toBe(EXIT.AUTH);
+    });
+
     it('defaults to TOOL for other errors', () => {
       expect(classifyToolErrorText('something broke')).toBe(EXIT.TOOL);
       expect(classifyToolErrorText('')).toBe(EXIT.TOOL);

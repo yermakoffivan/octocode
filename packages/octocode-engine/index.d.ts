@@ -244,6 +244,8 @@ export interface FileSystemQueryOptions {
   showHidden?: boolean
   /** Match basename globs, OR-combined. */
   names?: Array<string>
+  /** Match file extensions, OR-combined. Values may include a leading dot. Directories are preserved. */
+  extensions?: Array<string>
   /** Match full path glob. */
   pathPattern?: string
   /** Rust regex against basename. */
@@ -767,6 +769,18 @@ export declare function stripPythonDocstrings(content: string): string
  * directly as an `lspGetSemantics` `lineHint`; columns are 0-based char
  * offsets (tree-sitter native).
  */
+/**
+ * Precise position of one captured metavariable node. `line` is 1-based
+ * (usable as an `lspGetSemantics` lineHint); columns are 0-based char offsets.
+ */
+export interface MetavarRange {
+  text: string
+  line: number
+  column: number
+  endLine: number
+  endColumn: number
+}
+
 export interface StructuralMatch {
   startLine: number
   endLine: number
@@ -779,6 +793,11 @@ export interface StructuralMatch {
    * metavar name (no leading `$`).
    */
   metavars: Record<string, Array<string>>
+  /**
+   * Per-capture precise ranges, parallel to `metavars` (same keys/order).
+   * Lets an agent hand a capture straight to LSP without re-searching.
+   */
+  metavarRanges: Record<string, Array<MetavarRange>>
 }
 
 export interface StructuralDiagnostic {

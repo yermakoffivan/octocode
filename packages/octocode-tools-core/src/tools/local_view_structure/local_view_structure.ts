@@ -87,6 +87,7 @@ function viewStructureNative(
       showHidden: query.hidden ?? false,
       maxDepth,
       names: nativeNamePatterns,
+      extensions: query.extensions,
       entryType: nativeEntryTypeFromQuery(query),
       limit: maxEntries,
     });
@@ -189,7 +190,7 @@ function hasPostNativeFilters(
       ? (query as { pattern?: string }).pattern
       : undefined;
   return Boolean(
-    (pattern && !nativeNamePatterns) || (query.extensions?.length ?? 0) > 0
+    pattern && !nativeNamePatterns
   );
 }
 

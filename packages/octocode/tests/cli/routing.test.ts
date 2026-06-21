@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import path from 'node:path';
 import {
   resolveRef,
   isGithubRef,
+  isLocalRef,
   refLabel,
   cloneCommandFor,
   type GithubRef,
@@ -78,6 +80,29 @@ describe('resolveRef — GitHub ref parsing', () => {
       repo: 'react',
       subpath: 'packages/react',
       branch: 'main',
+    });
+  });
+
+  // Regression: a path-shaped miss whose LEADING segment is an existing local
+  // directory is almost certainly a local path with a typo — route it local so
+  // the user gets a precise "file not found" instead of a confusing GitHub
+  // "repository not found (owner=src...)". `src` exists in the package cwd.
+  it('routes a path-shaped miss under an existing local dir to local', () => {
+    const ref = resolveRef('src/does/not/exist.ts');
+    expect(isLocalRef(ref)).toBe(true);
+    if (isLocalRef(ref)) {
+      expect(ref.path).toBe(path.resolve('src/does/not/exist.ts'));
+    }
+  });
+
+  // A genuine owner/repo shorthand has a leading segment that does NOT exist on
+  // disk, so it must still route to GitHub even when it ends in a file ext.
+  it('still routes owner/repo/path.ext (no matching local dir) to GitHub', () => {
+    const ref = gh('facebook/react/packages/react/index.js');
+    expect(ref).toMatchObject({
+      owner: 'facebook',
+      repo: 'react',
+      subpath: 'packages/react/index.js',
     });
   });
 

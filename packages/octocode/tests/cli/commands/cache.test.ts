@@ -119,4 +119,47 @@ describe('cache command', () => {
     expect(parsed.location.cached).toBe(true);
     expect(parsed.location.complete).toBe(true);
   });
+
+  // Regression: fetching a directory at the default `file` depth used to surface
+  // the raw tool error "Use ghViewRepoStructure" — which lists, but doesn't bring
+  // anything to disk. Point at the cache command's own subtree mode (and clone).
+  it('rewrites the directory error to suggest --depth tree / clone', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: 'Path is a directory. Use ghViewRepoStructure to list directory contents',
+        },
+      ],
+      structuredContent: {},
+    });
+
+    await run(['fetch', 'facebook/react', 'packages/react']);
+
+    const errOut = vi.mocked(console.error).mock.calls.flat().join(' ');
+    expect(errOut).toMatch(/--depth tree/);
+    expect(errOut).toMatch(/clone facebook\/react\/packages\/react/);
+    expect(errOut).not.toMatch(/ghViewRepoStructure/);
+  });
+
+  it('rewrites the directory error in --json mode too', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: 'Path is a directory. Use ghViewRepoStructure to list directory contents',
+        },
+      ],
+      structuredContent: {},
+    });
+
+    await run(['fetch', 'facebook/react', 'packages/react'], { json: true });
+
+    const output = vi.mocked(console.log).mock.calls.flat().join('\n');
+    const parsed = JSON.parse(output) as { success: boolean; error: string };
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/--depth tree/);
+  });
 });

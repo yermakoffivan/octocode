@@ -93,7 +93,7 @@ export async function fetchHistory(
     });
 
     const pagination = {
-      page: params.page,
+      currentPage: params.page,
       perPage: params.perPage,
       hasMore,
       ...(hasMore ? { nextPage: params.page + 1 } : {}),

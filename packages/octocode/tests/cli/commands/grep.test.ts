@@ -176,6 +176,27 @@ describe('grep command', () => {
     expect(process.exitCode).toBe(EXIT.USAGE);
   });
 
+  // Regression: an unnamed `$$$` ellipsis followed by whitespace (e.g. before a
+  // closing brace) must NOT be mistaken for shell expansion. The heuristic's
+  // `\$\s` check previously matched the trailing `$` of `$$$ `, falsely
+  // rejecting common patterns like `function $NAME($$$) { $$$ }`.
+  it('accepts an unnamed $$$ ellipsis followed by whitespace', async () => {
+    await run(['src'], { pattern: 'function $NAME($$$) { $$$ }' });
+
+    expect(executeDirectTool).toHaveBeenCalledTimes(1);
+    const q = lastQuery();
+    expect(q.mode).toBe('structural');
+    expect(q.pattern).toBe('function $NAME($$$) { $$$ }');
+    expect(process.exitCode).not.toBe(EXIT.USAGE);
+  });
+
+  it('still rejects a genuine shell positional ($1) in a structural pattern', async () => {
+    await run(['src'], { pattern: 'fn($1)' });
+
+    expect(executeDirectTool).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(EXIT.USAGE);
+  });
+
   it('rejects structural search on a GitHub ref with an actionable clone command', async () => {
     await run(['facebook/react'], { pattern: 'useState($X)' });
 

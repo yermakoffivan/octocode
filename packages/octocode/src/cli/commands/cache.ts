@@ -280,7 +280,16 @@ export const cacheCommand: CLICommand = {
 
       renderMaterialization(result);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : String(caught);
+      let message = caught instanceof Error ? caught.message : String(caught);
+      // A directory can't be fetched as a single file. The raw tool points at
+      // ghViewRepoStructure, which only lists — steer the user to the cache
+      // command's own subtree mode (and clone), which actually land on disk.
+      if (/is a directory/i.test(message) && requestedPath) {
+        message =
+          `"${requestedPath}" is a directory, not a file. ` +
+          `Cache the subtree with: cache fetch ${repoRef} ${requestedPath} --depth tree ` +
+          `(or clone ${repoRef}/${requestedPath} for a working copy).`;
+      }
       if (jsonOutput) {
         console.log(
           JSON.stringify({

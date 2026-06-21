@@ -121,15 +121,51 @@ describe('searchContentStructural', () => {
     );
   });
 
-  it('surfaces native structural errors with pattern guidance', async () => {
-    mocks.structuralSearchFiles.mockImplementation(() => {
-      throw new Error('invalid structural pattern: bad');
+  it('appends zero-match ergonomics guidance via the typed warnings channel', async () => {
+    // Default beforeEach mock returns no files / totalMatches 0.
+    const result = await searchContentStructural(makeQuery());
+
+    expect(result.files).toHaveLength(0);
+    expect(result.warnings?.join('\n')).toContain('0 structural matches');
+    expect(result.warnings?.join('\n')).toContain('$$$BODY');
+    expect(result.warnings?.join('\n')).toContain('YAML `rule`');
+    // Guidance is a typed warning, never a hint.
+    expect(result.hints).toBeUndefined();
+  });
+
+  it('combines native warnings with the zero-match guidance', async () => {
+    mocks.structuralSearchFiles.mockReturnValue({
+      files: [],
+      totalMatches: 0,
+      parsedFiles: 1,
+      skippedByPreFilter: 0,
+      skippedUnreadable: 0,
+      skippedLarge: 0,
+      warnings: ['Pre-filter skipped parsing 3 file(s); parsed 1.'],
     });
 
     const result = await searchContentStructural(makeQuery());
 
+    const text = result.warnings?.join('\n') ?? '';
+    expect(text).toContain('Pre-filter skipped');
+    expect(text).toContain('0 structural matches');
+  });
+
+  it('surfaces native structural errors with pattern remediation guidance', async () => {
+    mocks.structuralSearchFiles.mockImplementation(() => {
+      throw new Error('invalid structural pattern: bad');
+    });
+
+    const result = await searchContentStructural(makeQuery({ langType: 'py' }));
+
     expect(result.status).toBe('error');
     expect(result.error).toContain('Invalid structural pattern');
+    // Remediation is appended to the error message so a parse error tells the
+    // agent how to fix it.
+    expect(result.error).toContain('match a complete node');
+    expect(result.error).toContain('$$$BODY');
+    expect(result.error).toContain('valid py');
+    expect(result.error).toContain('QUERY-LANGUAGE.md');
     expect(result.hints).toBeUndefined();
   });
 });
