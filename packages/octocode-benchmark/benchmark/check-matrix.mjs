@@ -31,6 +31,11 @@ const SERVER_NAMES = {
   json: 'vscode-json-language-server', yaml: 'yaml-language-server', toml: 'taplo',
   html: 'vscode-html-language-server', css: 'vscode-css-language-server',
   scss: 'vscode-css-language-server', less: 'vscode-css-language-server',
+  // ── New language additions ───────────────────────────────────────────────
+  ruby: 'ruby-lsp', php: 'intelephense', kotlin: 'kotlin-language-server',
+  elixir: 'elixir-ls', terraform: 'terraform-ls', lua: 'lua-language-server',
+  sql: 'sqls', proto: 'protols', ocaml: 'ocamllsp', zig: 'zls',
+  r: 'r-languageserver', julia: 'julia', erlang: 'erlang-ls', swift: 'sourcekit-lsp',
 }
 
 const fileTypes = engine.getMINIFY_CONFIG().fileTypes

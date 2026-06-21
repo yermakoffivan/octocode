@@ -879,17 +879,16 @@ describe('getSupportedSignatureExtensions', () => {
   it('returns tree-sitter languages only (no heuristic-covered extensions)', () => {
     if (!addon) return;
     const exts = addon.getSupportedSignatureExtensions();
-    // Tree-sitter grammars with a function-body query.
-    expect(exts).toContain('ts');
-    expect(exts).toContain('py');
-    expect(exts).toContain('rs');
-    // Structural-only grammars and former heuristic languages are excluded.
-    expect(exts).not.toContain('md');
-    expect(exts).not.toContain('markdown');
-    expect(exts).not.toContain('lua');
-    expect(exts).not.toContain('sql');
-    expect(exts).not.toContain('html');
-    expect(exts).not.toContain('scala');
+    // Languages with body_query — must be present.
+    for (const required of ['ts', 'py', 'rs', 'go', 'java', 'rb', 'php',
+                             'kt', 'ex', 'lua', 'erl', 'zig', 'r', 'swift',
+                             'scala', 'tf', 'hcl', 'tfvars', 'proto']) {
+      expect(exts, `${required} must be in signature list`).toContain(required);
+    }
+    // Data/markup/prose formats and languages without a body_query are excluded.
+    for (const absent of ['md', 'markdown', 'sql', 'html', 'jl', 'ml']) {
+      expect(exts, `${absent} must NOT be in signature list`).not.toContain(absent);
+    }
   });
 });
 

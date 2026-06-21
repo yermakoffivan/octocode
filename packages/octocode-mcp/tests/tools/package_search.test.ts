@@ -1896,7 +1896,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
       version: '6.0.0',
       repository: {
         type: 'git',
-        url: 'https://github.com/wix-private/yoshi.git',
+        url: 'https://github.com/organization-private/yoshi.git',
         directory: 'old-packages/yoshi-style-dependencies',
       },
     });
@@ -1922,7 +1922,7 @@ describe('searchPackage - NPM CLI Repository Fetching', () => {
     if ('packages' in result) {
       expect(result.packages.length).toBe(1);
       const pkg = result.packages[0] as NpmPackageResult;
-      expect(pkg.repoUrl).toBe('https://github.com/wix-private/yoshi');
+      expect(pkg.repoUrl).toBe('https://github.com/organization-private/yoshi');
     }
   });
 

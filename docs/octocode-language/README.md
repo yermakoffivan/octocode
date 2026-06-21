@@ -7,21 +7,23 @@ Language.
 
 | Doc | Use it for |
 |---|---|
-| https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OCTOCODE_QUERY_LANGUAGE.md | Target OQL contract and examples |
-| https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/QUERY-LANGUAGE.md | Current `octocode grep` and `localSearchCode` behavior |
-| https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OPTIMIZATION-PLAN.md | Build order, milestones, tests, and risks |
+| https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OCTOCODE_QUERY_LANGUAGE.md | XML-tagged canonical OQL V1 implementation contract and examples |
+| https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OCTOCODE_QUERY_LANGUAGE_PLAN.md | Implementation plan, prerequisites, package split, milestones, tests, and risks |
 
 ## One-page Decision
 
 OQL is a typed query object that compiles to existing Octocode capabilities. It
-is not a new raw DSL.
+is not a new raw DSL. The V1 contract is Markdown with XML-style tags so agents
+can chunk the prompt into stable instruction blocks. V1 has one canonical shape:
+`target`, `from`, `scope`, discriminated `where.kind`, `materialize`, `fetch`,
+`select`, `view`, `controls`, and executable `next.*` continuations.
 
 Command split:
 
-- `octocode search`: wide external discovery over GitHub, npm, and future
-  providers.
-- `octocode grep`: proof-capable local checks, including external code after
-  bounded remote-as-local materialization.
+- `octocode search`: universal OQL runner.
+- Existing quick commands (`grep`, `cat`, `ls`, `find`, and later `lsp`,
+  `repo`, `pkg`, `pr`, `history`, `binary`, `diff`) remain aliases that should
+  lower into canonical OQL after parity gates pass.
 
 Implementation split:
 
@@ -32,13 +34,13 @@ Implementation split:
 
 ## Implementation Checklist
 
-1. Add OQL schema types.
-2. Build planner with `PUSHDOWN`, `RESIDUAL`, `ROUTE`, and `UNSUPPORTED`.
-3. Adapt OQL to current local grep.
-4. Promote remote-as-local from CLI behavior into tools-core.
-5. Standardize result envelope: `results`, `pagination`, `next`,
-   `diagnostics`, and `provenance`.
-6. Add `octocode search` targets.
+1. Add strict OQL V1 schema types.
+2. Build the normalizer: sugar in, canonical OQL out.
+3. Build planner with `PUSHDOWN`, `RESIDUAL`, `ROUTE`, and `UNSUPPORTED`.
+4. Adapt canonical OQL to current local and GitHub V1 tools.
+5. Promote bounded remote-as-local from CLI behavior into tools-core.
+6. Standardize result envelope: `results`, `pagination`, executable `next`,
+   `diagnostics`, `provenance`, and `evidence`.
 7. Wire CLI and MCP without duplicating logic.
 
 ## Editing Rules
@@ -47,4 +49,5 @@ Implementation split:
 - Do not duplicate the full target contract in the plan.
 - Do not put current implementation details in the target contract unless they
   define an intentional compatibility bridge.
+- Keep the OQL contract XML tags balanced and meaningful for agent attention.
 - Use absolute GitHub URLs for documentation links.

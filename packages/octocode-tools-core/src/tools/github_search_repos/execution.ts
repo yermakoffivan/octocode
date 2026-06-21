@@ -371,9 +371,7 @@ function buildResultPagination(pagination: {
     perPage: pagination.entriesPerPage || 10,
     totalMatches: pagination.totalMatches || 0,
     hasMore: pagination.hasMore,
-    ...(pagination.hasMore
-      ? { nextPage: pagination.currentPage + 1 }
-      : {}),
+    ...(pagination.hasMore ? { nextPage: pagination.currentPage + 1 } : {}),
   };
 }
 

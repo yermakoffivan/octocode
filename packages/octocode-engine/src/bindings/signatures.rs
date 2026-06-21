@@ -173,11 +173,15 @@ mod tests {
     #[test]
     fn supported_signature_extensions_are_tree_sitter_only_and_sorted() {
         let exts = get_supported_signature_extensions();
-        for required in ["ts", "py", "rs", "go", "java"] {
-            assert!(exts.iter().any(|e| e == required), "missing {required}");
+        // Languages that must have signature extraction (body_query set)
+        for required in ["ts", "py", "rs", "go", "java", "rb", "php", "kt", "ex", "lua",
+                         "erl", "zig", "r", "swift", "scala", "sc", "sbt", "tf", "hcl",
+                         "tfvars", "proto"] {
+            assert!(exts.iter().any(|e| e == required), "missing {required} from signature list");
         }
+        // Languages that must NOT have signature extraction (no body_query)
         for absent in [
-            "vue", "svelte", "md", "markdown", "lua", "sql", "html", "scala",
+            "vue", "svelte", "md", "markdown", "sql", "html", "jl", "ml",
         ] {
             assert!(
                 !exts.iter().any(|e| e == absent),

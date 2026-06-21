@@ -40,8 +40,11 @@ impl AgLanguage {
 /// a char the grammar accepts.
 fn expando_for_ext(ext: &str) -> char {
     match ext {
+        // PHP variables require the `$` sigil (e.g. `$var`), so `$` is a valid
+        // identifier character in tree-sitter-php. Patterns like `foo($ARG)` must
+        // stay as-is for the PHP parser to accept them as a call with a variable arg.
         "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs" | "java" | "sh" | "bash"
-        | "zsh" => '$',
+        | "zsh" | "php" => '$',
         "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => '\u{10000}',
         "html" | "htm" => 'z',
         "css" | "scss" | "less" => '_',

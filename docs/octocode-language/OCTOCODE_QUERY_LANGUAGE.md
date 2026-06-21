@@ -1,1121 +1,1767 @@
 # Octocode Query Language
 
-**Status:** north-star language reference for OQL.
+<oql_system_prompt id="octocode-oql-v1" version="oql/v1" audience="agents">
 
-This document describes the Octocode Query Language: the typed query object that
-agents and humans use to search, fetch, inspect, and prove facts across local
-code, GitHub, npm, and future external providers.
-
-This is not an implementation plan. Implementation plans depend on this document.
-
-Companion docs:
-
-- Folder map:
-  https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/README.md
-- Current `octocode grep` / `localSearchCode` behavior:
-  https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/QUERY-LANGUAGE.md
-- OQL implementation plan:
-  https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OPTIMIZATION-PLAN.md
+<section id="purpose">
 
 ## Purpose
 
-OQL gives agents one explicit language for code research:
+OQL is the typed research query object behind `octocode search`.
 
-- discover external candidates
-- inspect repository structure
-- fetch files, trees, packages, PRs, commits, archives, and binaries
-- grep local or materialized external code
-- ask AST and LSP questions when the source is local
-- continue safely through pagination, offsets, cache locations, and proof hops
+Implementation status: this file is the contract to implement. Until the OQL
+runner lands, existing quick commands and raw `tools <name>` calls remain the
+current execution surface.
 
-The language is a schema, not a raw DSL. OQL borrows familiar ideas from SQL,
-Mongo-style predicates, Elasticsearch planning, ripgrep, ast-grep, Semgrep,
-GraphQL selection, and LSP, but it stays a typed object.
+This document is both:
 
-## Core Rule
+- an implementation contract for OQL V1;
+- a system-prompt style guide for agents that need to construct, normalize,
+  explain, execute, and continue research queries.
 
-**`octocode search` is the universal OQL runner.**
+Future work lives in:
+https://github.com/bgauryy/octocode/blob/main/docs/octocode-language/OCTOCODE_QUERY_LANGUAGE_PLAN.md
 
-The query's `target`, `from`, `where`, and `fetch` fields decide whether the
-operation is discovery, grep, structure browsing, file fetch, materialization,
-semantic navigation, package lookup, PR/history research, binary inspection, or
-diffing.
+</section>
 
-Existing commands such as `grep`, `ls`, `cat`, `find`, `lsp`, `clone`, `repo`,
-`pkg`, `pr`, `history`, `binary`, and `unzip` remain ergonomic aliases for common
-OQL shapes. They should lower into the same language rather than grow separate
-semantics.
+<section id="attention">
 
-## Command Semantics
+## Attention
 
-| Command | Meaning in OQL | OQL shape |
+<attention priority="highest">
+
+Use **canonical OQL** for implementation. Accept sugar only at the CLI/API edge,
+then normalize it before planning. `octocode search --explain` must show the
+canonical query that actually runs.
+
+</attention>
+
+<must>
+
+- Use one universal runner: `octocode search`.
+- Use one canonical shape: `target`, `from`, `scope`, `where.kind`,
+  `materialize`, `fetch`, `select`, `view`, `controls`, result bounds, and
+  `explain`.
+- Make every `where` leaf a discriminated predicate with `kind`.
+- Keep path validation and secret sanitization in every execution path.
+- Return typed diagnostics and executable continuations.
+
+</must>
+
+<must_not>
+
+- Do not invent backend behavior.
+- Do not drop predicates.
+- Do not silently materialize.
+- Do not silently run LSP.
+- Do not silently run a weaker query.
+- Do not treat provider zero results as proof unless every predicate was
+  evaluated by the provider.
+- Do not mutate files from OQL V1.
+
+</must_not>
+
+</section>
+
+<section id="agent-decision-loop">
+
+## Agent Decision Loop
+
+<agent_loop>
+
+1. Identify the research target: `code`, `content`, `structure`, or `files`.
+   For V2-only research surfaces such as semantic/LSP navigation, repositories,
+   packages, PR/history, binary, or diff, use the reserved target map in this
+   document and expect V1 to return a typed `unsupportedTarget` diagnostic.
+2. Identify the corpus in `from`.
+3. Bound the corpus in `scope`.
+4. Express the logical question in `where.kind`.
+5. Decide whether external-to-local execution is allowed through
+   `materialize.mode`.
+6. Choose output density with `view`, projection with `select`, and cost
+   controls with `controls`.
+7. Run or request `--explain`.
+8. Follow executable `next.*` continuations instead of inventing paths, pages,
+   offsets, or follow-up queries.
+9. Treat diagnostics as evidence about capability and completeness.
+
+</agent_loop>
+
+</section>
+
+<section id="v1-surface">
+
+## V1 Surface
+
+<active_surface>
+
+| Family | V1 status | Current backing |
 |---|---|---|
-| `octocode search` | universal OQL entrypoint | any research `target` |
-| `octocode grep` | code fact checking | `target:"code"` with text/regex/AST predicates |
-| `octocode ls` | structure and symbol orientation | `target:"structure"` or `target:"symbols"` |
-| `octocode cat` | bounded content fetch | `target:"content"` with `fetch.content` |
-| `octocode find` | file/path/content discovery | `target:"files"` or `target:"code"` |
-| `octocode lsp` | semantic proof | `target:"relationships"` |
-| `octocode clone` | reusable materialization | `target:"materialization"` |
-| `octocode cache fetch` | materialize file/tree/repo | `target:"materialization"` with `fetch.materialize` |
-| `octocode repo` | repository discovery | `target:"repos"` |
-| `octocode pkg` | package discovery and source handoff | `target:"packages"` |
-| `octocode pr` | PR search/detail | `target:"prs"` |
-| `octocode history` | commit history | `target:"commits"` |
-| `octocode binary` | binary/archive inspection | `target:"binary"` |
-| `octocode unzip` | unpack archive for local tools | `target:"materialization"` with `fetch.archive.mode:"unpack"` |
-| `octocode diff` | compare two content sources | `target:"diff"` |
+| local code search | active | `localSearchCode` |
+| local structural search | active | `localSearchCode mode:"structural"` |
+| local content read | active | `localGetFileContent` |
+| local structure | active | `localViewStructure` |
+| local file discovery | active | `localFindFiles` |
+| GitHub code search | active | `ghSearchCode` |
+| GitHub content read | active | `ghGetFileContent` |
+| GitHub structure | active | `ghViewRepoStructure` |
+| bounded GitHub remote-as-local proof | active | `ghCloneRepo` plus local tools |
+| LSP, repos, packages, PR/history, binary, diff | V2 | plan only |
+| fixes and dataflow | V3 | plan only |
 
-Management commands (`install`, `auth`, `login`, `logout`, `status`, `context`,
-and cache status/clear) are outside OQL. They operate the product rather than
-query a research corpus.
+</active_surface>
 
-## Query Object
+</section>
+
+<section id="research-capability-coverage">
+
+## Research Capability Coverage
+
+<capability_matrix>
+
+| Capability | Current Octocode surface | OQL status | OQL representation |
+|---|---|---|---|
+| local text search | `localSearchCode`, `grep` | V1 active | `target:"code"` + `where.kind:"text"` |
+| local regex search | `localSearchCode`, `grep --perl-regex` | V1 active | `target:"code"` + `where.kind:"regex"` + `dialect` |
+| local structural AST search | `localSearchCode mode:"structural"`, `grep --pattern/--rule` | V1 active | `target:"code"` + `where.kind:"structural"` |
+| local file discovery | `localFindFiles`, `find` | V1 active | `target:"files"` + `scope` + field predicates |
+| local tree browsing | `localViewStructure`, `ls` | V1 active | `target:"structure"` + `fetch.tree` |
+| local content and minification | `localGetFileContent`, `cat --mode` | V1 active | `target:"content"` + `fetch.content.contentView` |
+| signature/symbol outline from text | `localGetFileContent minify:"symbols"`, `ghGetFileContent minify:"symbols"`, `cat --mode symbols` | V1 active | `target:"content"` + `contentView:"symbols"` |
+| GitHub code search | `ghSearchCode`, `grep owner/repo` | V1 active | `from.kind:"github"` + `target:"code"` |
+| GitHub content read | `ghGetFileContent`, `cat owner/repo/path` | V1 active | `from.kind:"github"` + `target:"content"` |
+| GitHub tree browsing | `ghViewRepoStructure`, `ls owner/repo` | V1 active | `from.kind:"github"` + `target:"structure"` |
+| bounded remote-as-local proof | `ghCloneRepo`, `grep --repo`, cache fetch handoff | V1 active for GitHub code/content/tree | `materialize.mode:"auto"` or `"required"` then local backend |
+| LSP definitions/references/callers/callees/types | `lspGetSemantics`, `lsp` | V2 reserved | target family `semantics` with an explicit semantic operation |
+| LSP document symbols | `lspGetSemantics type:"documentSymbols"` | V2 reserved | target family `semantics`, operation `documentSymbols` |
+| repository discovery | `ghSearchRepos`, `repo` | V2 reserved | target family `repositories` |
+| npm package discovery/source handoff | `npmSearch`, `pkg` | V2 reserved | target family `packages` |
+| PR and commit history | `ghHistoryResearch`, `pr`, `history` | V2 reserved | target families `pullRequests` and `commits` |
+| binary/archive/string inspection | `localBinaryInspect`, `binary`, `unzip` | V2 reserved | target family `artifacts` |
+| diff research | `diff`, PR patch selectors | V2 reserved | target family `diff` |
+| dry-run fixes and dataflow | no V1 proof engine | V3 reserved | target families `fixes` and `dataflow` only after proof support |
+
+</capability_matrix>
+
+<coverage_rules>
+
+- V1 is complete for code/content/structure/files across local and GitHub,
+  including AST, PCRE2, exact content proof, pagination, and bounded
+  remote-as-local execution.
+- V1 is not complete for all existing Octocode commands. It must say this
+  explicitly through `unsupportedTarget` rather than pretending those commands
+  already have OQL parity.
+- Reserved V2 target families must reuse the same top-level grammar:
+  `target`, `from`, `scope`, `where`, `materialize`, `fetch`, `select`, `view`,
+  `controls`, diagnostics, provenance, and continuations.
+- Do not create a new mini-language for LSP, npm, history, binary, or diff.
+  Add typed target-specific fields only when the common grammar cannot express
+  the operation.
+
+</coverage_rules>
+
+</section>
+
+<section id="borrow-and-defer">
+
+## Borrow And Defer
+
+<borrow_defer_matrix>
+
+| Prior art | Borrow now | Defer |
+|---|---|---|
+| ripgrep | literal/regex/PCRE2, globs, ignores, hidden files, context, counts, only-matching, match pages, multiline, caps | replacements, encodings, compressed-file search as search, unrestricted binary search |
+| ast-grep | code-shaped `pattern`, JSON `rule`, `kind`, `inside`, `has`, `not`, `all`, `any`, `stopBy:"end"` | `precedes`, `follows`, `field`, `regex`, `nthChild`, `range`, `matches`, utility rules, strictness modes |
+| Semgrep | explicit rule evaluation language and future metavariable constraints | Semgrep-compatible syntax, `focus`, `fix`, `transform`, taint in V1 |
+| CodeQL | separation between syntax proof and flow proof | dataflow/taint until an engine can return traces and proof provenance |
+| GitHub/Sourcegraph search | typed provider filters and cheap path/code pushdown | string DSL compatibility, provider `symbol:` as reference proof, `select` changing result domains |
+| LSP | position-based semantic operations, server capability diagnostics | treating symbol-name search as proof without a real file/line anchor |
+
+</borrow_defer_matrix>
+
+<borrow_defer_rules>
+
+- OQL is a typed research object, not a string DSL.
+- `select` is projection only. It must not deduplicate, change result domains, or
+  trigger hidden fetches.
+- AST proves syntax shape. LSP proves semantic relations. Dataflow proves flow
+  only after a flow engine returns traces.
+- Provider-specific filters are pushdown opportunities, not proof unless the
+  provider can evaluate the exact predicate.
+
+</borrow_defer_rules>
+
+</section>
+
+<section id="canonical-query">
+
+## Canonical Query
+
+<canonical_schema>
 
 ```ts
-interface OctocodeQuery {
-  target: QueryTarget
+interface OqlQueryV1 {
+  schema: "oql/v1"
+  target: "code" | "content" | "structure" | "files"
   from: QuerySource
-  where?: QueryPredicate
-  select?: SelectField[]
-  view?: QueryView
+  scope?: QueryScope
+  where?: Predicate
+  materialize?: MaterializePolicy
   fetch?: FetchInstructions
-  orderBy?: OrderBy[]
-  groupBy?: GroupBy[]
+  select?: SelectField[]
+  view?: "discovery" | "paginated" | "detailed"
+  controls?: QueryControls
   limit?: number
   page?: number
   itemsPerPage?: number
   explain?: boolean
 }
+
+interface OqlBatchV1 {
+  schema: "oql/v1"
+  queries: OqlQueryV1[]
+  combine?: "independent" | "merge"
+  limit?: number
+  page?: number
+  itemsPerPage?: number
+  explain?: boolean
+}
+
+type OqlSearchInputV1 = OqlQueryV1 | OqlBatchV1
+
+type SelectField = string
 ```
 
-Field meanings:
+</canonical_schema>
+
+<field_contract>
 
 | Field | Meaning |
 |---|---|
-| `target` | what kind of thing should be returned |
-| `from` | source corpus and optional materialization policy |
-| `where` | typed predicates and boolean composition |
-| `select` | projected result fields and next-hop handles |
-| `view` | output density and shape, not match semantics |
-| `fetch` | instructions for acquiring tree/file/repo data before or after matching |
-| `orderBy` | result ordering |
-| `groupBy` | aggregation for discovery/history/package analysis |
-| `limit` | bounded result count |
-| `page`, `itemsPerPage` | result pagination |
-| `explain` | return planner decisions and capability diagnostics |
+| `schema` | language version; omitted input normalizes to `oql/v1` |
+| `target` | result family |
+| `from` | corpus identity |
+| `scope` | allowed corpus slice |
+| `where` | logical match predicate |
+| `materialize` | permission and strategy for external-to-local execution |
+| `fetch` | bytes, tree, or content acquisition options |
+| `select` | returned fields |
+| `view` | output density, not match semantics |
+| `controls` | budget, paging domains, ranking, snippets, debug |
+| `limit`, `page`, `itemsPerPage` | result-level bounds |
+| `explain` | return plan and normalized query |
 
-## Targets
+</field_contract>
 
-`target` says what the query returns.
+<bulk_contract>
 
-| Target | Description | Local | External |
-|---|---|---|---|
-| `code` | text, regex, AST, or code-shaped matches | localSearchCode | provider code search or remote-as-local |
-| `content` | bounded file or diff content | localGetFileContent | ghGetFileContent, PR content, fetched artifact |
-| `structure` | tree, directory, file list, repo layout | localViewStructure | ghViewRepoStructure or materialized local tree |
-| `files` | file metadata and path discovery | localFindFiles | ghSearchCode `match:"path"` or tree metadata |
-| `symbols` | declarations, outlines, semantic locations | LSP/signatures | materialize first, then LSP/signatures |
-| `relationships` | definitions, references, callers, callees, implementations | LSP | materialize first, then LSP |
-| `binary` | archive, compressed stream, native binary, printable strings | localBinaryInspect | fetch artifact first |
-| `diff` | comparison between two bounded content sources | local content diff | fetch both sides, then compare |
-| `repos` | repository candidates and metadata | not applicable | ghSearchRepos |
-| `packages` | package candidates and source repository handoff | local package metadata later | npmSearch |
-| `prs` | pull requests, reviews, patches, comments | not applicable | ghHistoryResearch |
-| `commits` | commit history and changed files | later | ghHistoryResearch |
-| `materialization` | saved local copy of a repo/file/tree | local path already exists | ghCloneRepo/cache |
+`octocode search` accepts one canonical query or a bounded batch. Batching is
+for independent research slices, not hidden cross-query logic.
 
-## Sources
-
-```jsonc
-{ "kind": "local", "path": "./src" }
-{ "kind": "github", "repo": "facebook/react" }
-{ "kind": "github", "repo": "facebook/react", "ref": "main", "path": "packages/react" }
-{ "kind": "npm" }
-{ "kind": "materialized", "localPath": "/abs/.octocode/github/facebook/react/packages/react" }
-{ "kind": "gitlab", "project": "group/project" } // future
-```
-
-Provider sources may include `owner`, `repo`, `org`, `branch`, `ref`, `path`,
-`visibility`, and provider-specific capability fields only when the planner can
-validate them.
-
-## Materialization
-
-Materialization means: fetch, cache, clone, or unpack external data so local
-tools can operate on it.
-
-```ts
-type MaterializeMode = "never" | "auto" | "required"
-
-interface MaterializePolicy {
-  mode: MaterializeMode
-  strategy?: "file" | "tree" | "subtree" | "repo" | "artifact"
-  forceRefresh?: boolean
-  maxDepth?: number
-  sparsePath?: string
-  cache?: "reuse" | "refresh"
-}
-```
-
-Short form:
-
-```jsonc
-{
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react",
-    "materialize": "auto"
-  }
-}
-```
-
-Expanded form:
-
-```jsonc
-{
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "ref": "main",
-    "path": "packages/react",
-    "materialize": {
-      "mode": "required",
-      "strategy": "subtree",
-      "forceRefresh": false,
-      "cache": "reuse"
-    }
-  }
-}
-```
-
-Materialization modes:
-
-| Mode | Meaning |
+| Field | Meaning |
 |---|---|
-| `never` | Use provider APIs only. Local-only predicates fail with `requiresMaterialization`. |
-| `auto` | Use provider pushdown when enough; materialize only when the query asks for local-only capabilities. |
-| `required` | Materialize first; fail if source cannot be saved locally. |
+| `queries` | ordered list of OQL queries; V1 should use the existing tool-call cap of 1-5 queries |
+| `combine:"independent"` | default; return one result envelope per query |
+| `combine:"merge"` | merge compatible rows only after each query keeps its own provenance and diagnostics |
+| batch `limit`, `page`, `itemsPerPage` | outer bounds for merged rendering; inner query bounds still apply |
+| batch `explain` | explain every child query and the batch merge plan |
 
-Local-only capabilities include AST search, LSP, PCRE-only local matching when
-the provider cannot prove it, exact match enumeration, binary/artifact
-inspection, and repeated multi-file proof work.
+Rules:
 
-Materialized results must expose `localPath`, `repoRoot`, provider source, ref,
-cache status, and continuation hints.
+- Query order is stable.
+- A failed query does not erase successful sibling results.
+- Each query gets its own diagnostics, provenance, evidence, pagination, and
+  continuations.
+- `combine:"merge"` is valid only when all child queries return compatible
+  result rows. Otherwise return `invalidQuery` with a repair hint to use
+  `combine:"independent"`.
 
-## Fetch Instructions
+</bulk_contract>
 
-`fetch` tells OQL how to acquire data. It can appear in the original query or in
-a `next.*` continuation.
+<target_contract>
+
+| Target | Required | Optional | Does not use |
+|---|---|---|---|
+| `code` | `from`, `where` | `scope`, `materialize`, `select`, `view`, `controls`, result bounds | `fetch.content`, `fetch.tree` unless emitted as continuation |
+| `content` | `from` | `fetch.content`, `select`, `view`, result bounds | `where` except future normalized match sugar |
+| `structure` | `from` | `scope.path`, `fetch.tree`, `select`, `view`, result bounds | `where` except field/path filters after implementation supports them |
+| `files` | `from` | `scope`, field/text/regex/structural `where`, `select`, `view`, result bounds | `fetch.content` |
+
+</target_contract>
+
+<evaluation_units>
+
+Every predicate is evaluated against a target-specific unit. The planner must
+preserve this unit when it pushes down, materializes, or filters results.
+
+| Target | Evaluation unit | `where` omitted |
+|---|---|---|
+| `code` | a concrete code match occurrence | invalid |
+| `content` | a bounded content block/file read | allowed; fetch-only |
+| `structure` | a tree entry or directory slice | allowed; tree-only |
+| `files` | a file or directory entry | allowed; list files in scope |
+
+Rules:
+
+- On `target:"code"`, text/regex/structural predicates return match rows.
+- On `target:"files"`, text/regex/structural predicates mean the file contains
+  at least one matching occurrence. `not` over those predicates means the file
+  contains no such occurrence.
+- Negative file queries require a complete candidate universe. For provider
+  sources, that usually means materialization or a diagnostic.
+- `where` omission is not a wildcard for `target:"code"`. Agents must provide a
+  real code predicate.
+
+</evaluation_units>
+
+<top_level_bounds>
+
+| Field | Meaning |
+|---|---|
+| `limit` | maximum logical result count before or with pagination |
+| `page` | result page number for result rows/files/entries |
+| `itemsPerPage` | result rows/files/entries per page |
+| `explain` | include normalized query, defaults, routing, diagnostics, budgets, and backend plan |
+
+</top_level_bounds>
+
+<select_contract>
+
+`select` is an array of result field names and continuation names. It projects
+output only; it must not cause hidden unbounded fetches.
+
+| Field | Use |
+|---|---|
+| `repo` | GitHub repository identity |
+| `localPath` | materialized local path |
+| `path` | file or tree path |
+| `line` | start line for code/content evidence |
+| `endLine` | end line when a result spans lines |
+| `column` | start column when available |
+| `snippet` | bounded code/search snippet |
+| `content` | bounded content body for `target:"content"` |
+| `metavars` | structural captures |
+| `size` | file/tree size when available |
+| `modified` | file modification time when available |
+| `pagination` | pagination state for the active result domain |
+| `diagnostics` | result-local diagnostics |
+| `next.*` | executable continuation handles |
+
+Rules:
+
+- Unknown select fields produce `unknownField` or `unsupportedPredicate`.
+- `select:["content"]` is valid only for bounded content results.
+- Search rows should select `next.fetch` instead of full content.
+
+</select_contract>
+
+</section>
+
+<section id="source-and-scope">
+
+## Source And Scope
+
+<source_schema>
 
 ```ts
-interface FetchInstructions {
-  tree?: {
-    depth?: number
-    includeSizes?: boolean
-    filesOnly?: boolean
-    dirsOnly?: boolean
-  }
-  content?: {
-    path?: string
-    range?: { startLine?: number; endLine?: number; contextLines?: number }
-    match?: { text: string; regex?: boolean; caseSensitive?: boolean }
-    contentView?: "exact" | "compact" | "symbols"
-    fullContent?: boolean
-  }
-  materialize?: MaterializePolicy
-  archive?: {
-    mode: "inspect" | "list" | "extract" | "decompress" | "strings" | "unpack"
-    archiveFile?: string
-  }
+type QuerySource =
+  | { kind: "local"; path: string }
+  | { kind: "github"; owner?: string; repo?: string; ref?: string }
+  | { kind: "materialized"; localPath: string; source?: QuerySource }
+```
+
+</source_schema>
+
+<source_params>
+
+| Source field | Required when | Meaning |
+|---|---|---|
+| `kind` | always | source discriminator |
+| `path` | local source | local file or directory root |
+| `owner` | optional GitHub source | GitHub user/org scope for search |
+| `repo` | optional GitHub source | `owner/name` repository id, or repository name when `owner` is set |
+| `ref` | optional GitHub source | branch, tag, or commit |
+| `localPath` | materialized source | local path returned by materialization |
+| `source` | optional materialized source | original provider source |
+
+</source_params>
+
+<scope_schema>
+
+```ts
+interface QueryScope {
+  path?: string | string[]
+  language?: string | string[]
+  include?: string[]
+  exclude?: string[]
+  excludeDir?: string[]
+  hidden?: boolean
+  noIgnore?: boolean
+  maxDepth?: number
 }
 ```
 
-Fetch examples:
+</scope_schema>
 
-```jsonc
-{
-  "target": "structure",
-  "from": { "kind": "github", "repo": "facebook/react", "path": "packages/react" },
-  "fetch": { "tree": { "depth": 2, "includeSizes": true } },
-  "view": "discovery"
-}
-```
+<scope_params>
 
-```jsonc
-{
-  "target": "content",
-  "from": { "kind": "github", "repo": "facebook/react", "path": "packages/react/src/ReactHooks.js" },
-  "fetch": {
-    "content": {
-      "match": { "text": "function useState" },
-      "range": { "contextLines": 12 },
-      "contentView": "exact"
-    }
-  }
-}
-```
+| Scope field | Meaning |
+|---|---|
+| `path` | source-relative traversal root or provider path prefix |
+| `language` | canonical language filter; normalizes CLI `--type` and raw `langType` |
+| `include` | include globs for local/materialized search |
+| `exclude` | exclude globs when backend supports them |
+| `excludeDir` | directory names to skip entirely |
+| `hidden` | include hidden files when backend supports it |
+| `noIgnore` | ignore `.gitignore`/ignore files when backend supports it |
+| `maxDepth` | tree/file traversal depth |
 
-```jsonc
-{
-  "target": "materialization",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react",
-    "materialize": { "mode": "required", "strategy": "subtree" }
-  },
-  "select": ["localPath", "repoRoot", "ref", "next.grep", "next.lsp"]
-}
-```
+</scope_params>
+
+<rules>
+
+- `from` identifies the corpus.
+- Repository subpaths belong in `scope.path`.
+- Local paths must pass existing path validation.
+- GitHub `repo` should be `owner/name` for repository-scoped reads. The split
+  form `{owner, repo}` is accepted sugar and normalizes to `owner/name`.
+- GitHub `owner` without `repo` scopes code/repository search to one owner.
+- GitHub `from:{kind:"github"}` with neither `owner` nor `repo` means provider
+  search across GitHub. It is valid only for provider-search targets and must
+  never be materialized.
+- GitHub content, structure, and materialization require a concrete repository.
+- GitHub `ref` is branch, tag, or commit.
+- OQL uses canonical `language`; CLI `--type` and raw `langType` normalize to
+  it.
+- Path and language constraints are scope, not `controls`.
+- `scope.path` narrows the traversal root or provider prefix. It is not the
+  proof language for path matching.
+- Use `where:{kind:"field",field:"path",op:"glob"}` or
+  `where:{kind:"field",field:"path",op:"regex"}` when exact path intent matters.
+- Glob semantics are local/materialized by default. Provider-native path
+  qualifiers that are only prefix filters must be reported as approximate unless
+  a local/materialized residual check proves them.
+- Unsupported scope fields become diagnostics unless the planner can route to a
+  local/materialized lane.
+- For V1 structural search, current local execution supports `include`,
+  `excludeDir`, language-derived includes, and `maxFiles`; other scope fields
+  must be diagnostic or residual-planned before they affect proof.
+
+</rules>
+
+</section>
+
+<section id="predicates">
 
 ## Predicates
 
-`where` is a typed predicate tree.
+<attention priority="high">
+
+`where` is a discriminated union. Every predicate leaf must have `kind`.
+
+</attention>
+
+<predicate_union>
 
 ```ts
-type QueryPredicate =
-  | { all: QueryPredicate[] }
-  | { any: QueryPredicate[] }
-  | { not: QueryPredicate }
-  | { xor: QueryPredicate[] }
+type Predicate =
+  | { kind: "all"; id?: PredicateId; of: Predicate[] }
+  | { kind: "any"; id?: PredicateId; of: Predicate[] }
+  | { kind: "not"; id?: PredicateId; predicate: Predicate }
   | TextPredicate
   | RegexPredicate
-  | AstPredicate
-  | StructuralRulePredicate
-  | SymbolPredicate
-  | RelationshipPredicate
-  | FilePredicate
-  | MetadataPredicate
-  | BinaryPredicate
+  | StructuralPredicate
+  | FieldPredicate
+
+type PredicateId = string
 ```
 
-Boolean nodes:
+</predicate_union>
 
-```jsonc
-{ "all": [{ "text": "import" }, { "text": "react" }] }
-{ "any": [{ "text": "axios" }, { "text": "fetch" }] }
-{ "not": { "field": "path", "op": "glob", "value": "**/*.test.ts" } }
-```
+<boolean_predicates>
 
-### Text And Regex
-
-```jsonc
-{ "text": "createSession" }
-{ "text": "createSession", "fixed": true }
-{ "regex": "use[A-Z]\\w+", "dialect": "rust" }
-{ "regex": "function\\s+(?=handle)", "dialect": "pcre2" }
-```
-
-Options:
-
-| Option | Meaning |
-|---|---|
-| `fixed` | literal string search |
-| `dialect:"rust"` | default ripgrep-compatible regex |
-| `dialect:"pcre2"` | lookaround/backreferences |
-| `case` | `sensitive`, `insensitive`, or provider default |
-| `wholeWord` | whole-word matching |
-| `multiline` | allow line-spanning matches |
-| `dotAll` | `.` matches newlines when multiline |
-| `invert` | return non-matching lines/files where supported |
-
-### AST And Structural Rules
-
-```jsonc
-{ "pattern": "useEffect($$$ARGS)", "lang": "tsx" }
-```
-
-```jsonc
-{
-  "rule": "rule:\n  pattern: await $X\n  not:\n    inside:\n      kind: try_statement\n      stopBy: end",
-  "lang": "ts"
-}
-```
+| Predicate | Fields | Meaning |
+|---|---|---|
+| `all` | `of: Predicate[]` | every child predicate must match |
+| `any` | `of: Predicate[]` | at least one child predicate must match |
+| `not` | `predicate: Predicate` | child predicate must not match |
 
 Rules:
 
-- `pattern` and `rule` are mutually exclusive.
-- `$X` matches one node.
-- `$$$ARGS` matches a node list.
-- Patterns should match complete AST nodes.
-- `rule` supports relational logic such as `inside`, `has`, `not`, `all`, and
-  `any`.
-- AST predicates are local-only. External AST queries require materialization.
+- Empty `all.of` or `any.of` is invalid.
+- `not` must contain exactly one child predicate.
+- Predicate IDs are optional input. The compiler must assign stable IDs to every
+  predicate node before planning so `--explain`, diagnostics, and provenance can
+  refer to exact nodes.
+- Canonical boolean nodes are only `all`, `any`, and `not`.
+- Providers may not support all boolean forms; unsupported forms become
+  diagnostics or route to materialized/local execution.
 
-### File And Path Predicates
+</boolean_predicates>
 
-```jsonc
-{ "field": "path", "op": "glob", "value": "packages/*/src/**/*.ts" }
-{ "field": "basename", "op": "regex", "value": "^(index|main)\\.(ts|js)$" }
-{ "field": "extension", "op": "in", "value": ["ts", "tsx"] }
-{ "field": "size", "op": ">", "value": "100k" }
-{ "field": "modified", "op": "within", "value": "7d" }
-{ "field": "entryType", "op": "=", "value": "file" }
-{ "field": "permissions", "op": "=", "value": "755" }
-```
+<boolean_sugar>
 
-Short forms:
+Accepted sugar must normalize away before planning:
 
-```jsonc
-{ "path": "src/**/*.ts" }
-{ "lang": "ts" }
-```
-
-The normalizer expands short forms to explicit `field/op/value` leaves.
-
-### Symbols And Relationships
-
-Symbols are declarations or outline entries. Relationships are semantic
-operations anchored to a symbol occurrence.
-
-```jsonc
-{
-  "symbol": "runCLI",
-  "semantic": "references",
-  "anchor": { "path": "packages/octocode/src/cli/index.ts", "line": 73 }
-}
-```
-
-Supported semantic kinds:
-
-| Semantic kind | Meaning |
+| Sugar | Canonical rewrite |
 |---|---|
-| `definition` | declaration location |
-| `references` | usages of the anchored symbol |
-| `callers` | incoming calls |
-| `callees` | outgoing calls |
-| `callHierarchy` | combined call graph |
-| `hover` | type/docs at anchor |
-| `documentSymbols` | file outline |
-| `typeDefinition` | declared type location |
-| `implementation` | concrete implementation |
+| `and` | `all` |
+| `or` | `any` |
+| `noneOf:[A,B]` | `not(any(A,B))` |
+| `xor:[A,B]` | `any(all(A,not(B)), all(not(A),B))` |
+| `oneOf:[A,B,...]` | exactly-one expansion, or `unsupportedPredicate` if expansion exceeds the V1 budget |
 
 Rules:
 
-- `documentSymbols` needs a file URI/path, not a symbol.
-- Other semantic operations need `symbol` plus `anchor.line`.
-- `anchor.order` may disambiguate repeated symbols on the same line.
-- LSP is local-only. External semantic queries require materialization.
-- `serverUnavailable` or `unsupportedOperation` is a capability diagnostic, not
-  proof of absence.
+- `xor` is not a backend feature.
+- `xor` over provider sources requires a complete candidate universe or
+  materialization, because the planner must prove both positive and negative
+  branches.
+- Boolean normalization should flatten nested `all`/`any`, remove double
+  negation, and apply De Morgan rewrites only when they do not change the
+  evaluation unit or proof strength.
 
-All-symbols request:
+</boolean_sugar>
 
-```jsonc
-{
-  "target": "symbols",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react",
-    "materialize": "auto"
-  },
-  "where": { "field": "kind", "op": "in", "value": ["function", "class", "method"] },
-  "select": ["path", "symbol", "kind", "range", "container", "next.lspReferences"],
-  "view": "discovery",
-  "limit": 100
-}
-```
+<residual_logic_rules>
 
-### Relation Model
+| Boolean shape | Safe routing rule |
+|---|---|
+| `all(PUSHDOWN, RESIDUAL)` | push down the supported predicates, then residual-filter candidates |
+| `any(PUSHDOWN, RESIDUAL)` | requires union coverage; if the residual branch cannot enumerate candidates, materialize or fail |
+| `not(P)` | exact only when the planner has the full evaluation universe for the target |
+| `xor(A,B)` sugar | exact only when both branches and their negations are exact over the same universe |
 
-OQL relationships must be typed. A relationship query says which layer it uses,
-which relation it asks for, and which anchor/scope bounds the work.
+Rules:
+
+- Boolean trees must not be flattened into one global pushed/residual/routed
+  list if that loses parent/child semantics.
+- `--explain` must show routing per predicate node, not only per backend call.
+- A residual predicate under `not`, `any`, or `xor` cannot produce `proof` unless
+  the candidate universe is complete.
+
+</residual_logic_rules>
+
+<predicate kind="text">
+
+### Text
 
 ```ts
-interface RelationshipPredicate {
-  relation: RelationKind
-  layer?: "syntax" | "semantic" | "derived"
-  subject?: SymbolSelector | FileSelector
-  object?: SymbolSelector | FileSelector
-  anchor?: { path: string; line?: number; symbol?: string; order?: number }
-  scope?: { path?: string; depth?: number; includeTests?: boolean }
-  direction?: "incoming" | "outgoing" | "both"
+interface TextPredicate {
+  id?: PredicateId
+  kind: "text"
+  value: string
+  case?: "smart" | "sensitive" | "insensitive"
+  wholeWord?: boolean
 }
 ```
 
-Layers:
+<text_params>
 
-| Layer | Backing | Use for | Proof strength |
-|---|---|---|---|
-| `syntax` | AST/structural search | imports, exports, declarations, class/function containment, call-shaped syntax | syntax exists in matched files |
-| `semantic` | LSP | definitions, references, implementations, type definitions, call hierarchy | symbol identity according to language server |
-| `derived` | explicit graph over syntax/semantic edges | module dependency graph, reverse dependencies, ownership trees, impact slices | only as strong as its input edges |
+| Field | Meaning |
+|---|---|
+| `kind:"text"` | literal text predicate |
+| `value` | exact text to search for |
+| `case` | case behavior; `smart` follows current local ripgrep behavior |
+| `wholeWord` | match whole words only when backend supports it |
 
-Relation kinds should stay explicit and finite:
+</text_params>
 
-| Relation kind | Layer | Meaning |
+Rules:
+
+- `text` means literal text.
+- Local compilation sets `fixedString:true`.
+- Default `case` is `smart`, matching current local ripgrep behavior.
+- Provider text search may not support exact local case behavior; unsupported
+  parts must appear in `diagnostics`.
+
+</predicate>
+
+<predicate kind="regex">
+
+### Regex
+
+```ts
+interface RegexPredicate {
+  id?: PredicateId
+  kind: "regex"
+  value: string
+  dialect?: "rust" | "pcre2" | "provider"
+  case?: "smart" | "sensitive" | "insensitive"
+  wholeWord?: boolean
+  multiline?: boolean
+  dotAll?: boolean
+}
+```
+
+<regex_params>
+
+| Field | Meaning |
+|---|---|
+| `kind:"regex"` | regular-expression predicate |
+| `value` | regex pattern string |
+| `dialect` | `rust` for local default, `pcre2` for advanced local regex, `provider` for provider-native search |
+| `case` | case behavior; unsupported provider behavior must be diagnosed |
+| `wholeWord` | wrap or lower to whole-word matching when backend supports it |
+| `multiline` | allow matching across lines when backend supports it |
+| `dotAll` | make `.` match newlines when backend supports it |
+
+</regex_params>
+
+Rules:
+
+- Default local dialect is `rust`.
+- `pcre2` requires local or materialized execution.
+- Lookaround and backreferences require `dialect:"pcre2"`.
+- Provider regex support is provider-specific and must be explained.
+
+</predicate>
+
+<predicate kind="structural">
+
+### Structural
+
+```ts
+interface StructuralPredicate {
+  id?: PredicateId
+  kind: "structural"
+  lang: string
+  pattern?: string
+  rule?: StructuralRule
+}
+
+interface StructuralRule {
+  pattern?: string
+  kind?: string
+  inside?: StructuralRule
+  has?: StructuralRule
+  not?: StructuralRule
+  all?: StructuralRule[]
+  any?: StructuralRule[]
+  stopBy?: "end"
+}
+```
+
+<structural_params>
+
+| Field | Meaning |
+|---|---|
+| `kind:"structural"` | AST/tree-sitter predicate |
+| `lang` | required parser language; use canonical language ids |
+| `pattern` | code-shaped structural pattern |
+| `rule` | JSON structural rule for relational matching |
+| `rule.pattern` | nested code-shaped structural pattern |
+| `rule.kind` | AST node kind constraint |
+| `rule.inside` | ancestor/containing rule |
+| `rule.has` | descendant/subtree rule |
+| `rule.not` | negated nested rule |
+| `rule.all` | every nested rule must match |
+| `rule.any` | at least one nested rule must match |
+| `rule.stopBy` | relational traversal boundary; use `"end"` for V1 relational rules |
+
+</structural_params>
+
+<structural_subset>
+
+| Structural feature | V1 status | Notes |
 |---|---|---|
-| `declares` | syntax | file/module declares a symbol |
-| `contains` | syntax | class/module/function contains another symbol or block |
-| `imports` | syntax | module imports another module or symbol |
-| `importedBy` | derived | reverse of `imports` |
-| `exports` | syntax | module exports a symbol |
-| `reExports` | syntax | module forwards exports from another module |
-| `dependsOn` | derived | file/module depends on another file/module through imports or references |
-| `dependedOnBy` | derived | reverse dependency |
-| `defines` | semantic | symbol use resolves to a definition |
-| `references` | semantic | definition has usages |
-| `calls` | semantic | callable has outgoing calls |
-| `calledBy` | semantic | callable has incoming calls |
-| `implements` | semantic | symbol implements an interface/abstract declaration |
-| `typeOf` | semantic | expression or symbol has a type/hover result |
-| `typeDefinition` | semantic | symbol resolves to declared type |
-| `extends` | syntax | class/interface extends another |
-| `decorates` | syntax | decorator/annotation applies to a declaration |
-| `throws` | syntax | function contains throw/raise syntax |
-| `reads` / `writes` | syntax | code reads or writes a field/variable shape |
+| `pattern` | active | code-shaped tree-sitter pattern |
+| `$X` | active | one AST node capture |
+| `$$$ARGS` / `$$$NAME` | active | node-list capture |
+| `rule.pattern` | active | nested code-shaped pattern |
+| `rule.kind` | active | AST node kind constraint |
+| `rule.inside` | active | containing/ancestor relation |
+| `rule.has` | active | descendant/subtree relation |
+| `rule.not` | active | structural negation inside a rule |
+| `rule.all` / `rule.any` | active | structural rule composition |
+| `rule.stopBy:"end"` | active | required for bounded relational intent |
 
-Examples:
+</structural_subset>
 
-```jsonc
-{
-  "target": "relationships",
-  "from": { "kind": "local", "path": "./src" },
-  "where": {
-    "relation": "imports",
-    "layer": "syntax",
-    "subject": { "path": "src/**/*.ts" },
-    "object": { "path": "@octocodeai/*" }
-  },
-  "select": ["from.path", "to.module", "line", "next.fetch"],
-  "view": "discovery"
+<structural_deferred>
+
+| Feature | V1 handling |
+|---|---|
+| `precedes`, `follows`, `field`, `regex`, `nthChild`, `range`, `matches` | `unsupportedPredicate` unless the engine proves support later |
+| reusable named structural refs | V2 |
+| metavariable constraints and focus range | V2 |
+| rule ids, messages, severities, tests | V2 |
+| `fix`, `transform`, codemod output | V3 dry-run only |
+| Semgrep or ast-grep compatibility mode | not V1 |
+
+</structural_deferred>
+
+Rules:
+
+- Exactly one of `pattern` or `rule` is required.
+- `lang` is required.
+- `$X` captures one AST node.
+- `$$$ARGS` captures a node list.
+- Bare `$$$` is an advanced document-root probe, not normal agent syntax.
+- Patterns must parse as complete source nodes. For example, a TypeScript class
+  usually needs `class $NAME { $$$BODY }`, not `class $NAME`.
+- The OQL compiler may serialize `rule` to the current engine's YAML rule
+  string, but agents should use the JSON object form.
+- OQL structural rules are Octocode tree-sitter rules. They are not full
+  ast-grep or Semgrep compatibility.
+- Structural search is local-only. GitHub structural queries need
+  `materialize.mode:"auto"` or `"required"`.
+- Rule ids, messages, severities, tests, reusable refs, and fixes are not V1.
+
+</predicate>
+
+<predicate kind="field">
+
+### Field
+
+```ts
+interface FieldPredicate {
+  id?: PredicateId
+  kind: "field"
+  field:
+    | "path"
+    | "basename"
+    | "extension"
+    | "size"
+    | "modified"
+    | "entryType"
+  op:
+    | "="
+    | "!="
+    | "in"
+    | "exists"
+    | "glob"
+    | "regex"
+    | ">"
+    | ">="
+    | "<"
+    | "<="
+    | "within"
+  value?: unknown
 }
 ```
 
+<field_params>
+
+| Field | Meaning |
+|---|---|
+| `kind:"field"` | file/result attribute predicate |
+| `field` | file/result attribute to test |
+| `op` | comparison operator |
+| `value` | comparison value; omitted only for `op:"exists"` |
+
+</field_params>
+
+<field_operator_semantics>
+
+| Operator | Meaning |
+|---|---|
+| `=` / `!=` | equality or inequality |
+| `in` | field value is one of the provided values |
+| `exists` | field is present |
+| `glob` | glob comparison, mainly for path-like fields |
+| `regex` | regex comparison, mainly for path-like fields |
+| `>` / `>=` / `<` / `<=` | numeric or timestamp comparison |
+| `within` | timestamp or size range comparison |
+
+</field_operator_semantics>
+
+<field_value_rules>
+
+| Operator | Required value shape |
+|---|---|
+| `=` / `!=` | scalar string, number, or boolean matching the field type |
+| `in` | non-empty array of scalar values matching the field type |
+| `exists` | no `value` |
+| `glob` | glob string; path separators normalize to `/` |
+| `regex` | regex string; Rust regex unless the planner routes to PCRE2-capable local proof |
+| `>` / `>=` / `<` / `<=` | number, size string, duration string, or ISO timestamp according to field type |
+| `within` | `{ "from"?: value, "to"?: value }` or a duration string such as `"7d"` |
+
+Rules:
+
+- `extension` values normalize without a leading dot.
+- `entryType` values are `"file"` or `"directory"` in OQL. Backends may lower
+  them to their native forms such as `f` and `d`.
+- Type mismatches produce `fieldTypeMismatch`.
+
+</field_value_rules>
+
+Rules:
+
+- Field predicates are logical predicates, not output controls.
+- `path`, `basename`, and `extension` may push down to GitHub when supported.
+- `size`, `modified`, and `entryType` may require local/materialized execution
+  depending on source and target.
+
+</predicate>
+
+</section>
+
+<section id="materialization">
+
+## Materialization
+
+<materialize_schema>
+
+```ts
+interface MaterializePolicy {
+  mode: "never" | "auto" | "required"
+  strategy?: "file" | "tree" | "subtree" | "repo"
+  forceRefresh?: boolean
+}
+```
+
+</materialize_schema>
+
+<materialize_params>
+
+| Field | Meaning |
+|---|---|
+| `mode:"never"` | provider-only; fail if local proof is required |
+| `mode:"auto"` | planner may materialize bounded source if needed |
+| `mode:"required"` | planner must materialize first or fail |
+| `strategy:"file"` | fetch/cache one file |
+| `strategy:"tree"` | fetch/cache tree info |
+| `strategy:"subtree"` | clone/fetch bounded subtree |
+| `strategy:"repo"` | full repo, only when explicitly allowed and bounded |
+| `forceRefresh` | bypass stale cache when supported |
+
+</materialize_params>
+
+<defaults>
+
+- Local source: no materialization needed.
+- GitHub source: `mode:"never"` unless the query explicitly sets otherwise.
+
+</defaults>
+
+<rules>
+
+- `never`: provider-only. Local-only predicates produce
+  `requiresMaterialization`.
+- `auto`: planner may materialize a bounded repo/path/ref when needed.
+- `required`: planner must materialize first or fail.
+- Materialization requires bounded `repo`, `ref` when available, and `scope.path`
+  unless the user explicitly allows a full repo.
+- Materialized results must return `localPath`, original source, ref/cache
+  information, and executable local follow-ups.
+
+</rules>
+
+<remote_as_local_flow>
+
+One OQL query may plan a multi-step research flow:
+
+1. Use provider search/tree/content to bound the candidate corpus.
+2. Materialize the bounded file, subtree, or repository.
+3. Run local proof tools over the materialized path: ripgrep, PCRE2,
+   structural AST, exact content fetch, symbol-outline minification, and V2 LSP.
+4. Return one result envelope with provenance for every step and continuations
+   for exact reads, next pages, LSP follow-ups, or refresh.
+
+This is the OQL form of current `grep --repo`: remote input, local proof.
+
+Rules:
+
+- The planner must not materialize broad GitHub/org/global scopes.
+- `strategy:"repo"` requires explicit user intent or a small bounded repository.
+- Current backing for GitHub materialization is `ghCloneRepo` with `owner`,
+  `repo`, `branch`, `sparsePath`, and `forceRefresh`. Unsupported strategy or
+  budget fields must produce diagnostics, not silent ignore.
+- Provider zero results are not proof when the query asked for a local-only
+  predicate such as PCRE2, structural AST, exact absence, or semantic proof.
+
+</remote_as_local_flow>
+
+</section>
+
+<section id="fetch-and-controls">
+
+## Fetch And Controls
+
+<fetch_schema>
+
+```ts
+interface FetchInstructions {
+  content?: {
+    range?: { startLine?: number; endLine?: number; contextLines?: number }
+    match?: { text: string; regex?: boolean; caseSensitive?: boolean }
+    contentView?: "exact" | "compact" | "symbols"
+    charOffset?: number
+    charLength?: number
+    fullContent?: boolean
+  }
+  tree?: {
+    maxDepth?: number
+    includeSizes?: boolean
+  }
+}
+```
+
+</fetch_schema>
+
+<fetch_params>
+
+| Field | Meaning |
+|---|---|
+| `content.range.startLine` | first 1-based line to read |
+| `content.range.endLine` | last 1-based line to read |
+| `content.range.contextLines` | context lines around a match/range |
+| `content.match.text` | content-local match anchor |
+| `content.match.regex` | treat `match.text` as regex |
+| `content.match.caseSensitive` | match case exactly |
+| `content.contentView` | `exact`, `compact`, or `symbols` |
+| `content.charOffset` | character offset for content pagination |
+| `content.charLength` | maximum characters to return |
+| `content.fullContent` | request full file only when bounded and allowed |
+| `tree.maxDepth` | tree traversal depth |
+| `tree.includeSizes` | include size info when backend supports it |
+
+</fetch_params>
+
+<controls_schema>
+
+```ts
+interface QueryControls {
+  search?: {
+    filesOnly?: boolean
+    countLinesPerFile?: boolean
+    countMatchesPerFile?: boolean
+    onlyMatching?: boolean
+    unique?: boolean
+    countUnique?: boolean
+    matchWindow?: number
+    matchContentLength?: number
+    maxMatchesPerFile?: number
+    matchPage?: number
+    sort?: "relevance" | "matchCount" | "path" | "modified" | "accessed" | "created"
+    sortReverse?: boolean
+    rankingProfile?: string
+    debugRanking?: boolean
+  }
+  budget?: {
+    maxFiles?: number
+    maxCandidates?: number
+    maxBytes?: number
+    maxMaterializedBytes?: number
+    timeoutMs?: number
+  }
+}
+```
+
+</controls_schema>
+
+<controls_params>
+
+| Field | Meaning |
+|---|---|
+| `search.filesOnly` | return matching files without snippets |
+| `search.countLinesPerFile` | count matching lines per file |
+| `search.countMatchesPerFile` | count total matches per file |
+| `search.onlyMatching` | return matched substrings only |
+| `search.unique` | unique matched substrings per file; requires `onlyMatching` |
+| `search.countUnique` | unique matched substrings with counts; requires `onlyMatching` |
+| `search.matchWindow` | characters around an `onlyMatching` hit |
+| `search.matchContentLength` | maximum snippet length |
+| `search.maxMatchesPerFile` | per-file match page size/cap |
+| `search.matchPage` | page within one file's matches |
+| `search.sort` | local result ordering |
+| `search.sortReverse` | reverse supported sort order |
+| `search.rankingProfile` | relevance profile |
+| `search.debugRanking` | include ranking reasons |
+| `budget.maxFiles` | maximum files to inspect or return |
+| `budget.maxCandidates` | maximum provider/local candidates before residual filtering |
+| `budget.maxBytes` | maximum bytes to inspect/read |
+| `budget.maxMaterializedBytes` | maximum external bytes to materialize |
+| `budget.timeoutMs` | execution time budget |
+
+</controls_params>
+
+<rules>
+
+- `fetch` acquires content or tree data.
+- `controls` affects cost, pagination domains, snippets, ranking, and debug
+  output.
+- `controls` must not change what logically matches.
+- Legacy `filesWithoutMatch` input is not canonical OQL. Normalize it to
+  `target:"files"` plus `where:{kind:"not",predicate:...}`.
+- `onlyMatching` is the safe way to enumerate values from minified one-line
+  files.
+- `matchPage` pages matches inside one file; top-level `page` pages result
+  files/rows.
+- Discovery/count modes still require exact fetch before quoting or patching.
+
+</rules>
+
+<content_view_mapping>
+
+| OQL | Current backing | Use |
+|---|---|---|
+| `exact` | `minify:"none"` | quotes, patches, diffs |
+| `compact` | `minify:"standard"` | normal reading |
+| `symbols` | `minify:"symbols"` | cheap symbol/signature outline for orientation |
+
+Rules:
+
+- `contentView:"symbols"` is syntax/signature extraction from content. It is not
+  LSP semantic proof.
+- If symbol extraction falls back or is unsupported for a language, return
+  `signatureUnsupported` or `partialResult` diagnostics and a content-fetch
+  continuation.
+
+</content_view_mapping>
+
+</section>
+
+<section id="defaults">
+
+## Defaults
+
+<attention priority="high">
+
+`octocode search --explain` must show all applied defaults.
+
+</attention>
+
+| Field | V1 default |
+|---|---|
+| `schema` | `oql/v1` |
+| `view` | `paginated` |
+| `page` | `1` |
+| `itemsPerPage` | `25` for search rows unless a target-specific cap is lower |
+| `materialize.mode` for GitHub | `never` |
+| `text.case` | `smart` |
+| `regex.dialect` local | `rust` |
+| `regex.case` | `smart` |
+| `fetch.content.contentView` | `compact` |
+| `fetch.content.charLength` | `20000` when content pagination is needed |
+| `controls.search.matchContentLength` | `500` |
+| normal code context | `2` lines |
+| detailed code context | `3` lines |
+| local search sort | `relevance` |
+| local ranking profile | `auto` |
+| structural file cap | engine cap unless `controls.budget.maxFiles` is lower |
+| structural per-file byte cap | engine cap |
+
+</section>
+
+<section id="normalization">
+
+## Normalization
+
+<normalization_rule>
+
+Input sugar is accepted only if it has a deterministic rewrite. Ambiguous sugar
+must fail with a repair diagnostic. Canonical output from `--explain` must not
+contain shorthand fields.
+
+</normalization_rule>
+
+<example kind="sugar">
+
 ```jsonc
 {
-  "target": "relationships",
-  "from": { "kind": "local", "path": "./src" },
+  "repo": "facebook/react",
+  "path": "packages/react",
+  "pattern": "useEffect($$$ARGS)",
+  "lang": "js"
+}
+```
+
+</example>
+
+<example kind="canonical">
+
+```jsonc
+{
+  "schema": "oql/v1",
+  "target": "code",
+  "from": { "kind": "github", "repo": "facebook/react" },
+  "scope": { "path": "packages/react" },
   "where": {
-    "relation": "calledBy",
-    "layer": "semantic",
-    "anchor": { "path": "src/server.ts", "line": 42, "symbol": "createSession" },
-    "scope": { "depth": 2 }
+    "kind": "structural",
+    "lang": "js",
+    "pattern": "useEffect($$$ARGS)"
   },
-  "select": ["caller", "path", "line", "range", "next.fetch"],
+  "materialize": { "mode": "never" },
   "view": "paginated"
 }
 ```
 
-```jsonc
-{
-  "target": "relationships",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react",
-    "materialize": "required"
-  },
-  "where": {
-    "relation": "dependsOn",
-    "layer": "derived",
-    "subject": { "path": "packages/react/src/**/*.js" },
-    "scope": { "depth": 1 }
-  },
-  "select": ["from.path", "to.path", "via", "confidence", "next.grep"],
-  "view": "detailed"
-}
-```
+</example>
 
-Rules:
+<rewrite_table>
 
-- `syntax` relations can be found with AST patterns/rules and path filters.
-- `semantic` relations require a local/materialized source and a real anchor.
-- `derived` relations must expose their input edges in provenance.
-- OQL must never auto-upgrade `syntax` matches into semantic truth. A call-shaped
-  AST match says "this call expression exists"; LSP `calls` says "this symbol is
-  called by/within these resolved locations."
-
-### Provider Metadata
-
-Repository predicates:
-
-```jsonc
-{ "field": "stars", "op": ">=", "value": 100 }
-{ "field": "forks", "op": ">", "value": 50 }
-{ "field": "language", "op": "=", "value": "TypeScript" }
-{ "field": "topic", "op": "in", "value": ["mcp", "code-search"] }
-{ "field": "license", "op": "=", "value": "mit" }
-{ "field": "updated", "op": "since", "value": "2025-01-01" }
-{ "field": "archived", "op": "=", "value": false }
-```
-
-Package predicates:
-
-```jsonc
-{ "field": "package", "op": "=", "value": "@octokit/rest" }
-{ "text": "react state management" }
-{ "field": "repository", "op": "exists", "value": true }
-```
-
-PR and history predicates:
-
-```jsonc
-{ "field": "state", "op": "=", "value": "merged" }
-{ "field": "author", "op": "=", "value": "octocat" }
-{ "field": "label", "op": "in", "value": ["bug", "performance"] }
-{ "field": "created", "op": "range", "value": "2025-01-01..2025-12-31" }
-{ "field": "path", "op": "glob", "value": "packages/*/src/**" }
-```
-
-Provider predicates should push down when the provider supports them. Otherwise
-they must become residual, route to another lane, or fail loudly.
-
-### Binary And Archive Predicates
-
-```jsonc
-{ "field": "binary.mode", "op": "=", "value": "strings" }
-{ "regex": "ghp_[A-Za-z0-9_]{36}", "dialect": "pcre2" }
-{ "field": "archive.file", "op": "glob", "value": "**/*.js" }
-```
-
-Binary and archive work is local-only. External artifacts must be fetched first.
-
-## Views
-
-`view` controls output density only.
-
-| View | Meaning |
+| Sugar | Canonical |
 |---|---|
-| `discovery` | cheapest orientation: paths, names, counts, minimal fields |
-| `paginated` | default result page with snippets or rows |
-| `detailed` | context, metadata, match ranges, diagnostics |
-| `explain` | planner decisions and capability checks |
+| top-level `repo` | `from:{kind:"github",repo}` |
+| top-level `owner` + `repo` | `from:{kind:"github",owner,repo}` then normalize repo identity |
+| top-level local `path` with no repo | `from:{kind:"local",path}` unless also used as `scope.path` |
+| GitHub `path` | `scope.path` |
+| CLI `--type` or raw `langType` | `scope.language` or structural `lang` by context |
+| top-level `text` | `where:{kind:"text",value}` |
+| top-level `regex` | `where:{kind:"regex",value}` |
+| top-level `pattern` + `lang` | `where:{kind:"structural",lang,pattern}` |
+| top-level `rule` + `lang` | `where:{kind:"structural",lang,rule}` |
+| `minify` | `fetch.content.contentView` |
+| `and` / `or` | `all` / `any` |
+| `xor` | canonical `any(all(A,not(B)),all(not(A),B))` expansion |
+| text/regex `invert:true` | wrap predicate in `where:{kind:"not",predicate:...}` |
+| legacy `filesWithoutMatch` | `target:"files"` + `where:{kind:"not",predicate:...}` |
 
-Search engine selection belongs to predicates and planner capability checks, not
-to `view`.
+</rewrite_table>
 
-## Selection
+</section>
 
-`select` is projection. It asks for fields, not execution behavior.
+<section id="planner">
 
-Common fields:
+## Planner
 
-```jsonc
-["path", "line", "endLine", "snippet", "match", "score", "next"]
-["repo", "description", "stars", "pushedAt", "topics", "next.structure"]
-["package", "version", "description", "repository", "next.source"]
-["symbol", "kind", "range", "container", "next.lspReferences"]
-["localPath", "repoRoot", "ref", "cache", "next.grep"]
-```
-
-Heavy content must be requested through `target:"content"` or `next.fetch`, not
-by selecting entire files from search rows.
-
-## Content View
-
-OQL uses `contentView` for content density.
-
-| OQL `contentView` | Current backing value | Meaning |
-|---|---|---|
-| `exact` | `minify:"none"` | exact raw text for quotes, patches, diffs |
-| `compact` | `minify:"standard"` | compact readable content |
-| `symbols` | `minify:"symbols"` | outline/skeleton with line anchors |
-
-`contentView` applies to content fetches, not to search semantics.
-
-PR/diff content may support only `exact` and `compact`.
-
-## Pagination And Continuations
-
-OQL has multiple pagination domains. They must not be conflated.
-
-| Domain | Controls | Current backing examples |
-|---|---|---|
-| result rows | `page`, `itemsPerPage`, `limit` | search pages, repo pages, tree pages |
-| matches inside one file | `matchPage`, `maxMatchesPerFile` | localSearchCode match paging |
-| content bytes/chars | `charOffset`, `charLength` | local/GitHub content, PR body/patches |
-| archive entries | `entryPage`, `entriesPerPage` | localBinaryInspect list |
-| binary string scan | `scanOffset` | localBinaryInspect strings |
-| PR details | `filePage`, `commentPage`, `commitPage`, `commentBodyOffset` | ghHistoryResearch |
-
-Continuation rule:
-
-```text
-Use offsets and next-page values returned by the previous result. Do not compute
-offsets manually.
-```
-
-Every partial result should include a continuation handle:
-
-```jsonc
-{
-  "pagination": {
-    "kind": "content",
-    "hasMore": true,
-    "next": {
-      "target": "content",
-      "from": { "kind": "local", "path": "/abs/file.ts" },
-      "fetch": { "content": { "contentView": "compact" } },
-      "charOffset": 50000,
-      "charLength": 50000
-    }
-  }
-}
-```
-
-## Result Envelope
-
-Every OQL response should use this shape.
-
-```jsonc
-{
-  "results": [],
-  "pagination": {},
-  "next": {},
-  "diagnostics": [],
-  "provenance": {
-    "source": "github",
-    "engine": "remote-as-local",
-    "materialized": true,
-    "localPath": "/abs/.octocode/github/facebook/react/packages/react"
-  },
-  "evidence": {
-    "answerReady": false,
-    "complete": false,
-    "kind": "search"
-  }
-}
-```
-
-Result rows should be typed:
-
-```jsonc
-{
-  "kind": "codeMatch",
-  "path": "src/index.ts",
-  "range": { "startLine": 40, "endLine": 44 },
-  "match": { "text": "createSession", "column": 12 },
-  "snippet": "const session = createSession(...)",
-  "next": {
-    "fetch": {},
-    "lspDefinition": {},
-    "lspReferences": {}
-  },
-  "provenance": {
-    "predicateIds": ["p1", "p2"],
-    "engine": "localSearchCode"
-  }
-}
-```
-
-## Diagnostics
-
-Diagnostics are part of the language. They prevent agents from confusing
-capability limits with evidence.
-
-Common diagnostics:
-
-| Diagnostic | Meaning |
-|---|---|
-| `unsupportedPredicate` | selected source cannot run the predicate |
-| `requiresMaterialization` | local-only feature requested against provider-only source |
-| `materializationFailed` | clone/fetch/cache failed |
-| `partialResult` | more result pages exist |
-| `contentTruncated` | content was cut by char limit |
-| `matchTruncated` | matches were capped |
-| `parserFailed` | AST parse failed for some files |
-| `lspUnavailable` | language server unavailable |
-| `unsupportedSemanticOperation` | LSP server lacks that operation |
-| `rateLimited` | provider rate limit |
-| `staleCache` | cached result may be older than requested |
-| `sanitized` | secrets or unsafe paths were redacted |
-| `providerUnindexed` | provider search may not cover the repo |
-| `zeroMatches` | query executed successfully and found nothing |
-
-## Planner Semantics
-
-The OQL planner assigns every predicate one mode per source.
+<planner_modes>
 
 | Mode | Meaning |
 |---|---|
-| `PUSHDOWN` | backend can evaluate the predicate directly |
+| `PUSHDOWN` | backend can evaluate it directly |
 | `RESIDUAL` | fetch bounded candidates and filter locally |
-| `ROUTE` | send work to another lane, such as remote-as-local |
+| `ROUTE` | move to another lane, usually materialization |
 | `UNSUPPORTED` | fail with diagnostics and repair hints |
 
-Invariant:
+</planner_modes>
+
+<invariant>
 
 ```text
 pushed predicates + residual predicates + routed predicates == all predicates
 ```
 
-No predicate may be silently dropped.
+</invariant>
+
+<explain_output>
+
+`octocode search --explain` must return:
+
+- original input
+- normalized canonical query
+- applied defaults
+- predicate routing
+- selected backend calls
+- materialization decision
+- residual filters
+- effective budgets
+- diagnostics
+- executable continuations
+
+</explain_output>
+
+<explain_schema>
+
+```ts
+interface OqlExplainPlan {
+  input: unknown
+  normalized: OqlSearchInputV1
+  defaults: Record<string, unknown>
+  nodes: Array<{
+    predicateId: PredicateId
+    path: string
+    route: "PUSHDOWN" | "RESIDUAL" | "ROUTE" | "UNSUPPORTED"
+    backend?: string
+    reason: string
+  }>
+  backendCalls: Array<{
+    backend: string
+    source: QuerySource
+    operation: string
+    exact: boolean
+  }>
+  materialization?: MaterializePolicy & {
+    required: boolean
+    reason: string
+  }
+  budgets: QueryControls["budget"]
+  diagnostics: OqlDiagnostic[]
+  next?: Record<string, OqlContinuation>
+}
+```
+
+</explain_schema>
+
+</section>
+
+<section id="backend-mapping">
 
 ## Backend Mapping
 
-| OQL concept | Current backing |
+| Canonical query | Current compilation |
 |---|---|
-| local text/regex/code search | `localSearchCode` |
-| local AST pattern/rule search | `localSearchCode mode:"structural"` |
-| local tree | `localViewStructure` |
-| local file metadata | `localFindFiles` |
-| local content | `localGetFileContent` |
-| local LSP | `lspGetSemantics` |
-| local archives/binaries | `localBinaryInspect` |
-| GitHub code search | `ghSearchCode` |
-| GitHub file content | `ghGetFileContent` |
-| GitHub tree | `ghViewRepoStructure` |
-| GitHub materialization | `ghCloneRepo` |
-| GitHub repository discovery | `ghSearchRepos` |
-| GitHub PR/commit history | `ghHistoryResearch` |
-| npm package discovery | `npmSearch` |
+| local `target:"code"` + `text` | `localSearchCode keywords + fixedString:true` |
+| local `target:"code"` + `regex.dialect:"rust"` | `localSearchCode keywords` |
+| local `target:"code"` + `regex.dialect:"pcre2"` | `localSearchCode perlRegex:true` |
+| local `target:"code"` + `structural` | `localSearchCode mode:"structural"` |
+| local `target:"files"` + `not(text/regex/structural)` | `localSearchCode filesWithoutMatch` or local candidate enumeration plus residual proof |
+| local `target:"content"` | `localGetFileContent` |
+| local `target:"structure"` | `localViewStructure` |
+| local `target:"files"` | `localFindFiles` |
+| GitHub `target:"code"` provider-capable predicates | `ghSearchCode` |
+| GitHub owner-wide or provider-wide `target:"code"` | `ghSearchCode` with owner/repo omitted as requested |
+| GitHub `target:"content"` | `ghGetFileContent` |
+| GitHub `target:"structure"` | `ghViewRepoStructure` |
+| GitHub local-only predicate + `materialize:"auto"` | `ghCloneRepo` then local tool |
 
-## Coverage Against Current Resources
+<provider_capability_examples>
 
-This section maps the current `octocode-core` tool and CLI resource fields into
-OQL concepts. The goal is one language with typed families, not one giant flat
-option list.
+| Query shape | Required outcome |
+|---|---|
+| GitHub regex with PCRE2-only features and `materialize.mode:"never"` | `unsupportedPredicate` or `requiresMaterialization` |
+| GitHub structural with `materialize.mode:"auto"` | bounded clone/subtree, then local structural search |
+| GitHub structural with `materialize.mode:"never"` | no weaker provider text search; return diagnostic |
+| GitHub path prefix search | provider candidate/proof only for prefix semantics |
+| GitHub path glob/regex proof | materialize or residual-check candidates |
+| provider zero results with all predicates pushed exactly | may be `proof` of absence |
+| provider zero results with residual/local-only predicates | not proof; return materialization continuation or diagnostic |
+| provider symbol search in V2 | definitions only unless LSP proves references/call hierarchy |
 
-### Tool Schema Coverage
+</provider_capability_examples>
 
-| Current tool | Current field families | OQL coverage |
+</section>
+
+<section id="result-envelope">
+
+## Result Envelope
+
+<result_schema>
+
+```ts
+interface OqlResultEnvelope {
+  results: unknown[]
+  pagination?: Pagination
+  next?: Record<string, OqlContinuation>
+  diagnostics: OqlDiagnostic[]
+  provenance: OqlProvenance[]
+  evidence: {
+    answerReady: boolean
+    complete: boolean
+    kind: "proof" | "partial" | "candidate" | "unsupported"
+  }
+}
+```
+
+</result_schema>
+
+<result_params>
+
+| Field | Meaning |
+|---|---|
+| `results` | result rows, files, tree entries, or content blocks depending on `target` |
+| `pagination` | active page state for the primary result domain |
+| `next` | named executable continuations |
+| `diagnostics` | query-level warnings/errors and repair hints |
+| `provenance` | backend/source/predicate routing evidence |
+| `evidence.answerReady` | true only when the result is strong enough to answer |
+| `evidence.complete` | true only when no relevant pages, residual checks, or diagnostics remain |
+| `evidence.kind` | proof strength: `proof`, `partial`, `candidate`, or `unsupported` |
+
+</result_params>
+
+<proof_lattice>
+
+| Evidence kind | Meaning |
+|---|---|
+| `proof` | every required predicate was evaluated exactly over the required universe |
+| `partial` | some pages, candidates, files, or residual checks remain |
+| `candidate` | useful lead, but at least one predicate or provider filter is approximate |
+| `unsupported` | planner could not execute the requested semantics |
+
+Rules:
+
+- `answerReady:true` requires `evidence.kind:"proof"` and
+  `evidence.complete:true`, unless the user asked only for candidates.
+- Per-result proof cannot upgrade whole-query proof if pagination, truncation,
+  residual predicates, or unsupported boolean branches remain.
+- Diagnostics that block proof must set `blocksAnswer:true`.
+- A result with executable continuations is usually `partial` unless the
+  continuation is optional enrichment.
+
+</proof_lattice>
+
+<pagination_schema>
+
+```ts
+interface Pagination {
+  currentPage?: number
+  totalPages?: number
+  itemsPerPage?: number
+  totalItems?: number
+  hasMore: boolean
+  next?: OqlContinuation
+}
+```
+
+</pagination_schema>
+
+<pagination_params>
+
+| Field | Meaning |
+|---|---|
+| `currentPage` | current result page |
+| `totalPages` | known total pages when backend can count |
+| `itemsPerPage` | result rows per page |
+| `totalItems` | known total item count when backend can count |
+| `hasMore` | true when another page/window/match page exists |
+| `next` | executable continuation for the next page/window |
+
+</pagination_params>
+
+<provenance_schema>
+
+```ts
+interface OqlProvenance {
+  backend: string
+  source: QuerySource
+  predicateIds?: string[]
+  pushed?: string[]
+  residual?: string[]
+  routed?: string[]
+  materializedPath?: string
+  cache?: "hit" | "miss" | "refresh" | "stale"
+}
+```
+
+</provenance_schema>
+
+<provenance_params>
+
+| Field | Meaning |
+|---|---|
+| `backend` | concrete backend/tool lane used |
+| `source` | source corpus used by that backend |
+| `predicateIds` | predicate ids handled by this backend when ids exist |
+| `pushed` | predicates evaluated directly by the backend |
+| `residual` | predicates evaluated after candidate fetch/materialization |
+| `routed` | predicates moved to another backend/lane |
+| `materializedPath` | local path produced by remote-as-local materialization |
+| `cache` | cache state for materialized/provider data |
+
+</provenance_params>
+
+<continuation_schema>
+
+```ts
+interface OqlContinuation {
+  query: Partial<OqlQueryV1> | OqlQueryV1
+  why: string
+  confidence: "exact" | "heuristic"
+}
+```
+
+</continuation_schema>
+
+<continuation_params>
+
+| Field | Meaning |
+|---|---|
+| `query` | OQL query or patch to run next |
+| `why` | reason this continuation exists |
+| `confidence` | `exact` when semantics are preserved, `heuristic` when it is a best-effort follow-up |
+
+</continuation_params>
+
+<continuation_names>
+
+| Name | Use |
+|---|---|
+| `next.page` | next result page |
+| `next.matchPage` | next match page inside a file |
+| `next.charRange` | next content byte/char window |
+| `next.fetch` | exact/compact content read |
+| `next.structure` | tree follow-up |
+| `next.search` | scoped code follow-up |
+| `next.materialize` | bounded remote-as-local follow-up |
+| `next.semantic` | V2 LSP follow-up from a file/line/symbol anchor |
+| `next.packageSource` | V2 package-to-source-repository pivot |
+| `next.pullRequestPage` | V2 PR body/file/comment/review/commit page |
+| `next.commitPage` | V2 commit history page |
+| `next.artifactEntries` | V2 archive entry page |
+| `next.artifactStrings` | V2 binary string scan offset/page |
+| `next.diff` | V2 diff or patch follow-up |
+
+</continuation_names>
+
+</section>
+
+<section id="diagnostics">
+
+## Diagnostics
+
+<diagnostic_schema>
+
+```ts
+type DiagnosticCode =
+  | "invalidQuery"
+  | "ambiguousSugar"
+  | "unknownField"
+  | "unsupportedTarget"
+  | "unsupportedPredicate"
+  | "unsupportedBoolean"
+  | "unsupportedScope"
+  | "negativeUniverseRequired"
+  | "residualNotExact"
+  | "fieldTypeMismatch"
+  | "requiresMaterialization"
+  | "materializationNotAllowed"
+  | "materializationFailed"
+  | "providerUnindexed"
+  | "providerSemanticsApproximate"
+  | "partialResult"
+  | "contentTruncated"
+  | "matchTruncated"
+  | "budgetExhausted"
+  | "parserFailed"
+  | "partialParse"
+  | "signatureUnsupported"
+  | "lspUnavailable"
+  | "staleCache"
+  | "sanitized"
+  | "rateLimited"
+  | "zeroMatches"
+
+interface OqlDiagnostic {
+  code: DiagnosticCode
+  severity: "info" | "warning" | "error"
+  queryPath?: string
+  predicateId?: string
+  backend?: string
+  message: string
+  blocksAnswer: boolean
+  repair?: {
+    message: string
+    suggestedQuery?: Partial<OqlQueryV1>
+  }
+  continuation?: OqlContinuation
+}
+```
+
+</diagnostic_schema>
+
+<diagnostic_codes>
+
+| Code | Meaning |
+|---|---|
+| `invalidQuery` | schema or normalization failed |
+| `ambiguousSugar` | input sugar has more than one possible canonical meaning |
+| `unknownField` | query includes a field outside V1 |
+| `unsupportedTarget` | target is not active in V1 |
+| `unsupportedPredicate` | backend cannot evaluate predicate |
+| `unsupportedBoolean` | boolean shape cannot be evaluated exactly |
+| `unsupportedScope` | backend cannot honor scope exactly |
+| `negativeUniverseRequired` | negative query requires a complete candidate universe |
+| `residualNotExact` | residual filtering cannot preserve proof strength |
+| `fieldTypeMismatch` | field predicate value does not match field/operator type |
+| `requiresMaterialization` | local-only proof requested on provider source |
+| `materializationNotAllowed` | query needs materialization but mode is `never` |
+| `materializationFailed` | clone/fetch/cache failed |
+| `providerUnindexed` | provider search may be incomplete |
+| `providerSemanticsApproximate` | provider qualifier is candidate-grade, not exact proof |
+| `partialResult` | more result pages or match pages exist |
+| `contentTruncated` | content was cut by char/window budget |
+| `matchTruncated` | matches were capped |
+| `budgetExhausted` | query stopped at an explicit budget |
+| `parserFailed` | structural parser failed for one or more files |
+| `partialParse` | some files parsed, parser errors may hide matches |
+| `signatureUnsupported` | symbol/signature extraction is unavailable or degraded |
+| `lspUnavailable` | requested semantic operation needs LSP but no server/capability is available |
+| `staleCache` | cached materialization may be stale |
+| `sanitized` | secret/path sanitization changed output |
+| `rateLimited` | provider rate limit blocked full execution |
+| `zeroMatches` | query ran completely and found no matches |
+
+</diagnostic_codes>
+
+</section>
+
+<section id="reserved-extension-targets">
+
+## Reserved Extension Targets
+
+<reserved_targets>
+
+These target families are not valid V1 canonical targets. V1 must return
+`unsupportedTarget` plus a repair continuation or current-tool hint. They are
+reserved so V2/V3 extend the language without inventing another grammar.
+
+| Target family | Backing surface | Required design rule |
 |---|---|---|
-| `ghSearchCode` | keywords, owner/repo/path, extension/filename/language, match file/path, concise, limit/page | `target:"code"` or `target:"files"`, provider source, text/path predicates, `view`, pagination |
-| `ghGetFileContent` | owner/repo/ref/path, line range, match string/regex, full content, force refresh, file/directory type, context, char offsets, minify | `target:"content"`, `fetch.content`, `fetch.tree`, `contentView`, char pagination, cache refresh |
-| `ghViewRepoStructure` | owner/repo/ref/path, depth, page/items, sizes | `target:"structure"`, `fetch.tree`, bounded tree pagination |
-| `ghSearchRepos` | keywords/topics/language/owner/stars/forks/license/size/dates/archived/visibility/match/sort/concise/page | `target:"repos"`, provider metadata predicates, `orderBy`, `view`, pagination |
-| `ghHistoryResearch` | PR/commit mode, dates, path/ref, PR filters, labels/users/reviews/checks, list/detail content selectors, patches/comments/commits, char and item pagination, minify | `target:"prs"` and `target:"commits"`, provider metadata predicates, `fetch.content`, `contentView`, PR-specific pagination |
-| `npmSearch` | packageName, mode, page | `target:"packages"`, package predicates, `view:"discovery"` vs detailed/full, pagination |
-| `ghCloneRepo` | owner/repo/ref, sparsePath, forceRefresh | `target:"materialization"`, `from.materialize`, cache refresh |
-| `localSearchCode` | keywords, regex flags, mode, pattern/rule, include/exclude/langType, hidden/noIgnore, counts, onlyMatching, match window/page, sort/ranking, page/items | `target:"code"`, text/regex/AST predicates, file predicates, `view`, `orderBy`, ranking/debug fields, match pagination |
-| `localViewStructure` | path, details, hidden, sort, pattern, file/dir filters, recursive/depth, extensions, limit/page/items | `target:"structure"`, tree fetch, file predicates, `view`, pagination |
-| `localFindFiles` | depth, name/path/regex, empty, time/size/permission/readability, exclude dirs, details, sort, entry type, page/items | `target:"files"`, file metadata predicates, `orderBy`, pagination |
-| `localGetFileContent` | path, full content, match string/regex, line range, context, char offsets, minify | `target:"content"`, `fetch.content`, `contentView`, char pagination |
-| `lspGetSemantics` | uri, semantic type, symbol, line/order hint, depth, include declaration, group by file, page/items, context, format, workspaceRoot | `target:"symbols"` and `target:"relationships"`, semantic predicates, anchor, workspace, pagination, view/format |
-| `localBinaryInspect` | path, inspect/list/extract/decompress/strings/unpack, detailed/verbose, archive entry, match, char offsets, compression format, strings offsets/scan/page | `target:"binary"` or `target:"materialization"`, `fetch.archive`, binary predicates, archive/string pagination |
+| `semantics` | `lspGetSemantics`, `lsp` | position/capability based; do not treat plain symbol search as proof |
+| `repositories` | `ghSearchRepos`, `repo` | typed GitHub filters, no string DSL dependency |
+| `packages` | `npmSearch`, `pkg` | package-to-source-repo continuation |
+| `pullRequests` | `ghHistoryResearch`, `pr` | page body/files/comments/reviews/commits independently |
+| `commits` | `ghHistoryResearch`, `history` | path/date/branch scoped history and optional diff slices |
+| `artifacts` | `localBinaryInspect`, `binary`, `unzip` | list/extract/decompress/strings/unpack with scan continuations |
+| `diff` | `diff`, PR patch selectors | exact content ranges or selected patch hunks |
+| `fixes` | future dry-run codemod | no mutation in V1/V2; V3 dry-run only |
+| `dataflow` | future flow engine | candidate mode first, proof only with traces |
 
-### CLI Coverage
+</reserved_targets>
 
-| Current CLI command | OQL status |
-|---|---|
-| `cat` | alias for `target:"content"` |
-| `ls` | alias for `target:"structure"` or `target:"symbols"` |
-| `grep` | alias for `target:"code"` |
-| `find` | alias for `target:"files"` plus optional `target:"code"` |
-| `diff` | alias for `target:"diff"` |
-| `pr` | alias for `target:"prs"` |
-| `history` | alias for `target:"commits"` |
-| `repo` | alias for `target:"repos"` |
-| `pkg` | alias for `target:"packages"` |
-| `binary` | alias for `target:"binary"` |
-| `unzip` | alias for `target:"materialization"` via archive unpack |
-| `clone` | alias for `target:"materialization"` via Git clone/cache |
-| `cache fetch` | alias for `target:"materialization"` |
-| `lsp` | alias for `target:"relationships"` |
-| `context`, `install`, `auth`, `login`, `logout`, `status`, `cache status`, `cache clear` | outside OQL; product operation/diagnostics |
+<semantic_target_rules>
 
-### Normalized Parameter Families
+V2 semantic/LSP queries should use real anchors:
 
-OQL covers current parameters through these families:
+- `uri` or materialized local path;
+- 1-based line and optional character/order hint;
+- operation such as `definition`, `references`, `callers`, `callees`,
+  `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, or
+  `implementation`;
+- server capability and partial-result diagnostics.
 
-| Family | Examples |
-|---|---|
-| source identity | `kind`, `path`, `repo`, `owner`, `ref`, `branch`, `package`, `uri`, `localPath` |
-| materialization | `materialize.mode`, `strategy`, `sparsePath`, `forceRefresh`, `cache` |
-| text/regex matching | `text`, `regex`, `fixed`, `dialect`, `case`, `wholeWord`, `multiline`, `dotAll`, `invert` |
-| AST/structural matching | `pattern`, `rule`, `lang`, metavariables |
-| file metadata | path globs, names, extension, depth, type, size, times, permissions, hidden/noIgnore |
-| provider metadata | stars, forks, topics, language, license, archived, visibility, PR state, labels, reviewers, dates |
-| semantic relationships | symbol, semantic type, anchor line/order, workspace root, depth, groupByFile |
-| fetch/read controls | tree depth, content range, match slices, full content, contentView/minify |
-| binary/archive controls | inspect/list/extract/decompress/strings/unpack, archive entry, compression format, offsets |
-| result shaping | `select`, `view`, concise/full, detailed/compact, `orderBy`, ranking/debug |
-| pagination | page/items, match page, char offsets, archive entry pages, string scan offsets, PR file/comment/commit pages |
+Remote semantic queries must route through bounded materialization before LSP
+runs. GitHub provider `symbol:`-style search can discover definitions, but it is
+not reference, type, implementation, or call-hierarchy proof.
 
-Conclusion: OQL can cover the current research surface with one language. The
-universal `octocode search` command can cover all research commands if it accepts
-full OQL input. Existing quick commands should remain as convenience shorthands
-that compile into OQL.
+</semantic_target_rules>
+
+</section>
+
+<section id="examples">
 
 ## Examples
 
-### Universal `octocode search`
-
-`octocode search` should accept a full OQL object. The target decides which
-capability runs.
-
-```bash
-octocode search --query '{
-  "target": "code",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react",
-    "materialize": "auto"
-  },
-  "where": {
-    "pattern": "useEffect($$$ARGS)",
-    "lang": "js"
-  },
-  "select": ["repo", "localPath", "path", "line", "snippet", "next.lspReferences"],
-  "view": "detailed",
-  "limit": 50
-}'
-```
-
-The same command can run repository discovery, package lookup, content fetch,
-tree browsing, semantic relationships, PR/history research, binary inspection,
-or materialization by changing `target` and `fetch`.
-
-### Local Regex Grep
+<example id="local-literal-search">
 
 ```jsonc
 {
+  "schema": "oql/v1",
   "target": "code",
   "from": { "kind": "local", "path": "./packages/octocode/src" },
-  "where": {
-    "regex": "execute[A-Z]\\w+",
-    "dialect": "rust",
-    "case": "sensitive"
-  },
-  "select": ["path", "line", "snippet", "next.fetch", "next.lspDefinition"],
+  "scope": { "language": ["ts"] },
+  "where": { "kind": "text", "value": "runCLI" },
+  "select": ["path", "line", "snippet", "next.fetch"],
   "view": "paginated",
   "limit": 25
 }
 ```
 
-### Local PCRE2
+</example>
+
+<example id="local-regex-pcre2">
 
 ```jsonc
 {
+  "schema": "oql/v1",
   "target": "code",
   "from": { "kind": "local", "path": "./src" },
-  "where": { "regex": "function\\s+(?=handle)", "dialect": "pcre2" },
+  "where": {
+    "kind": "regex",
+    "value": "function\\s+(?=handle)",
+    "dialect": "pcre2"
+  },
   "view": "detailed"
 }
 ```
 
-### Local AST Rule
+</example>
+
+<example id="local-structural-search">
 
 ```jsonc
 {
+  "schema": "oql/v1",
   "target": "code",
   "from": { "kind": "local", "path": "./src" },
   "where": {
-    "rule": "rule:\n  pattern: await $X\n  not:\n    inside:\n      kind: try_statement\n      stopBy: end",
-    "lang": "ts"
+    "kind": "structural",
+    "lang": "ts",
+    "pattern": "class $NAME { $$$BODY }"
   },
   "select": ["path", "line", "snippet", "metavars", "next.fetch"],
   "view": "detailed"
 }
 ```
 
-### External Grep Through Materialization
+</example>
+
+<example id="local-structural-rule">
 
 ```jsonc
 {
+  "schema": "oql/v1",
   "target": "code",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react",
-    "materialize": "auto"
-  },
+  "from": { "kind": "local", "path": "./src" },
   "where": {
-    "all": [
-      { "field": "extension", "op": "=", "value": "js" },
-      { "pattern": "useEffect($$$ARGS)", "lang": "js" }
-    ]
+    "kind": "structural",
+    "lang": "ts",
+    "rule": {
+      "pattern": "await $X",
+      "not": {
+        "inside": {
+          "kind": "try_statement",
+          "stopBy": "end"
+        }
+      }
+    }
   },
-  "select": ["repo", "localPath", "path", "line", "snippet", "next.fetch", "next.lspReferences"],
-  "view": "detailed",
-  "limit": 50
+  "select": ["path", "line", "snippet", "metavars", "next.fetch"],
+  "view": "detailed"
 }
 ```
 
-### Fetch Tree, Then Grep
+</example>
+
+<example id="github-provider-search">
 
 ```jsonc
 {
-  "target": "structure",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react"
+  "schema": "oql/v1",
+  "target": "code",
+  "from": { "kind": "github", "repo": "facebook/react", "ref": "main" },
+  "scope": { "path": "packages/react", "language": ["js"] },
+  "where": { "kind": "text", "value": "useEffect" },
+  "materialize": { "mode": "never" },
+  "select": ["repo", "path", "line", "snippet", "next.fetch"],
+  "view": "paginated"
+}
+```
+
+</example>
+
+<example id="github-structural-materialized">
+
+```jsonc
+{
+  "schema": "oql/v1",
+  "target": "code",
+  "from": { "kind": "github", "repo": "facebook/react", "ref": "main" },
+  "scope": { "path": "packages/react", "language": ["js"] },
+  "where": {
+    "kind": "structural",
+    "lang": "js",
+    "pattern": "useEffect($$$ARGS)"
   },
-  "fetch": { "tree": { "depth": 2, "includeSizes": true } },
-  "select": ["path", "type", "size", "next.grep", "next.materialize"],
+  "materialize": { "mode": "auto", "strategy": "subtree" },
+  "select": ["repo", "localPath", "path", "line", "snippet", "next.fetch"],
+  "view": "detailed",
+  "controls": {
+    "budget": {
+      "maxFiles": 500,
+      "maxMaterializedBytes": 50000000,
+      "timeoutMs": 30000
+    }
+  },
+  "explain": true
+}
+```
+
+</example>
+
+<example id="content-fetch">
+
+```jsonc
+{
+  "schema": "oql/v1",
+  "target": "content",
+  "from": { "kind": "local", "path": "./src/index.ts" },
+  "fetch": {
+    "content": {
+      "range": { "startLine": 40, "endLine": 90 },
+      "contentView": "exact"
+    }
+  },
+  "select": ["path", "content", "next.search"]
+}
+```
+
+</example>
+
+<example id="structure">
+
+```jsonc
+{
+  "schema": "oql/v1",
+  "target": "structure",
+  "from": { "kind": "github", "repo": "facebook/react", "ref": "main" },
+  "scope": { "path": "packages/react" },
+  "fetch": { "tree": { "maxDepth": 2, "includeSizes": true } },
   "view": "discovery"
 }
 ```
 
-A returned `next.grep` may look like:
+</example>
+
+<example id="files">
 
 ```jsonc
 {
-  "target": "code",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react/src",
-    "materialize": "auto"
-  },
-  "where": { "text": "useState" },
-  "view": "paginated"
-}
-```
-
-### Fetch File Content
-
-```jsonc
-{
-  "target": "content",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react/src/ReactHooks.js"
-  },
-  "fetch": {
-    "content": {
-      "match": { "text": "function useState" },
-      "range": { "contextLines": 12 },
-      "contentView": "exact"
-    }
-  },
-  "select": ["path", "content", "range", "matchRanges", "next.lspReferences"]
-}
-```
-
-### LSP References Over Remote Source
-
-```jsonc
-{
-  "target": "relationships",
-  "from": {
-    "kind": "github",
-    "repo": "facebook/react",
-    "path": "packages/react/src/ReactHooks.js",
-    "materialize": "required"
-  },
+  "schema": "oql/v1",
+  "target": "files",
+  "from": { "kind": "local", "path": "./packages" },
+  "scope": { "language": ["ts"], "excludeDir": ["node_modules", "dist"] },
   "where": {
-    "symbol": "useState",
-    "semantic": "references",
-    "anchor": { "path": "packages/react/src/ReactHooks.js", "line": 72 }
+    "kind": "field",
+    "field": "basename",
+    "op": "regex",
+    "value": "^(index|main)\\.(ts|tsx)$"
   },
-  "select": ["path", "line", "symbol", "relationship", "next.fetch"],
-  "view": "paginated"
+  "select": ["path", "size", "modified", "next.fetch"],
+  "view": "discovery"
 }
 ```
 
-### Repository Discovery
+</example>
 
-```jsonc
-{
-  "target": "repos",
-  "from": { "kind": "github" },
-  "where": {
-    "all": [
-      { "text": "code search" },
-      { "field": "language", "op": "=", "value": "TypeScript" },
-      { "field": "stars", "op": ">=", "value": 100 },
-      { "field": "archived", "op": "=", "value": false }
-    ]
-  },
-  "select": ["repo", "description", "stars", "pushedAt", "topics", "next.structure"],
-  "orderBy": [{ "field": "stars", "direction": "desc" }],
-  "limit": 25
-}
-```
+</section>
 
-### Package To Source
+<section id="acceptance-gates">
 
-```jsonc
-{
-  "target": "packages",
-  "from": { "kind": "npm" },
-  "where": { "field": "package", "op": "=", "value": "zod" },
-  "select": ["package", "version", "repository", "repositoryDirectory", "next.source"]
-}
-```
+## Acceptance Gates
 
-### PR Patch Slice
+<acceptance_gates>
 
-```jsonc
-{
-  "target": "prs",
-  "from": { "kind": "github", "repo": "owner/repo" },
-  "where": {
-    "all": [
-      { "field": "state", "op": "=", "value": "merged" },
-      { "field": "label", "op": "=", "value": "performance" }
-    ]
-  },
-  "fetch": {
-    "content": { "contentView": "compact" }
-  },
-  "select": ["number", "title", "state", "changedFiles", "next.patch", "next.grep"]
-}
-```
+1. Every example in this file parses as `oql/v1`.
+2. Every sugar example normalizes to the documented canonical shape.
+3. Unknown fields fail.
+4. V2/V3 targets fail with `unsupportedTarget`.
+5. Local text compiles to `localSearchCode fixedString:true`.
+6. Local regex compiles to Rust regex or PCRE2 as requested.
+7. Local structural compiles to current structural search.
+8. GitHub structural with `materialize:"never"` fails with
+   `requiresMaterialization` or `materializationNotAllowed`.
+9. GitHub structural with `materialize:"auto"` routes through bounded clone and
+   then local structural search.
+10. Every partial result returns an executable OQL continuation.
+11. `--explain` shows normalized query, defaults, routing, budgets, and
+    diagnostics.
+12. Existing path validation and secret sanitization remain in the execution
+    path.
 
-### Binary Strings
+</acceptance_gates>
 
-```jsonc
-{
-  "target": "binary",
-  "from": { "kind": "local", "path": "./dist/addon.node" },
-  "fetch": { "archive": { "mode": "strings" } },
-  "where": {
-    "any": [
-      { "regex": "ghp_[A-Za-z0-9_]{36}", "dialect": "pcre2" },
-      { "text": "BEGIN PRIVATE KEY" }
-    ]
-  },
-  "select": ["path", "offset", "string", "redaction", "pagination"]
-}
-```
+</section>
 
-## Validation Rules
+<section id="future-work">
 
-- `target`, `from`, and source identity are required.
-- `where.pattern` and `where.rule` are mutually exclusive.
-- Structural predicates require language inference or explicit `lang`.
-- Text-only flags are invalid for structural predicates.
-- `regex.dialect:"pcre2"` is required for lookaround and backreferences.
-- LSP predicates require a local or materialized source plus a real anchor.
-- Relationship predicates must declare a finite `relation` kind and a `layer`
-  unless the relation kind is unambiguous.
-- `layer:"semantic"` requires LSP-capable local/materialized source and a real
-  file/symbol/line anchor, except for file-wide `documentSymbols`.
-- `layer:"derived"` must expose provenance for the syntax/semantic edges used to
-  compute the derived relation.
-- Provider-only queries must fail on local-only predicates.
-- `select` cannot request unbounded content from search rows.
-- Continuation offsets must come from prior results.
-- Semantic behavior must be explicit through `target:"relationships"` or
-  `target:"symbols"`; stale or legacy semantic-ranking fields should produce a
-  diagnostic instead of hidden LSP work.
-- Results must distinguish true zero matches from unsupported, partial, stale,
-  sanitized, parser-failed, and rate-limited states.
+## Future Work
 
-## Agent Rules
+V2 adds LSP remote-as-local, repository/package/PR/history/binary/diff targets,
+quick-command lowering, reusable structural rule refs, rule validation, and
+budget controls beyond V1's safety caps.
 
-Agents using OQL should:
+V2 also adds richer structural language only when supported by the engine:
+reusable rule refs, metavariable constraints, focus ranges, rule validation,
+and resolved rule provenance. Do not claim Semgrep or ast-grep compatibility
+unless a compatibility layer is actually implemented.
 
-1. Start with `view:"discovery"` or provider search when the scope is unknown.
-2. Materialize only bounded repo/path/ref scopes.
-3. Use `contentView:"symbols"` or `view:"discovery"` for orientation.
-4. Use exact content fetches only for quotes, diffs, or final proof.
-5. Treat AST as syntax proof and LSP as semantic proof.
-6. Follow `next.*` handles instead of inventing paths, line numbers, or offsets.
-7. Prefer `relationships`/LSP for identity questions and `code`/grep for text
-   existence questions.
-8. Use `layer:"syntax"` for file/module/class/function shape questions and
-   `layer:"semantic"` for symbol identity questions.
-9. Treat derived dependency or impact graphs as explainable summaries, not raw
-   proof, unless their input edges are present.
-10. Treat diagnostics as evidence about capability, not just errors.
+V3 adds dry-run fixes and dataflow:
 
-## Anti-goals
+- `target:"fixes"` returns proposed edits, ranges, replacement text, conflicts,
+  and metavariable provenance; it does not mutate files.
+- `target:"dataflow"` starts as candidate mode with `flowKind:"value"` or
+  `"taint"`, `sources`, `sinks`, `sanitizers`, and `propagators`.
+- Candidate flow must return `evidence.kind:"candidate"` and a diagnostic that
+  prevents vulnerability/proof claims.
+- Engine-backed flow proof requires traces, source availability, truncation
+  state, dependency bounds, and provenance.
+- Global/cross-package taint is allowed only after the backing engine can prove
+  it with bounded dependencies.
 
-- No SQL joins.
-- No raw string DSL.
-- No hidden full-repo crawling.
-- No hidden LSP escalation for every grep.
-- No provider syntax leaking into generic fields.
-- No unbounded full-file content in search results.
-- No external AST/LSP without bounded materialization.
+</section>
+
+</oql_system_prompt>

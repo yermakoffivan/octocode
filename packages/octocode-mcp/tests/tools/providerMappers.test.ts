@@ -202,21 +202,21 @@ describe('providerMappers', () => {
   it('should preserve owner in code search query when repo is absent', () => {
     const result = mapCodeSearchToolQuery({
       keywords: ['refund'],
-      owner: 'wix-private',
+      owner: 'organization-private',
     });
 
     expect(result.projectId).toBeUndefined();
-    expect(result.owner).toBe('wix-private');
+    expect(result.owner).toBe('organization-private');
   });
 
   it('should preserve owner in PR search query when repo is absent', () => {
     const result = mapPullRequestToolQuery({
-      owner: 'wix-private',
+      owner: 'organization-private',
       state: 'open',
     });
 
     expect(result.projectId).toBeUndefined();
-    expect(result.owner).toBe('wix-private');
+    expect(result.owner).toBe('organization-private');
   });
 
   it('should set both projectId and owner in code search when both are provided', () => {

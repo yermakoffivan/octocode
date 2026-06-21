@@ -32,16 +32,19 @@ describe('formatGithubFailure', () => {
 
   it('formats plain 404 / not found as not-found with the target', () => {
     expect(
-      formatGithubFailure('Repository, resource, or path not found (HTTP 404)', {
-        target,
-      })
+      formatGithubFailure(
+        'Repository, resource, or path not found (HTTP 404)',
+        {
+          target,
+        }
+      )
     ).toMatch(/not found on github/i);
   });
 
   it('surfaces rate limiting distinctly', () => {
-    expect(
-      formatGithubFailure('API rate limit exceeded', { target })
-    ).toMatch(/rate limit/i);
+    expect(formatGithubFailure('API rate limit exceeded', { target })).toMatch(
+      /rate limit/i
+    );
   });
 
   it('falls back to the generic label for unrecognized errors', () => {

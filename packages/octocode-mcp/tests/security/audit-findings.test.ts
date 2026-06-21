@@ -56,7 +56,10 @@ describe('Finding 2 — Telemetry excludes sensitive data', () => {
   it('redacts repo names for non-local tools', async () => {
     await logToolCall(
       'ghSearchCode',
-      ['wix-private/billing-service', 'wix-private/payments-core'],
+      [
+        'organization-private/billing-service',
+        'organization-private/payments-core',
+      ],
       'g',
       'r',
       'r'

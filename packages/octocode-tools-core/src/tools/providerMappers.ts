@@ -33,7 +33,10 @@ type LocalFileContentQuery = z.infer<typeof FileContentQueryLocalSchema> & {
  * Never slices UTF-8 mid-codepoint or mid-token — the single data-layer bound
  * for GitHub code-search match fragments (the render layer must not re-trim).
  */
-export function truncateSnippetChars(value: string, maxChars = DEFAULT_MATCH_SNIPPET_CHARS): string {
+export function truncateSnippetChars(
+  value: string,
+  maxChars = DEFAULT_MATCH_SNIPPET_CHARS
+): string {
   if (maxChars <= 0) return '';
   const chars = [...value];
   if (chars.length <= maxChars) return value;

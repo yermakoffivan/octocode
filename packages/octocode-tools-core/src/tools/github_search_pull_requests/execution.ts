@@ -31,9 +31,7 @@ import {
   createLazyProviderContext,
   executeProviderOperation,
 } from '../providerExecution.js';
-import {
-  normalizePullRequestContentRequest,
-} from './contentRequest.js';
+import { normalizePullRequestContentRequest } from './contentRequest.js';
 import { shapePullRequestForContent } from './contentResponse.js';
 import { fetchHistory } from '../../github/history.js';
 import { isGitHubAPIError } from '../../github/githubAPI.js';
@@ -257,4 +255,3 @@ export async function searchMultipleGitHubPullRequests(
     args
   );
 }
-

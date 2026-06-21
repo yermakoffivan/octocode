@@ -150,7 +150,10 @@ export async function fetchDirectoryContents(
       if (item.type !== 'file') return false;
       if (!item.download_url) return false;
       if (item.size > MAX_FILE_SIZE) return false;
-      const ext = getExtension(item.name, { lowercase: true, leadingDot: true });
+      const ext = getExtension(item.name, {
+        lowercase: true,
+        leadingDot: true,
+      });
       if (BINARY_EXTENSIONS.has(ext)) return false;
       return true;
     })

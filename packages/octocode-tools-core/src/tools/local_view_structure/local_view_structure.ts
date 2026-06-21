@@ -189,9 +189,7 @@ function hasPostNativeFilters(
     typeof (query as { pattern?: unknown }).pattern === 'string'
       ? (query as { pattern?: string }).pattern
       : undefined;
-  return Boolean(
-    pattern && !nativeNamePatterns
-  );
+  return Boolean(pattern && !nativeNamePatterns);
 }
 
 function nativeNamePatternsFromQuery(

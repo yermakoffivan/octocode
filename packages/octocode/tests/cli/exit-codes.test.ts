@@ -30,7 +30,9 @@ describe('exit codes', () => {
 
     it('detects not-found failures', () => {
       expect(
-        classifyToolErrorText('Repository, resource, or path not found (HTTP 404)')
+        classifyToolErrorText(
+          'Repository, resource, or path not found (HTTP 404)'
+        )
       ).toBe(EXIT.NOT_FOUND);
       expect(
         classifyToolErrorText(

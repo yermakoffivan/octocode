@@ -58,7 +58,6 @@ describe('Tools Utils', () => {
       expectNoResearchContext(result);
       expect(result.files).toEqual([]);
     });
-
   });
 
   describe('createErrorResult', () => {

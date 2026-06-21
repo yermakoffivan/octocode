@@ -10,7 +10,6 @@ describe('ghHistoryResearch Tool Handler - Pagination Fix', () => {
     vi.clearAllMocks();
   });
 
-
   describe('pagination object in result', () => {
     it('should include pagination object in the result data', () => {
       const query = {

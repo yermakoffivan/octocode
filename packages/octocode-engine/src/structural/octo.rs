@@ -1137,17 +1137,18 @@ fn build_metavar_ranges(
                 .into_iter()
                 .enumerate()
                 .map(|(i, (sr, sc, er, ec))| MetavarRange {
-                    text: texts
-                        .and_then(|t| t.get(i))
-                        .cloned()
-                        .unwrap_or_default(),
+                    text: texts.and_then(|t| t.get(i)).cloned().unwrap_or_default(),
                     line: sr + 1,
                     column: line_index.point_column_to_char_column(
-                        content, sr as usize, sc as usize,
+                        content,
+                        sr as usize,
+                        sc as usize,
                     ) as u32,
                     end_line: er + 1,
                     end_column: line_index.point_column_to_char_column(
-                        content, er as usize, ec as usize,
+                        content,
+                        er as usize,
+                        ec as usize,
                     ) as u32,
                 })
                 .collect();

@@ -426,23 +426,33 @@ mod tests {
 
     #[test]
     fn languages_without_a_grammar_return_none() {
-        // Tree-sitter is the only signature path. Languages that used to be
-        // covered by the (now-deleted) regex heuristics — Lua, Erlang, SQL,
-        // Ruby, PHP, Kotlin, Markdown, GraphQL, Proto, … — have no wired grammar,
-        // so they produce no outline and the caller shows the real file instead.
+        // Tree-sitter is the only signature path. Languages wired for structural
+        // search only (empty body_query: Lua, Erlang, SQL, Kotlin, HCL, Zig, R,
+        // Julia, OCaml, Proto, …) and languages with no grammar at all (Markdown,
+        // GraphQL) produce no outline — the caller shows the real file instead.
+        // Ruby, PHP, and Elixir now have body_queries and do produce outlines.
         for (content, path) in &[
             ("local x = 1\nfunction f() return x end\n", "a.lua"),
             ("-module(d).\nrev(L) -> L.\n", "a.erl"),
             ("CREATE TABLE t (id INT);\n", "a.sql"),
-            ("def greet\n  puts 'hi'\nend\n", "a.rb"),
             ("# Title\n\nText\n", "README.md"),
             ("type Query { user: User }\n", "schema.graphql"),
         ] {
             assert!(
                 extract(content, path).is_none(),
-                "{path}: no grammar → must return None (no regex fallback)"
+                "{path}: no grammar or structural-only → must return None (no regex fallback)"
             );
         }
+    }
+
+    #[test]
+    fn ruby_extracts_method_signatures() {
+        let src =
+            "def greet\n  puts 'hi'\nend\n\ndef farewell(name)\n  puts \"bye #{name}\"\nend\n";
+        let s = extract(src, "a.rb").expect("ruby must extract");
+        assert!(s.contains("def greet"), "method sig preserved");
+        assert!(s.contains("def farewell"), "method sig preserved");
+        assert!(!s.contains("puts"), "body dropped");
     }
 
     #[test]

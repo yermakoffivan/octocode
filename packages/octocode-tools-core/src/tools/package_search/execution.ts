@@ -47,9 +47,7 @@ function cleanRelativePath(
  * canonical `https://host/owner/repo` form. Falls back to the cleaned
  * original when the shape is unrecognized.
  */
-function normalizeRepoUrl(
-  url: string | null | undefined
-): string | undefined {
+function normalizeRepoUrl(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
   let u = url.trim();
   if (!u) return undefined;
@@ -81,9 +79,7 @@ function resolveGitHubOwnerRepo(
   repoUrl: string | undefined
 ): { owner: string; repo: string } | undefined {
   if (!repoUrl) return undefined;
-  const match = repoUrl.match(
-    /^https:\/\/github\.com\/([^/]+)\/([^/#?]+)/i
-  );
+  const match = repoUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/#?]+)/i);
   if (!match || !match[1] || !match[2]) return undefined;
   return { owner: match[1], repo: match[2] };
 }

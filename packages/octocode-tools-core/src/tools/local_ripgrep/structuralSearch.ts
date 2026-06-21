@@ -104,7 +104,7 @@ export async function searchContentStructural(
     const langType = query.langType || 'source';
     return createErrorResult(
       new Error(
-        `Invalid structural ${query.rule ? 'rule' : 'pattern'}: ${message} — patterns must be valid ${langType} and match a complete node; a class/def usually needs a body (add \`$$$BODY\`). See QUERY-LANGUAGE.md.`
+        `Invalid structural ${query.rule ? 'rule' : 'pattern'}: ${message} — patterns must be valid ${langType} and match a complete node; a class/def usually needs a body (add \`$$$BODY\`). Run \`octocode tools localSearchCode --scheme\` for the live schema.`
       ),
       query,
       {

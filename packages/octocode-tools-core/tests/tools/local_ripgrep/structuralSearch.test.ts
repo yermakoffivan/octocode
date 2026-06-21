@@ -165,7 +165,7 @@ describe('searchContentStructural', () => {
     expect(result.error).toContain('match a complete node');
     expect(result.error).toContain('$$$BODY');
     expect(result.error).toContain('valid py');
-    expect(result.error).toContain('QUERY-LANGUAGE.md');
+    expect(result.error).toContain('tools localSearchCode --scheme');
     expect(result.hints).toBeUndefined();
   });
 });

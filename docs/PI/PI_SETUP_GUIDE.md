@@ -1,38 +1,130 @@
 # Using octocode-mcp with Pi
 
-Pi (the coding agent from [earendil-works](https://github.com/earendil-works/pi)) has no built-in MCP support — this is an explicit non-goal. To run octocode-mcp inside Pi, install the community adapter **[`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter)** and point it at octocode-mcp.
+> **Pi documentation:** https://pi.dev/docs/latest
 
-The adapter exposes one ~200-token proxy tool (`mcp`) instead of injecting every MCP tool schema into the prompt — servers stay disconnected until the agent actually calls a tool.
+Pi is a CLI coding agent whose philosophy is *"CLI tools with READMEs (Skills) over MCP."* Pairing it with Octocode gives a lean, evidence-driven loop — **Pi edits; Octocode researches.**
 
-> **Paths in this guide:** `./…` is relative to Pi's global agent directory, `~/.pi/agent/`. `.pi/…` (no `~`) is the per-project directory in your current repo.
+Two integration paths — pick based on how much tool surface you need:
+
+| Path | When to use |
+| --- | --- |
+| ⭐ **Skills** (sections 1–3) | Recommended. Focused workflows via the Octocode CLI; no MCP transport overhead |
+| **MCP adapter** (sections 4–7) | Full 13-tool surface accessible via the `mcp()` proxy |
+
+> **Path convention used throughout this guide**
+> - `./` → Pi's global agent directory (`~/.pi/agent/`)
+> - `.pi/` (no `~`) → per-project directory inside your current repo
 
 ---
 
-## 1. Install the adapter
+## 1. Install skills
+
+[Agent Skills](https://agentskills.io) (`SKILL.md` folders) are Pi's preferred extension model. Skills are activated automatically by task context or forced with `/skill:name`.
+
+Browse all Octocode skills: **[skills.sh/bgauryy/octocode-mcp](https://www.skills.sh/bgauryy/octocode-mcp)**
+
+| Skill | Purpose |
+| --- | --- |
+| ⭐ `octocode-engineer` | Codebase understanding, implementation, bug investigation, refactors, PR review, and RFC validation — with AST + LSP evidence |
+| `octocode-research` | Deep code exploration: trace flow, find usages, understand a codebase |
+| `octocode-brainstorming` | Validate ideas against GitHub, npm, and web evidence; produces a decision-ready brief |
+| `octocode-rfc-generator` | Evidence-backed RFCs and design docs before starting implementations |
+| `octocode-pull-request-reviewer` | Structured code reviews grounded in evidence |
+| `octocode-search-skill` | Find, evaluate, install, and create Agent Skills |
+
+Install with `npx skills add`:
+
+```bash
+npx skills add https://github.com/bgauryy/octocode-mcp --skill octocode-engineer
+npx skills add https://github.com/bgauryy/octocode-mcp --skill octocode-research
+npx skills add https://github.com/bgauryy/octocode-mcp --skill octocode-brainstorming
+npx skills add https://github.com/bgauryy/octocode-mcp --skill octocode-rfc-generator
+npx skills add https://github.com/bgauryy/octocode-mcp --skill octocode-pull-request-reviewer
+npx skills add https://github.com/bgauryy/octocode-mcp --skill octocode-search-skill
+```
+
+> Default scope is global (`~/.pi/agent/skills/`). Add `--scope project` to install under `.pi/skills/` for the current repo only. Pi discovers skills automatically on next start; force one with `/skill:octocode-engineer`.
+
+**Fallback — if `npx skills add` is unavailable:**
+
+```bash
+npx -y degit bgauryy/octocode/skills/<skill-name> ~/.pi/agent/skills/<skill-name>
+```
+
+---
+
+## 2. Authenticate GitHub
+
+Octocode GitHub tools need a token for private repositories and higher API rate limits. Any one method is enough:
+
+**Option A — Octocode CLI (simplest):**
+
+```bash
+npx octocode auth login
+npx octocode status   # confirm the active token source
+```
+
+**Option B — GitHub CLI (if already installed):**
+
+```bash
+gh auth login
+```
+
+Octocode reads the `gh` token automatically — no further config needed.
+
+**Option C — Personal Access Token:**
+
+Set `OCTOCODE_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` in your shell or in the MCP config `env` block (see section 5). Required scopes: `repo`, `read:user`, `read:org`.
+
+> Never commit tokens to version control. Use environment variables or a secret manager.
+
+---
+
+## 3. Tune Pi's behavior
+
+Pi extends its system prompt from `APPEND_SYSTEM.md`. Use it to tell the agent which tools to prefer, any project conventions, and hard constraints. A ready-to-use starter lives at [`docs/PI/APPEND_SYSTEM.md`](https://github.com/bgauryy/octocode/blob/main/docs/PI/APPEND_SYSTEM.md).
+
+| File | Scope | When loaded |
+| --- | --- | --- |
+| `.pi/APPEND_SYSTEM.md` | Project | When the project is trusted |
+| `./APPEND_SYSTEM.md` | Global (`~/.pi/agent/`) | Always |
+
+A trusted project's `.pi/APPEND_SYSTEM.md` **shadows** the global file — they do not merge. Keep cross-project rules global; put repo-specific rules in the project file.
+
+`SYSTEM.md` (same locations) **replaces** the default prompt entirely — only use it when you need full control.
+
+```bash
+$EDITOR ~/.pi/agent/APPEND_SYSTEM.md
+```
+
+Keep it concise. A bloated file degrades adherence to all rules. Lead with hard constraints, name the exact tools to use, and push anything a linter can enforce into tooling rather than prose. Restart Pi to pick up changes.
+
+---
+
+## 4. Install the MCP adapter
+
+> Use this path for the full 13-tool surface via Pi's `mcp()` proxy. If you only need the skill-based workflow, sections 1–3 are sufficient.
 
 ```bash
 pi install npm:pi-mcp-adapter
 ```
 
-Restart Pi after installation.
+Restart Pi after installation. The adapter exposes a single ~200-token `mcp` proxy tool instead of injecting every tool schema into the prompt — servers stay disconnected until the agent actually calls a tool.
 
-## 2. Add octocode-mcp to your MCP config
+---
 
-The adapter reads standard MCP files. Pick the scope that fits:
+## 5. Configure octocode-mcp
+
+The adapter reads standard MCP config files. Choose the scope that fits your setup:
 
 | File | Scope |
 | --- | --- |
-| `~/.config/mcp/mcp.json` | User-global, shared across MCP hosts (Cursor, Claude Code, Pi, …) |
-| `.mcp.json` | Project-local, shared across MCP hosts |
-| `./mcp.json` | Pi-only, user-global override (in `~/.pi/agent/`) |
-| `.pi/mcp.json` | Pi-only, project override |
+| `~/.config/mcp/mcp.json` | User-global, shared across all MCP hosts (Cursor, Claude Code, Pi, …) |
+| `.mcp.json` | Project-local, shared across all MCP hosts |
+| `./mcp.json` | Pi-only, user-global (`~/.pi/agent/mcp.json`) |
+| `.pi/mcp.json` | Pi-only, project-local |
 
-Precedence (highest first):
-
-1. `~/.config/mcp/mcp.json`
-2. `./mcp.json`
-3. `.mcp.json`
-4. `.pi/mcp.json`
+Precedence (highest first): `~/.config/mcp/mcp.json` → `./mcp.json` → `.mcp.json` → `.pi/mcp.json`
 
 Add the `octocode` entry under `mcpServers`:
 
@@ -47,9 +139,9 @@ Add the `octocode` entry under `mcpServers`:
 }
 ```
 
-> The `type: "stdio"` field used by some hosts (e.g. Cursor) is not required here — pi-mcp-adapter assumes stdio for `command` entries.
+> `type: "stdio"` is not needed — the adapter assumes stdio for `command` entries.
 
-### Enabling clone tools
+**With local filesystem and clone tools enabled:**
 
 ```json
 {
@@ -58,6 +150,7 @@ Add the `octocode` entry under `mcpServers`:
       "command": "npx",
       "args": ["-y", "octocode-mcp@latest"],
       "env": {
+        "ENABLE_LOCAL": "true",
         "ENABLE_CLONE": "true"
       }
     }
@@ -65,15 +158,13 @@ Add the `octocode` entry under `mcpServers`:
 }
 ```
 
-### Importing from an existing host
+**Migrating from another host:** Run `/mcp setup` inside a Pi session — it previews what it will write before touching disk.
 
-If you already have octocode configured for Cursor, Claude Code, Codex, etc., adopt those configs into Pi with the `/mcp setup` slash command **inside a Pi session**. The flow previews exactly what it will write before touching disk.
+---
 
-> `pi-mcp-adapter init` exists as a shell entrypoint (`./npm/node_modules/.bin/pi-mcp-adapter init`) but is interactive — it needs a TTY and produces no output in non-interactive shells. Prefer `/mcp setup` from inside Pi, or just write `./mcp.json` by hand as shown above.
+## 6. Verify the setup
 
-## 3. Verify the server side (no Pi needed)
-
-Before launching Pi, sanity-check that the `command` + `env` in your config actually produce a working MCP server. This handshake lists tools without going through the adapter:
+**Before launching Pi** — confirm the server responds and expected tools appear:
 
 ```bash
 printf '%s\n%s\n%s\n' \
@@ -84,13 +175,13 @@ printf '%s\n%s\n%s\n' \
   | grep -o '"name":"[^"]*"' | sort -u
 ```
 
-Expected output includes the 13 Octocode tools below — this confirms `ENABLE_CLONE` are taking effect:
+Expected output (13 tools when all env flags are set):
 
 ```
 "name":"ghCloneRepo"
 "name":"ghGetFileContent"
-"name":"ghSearchCode"
 "name":"ghHistoryResearch"
+"name":"ghSearchCode"
 "name":"ghSearchRepos"
 "name":"ghViewRepoStructure"
 "name":"localBinaryInspect"
@@ -102,136 +193,50 @@ Expected output includes the 13 Octocode tools below — this confirms `ENABLE_C
 "name":"npmSearch"
 ```
 
-If `ghCloneRepo` or local/LSP tools are missing, the env block in `mcp.json` is not being read — re-check JSON syntax.
+If tools are missing, the `env` block is not being applied — check JSON syntax and confirm the file is at the right scope.
 
-## 4. Use octocode tools from inside Pi
+**Inside Pi** — run `/mcp` to list registered servers. `octocode` should appear. To confirm the adapter binary:
 
-Start the agent and discover tools through the proxy:
+```bash
+grep pi-mcp-adapter ~/.pi/agent/settings.json
+ls ~/.pi/agent/npm/node_modules/.bin/pi-mcp-adapter
+```
+
+---
+
+## 7. Use octocode tools from Pi
+
+Search for available tools via the proxy:
 
 ```
 mcp({ search: "github" })
 ```
 
-The adapter returns matching tool descriptions. Call one with a JSON-string `args` (not an object):
+Call a tool — pass `args` as a JSON string, not an object:
 
 ```
 mcp({ tool: "octocode_ghSearchCode", args: "{\"queries\":[{\"id\":\"q1\",\"keywordsToSearch\":[\"useState\"]}]}" })
 ```
 
-Servers are **lazy by default** — `octocode-mcp` only spawns when you first invoke one of its tools.
+**Token efficiency:** `concise:true` returns path/title-only lists. `minify:"symbols"` gives a skeleton outline with line numbers; `minify:"standard"` (default) strips comments and blanks; `minify:"none"` returns exact bytes.
 
-## 5. Verify inside Pi
-
-```
-/mcp
-```
-
-Pi lists detected MCP files and registered servers. You should see `octocode` listed under `./mcp.json` (or whichever scope you chose). The first tool call lazily spawns `npx octocode-mcp@latest` and streams its tool list into the adapter's cache — expect a one-time delay on the first `mcp({ tool: ... })` call.
-
-To confirm the adapter is registered in Pi at all (without launching the TUI):
-
-```bash
-cd ~/.pi/agent
-cat ./settings.json   # should contain "npm:pi-mcp-adapter" under "packages"
-ls ./npm/node_modules/.bin/pi-mcp-adapter   # binary exists
-```
+The server spawns lazily on the first tool call — expect a brief delay the first time.
 
 ---
 
-## 6. Tune Pi's behavior with `APPEND_SYSTEM.md`
+## 8. Add custom models
 
-This is core Pi, not the adapter — it's how you teach the agent your operating rules (e.g. "reach for the octocode tools above when researching code"). Pi extends its prompt from a Markdown file:
+Point Pi at additional providers via `~/.pi/agent/models.json`. The file reloads every time you open `/model` — no restart needed.
 
-- `APPEND_SYSTEM.md` — **appends** your rules to Pi's default system prompt. Use this; it keeps Pi's built-in behavior.
-- `SYSTEM.md` — **replaces** the default prompt entirely. Only for full control.
+Each provider entry needs: `baseUrl`, `api` (one of `openai-completions`, `openai-responses`, `anthropic-messages`, `google-generative-ai`), `apiKey`, and a `models` array. `apiKey` accepts a literal string, `$ENV_VAR`, or `!shell-command` (e.g. `!op read 'op://vault/item/field'`) — don't commit raw secrets.
 
-Pi looks in two locations and uses the **first** match — they do not merge:
-
-| File | Scope | Loaded when |
-| --- | --- | --- |
-| `.pi/APPEND_SYSTEM.md` | Project (current repo) | the project is trusted |
-| `./APPEND_SYSTEM.md` | Global (`~/.pi/agent/`) | always |
-
-So a trusted project's `.pi/APPEND_SYSTEM.md` **shadows** the global `./APPEND_SYSTEM.md`. Keep cross-project rules global; put repo-specific rules in the project file.
-
-Create the global rules file:
-
-```bash
-cd ~/.pi/agent
-$EDITOR ./APPEND_SYSTEM.md
-```
-
-Keep it lean: Pi's harness already spends part of the model's instruction budget, and a bloated file degrades adherence to *all* your rules, not just the new ones. Lead with the hard "never" constraints, name the exact tools you want used, and push anything a linter can check into tooling rather than prose. A compact working example lives at `./APPEND_SYSTEM.md`. Restart Pi to pick up changes.
-
----
-
-## 7. Add skills (native — no adapter)
-
-Pi natively supports the [Agent Skills standard](https://agentskills.io) (`SKILL.md` folders) — in fact Pi's stated philosophy is "CLI tools with READMEs (Skills) over MCP." Skills are discovered from:
-
-| Location | Scope |
-| --- | --- |
-| `./skills/` (i.e. `~/.pi/agent/skills/`) | Global — available in every session |
-| `.pi/skills/` | Project — current repo only |
-
-Each skill is a folder containing a `SKILL.md` (a top-level `.md` file works too). Pi lists available skills in the system prompt and loads one when a task matches its `description`; force it with `/skill:name`.
-
-Install the octocode researcher skill into the global skills dir by fetching the
-skill subtree — [`skills/octocode-engineer`](https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer) —
-straight into `~/.pi/agent/skills/`.
-
-**With `degit`** (fetches just the subfolder, no git history):
-
-```bash
-npx -y degit bgauryy/octocode/skills/octocode-engineer ~/.pi/agent/skills/octocode-engineer
-ls ~/.pi/agent/skills/octocode-engineer/SKILL.md   # confirm it landed
-```
-
-**Without `degit`** (git sparse-checkout fallback):
-
-```bash
-tmp="$(mktemp -d)"
-git clone --depth 1 --filter=blob:none --sparse https://github.com/bgauryy/octocode "$tmp"
-git -C "$tmp" sparse-checkout set skills/octocode-engineer
-mkdir -p ~/.pi/agent/skills
-cp -R "$tmp/skills/octocode-engineer" ~/.pi/agent/skills/
-rm -rf "$tmp"
-ls ~/.pi/agent/skills/octocode-engineer/SKILL.md   # confirm it landed
-```
-
-Either way the result is `~/.pi/agent/skills/octocode-engineer/SKILL.md`, which Pi
-discovers automatically (force it with `/skill:octocode-engineer`).
-
-The skill drives octocode via its CLI and avoids the MCP transport entirely. Use the adapter route (sections 1–5) when you want the full 13-tool surface exposed; use the skill route when a focused research workflow is enough.
-
-## 8. Add custom models (`models.json`)
-
-Point Pi at extra providers and models — local models, proxies, or gateways — via `./models.json` (i.e. `~/.pi/agent/models.json`). The file reloads every time you open `/model`, so no restart is needed.
-
-The root is `{ "providers": { "<name>": { … } } }`. Each provider sets `baseUrl`, `api` (`openai-completions`, `openai-responses`, `anthropic-messages`, or `google-generative-ai`), `apiKey`, and a `models` array. `apiKey` accepts a literal, a `$ENV_VAR` reference, or a `!command` (e.g. `!op read 'op://vault/item/credential'`) — don't commit raw secrets.
+> Naming a provider after a built-in (`anthropic`, `openai`) and providing `models` **replaces** that provider's model list entirely. Use `modelOverrides` to extend the built-ins instead.
 
 ```json
 {
   "providers": {
-    "nebius": {
-      "baseUrl": "https://api.studio.nebius.com/v1",
-      "apiKey": "$NEBIUS_API_KEY",
-      "api": "openai-completions",
-      "compat": {
-        "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false
-      },
-      "models": [
-        {
-          "id": "zai-org/GLM-5.2",
-          "name": "Nebius GLM-5.2",
-          "contextWindow": 200000,
-          "maxTokens": 32000
-        }
-      ]
-    },
     "anthropic": {
-      "baseUrl": "https://www.wixapis.com/anthropic",
+      "baseUrl": "https://your-gateway/anthropic",
       "apiKey": "$ANTHROPIC_API_KEY",
       "api": "anthropic-messages",
       "models": [
@@ -239,13 +244,13 @@ The root is `{ "providers": { "<name>": { … } } }`. Each provider sets `baseUr
           "id": "claude-sonnet-4-6",
           "reasoning": true,
           "input": ["text", "image"],
-          "contextWindow": 900000,
+          "contextWindow": 200000,
           "maxTokens": 32000
         }
       ]
     },
     "openai": {
-      "baseUrl": "https://www.wixapis.com/openai/v1",
+      "baseUrl": "https://your-gateway/openai/v1",
       "apiKey": "$OPENAI_API_KEY",
       "api": "openai-completions",
       "models": [
@@ -260,12 +265,15 @@ The root is `{ "providers": { "<name>": { … } } }`. Each provider sets `baseUr
 }
 ```
 
-Then select a model with `/model` inside Pi (or `--model <pattern>`).
+Select a model with `/model` inside Pi, or pass `--model <pattern>` at launch.
 
-> Naming a provider after a built-in (`anthropic`, `openai`) and supplying `models` **replaces** that provider's entire model list with yours — here it repoints Anthropic/OpenAI at the Wix gateway. To add to the built-ins instead of replacing, use `modelOverrides`.
+---
 
 ## References
 
-- pi-mcp-adapter — https://github.com/nicobailon/pi-mcp-adapter
-- Pi (coding agent) — https://github.com/earendil-works/pi
-- octocode-mcp tool reference — [GitHub Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md), [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md), [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+- [Pi documentation](https://pi.dev/docs/latest)
+- [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter)
+- [Pi source](https://github.com/earendil-works/pi)
+- [Octocode skills index](https://www.skills.sh/bgauryy/octocode-mcp)
+- [APPEND_SYSTEM.md starter](https://github.com/bgauryy/octocode/blob/main/docs/PI/APPEND_SYSTEM.md)
+- octocode-mcp tool reference: [GitHub tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md) · [Local tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md) · [LSP tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)
