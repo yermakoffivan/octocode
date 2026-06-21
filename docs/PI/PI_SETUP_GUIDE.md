@@ -27,7 +27,7 @@ Browse all Octocode skills: **[skills.sh/bgauryy/octocode-mcp](https://www.skill
 | --- | --- |
 | ⭐ `octocode-engineer` | Codebase understanding, implementation, bug investigation, refactors, PR review, and RFC validation — with AST + LSP evidence |
 | `octocode-research` | Deep code exploration: trace flow, find usages, understand a codebase |
-| `octocode-brainstorming` | Validate ideas against GitHub, npm, and web evidence; produces a decision-ready brief |
+| `octocode-brainstorming` | Validate ideas against GitHub, npm, and web evidence; produces a decision-ready brief. Add a [Tavily API key](https://tavily.com) (`TAVILY_API_KEY`) for richer web search results |
 | `octocode-rfc-generator` | Evidence-backed RFCs and design docs before starting implementations |
 | `octocode-pull-request-reviewer` | Structured code reviews grounded in evidence |
 | `octocode-search-skill` | Find, evaluate, install, and create Agent Skills |
