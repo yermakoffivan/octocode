@@ -91,7 +91,7 @@ Invalid file values fall back to defaults or env overrides. Unknown keys warn an
 | Env | `.octocoderc` | Default | Meaning |
 |-----|---------------|---------|---------|
 | `GITHUB_API_URL` | `github.apiUrl` | `https://api.github.com` | GitHub API endpoint. Use `/api/v3` for GitHub Enterprise. |
-| `ENABLE_LOCAL` | `local.enabled` | `true` (MCP) | **MCP only.** Enable local filesystem and LSP tools for the MCP server. The CLI always enables local tools and ignores this. |
+| `ENABLE_LOCAL` | `local.enabled` | CLI `true`, MCP `false` | Enable local filesystem and LSP tools. |
 | `ENABLE_CLONE` | `local.enableClone` | CLI `true`, MCP `false` | Enable `ghCloneRepo` and directory fetch (requires local enabled). Default is surface-specific; an explicit `false` (env or file) disables it in either surface. |
 | `WORKSPACE_ROOT` | `local.workspaceRoot` | `process.cwd()` | Root used for relative local paths and project context. Must be absolute when set. |
 | `ALLOWED_PATHS` | `local.allowedPaths` | `[]` | Comma-separated env list or JSON array. Empty means unrestricted after path validation. |
@@ -115,9 +115,9 @@ Env-only options:
 | `OCTOCODE_BULK_QUERY_TIMEOUT_MS` | `60000` | Per-query timeout inside a bulk tool call (ms). |
 | `OCTOCODE_TOOL_TIMEOUT_MS` | `60000` | Outer timeout for the entire tool call (ms). |
 | `OCTOCODE_COMMAND_CHECK_TIMEOUT_MS` | `5000` | System command availability check timeout (ms). |
-| `OCTOCODE_CACHE_TTL_MS` | `86400000` | Clone cache TTL in ms. |
-| `OCTOCODE_MAX_CACHE_SIZE` | `2147483648` | Clone cache size limit in bytes. |
-| `OCTOCODE_MAX_CLONES` | `50` | Maximum cached clone count. |
+| `OCTOCODE_CACHE_TTL_MS` | `86400000` | Tmp materialization cache TTL in ms. |
+| `OCTOCODE_MAX_CACHE_SIZE` | `2147483648` | Tmp materialization cache size limit in bytes. |
+| `OCTOCODE_MAX_CLONES` | `50` | Maximum cached clone/tree materialization count per tmp bucket. |
 
 ## Parsing Rules
 
@@ -132,7 +132,7 @@ Env-only options:
 
 - Auth tokens are env-only. Do not put tokens in `.octocoderc`.
 - `TOOLS_TO_RUN` is a strict whitelist and overrides `ENABLE_TOOLS` and `DISABLE_TOOLS`.
-- **Surface-specific local/clone defaults.** The CLI always enables local tools (`ENABLE_LOCAL` is ignored) and enables clone by default. The MCP server honors `ENABLE_LOCAL` (default on) and disables clone by default. An explicit `ENABLE_CLONE=false` disables clone in either surface; clone always requires local enabled.
+- **Surface-specific local/clone defaults.** The CLI honors `ENABLE_LOCAL` and defaults local tools on; clone is enabled by default. The MCP server honors `ENABLE_LOCAL` and defaults local tools and clone off. Explicit env or `.octocoderc` values override those defaults; clone always requires local enabled.
 - LSP requires local tools enabled. If `OCTOCODE_LSP_CONFIG` is unset, Octocode checks `<workspace>/.octocode/lsp-servers.json`, then `<octocode-home>/lsp-servers.json`.
 - `WORKSPACE_ROOT` env overrides `local.workspaceRoot`.
 - `LOG=false` disables remote/session logging, but local usage stats may still be updated.
@@ -149,7 +149,10 @@ All state lives under Octocode home, a fixed per-platform directory (macOS `~/.o
 | `session.json` | Session identity and timestamps. |
 | `stats.json` | Usage counters and character savings. |
 | `config.json` | CLI config (e.g. `skillsDestDir`). |
-| `repos/` | Clone/directory-fetch cache. |
+| `tmp/clone/` | Git clone and sparse-clone cache. |
+| `tmp/tree/` | GitHub API file/tree materialization cache. |
+| `tmp/binary/` | Text derived from binary/archive modes such as `extract`, `decompress`, and `strings`. |
+| `tmp/unzip/` | Archive unpack output from `localBinaryInspect` / `unzip`. |
 | `logs/` | Local logs. |
 | `lsp-servers.json` | User-level LSP server config. |
 
@@ -205,7 +208,7 @@ Common fixes:
 | Symptom | Check |
 |---------|-------|
 | Token missing | Set `OCTOCODE_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`, or run `octocode auth login`. |
-| Local tools unavailable (MCP) | Make sure `ENABLE_LOCAL` is not false and tool filters did not hide them. The CLI always has local tools enabled. |
+| Local tools unavailable | Set `ENABLE_LOCAL=true` or ensure `.octocoderc` enables `local.enabled`, and check that tool filters did not hide them. The CLI defaults local on unless explicitly disabled. |
 | Clone unavailable (MCP) | Set `ENABLE_CLONE=true` (and keep local enabled). The CLI enables clone by default unless you set `ENABLE_CLONE=false`. |
 | Tool hidden | Check `TOOLS_TO_RUN`, `ENABLE_TOOLS`, and `DISABLE_TOOLS`. |
 | Timeout | Increase `REQUEST_TIMEOUT` up to `300000`. |

@@ -15,6 +15,11 @@ import {
   renderLocalResults,
   type LocalSearchResult,
 } from './local-search-render.js';
+import {
+  formatMaterializationHints,
+  materializeRemoteForCli,
+  withMaterializationHints,
+} from '../remote-local.js';
 
 interface GithubPagination {
   totalMatches?: number;
@@ -102,6 +107,11 @@ function localIncludeGlobs(
     filters.push(...(mapped ?? [ext.includes('*') ? ext : `*.${ext}`]));
   }
   return filters.length > 0 ? filters : undefined;
+}
+
+function repoTargetKind(target: string): 'file' | 'tree' | 'repo' {
+  if (!target || target === '.') return 'repo';
+  return target.split('/').pop()?.includes('.') ? 'file' : 'tree';
 }
 
 interface LocalSearchOpts {
@@ -301,7 +311,7 @@ function renderGithubResults(
     const repoLabel = `${file.owner ?? ref.owner ?? ''}/${file.repo ?? ref.repo ?? ''}`;
     lines.push(`  ${c('cyan', bold(file.path ?? ''))}  ${dim(repoLabel)}`);
     for (const m of (file.matches ?? []).slice(0, 5)) {
-      const snippet = (m.value ?? '').trim().replace(/\n/g, ' ').slice(0, 120);
+      const snippet = (m.value ?? '').trim().replace(/\n/g, ' ');
       if (snippet) lines.push(`    ${c('yellow', '›')} ${snippet}`);
     }
     shown++;
@@ -371,187 +381,49 @@ function isCloneHintEnabled(): boolean {
 export const grepCommand: CLICommand = {
   name: 'grep',
   options: [
-    {
-      name: 'pattern',
-      hasValue: true,
-      description:
-        'AST shape — switches grep to Octocode structural search, local-only. Metavars: $X = one node, $$$ARGS = a list. E.g. "eval($X)", "console.log($$$ARGS)". Comments/strings never false-match.',
-    },
-    {
-      name: 'rule',
-      hasValue: true,
-      description:
-        'AST relational rule (YAML) for what --pattern can\'t express — not/inside/has/all/any. Relational sub-rules need "stopBy: end". Mutually exclusive with --pattern. Local-only.',
-    },
-    {
-      name: 'type',
-      hasValue: true,
-      description:
-        'Filter by language or extension (e.g. ts, rust, typescript, "*.rs")',
-    },
-    {
-      name: 'mode',
-      hasValue: true,
-      description:
-        'Search mode (local only): paginated (default) · discovery (file paths only, ~80% fewer tokens) · detailed (expanded context)',
-    },
-    {
-      name: 'concise',
-      description:
-        'Paths only, no snippets — cheapest orientation. GitHub: flat "owner/repo:path" list; local: same as --mode discovery.',
-    },
-    {
-      name: 'include',
-      hasValue: true,
-      description:
-        'Comma-separated glob patterns to include (local only, e.g. "*.ts,*.tsx")',
-    },
-    {
-      name: 'exclude',
-      hasValue: true,
-      description:
-        'Comma-separated glob patterns to exclude (local only, e.g. "*.min.js,dist/**")',
-    },
-    {
-      name: 'context-lines',
-      hasValue: true,
-      description:
-        'Lines of context around each match (local only, default: 0)',
-    },
-    {
-      name: 'context',
-      hasValue: true,
-      description: 'Alias for --context-lines (local only)',
-    },
-    {
-      name: 'fixed',
-      description:
-        'Literal string search alias for --fixed-string (local only)',
-    },
-    {
-      name: 'fixed-string',
-      description: 'Literal string search (local only)',
-    },
-    {
-      name: 'perl-regex',
-      description: 'Advanced regex features such as lookaheads (local only)',
-    },
-    {
-      name: 'case-insensitive',
-      description: 'Case-insensitive search (local only)',
-    },
-    {
-      name: 'case-sensitive',
-      description: 'Case-sensitive search (local only)',
-    },
-    {
-      name: 'whole-word',
-      description: 'Match whole words only (local only)',
-    },
-    {
-      name: 'invert-match',
-      description: 'Return non-matching lines (local only)',
-    },
-    {
-      name: 'hidden',
-      description: 'Search hidden files (local only)',
-    },
-    {
-      name: 'no-ignore',
-      description: 'Search files normally hidden by ignore files (local only)',
-    },
-    {
-      name: 'files-only',
-      description: 'Return matching file paths only (local only)',
-    },
-    {
-      name: 'files-without-match',
-      description: 'Return files that do not contain the pattern (local only)',
-    },
-    {
-      name: 'count-lines',
-      description: 'Return matching line counts per file (local only)',
-    },
-    {
-      name: 'count-matches',
-      description: 'Return total match counts per file (local only)',
-    },
-    {
-      name: 'only-matching',
-      description:
-        'Return only the matched substring(s), one per hit, instead of the whole line — enumerates every hit on a minified one-liner (local only)',
-    },
-    {
-      name: 'unique',
-      description:
-        'With --only-matching, return each matched value once per file (local only)',
-    },
-    {
-      name: 'count',
-      description:
-        'With --only-matching, return each matched value once per file with its frequency (local only)',
-    },
-    {
-      name: 'match-window',
-      hasValue: true,
-      description:
-        'With --only-matching, chars of context to keep on each side of the match, … marking trimmed sides (local only)',
-    },
-    {
-      name: 'multiline',
-      description: 'Allow matches to span lines (local only)',
-    },
-    {
-      name: 'multiline-dotall',
-      description: 'Allow dot to match newlines with --multiline (local only)',
-    },
-    {
-      name: 'match-length',
-      hasValue: true,
-      description: 'Characters kept per match snippet (local only)',
-    },
-    {
-      name: 'max-files',
-      hasValue: true,
-      description: 'Maximum matched files returned (local only)',
-    },
-    {
-      name: 'match-page',
-      hasValue: true,
-      description: 'Page within matches for a noisy file (local only)',
-    },
-    {
-      name: 'max-matches',
-      hasValue: true,
-      description: 'Max matches returned per file (local only)',
-    },
-    {
-      name: 'limit',
-      hasValue: true,
-      description: 'Max files to return/show (default: 10)',
-    },
-    {
-      name: 'page',
-      hasValue: true,
-      description: 'Result page to fetch (default: 1)',
-    },
-    {
-      name: 'page-size',
-      hasValue: true,
-      description: 'Results per page (defaults to --limit)',
-    },
-    {
-      name: 'branch',
-      hasValue: true,
-      description: 'Branch / ref for GitHub paths',
-    },
-    {
-      name: 'json',
-      description: 'Output raw JSON results',
-    },
+    { name: 'pattern', hasValue: true },
+    { name: 'rule', hasValue: true },
+    { name: 'type', hasValue: true },
+    { name: 'mode', hasValue: true },
+    { name: 'concise' },
+    { name: 'include', hasValue: true },
+    { name: 'exclude', hasValue: true },
+    { name: 'context-lines', hasValue: true },
+    { name: 'context', hasValue: true },
+    { name: 'fixed' },
+    { name: 'fixed-string' },
+    { name: 'perl-regex' },
+    { name: 'case-insensitive' },
+    { name: 'case-sensitive' },
+    { name: 'whole-word' },
+    { name: 'invert-match' },
+    { name: 'hidden' },
+    { name: 'no-ignore' },
+    { name: 'files-only' },
+    { name: 'files-without-match' },
+    { name: 'count-lines' },
+    { name: 'count-matches' },
+    { name: 'only-matching' },
+    { name: 'unique' },
+    { name: 'count' },
+    { name: 'match-window', hasValue: true },
+    { name: 'multiline' },
+    { name: 'multiline-dotall' },
+    { name: 'match-length', hasValue: true },
+    { name: 'max-files', hasValue: true },
+    { name: 'match-page', hasValue: true },
+    { name: 'max-matches', hasValue: true },
+    { name: 'limit', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'page-size', hasValue: true },
+    { name: 'branch', hasValue: true },
+    { name: 'repo', hasValue: true },
+    { name: 'force-refresh' },
+    { name: 'json' },
   ],
   handler: async args => {
     const { options } = args;
+    const repoOption = getString(options, 'repo');
 
     // ── Structural (AST) branch ──────────────────────────────────────────────
     // --pattern / --rule switch grep to Octocode structural search (local-only).
@@ -573,7 +445,7 @@ export const grepCommand: CLICommand = {
       // Foot-gun guard: in structural mode arg[0] IS the path and there are no
       // text keywords. `grep <keywords> <path> --pattern …` would otherwise use
       // the keywords as the path and fail with a cryptic "no such file".
-      if (args.args.length > 1) {
+      if (!repoOption && args.args.length > 1) {
         const err =
           'Structural search (--pattern/--rule) takes a single local PATH as its only positional — it has no text keywords. ' +
           `You passed ${args.args.length} (${args.args.join(' ')}). Try: grep ${args.args[args.args.length - 1]} --pattern "${patternOpt ?? ruleOpt}"`;
@@ -584,8 +456,9 @@ export const grepCommand: CLICommand = {
         return;
       }
 
-      const ref = resolveRef(args.args[0] || '.');
-      if (isGithubRef(ref)) {
+      const structuralTarget = args.args[0] || '.';
+      const ref = repoOption ? undefined : resolveRef(structuralTarget);
+      if (ref && isGithubRef(ref)) {
         const err =
           'Structural search (--pattern/--rule) is local-only because Octocode parses files on disk. ' +
           `Clone first: \`${cloneCommandFor(ref)}\`, then rerun grep on the local clone path. Or drop the flag for text search.`;
@@ -617,27 +490,46 @@ export const grepCommand: CLICommand = {
 
       if (!jsonOutput) {
         process.stderr.write(
-          `  ${dim(`Searching AST "${shape}" in ${refLabel(ref)} ...`)}\n`
+          `  ${dim(`Searching AST "${shape}" in ${repoOption ? `${repoOption}/${structuralTarget}` : refLabel(ref!)} ...`)}\n`
         );
       }
 
       try {
-        const sc = await searchLocalStructural(ref.path, {
-          pattern: patternOpt,
-          rule: ruleOpt,
-          include: localIncludeGlobs(
-            listOption(includeS),
-            getString(options, 'type') || undefined
-          ),
-          contextLines: ctxS ? parseInt(ctxS, 10) : undefined,
-          maxMatchesPerFile: maxS ? parseInt(maxS, 10) : undefined,
-          page: pageS ? parseInt(pageS, 10) : undefined,
-          pageSize: pageSizeS ? parseInt(pageSizeS, 10) : limitS,
-        });
+        const materialized = repoOption
+          ? await materializeRemoteForCli({
+              repoRef: repoOption,
+              path: structuralTarget,
+              branch: getString(options, 'branch') || undefined,
+              forceRefresh: getBool(options, 'force-refresh') || undefined,
+              kind: repoTargetKind(structuralTarget),
+            })
+          : undefined;
+        const sc = await searchLocalStructural(
+          materialized?.localPath ?? ref!.path,
+          {
+            pattern: patternOpt,
+            rule: ruleOpt,
+            include: localIncludeGlobs(
+              listOption(includeS),
+              getString(options, 'type') || undefined
+            ),
+            contextLines: ctxS ? parseInt(ctxS, 10) : undefined,
+            maxMatchesPerFile: maxS ? parseInt(maxS, 10) : undefined,
+            page: pageS ? parseInt(pageS, 10) : undefined,
+            pageSize: pageSizeS ? parseInt(pageSizeS, 10) : limitS,
+          }
+        );
         if (jsonOutput) {
-          console.log(JSON.stringify(sc, null, 2));
+          const output = materialized
+            ? withMaterializationHints({ structuredContent: sc }, materialized)
+                .structuredContent
+            : sc;
+          console.log(JSON.stringify(output, null, 2));
           return;
         }
+        const hints = materialized
+          ? `\n${formatMaterializationHints(materialized)}`
+          : '';
         console.log(
           '\n' +
             renderLocalResults(
@@ -645,6 +537,7 @@ export const grepCommand: CLICommand = {
               limitS,
               ctxS ? parseInt(ctxS, 10) : undefined
             ) +
+            hints +
             '\n'
         );
       } catch (e: unknown) {
@@ -744,10 +637,12 @@ export const grepCommand: CLICommand = {
       return;
     }
 
-    const ref = resolveRef(target, branchOverride || undefined);
-    const label = refLabel(ref);
+    const ref = repoOption
+      ? undefined
+      : resolveRef(target, branchOverride || undefined);
+    const label = repoOption ? `${repoOption}/${target}` : refLabel(ref!);
 
-    if (isGithubRef(ref) && (unique || countUnique)) {
+    if (ref && isGithubRef(ref) && (unique || countUnique)) {
       const err =
         '--unique and --count are local-only because they depend on local ripgrep match spans.';
       if (jsonOutput) {
@@ -766,13 +661,72 @@ export const grepCommand: CLICommand = {
     }
 
     try {
-      if (isGithubRef(ref)) {
+      if (repoOption) {
+        const materialized = await materializeRemoteForCli({
+          repoRef: repoOption,
+          path: target === '.' ? undefined : target,
+          branch: branchOverride || undefined,
+          forceRefresh: getBool(options, 'force-refresh') || undefined,
+          kind: repoTargetKind(target),
+        });
+        const sc = await searchLocal(pattern, materialized.localPath, {
+          mode: modeOpt,
+          include: localIncludeGlobs(include, typeFilter || undefined),
+          exclude,
+          contextLines,
+          maxMatchesPerFile,
+          fixedString,
+          perlRegex: getBool(options, 'perl-regex') || undefined,
+          caseInsensitive: getBool(options, 'case-insensitive') || undefined,
+          caseSensitive: getBool(options, 'case-sensitive') || undefined,
+          wholeWord: getBool(options, 'whole-word') || undefined,
+          invertMatch: getBool(options, 'invert-match') || undefined,
+          hidden: getBool(options, 'hidden') || undefined,
+          noIgnore: getBool(options, 'no-ignore') || undefined,
+          filesOnly: getBool(options, 'files-only') || undefined,
+          filesWithoutMatch:
+            getBool(options, 'files-without-match') || undefined,
+          countLinesPerFile: getBool(options, 'count-lines') || undefined,
+          countMatchesPerFile: getBool(options, 'count-matches') || undefined,
+          multiline: getBool(options, 'multiline') || undefined,
+          multilineDotall: getBool(options, 'multiline-dotall') || undefined,
+          matchContentLength,
+          maxFiles: maxFiles ?? limit,
+          matchPage,
+          onlyMatching,
+          unique,
+          countUnique,
+          matchWindow,
+          page,
+          pageSize,
+        });
+        if (jsonOutput) {
+          console.log(
+            JSON.stringify(
+              withMaterializationHints({ structuredContent: sc }, materialized)
+                .structuredContent,
+              null,
+              2
+            )
+          );
+          return;
+        }
+        console.log(
+          '\n' +
+            renderLocalResults(sc, limit, contextLines, {
+              valuesOnly: Boolean(unique || countUnique),
+            }) +
+            '\n' +
+            formatMaterializationHints(materialized) +
+            '\n'
+        );
+      } else if (isGithubRef(ref!)) {
         const sc = await searchGithub(
           pattern,
-          ref.owner,
-          ref.repo,
+          ref!.owner,
+          ref!.repo,
           typeFilter || undefined,
-          ref.subpath || undefined,
+          ref!.subpath || undefined,
           page,
           pageSize,
           concise
@@ -784,14 +738,14 @@ export const grepCommand: CLICommand = {
         console.log(
           '\n' +
             renderGithubResults(sc, limit, {
-              owner: ref.owner,
-              repo: ref.repo,
-              subpath: ref.subpath,
+              owner: ref!.owner,
+              repo: ref!.repo,
+              subpath: ref!.subpath,
             }) +
             '\n'
         );
       } else {
-        const sc = await searchLocal(pattern, ref.path, {
+        const sc = await searchLocal(pattern, ref!.path, {
           mode: modeOpt,
           include: localIncludeGlobs(include, typeFilter || undefined),
           exclude,

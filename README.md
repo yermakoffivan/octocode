@@ -122,7 +122,7 @@ Benchmark files:
 
 ## Tools
 
-Octocode ships **13 research tools**; the same implementations run identically over [MCP](#mcp) and the [CLI](#cli). `ghCloneRepo` is opt-in (`ENABLE_CLONE=true`); local tools require `ENABLE_LOCAL` (default: on). All flags: [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md).
+Octocode ships **13 research tools**; the same implementations run identically over [MCP](#mcp) and the [CLI](#cli). `ghCloneRepo` is opt-in for MCP (`ENABLE_CLONE=true`) and enabled by default for CLI; local tools require `ENABLE_LOCAL` (CLI default: on, MCP default: off). All flags: [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md).
 
 **Token knobs.** `concise:true` returns path/title-only lists. `minify` controls file read density: `symbols` = skeleton with line numbers, `standard` = comments/blanks stripped (default), `none` = exact bytes.
 
@@ -247,8 +247,8 @@ Local paths route to local tools; `owner/repo[/path]` targets route to GitHub to
 | `octocode repo <keywords...>` | Discover GitHub repositories |
 | `octocode pkg <package\|keywords>` | Search npm and hand off to source repositories |
 | `octocode binary <file>` | Inspect archives, compressed files, and native binaries |
-| `octocode unzip <archive>` | Unpack an archive to `<octocode-home>/unzip/<name>-<timestamp>/`, then use local `ls`, `grep`, `cat`, and `lsp` |
-| `octocode clone <owner/repo[/path][@branch]>` | Clone a repo or subtree to the Octocode home repo cache for local/LSP analysis (`ENABLE_CLONE=true`) |
+| `octocode unzip <archive>` | Unpack an archive to `<octocode-home>/tmp/unzip/<name>-<timestamp>/`, then use local `ls`, `grep`, `cat`, and `lsp` |
+| `octocode clone <owner/repo[/path][@branch]>` | Clone a repo or subtree to `<octocode-home>/tmp/clone/` for local/LSP analysis (`ENABLE_CLONE=true`) |
 | `octocode tools` | List tools, read schemas, or run any MCP tool directly from the terminal |
 | `octocode context` | Print agent-facing protocol, system prompt, tool descriptions, and schemas |
 | `octocode install` | Configure Octocode in MCP clients |
@@ -272,7 +272,7 @@ environment variables  >  <octocode-home>/.octocoderc  >  built-in defaults
 2. **Global config**: `<octocode-home>/.octocoderc`, machine-wide defaults read by **both the CLI and the MCP server**.
 3. **Built-in defaults**: used when neither is set.
 
-**Octocode home** (`<octocode-home>`) holds the global config, encrypted credentials, sessions, stats, logs, and the clone cache. Its location is fixed per platform (there is no override):
+**Octocode home** (`<octocode-home>`) holds the global config, encrypted credentials, sessions, stats, logs, and tmp materialization caches. Its location is fixed per platform (there is no override):
 
 | Platform | Location |
 |----------|----------|
@@ -308,7 +308,7 @@ The **Scope** column shows where a setting applies: `Both`, or `MCP` (the CLI ig
 |---------|-------------------|---------|-------|--------------|
 | `OCTOCODE_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` | env only | unset | Both | GitHub token, in priority order. Tokens stay in env, never in `.octocoderc`. |
 | `GITHUB_API_URL` | `github.apiUrl` | `https://api.github.com` | Both | API endpoint; use `/api/v3` for GitHub Enterprise. |
-| `ENABLE_LOCAL` | `local.enabled` | `true` | **MCP** | Turns local filesystem + LSP tools on/off for the MCP server. The CLI always has local tools enabled and ignores this. |
+| `ENABLE_LOCAL` | `local.enabled` | CLI `true`, MCP `false` | Both | Turns local filesystem + LSP tools on/off. |
 | `ENABLE_CLONE` | `local.enableClone` | CLI `true`, MCP `false` | Both | `ghCloneRepo` and directory fetch. Default differs by surface; set `false` to disable in either. |
 | `WORKSPACE_ROOT` | `local.workspaceRoot` | `cwd` | Both | Absolute root for resolving relative local paths. |
 | `ALLOWED_PATHS` | `local.allowedPaths` | `[]` | Both | Extra path allowlist for local access; empty means home directory only after validation. |
@@ -317,7 +317,7 @@ The **Scope** column shows where a setting applies: `Both`, or `MCP` (the CLI ig
 | `MAX_RETRIES` | `network.maxRetries` | `3` | Both | Retry attempts (clamped `0..10`). |
 | `OCTOCODE_OUTPUT_FORMAT` | `output.format` | `yaml` | Both | Response format: `yaml` or `json`. |
 
-> **Local and clone defaults differ by surface.** The **CLI** is a local terminal, so local tools are always enabled (`ENABLE_LOCAL` is ignored) and clone is enabled by default. The **MCP server** honors `ENABLE_LOCAL` (default on) and defaults clone to off, so a deployment can control what an assistant may touch. An explicit `ENABLE_CLONE=false` (env or `.octocoderc`) disables clone in either surface.
+> **Local and clone defaults differ by surface.** The **CLI** honors `ENABLE_LOCAL` and defaults local tools on; clone is enabled by default. The **MCP server** honors `ENABLE_LOCAL` and defaults local tools and clone off, so a deployment can control what an assistant may touch. Explicit env or `.octocoderc` values override those defaults.
 
 ### Example `.octocoderc`
 
@@ -329,7 +329,7 @@ Drop this at `<octocode-home>/.octocoderc` for machine-wide defaults shared by t
   "github": { "apiUrl": "https://api.github.com" },
 
   "local": {
-    "enabled": true,            // MCP only; the CLI always has local tools on
+    "enabled": true,            // overrides the surface default for CLI and MCP
     "enableClone": false,       // false disables ghCloneRepo for CLI and MCP
     "workspaceRoot": "~/code",  // base for relative local paths (absolute or ~)
     "allowedPaths": []          // extra dirs the local tools may read

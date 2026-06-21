@@ -15,7 +15,10 @@ import type { GitHubPullRequestSearchQueryLocalSchema } from './github_search_pu
 import type { GitHubRepositoryOutput } from '@octocodeai/octocode-core/extra-types';
 import type { WithOptionalMeta } from '../types/execution.js';
 
-import { GITHUB_SEARCH_DEFAULT_LIMIT } from '../config.js';
+import {
+  DEFAULT_MATCH_SNIPPET_CHARS,
+  GITHUB_SEARCH_DEFAULT_LIMIT,
+} from '../config.js';
 import { GITHUB_STRUCTURE_DEFAULTS } from './github_view_repo_structure/constants.js';
 import { FileContentQueryLocalSchema } from './github_fetch_content/scheme.js';
 
@@ -23,6 +26,20 @@ type GitHubCodeSearchQuery = z.infer<typeof GitHubCodeSearchQuerySchema>;
 type LocalFileContentQuery = z.infer<typeof FileContentQueryLocalSchema> & {
   minify: import('../scheme/fields.js').MinifyMode;
 };
+
+/**
+ * Char-boundary truncation mirroring the Rust engine's `truncate_unicode`:
+ * keeps at most `maxChars` Unicode scalars and appends `...` when it cuts.
+ * Never slices UTF-8 mid-codepoint or mid-token — the single data-layer bound
+ * for GitHub code-search match fragments (the render layer must not re-trim).
+ */
+export function truncateSnippetChars(value: string, maxChars = DEFAULT_MATCH_SNIPPET_CHARS): string {
+  if (maxChars <= 0) return '';
+  const chars = [...value];
+  if (chars.length <= maxChars) return value;
+  if (maxChars <= 3) return '.'.repeat(maxChars);
+  return chars.slice(0, maxChars - 3).join('') + '...';
+}
 type GitHubPullRequestSearchQuery = z.infer<
   typeof GitHubPullRequestSearchQueryLocalSchema
 >;
@@ -236,7 +253,7 @@ export function mapCodeSearchProviderResult(
       if (!m.context) continue;
       const match: CodeSearchGroupedMatch = {
         path: item.path,
-        value: m.context,
+        value: truncateSnippetChars(m.context),
       };
       if (m.positions?.length > 0) {
         match.matchIndices = m.positions.map(([start, end]) => ({

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+import { EXIT } from '../../../src/cli/exit-codes.js';
+
 const executeDirectTool = vi.fn();
 
 vi.mock('@octocodeai/octocode-tools-core/direct', () => ({
@@ -38,7 +40,7 @@ describe('clone command', () => {
       isError: false,
       content: [],
       structuredContent: {
-        results: [{ data: { localPath: '/tmp/octocode/repos/react' } }],
+        results: [{ data: { localPath: '/tmp/octocode/tmp/clone/react' } }],
       },
     });
 
@@ -53,7 +55,44 @@ describe('clone command', () => {
       })
     );
     expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining('Local clone: /tmp/octocode/repos/react')
+      expect.stringContaining('Local clone: /tmp/octocode/tmp/clone/react')
+    );
+  });
+
+  it('hints at cat/cache fetch when sparse-checkout fails on a file path', async () => {
+    executeDirectTool.mockResolvedValue({
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: 'Clone failed: sparse-checkout set README.md failed: fatal: README.md is not a directory',
+        },
+      ],
+      structuredContent: {
+        results: [
+          {
+            id: 'q1',
+            status: 'error',
+            data: {
+              error:
+                'Clone failed: sparse-checkout set README.md failed: fatal: README.md is not a directory',
+            },
+          },
+        ],
+      },
+    });
+
+    await run(['bgauryy/octocode/README.md']);
+
+    expect(process.exitCode).toBe(EXIT.TOOL);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('is a file, but clone checks out directories')
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('cat bgauryy/octocode/README.md')
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('cache fetch bgauryy/octocode README.md')
     );
   });
 });

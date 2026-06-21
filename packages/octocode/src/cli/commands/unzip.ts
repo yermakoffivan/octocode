@@ -14,7 +14,7 @@ const UNZIP_EXAMPLE_PATH = join(paths.unzip, 'app.zip-<timestamp>');
 
 export const unzipCommand: CLICommand = {
   name: 'unzip',
-  options: [{ name: 'json', description: 'Output raw JSON results' }],
+  options: [{ name: 'json' }],
   handler: async args => {
     const file = args.args[0] ?? '';
     const jsonOutput = getBool(args.options, 'json');

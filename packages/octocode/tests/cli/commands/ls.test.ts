@@ -47,6 +47,29 @@ function findEnvelope() {
   };
 }
 
+function materializedTreeEnvelope(
+  localPath = '/tmp/octocode/tmp/tree/facebook/react/main/packages/react'
+) {
+  return {
+    isError: false,
+    content: [],
+    structuredContent: {
+      results: [
+        {
+          id: 'facebook/react',
+          directories: [
+            {
+              localPath,
+              repoRoot: '/tmp/octocode/tmp/tree/facebook/react/main',
+              resolvedBranch: 'main',
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 function toolsCalled(): string[] {
   return executeDirectTool.mock.calls.map(c => String(c[0]));
 }
@@ -141,6 +164,45 @@ describe('ls command', () => {
     expect(output).toContain('index.test.ts');
     expect(output).not.toContain('README.md');
     expect(output).not.toContain('components');
+  });
+
+  it('--repo materializes the remote path, then lists it with localViewStructure', async () => {
+    executeDirectTool
+      .mockResolvedValueOnce(materializedTreeEnvelope())
+      .mockResolvedValueOnce(treeEnvelope());
+
+    await run(['packages/react'], {
+      repo: 'facebook/react',
+      depth: '2',
+      branch: 'main',
+      'force-refresh': true,
+      json: true,
+    });
+
+    expect(executeDirectTool).toHaveBeenCalledTimes(2);
+    expect(executeDirectTool.mock.calls[0]?.[0]).toBe('ghGetFileContent');
+    expect(executeDirectTool.mock.calls[0]?.[1]).toMatchObject({
+      queries: [
+        {
+          owner: 'facebook',
+          repo: 'react',
+          branch: 'main',
+          path: 'packages/react',
+          type: 'directory',
+          forceRefresh: true,
+        },
+      ],
+    });
+    expect(executeDirectTool.mock.calls[1]?.[0]).toBe('localViewStructure');
+    expect(executeDirectTool.mock.calls[1]?.[1]).toMatchObject({
+      queries: [
+        {
+          path: '/tmp/octocode/tmp/tree/facebook/react/main/packages/react',
+          recursive: true,
+          maxDepth: 2,
+        },
+      ],
+    });
   });
 
   it('applies simple file filters to GitHub JSON output', async () => {

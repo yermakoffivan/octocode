@@ -543,12 +543,6 @@ export interface MinifyResult {
   reason?: string
 }
 
-export interface ParsedPatchLine {
-  originalLineNumber?: number
-  newLineNumber?: number
-  content: string
-  lineType: PatchLineType
-}
 
 /**
  * Parse ripgrep `--json` NDJSON stdout into structured files + stats.

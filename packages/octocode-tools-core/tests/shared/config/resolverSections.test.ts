@@ -329,15 +329,21 @@ describe('resolveLocal', () => {
   });
 
   describe('enabled defaults', () => {
-    it('should default enabled to true when no config or env var', () => {
+    it('should default enabled to false for the MCP surface when no config or env var', () => {
       const result = resolveLocal(undefined);
-      expect(result.enabled).toBe(true);
+      expect(result.enabled).toBe(false);
     });
 
     it('should respect ENABLE_LOCAL=false override', () => {
       process.env.ENABLE_LOCAL = 'false';
       const result = resolveLocal(undefined);
       expect(result.enabled).toBe(false);
+    });
+
+    it('should respect ENABLE_LOCAL=true override', () => {
+      process.env.ENABLE_LOCAL = 'true';
+      const result = resolveLocal(undefined);
+      expect(result.enabled).toBe(true);
     });
 
     it('should respect file config enabled=false override', () => {

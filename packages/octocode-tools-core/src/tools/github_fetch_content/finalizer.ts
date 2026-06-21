@@ -22,6 +22,8 @@ type PartialFileContentQuery = WithOptionalMeta<FileContentQuery> &
 type FileEntry = {
   path: string;
   content: string;
+  localPath?: string;
+  repoRoot?: string;
   fileSize?: number;
   contentView?: 'none' | 'standard' | 'symbols';
   isSkeleton?: boolean;
@@ -39,11 +41,13 @@ type FileEntry = {
   warnings?: string[];
   matchNotFound?: boolean;
   searchedFor?: string;
+  cached?: boolean;
 };
 
 type DirectoryEntry = {
   path: string;
   localPath: string;
+  repoRoot?: string;
   fileCount: number;
   totalSize: number;
   files?: Array<{ path: string; size: number; type: string }>;
@@ -152,6 +156,8 @@ function readFileEntry(
   return {
     path: readString(data.path) ?? String(query.path ?? ''),
     content: typeof data.content === 'string' ? data.content : '',
+    localPath: readString(data.localPath),
+    repoRoot: readString(data.repoRoot),
     ...(readNumber(data.fileSize) !== undefined
       ? { fileSize: readNumber(data.fileSize) }
       : {}),
@@ -183,6 +189,7 @@ function readFileEntry(
     warnings: readStringArray(data.warnings),
     ...(data.matchNotFound === true ? { matchNotFound: true } : {}),
     searchedFor: readString(data.searchedFor),
+    ...(data.cached === true ? { cached: true } : {}),
   };
 }
 
@@ -216,6 +223,7 @@ function readDirectoryEntry(
   return {
     path: String(query.path ?? ''),
     localPath: readString(data.localPath) ?? '',
+    repoRoot: readString(data.repoRoot),
     fileCount: readNumber(data.fileCount) ?? files.length,
     totalSize: readNumber(data.totalSize) ?? 0,
     ...(files.length > 0 ? { files } : {}),
@@ -292,6 +300,11 @@ function buildRuntimeHints(groups: readonly RepoGroup[]): string[] {
           `File content is partial (lines ${file.startLine ?? 1}–${file.endLine} of ${file.totalLines}). Use startLine=${file.endLine + 1} to read the next section of ${group.id}:${file.path}.`
         );
       }
+      if (file.localPath) {
+        hints.push(
+          `Saved ${group.id}:${file.path} locally at absolute path "${file.localPath}". Use localGetFileContent(path="${file.localPath}") to read it exactly or localSearchCode(path="${file.localPath}", keywords="<term>") to search it.`
+        );
+      }
     }
 
     for (const directory of group.directories ?? []) {
@@ -299,6 +312,11 @@ function buildRuntimeHints(groups: readonly RepoGroup[]): string[] {
         hints.push(
           `Directory ${group.id}:${directory.path} served from cache.`
         );
+      if (directory.localPath) {
+        hints.push(
+          `Directory ${group.id}:${directory.path} saved locally at absolute path "${directory.localPath}". Use localViewStructure(path="${directory.localPath}") or localSearchCode(path="${directory.localPath}", keywords="<term>") to research it.`
+        );
+      }
     }
   }
 

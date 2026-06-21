@@ -175,17 +175,9 @@ function renderDiff(
 export const diffCommand: CLICommand = {
   name: 'diff',
   options: [
-    {
-      name: 'context-lines',
-      hasValue: true,
-      description: 'Unchanged lines to keep around changes (default: 3)',
-    },
-    {
-      name: 'branch',
-      hasValue: true,
-      description: 'Branch/ref for GitHub refs that do not include @branch',
-    },
-    { name: 'json', description: 'Output structured JSON' },
+    { name: 'context-lines', hasValue: true },
+    { name: 'branch', hasValue: true },
+    { name: 'json' },
   ],
   handler: async args => {
     const jsonOutput = getBool(args.options, 'json');

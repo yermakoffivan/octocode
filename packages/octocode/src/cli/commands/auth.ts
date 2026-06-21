@@ -16,25 +16,10 @@ import { printAuthStatus, printLoginHint } from './shared.js';
 export const loginCommand: CLICommand = {
   name: 'login',
   options: [
-    {
-      name: 'hostname',
-      description: 'GitHub Enterprise hostname (default: github.com)',
-      hasValue: true,
-    },
-    {
-      name: 'git-protocol',
-      description: 'Git protocol to use (ssh or https)',
-      hasValue: true,
-    },
-    {
-      name: 'force',
-      description:
-        'Re-authenticate even if already logged in (logout then login)',
-    },
-    {
-      name: 'json',
-      description: 'Output result as JSON: { success, username, error }',
-    },
+    { name: 'hostname', hasValue: true },
+    { name: 'git-protocol', hasValue: true },
+    { name: 'force' },
+    { name: 'json' },
   ],
   handler: async (args: ParsedArgs) => {
     const hostnameOpt = args.options['hostname'];
@@ -202,19 +187,9 @@ export const loginCommand: CLICommand = {
 export const logoutCommand: CLICommand = {
   name: 'logout',
   options: [
-    {
-      name: 'hostname',
-      description: 'GitHub Enterprise hostname',
-      hasValue: true,
-    },
-    {
-      name: 'yes',
-      description: 'Skip confirmation prompt',
-    },
-    {
-      name: 'json',
-      description: 'Output result as JSON: { success, hostname, error }',
-    },
+    { name: 'hostname', hasValue: true },
+    { name: 'yes' },
+    { name: 'json' },
   ],
   handler: async (args: ParsedArgs) => {
     const hostnameOpt = args.options['hostname'];
@@ -297,17 +272,7 @@ export const logoutCommand: CLICommand = {
 
 export const authCommand: CLICommand = {
   name: 'auth',
-  options: [
-    {
-      name: 'hostname',
-      description: 'GitHub Enterprise hostname (default: github.com)',
-      hasValue: true,
-    },
-    {
-      name: 'json',
-      description: 'Output as JSON (supported by all subcommands)',
-    },
-  ],
+  options: [{ name: 'hostname', hasValue: true }, { name: 'json' }],
   handler: async (args: ParsedArgs) => {
     const subcommand = args.args[0];
     const hostnameOpt = args.options['hostname'];

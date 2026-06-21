@@ -5,6 +5,7 @@ import { getBool, getString, posIntOption } from '../options.js';
 import {
   resolveRef,
   isGithubRef,
+  isLocalRef,
   refLabel,
   cloneCommandFor,
 } from '../routing.js';
@@ -13,6 +14,11 @@ import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 import { outlineSymbols } from './symbol-outline.js';
+import {
+  formatMaterializationHints,
+  materializeRemoteForCli,
+  withMaterializationHints,
+} from '../remote-local.js';
 
 interface TreeEntry {
   dir?: string;
@@ -274,59 +280,29 @@ function filterStructureResult(
 export const lsCommand: CLICommand = {
   name: 'ls',
   options: [
-    {
-      name: 'symbols',
-      description:
-        'Show a semantic symbol outline (LSP) instead of a tree. Local-only. Auto-enabled when the target is a file. For a directory, outlines source files (filter with --ext, cap with --limit/--depth).',
-    },
-    {
-      name: 'kind',
-      hasValue: true,
-      description:
-        'Outline mode: filter symbols by kind, e.g. function, class, method',
-    },
-    {
-      name: 'depth',
-      hasValue: true,
-      description: 'Recursion depth (1 = top level; raise to descend)',
-    },
-    {
-      name: 'branch',
-      hasValue: true,
-      description: 'Branch / ref for GitHub paths',
-    },
-    {
-      name: 'pattern',
-      hasValue: true,
-      description: 'Name filter — glob or substring, e.g. "*.ts"',
-    },
-    {
-      name: 'ext',
-      hasValue: true,
-      description: 'Comma-separated extension whitelist, e.g. ts,tsx',
-    },
-    {
-      name: 'sort',
-      hasValue: true,
-      description: 'Order: name (default), size, time, extension (local only)',
-    },
-    { name: 'reverse', description: 'Reverse the sort order (local only)' },
-    { name: 'files-only', description: 'List files only' },
-    { name: 'dirs-only', description: 'List directories only' },
-    { name: 'hidden', description: 'Include hidden dot-files (local only)' },
-    {
-      name: 'limit',
-      hasValue: true,
-      description: 'Cap entries discovered before pagination',
-    },
-    { name: 'page', hasValue: true, description: 'Result page' },
-    { name: 'page-size', hasValue: true, description: 'Entries per page' },
-    { name: 'json', description: 'Output raw JSON structure' },
+    { name: 'symbols' },
+    { name: 'kind', hasValue: true },
+    { name: 'depth', hasValue: true },
+    { name: 'branch', hasValue: true },
+    { name: 'repo', hasValue: true },
+    { name: 'force-refresh' },
+    { name: 'pattern', hasValue: true },
+    { name: 'ext', hasValue: true },
+    { name: 'sort', hasValue: true },
+    { name: 'reverse' },
+    { name: 'files-only' },
+    { name: 'dirs-only' },
+    { name: 'hidden' },
+    { name: 'limit', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'page-size', hasValue: true },
+    { name: 'json' },
   ],
   handler: async args => {
     const { options } = args;
     const target = args.args[0] ?? '';
     const branchOverride = getString(options, 'branch');
+    const repoOption = getString(options, 'repo');
     const rawDepth = getString(options, 'depth');
     const depthExplicit = rawDepth ? parseInt(rawDepth, 10) : undefined;
     const jsonOutput = getBool(options, 'json');
@@ -341,7 +317,7 @@ export const lsCommand: CLICommand = {
       process.exitCode = EXIT.USAGE;
     };
 
-    if (!target) {
+    if (!target && !repoOption) {
       if (jsonOutput) {
         console.log(
           JSON.stringify({
@@ -371,36 +347,131 @@ export const lsCommand: CLICommand = {
       return;
     }
 
-    const ref = resolveRef(target, branchOverride || undefined);
-    const label = refLabel(ref);
-    const isGh = isGithubRef(ref);
+    const ref = repoOption
+      ? undefined
+      : resolveRef(target, branchOverride || undefined);
+    const githubRef = ref && isGithubRef(ref) ? ref : undefined;
+    const localRef = ref && isLocalRef(ref) ? ref : undefined;
+    const label = repoOption
+      ? `${repoOption}${target ? `/${target}` : ''}`
+      : ref
+        ? refLabel(ref)
+        : (repoOption ?? '');
 
     // ── Outline mode ─────────────────────────────────────────────────────────
     // --symbols (explicit) or a local file target (implicit zoom-in) shows a
     // semantic symbol outline instead of a tree. Local-only — LSP can't run on
     // GitHub.
     const wantSymbols = getBool(options, 'symbols');
-    if (wantSymbols && isGithubRef(ref)) {
+    if (wantSymbols && githubRef) {
       fail(
         '--symbols is local-only — an LSP outline cannot run on GitHub. ' +
-          `Clone first: \`${cloneCommandFor(ref)}\`, then \`ls <local-path> --symbols\`.`
+          `Clone first: \`${cloneCommandFor(githubRef)}\`, then \`ls <local-path> --symbols\`.`
       );
       return;
     }
-    if (!isGh) {
-      const resolvedPath = path.resolve(ref.path);
+    if (repoOption) {
+      try {
+        const materialized = await materializeRemoteForCli({
+          repoRef: repoOption,
+          path: target || undefined,
+          branch: branchOverride || undefined,
+          forceRefresh: getBool(options, 'force-refresh') || undefined,
+          kind: target ? (wantSymbols ? 'file' : 'tree') : 'repo',
+        });
+        if (wantSymbols) {
+          if (!jsonOutput) {
+            process.stderr.write(
+              `  ${dim(`Outlining ${materialized.localPath} ...`)}\n`
+            );
+          }
+          await outlineSymbols(materialized.localPath, options, {
+            structured: withMaterializationHints(
+              { structuredContent: {} },
+              materialized
+            ).structuredContent as Record<string, unknown>,
+            text: formatMaterializationHints(materialized),
+          });
+          return;
+        }
+
+        if (!jsonOutput) {
+          process.stderr.write(
+            `  ${dim(`Loading ${materialized.localPath} ...`)}\n`
+          );
+        }
+        const structured = await fetchLocalTree(materialized.localPath, {
+          depth: depthExplicit,
+          pattern: getString(options, 'pattern') || undefined,
+          extensions: listOpt(getString(options, 'ext')),
+          hidden: getBool(options, 'hidden'),
+          sortBy,
+          reverse: getBool(options, 'reverse'),
+          filesOnly: getBool(options, 'files-only'),
+          directoriesOnly: getBool(options, 'dirs-only'),
+          limit: posIntOption(getString(options, 'limit')),
+          page: posIntOption(getString(options, 'page')),
+          itemsPerPage: posIntOption(getString(options, 'page-size')),
+        });
+        const treeFilters: TreeFilterOptions = {
+          pattern: getString(options, 'pattern') || undefined,
+          extensions: listOpt(getString(options, 'ext')),
+          filesOnly: getBool(options, 'files-only'),
+          directoriesOnly: getBool(options, 'dirs-only'),
+        };
+        const filteredStructured = filterStructureResult(
+          structured,
+          treeFilters
+        );
+        if (jsonOutput) {
+          console.log(
+            JSON.stringify(
+              withMaterializationHints(
+                { structuredContent: filteredStructured },
+                materialized
+              ).structuredContent,
+              null,
+              2
+            )
+          );
+          return;
+        }
+
+        const data = filteredStructured?.results?.[0]?.data as
+          | Record<string, unknown>
+          | undefined;
+        console.log(
+          '\n' +
+            renderTree(data) +
+            '\n' +
+            formatMaterializationHints(materialized) +
+            '\n'
+        );
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (jsonOutput) {
+          console.log(JSON.stringify({ success: false, error: msg }));
+        } else {
+          printCliError(msg);
+        }
+        process.exitCode = classifyToolErrorText(msg);
+      }
+      return;
+    }
+    if (localRef) {
+      const resolvedPath = path.resolve(localRef.path);
       const isFile =
         existsSync(resolvedPath) && statSync(resolvedPath).isFile();
       if (wantSymbols || isFile) {
         if (!jsonOutput) {
           process.stderr.write(`  ${dim(`Outlining ${label} ...`)}\n`);
         }
-        await outlineSymbols(ref.path, options);
+        await outlineSymbols(localRef.path, options);
         return;
       }
     }
 
-    if (isGh) {
+    if (githubRef) {
       const localOnly = LOCAL_ONLY.find(name => options[name] !== undefined);
       if (localOnly) {
         fail(
@@ -417,18 +488,18 @@ export const lsCommand: CLICommand = {
     try {
       let structured: LocalStructureResult | GithubStructureResult;
 
-      if (isGh) {
+      if (githubRef) {
         structured = await fetchGithubTree(
-          ref.owner,
-          ref.repo,
-          ref.subpath,
-          ref.branch,
+          githubRef.owner,
+          githubRef.repo,
+          githubRef.subpath,
+          githubRef.branch,
           depthExplicit,
           posIntOption(getString(options, 'page')),
           posIntOption(getString(options, 'page-size'))
         );
-      } else {
-        structured = await fetchLocalTree(ref.path, {
+      } else if (localRef) {
+        structured = await fetchLocalTree(localRef.path, {
           depth: depthExplicit,
           pattern: getString(options, 'pattern') || undefined,
           extensions: listOpt(getString(options, 'ext')),
@@ -441,6 +512,9 @@ export const lsCommand: CLICommand = {
           page: posIntOption(getString(options, 'page')),
           itemsPerPage: posIntOption(getString(options, 'page-size')),
         });
+      } else {
+        fail('Provide a path or GitHub reference.');
+        return;
       }
 
       const treeFilters: TreeFilterOptions = {

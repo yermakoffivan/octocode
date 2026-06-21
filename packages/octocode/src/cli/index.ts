@@ -111,8 +111,8 @@ function showVersion(): void {
 export async function runCLI(argv?: string[]): Promise<boolean> {
   maybeWarnAboutStaleBuild();
 
-  // Declare the CLI surface before any config is read: local tools are always
-  // enabled here (ENABLE_LOCAL is MCP-only) and clone defaults to enabled.
+  // Declare the CLI surface before any config is read: local and clone support
+  // default to enabled here, while still honoring explicit env/file disables.
   setRuntimeSurface('cli');
   invalidateConfigCache();
 
@@ -152,18 +152,15 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
         return true;
       }
 
-      // A registered command always has a core spec (enforced by the
-      // command-spec-coverage test), so the branch above serves every real
-      // command. This fallback only covers a command that exists but is
-      // undocumented in core — render the minimal spec we can synthesize.
       const { loadCommand } = await loadCommandsModule();
       const liveCommand = await loadCommand(args.command);
       if (liveCommand) {
-        showCommandHelp({
-          name: liveCommand.name,
-          description: '',
-          options: liveCommand.options,
-        });
+        console.log();
+        console.log(
+          `  Missing octocode-core command spec for: ${liveCommand.name}`
+        );
+        console.log();
+        process.exitCode = EXIT.TOOL;
         return true;
       }
 

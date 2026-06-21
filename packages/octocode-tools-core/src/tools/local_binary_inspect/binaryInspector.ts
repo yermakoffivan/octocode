@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { join, basename } from 'node:path';
+import { join, basename, dirname, resolve, sep } from 'node:path';
 import { securityRegistry } from '@octocodeai/octocode-engine/registry';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { paths } from '../../shared/paths.js';
@@ -26,6 +26,35 @@ function timestampForPath(date = new Date()): string {
 
 function unpackDestination(path: string): string {
   return join(paths.unzip, `${basename(path)}-${timestampForPath()}`);
+}
+
+function derivedTextRoot(path: string, mode: string): string {
+  return join(paths.binary, `${basename(path)}-${mode}-${timestampForPath()}`);
+}
+
+function safeRelativeOutputPath(name: string): string {
+  const normalized = name
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(segment => segment && segment !== '.' && segment !== '..')
+    .join('/');
+  return normalized || 'content.txt';
+}
+
+async function writeDerivedTextFile(
+  sourcePath: string,
+  mode: string,
+  suggestedName: string,
+  content: string
+): Promise<string> {
+  const root = resolve(derivedTextRoot(sourcePath, mode));
+  const outputPath = resolve(join(root, safeRelativeOutputPath(suggestedName)));
+  if (!outputPath.startsWith(root + sep) && outputPath !== root) {
+    throw new Error('Derived binary output path escaped its tmp directory.');
+  }
+  await fs.mkdir(dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, content, 'utf-8');
+  return outputPath;
 }
 
 // The container-lane backends shell out to external CLIs that are not in the
@@ -220,6 +249,12 @@ async function handleExtract(path: string, query: BinaryInspectQuery) {
   if (!content) {
     return createErrorResult('Entry is empty', query);
   }
+  const localPath = await writeDerivedTextFile(
+    path,
+    'extract',
+    archiveFile,
+    content
+  );
 
   if (query.matchString) {
     const filtered = filterByMatchString(
@@ -243,6 +278,12 @@ async function handleExtract(path: string, query: BinaryInspectQuery) {
     query.charLength,
     defaultLimit
   );
+  const hints = [
+    `Extracted entry saved to ${localPath} — use localGetFileContent or localSearchCode on that file.`,
+    ...(paginated.nextCharOffset !== undefined
+      ? [`charOffset=${paginated.nextCharOffset}`]
+      : []),
+  ];
 
   return {
     status: 'success' as const,
@@ -250,12 +291,11 @@ async function handleExtract(path: string, query: BinaryInspectQuery) {
     path,
     archiveFile,
     backend: result.commandUsed,
+    localPath,
     content: paginated.content,
     contentLength: content.length,
     isPartial: paginated.isPartial,
-    ...(paginated.nextCharOffset !== undefined && {
-      hints: [`charOffset=${paginated.nextCharOffset}`],
-    }),
+    hints,
   };
 }
 
@@ -275,6 +315,12 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
   if (!content) {
     return createErrorResult('Decompressed file is empty', query);
   }
+  const localPath = await writeDerivedTextFile(
+    path,
+    'decompress',
+    `${basename(path)}.decompressed.txt`,
+    content
+  );
 
   if (query.matchString) {
     const filtered = filterByMatchString(
@@ -298,6 +344,12 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
     query.charLength,
     defaultLimit
   );
+  const hints = [
+    `Decompressed content saved to ${localPath} — use localGetFileContent or localSearchCode on that file.`,
+    ...(paginated.nextCharOffset !== undefined
+      ? [`charOffset=${paginated.nextCharOffset}`]
+      : []),
+  ];
 
   return {
     status: 'success' as const,
@@ -305,16 +357,15 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
     path,
     format: result.format,
     backend: result.backend,
+    localPath,
     content: paginated.content,
     contentLength: content.length,
     isPartial: paginated.isPartial,
-    ...(paginated.nextCharOffset !== undefined && {
-      hints: [`charOffset=${paginated.nextCharOffset}`],
-    }),
+    hints,
   };
 }
 
-function handleStrings(path: string, query: BinaryInspectQuery) {
+async function handleStrings(path: string, query: BinaryInspectQuery) {
   const minLength = query.minLength ?? DEFAULT_MIN_STRING_LENGTH;
   const includeOffsets = query.includeOffsets ?? false;
   const scanOffset = query.scanOffset ?? 0;
@@ -335,6 +386,14 @@ function handleStrings(path: string, query: BinaryInspectQuery) {
   //    nothing past a fixed cap is discarded. Exhaust charOffset first, then
   //    follow nextScanOffset to keep scanning.
   const content = (result.strings ?? []).join('\n');
+  const localPath = content
+    ? await writeDerivedTextFile(
+        path,
+        'strings',
+        `${basename(path)}.strings.txt`,
+        content
+      )
+    : undefined;
   const defaultLimit = getOutputCharLimit();
   const paginated = paginateContent(
     content,
@@ -346,6 +405,11 @@ function handleStrings(path: string, query: BinaryInspectQuery) {
   const hints: string[] = [];
   if (paginated.nextCharOffset !== undefined) {
     hints.push(`charOffset=${paginated.nextCharOffset}`);
+  }
+  if (localPath) {
+    hints.push(
+      `Strings window saved to ${localPath} — use localGetFileContent or localSearchCode on that file.`
+    );
   }
   // Only advance the scan window once this window's strings are fully paged out,
   // so the two cursors don't fight.
@@ -361,6 +425,7 @@ function handleStrings(path: string, query: BinaryInspectQuery) {
     mode: 'strings' as const,
     path,
     content: paginated.content,
+    ...(localPath ? { localPath } : {}),
     contentLength: content.length,
     totalFound: result.totalFound ?? 0,
     isPartial: paginated.isPartial,

@@ -1504,19 +1504,19 @@ __metadata:
 
 "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core":
   version: 16.5.0
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=6c2c42&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=45ada9&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/2d39b0a3ca3e6c213217c705fc63e1bb7cb69120ba3a9422d027772c35b7604158fece91d37f2e66e97e1a5ffcc66b7769932f8e27af378702886eba70335e0c
+  checksum: 10c0/9938262c9cd933d8172d27d7f467bc3a368085959169f5d6bd6847cd63a5c97a0c88447ef65776cfd6c3d3dd0ab28ccdfa1754fff6370cd896e1a5bac38f9a04
   languageName: node
   linkType: hard
 
 "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::locator=octocode%40workspace%3Apackages%2Foctocode":
   version: 16.5.0
-  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=6c2c42&locator=octocode%40workspace%3Apackages%2Foctocode"
+  resolution: "@octocodeai/octocode-core@file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core#///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core::hash=45ada9&locator=octocode%40workspace%3Apackages%2Foctocode"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/2d39b0a3ca3e6c213217c705fc63e1bb7cb69120ba3a9422d027772c35b7604158fece91d37f2e66e97e1a5ffcc66b7769932f8e27af378702886eba70335e0c
+  checksum: 10c0/9938262c9cd933d8172d27d7f467bc3a368085959169f5d6bd6847cd63a5c97a0c88447ef65776cfd6c3d3dd0ab28ccdfa1754fff6370cd896e1a5bac38f9a04
   languageName: node
   linkType: hard
 

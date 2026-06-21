@@ -20,6 +20,29 @@ function run(args: string[], options: Record<string, string | boolean> = {}) {
   return findFilesCommand.handler(parsed);
 }
 
+function materializedTreeEnvelope(
+  localPath = '/tmp/octocode/tmp/tree/facebook/react/main/packages/react'
+) {
+  return {
+    isError: false,
+    content: [],
+    structuredContent: {
+      results: [
+        {
+          id: 'facebook/react',
+          directories: [
+            {
+              localPath,
+              repoRoot: '/tmp/octocode/tmp/tree/facebook/react/main',
+              resolvedBranch: 'main',
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 describe('find command', () => {
   beforeEach(() => {
     executeDirectTool.mockReset();
@@ -68,5 +91,56 @@ describe('find command', () => {
       }
     ).queries[0];
     expect(query.mode).toBe('discovery');
+  });
+
+  it('--repo materializes remote content and includes remoteLocal metadata for composite output', async () => {
+    executeDirectTool.mockResolvedValueOnce(materializedTreeEnvelope());
+
+    await run(['useState'], {
+      repo: 'facebook/react',
+      path: 'packages/react',
+      search: 'both',
+      json: true,
+    });
+
+    expect(executeDirectTool).toHaveBeenCalledTimes(3);
+    expect(executeDirectTool.mock.calls[0]?.[0]).toBe('ghGetFileContent');
+    expect(executeDirectTool.mock.calls[0]?.[1]).toMatchObject({
+      queries: [
+        {
+          owner: 'facebook',
+          repo: 'react',
+          path: 'packages/react',
+          type: 'directory',
+        },
+      ],
+    });
+    expect(executeDirectTool.mock.calls[1]?.[0]).toBe('localFindFiles');
+    expect(executeDirectTool.mock.calls[1]?.[1]).toMatchObject({
+      queries: [
+        {
+          path: '/tmp/octocode/tmp/tree/facebook/react/main/packages/react',
+        },
+      ],
+    });
+    expect(executeDirectTool.mock.calls[2]?.[0]).toBe('localSearchCode');
+    expect(executeDirectTool.mock.calls[2]?.[1]).toMatchObject({
+      queries: [
+        {
+          path: '/tmp/octocode/tmp/tree/facebook/react/main/packages/react',
+          keywords: 'useState',
+        },
+      ],
+    });
+
+    const output = vi.mocked(console.log).mock.calls.flat().join('\n');
+    const parsed = JSON.parse(output) as {
+      remoteLocal?: { localPath?: string };
+      hints?: string[];
+    };
+    expect(parsed.remoteLocal?.localPath).toBe(
+      '/tmp/octocode/tmp/tree/facebook/react/main/packages/react'
+    );
+    expect(parsed.hints?.join('\n')).toContain('localSearchCode');
   });
 });

@@ -5,6 +5,7 @@ import { c, dim } from '../../utils/colors.js';
 import { EXIT } from '../exit-codes.js';
 import { executeDirectTool } from '@octocodeai/octocode-tools-core/direct';
 import {
+  getDirectToolText,
   markDirectToolFailure,
   printDirectToolResult,
 } from './direct-tool-output.js';
@@ -21,17 +22,9 @@ function cloneLocalPath(structuredContent: unknown): string | undefined {
 export const cloneCommand: CLICommand = {
   name: 'clone',
   options: [
-    {
-      name: 'branch',
-      hasValue: true,
-      description:
-        'Branch, tag, or SHA to clone (overrides @branch in the ref)',
-    },
-    {
-      name: 'force-refresh',
-      description: 'Re-clone from GitHub, bypassing the 24h cache',
-    },
-    { name: 'json', description: 'Output raw JSON results' },
+    { name: 'branch', hasValue: true },
+    { name: 'force-refresh' },
+    { name: 'json' },
   ],
   handler: async args => {
     const target = args.args[0] ?? '';
@@ -99,6 +92,15 @@ export const cloneCommand: CLICommand = {
               `    ${c('cyan', `ls ${localPath}/<file> --symbols`)}  ${dim('# semantic outline')}\n`
           );
         }
+      }
+      if (
+        result.isError &&
+        ref.subpath &&
+        /is not a directory/i.test(getDirectToolText(result))
+      ) {
+        console.error(
+          `\n  ${c('cyan', '→')} ${dim(`“${ref.subpath}” is a file, but clone checks out directories. For a single file use: cat ${refLabel(ref)}  (or: cache fetch ${ref.owner}/${ref.repo} ${ref.subpath})`)}\n`
+        );
       }
       markDirectToolFailure(result);
     } catch (caught) {

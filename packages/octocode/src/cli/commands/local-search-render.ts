@@ -79,7 +79,7 @@ export function renderLocalResults(
       const metavars = formatMetavars(m.metavars);
       const metaSuffix = metavars ? ` ${dim(metavars)}` : '';
       if (options.valuesOnly) {
-        const snippet = (m.value ?? '').trim().slice(0, 120);
+        const snippet = (m.value ?? '').trim();
         const prefix = m.count !== undefined ? `${m.count}x  ` : '';
         lines.push(`  ${prefix}${snippet}${metaSuffix}`);
         return;
@@ -96,7 +96,7 @@ export function renderLocalResults(
         const startLine = m.line - before;
         physical.forEach((text, k) => {
           const ln = startLine + k;
-          const body = text.replace(/\s+$/, '').slice(0, 120);
+          const body = text.replace(/\s+$/, '');
           if (ln === m.line) {
             lines.push(`    ${c('yellow', `L${ln}:`)} ${body}${metaSuffix}`);
           } else {
@@ -105,7 +105,7 @@ export function renderLocalResults(
         });
       } else {
         const lineNum = m.line != null ? m.line : '?';
-        const snippet = (m.value ?? '').trim().slice(0, 120);
+        const snippet = (m.value ?? '').trim();
         lines.push(
           `    ${c('yellow', `L${lineNum}:`)} ${snippet}${metaSuffix}`
         );

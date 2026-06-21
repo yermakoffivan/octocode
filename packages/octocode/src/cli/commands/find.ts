@@ -14,6 +14,13 @@ import {
   markDirectToolFailure,
   printDirectToolResult,
 } from './direct-tool-output.js';
+import {
+  formatMaterializationHints,
+  isFullRepoOption,
+  materializeRemoteForCli,
+  type RemoteMaterialization,
+  withMaterializationHints,
+} from '../remote-local.js';
 
 type SourceMode = 'auto' | 'local' | 'github';
 type SearchMode = 'path' | 'content' | 'both';
@@ -63,6 +70,8 @@ const OPTION_NAMES = new Set([
   'verbose',
   'owner',
   'repo',
+  'branch',
+  'force-refresh',
   'filename',
   'name',
   'path-pattern',
@@ -156,7 +165,7 @@ const LOCAL_CONTENT_ONLY_OPTIONS = new Set([
   'count-matches',
 ]);
 
-const GITHUB_ONLY_OPTIONS = new Set(['owner', 'repo', 'filename', 'verbose']);
+const GITHUB_ONLY_OPTIONS = new Set(['owner', 'filename', 'verbose']);
 const SHARED_LOCAL_OPTIONS = new Set(['exclude-dir', 'sort']);
 
 function listOption(value: string): string[] | undefined {
@@ -528,23 +537,23 @@ async function runGithubCall(
 
 function printComposite(
   outputs: Array<{ label: string; toolName: string; result: DirectToolResult }>,
-  jsonOutput: boolean
+  jsonOutput: boolean,
+  materialized?: RemoteMaterialization
 ): void {
   if (jsonOutput) {
-    console.log(
-      JSON.stringify(
-        {
-          results: outputs.map(output => ({
-            search: output.label,
-            tool: output.toolName,
-            isError: Boolean(output.result.isError),
-            structuredContent: output.result.structuredContent,
-          })),
-        },
-        null,
-        2
-      )
-    );
+    const payload = {
+      results: outputs.map(output => ({
+        search: output.label,
+        tool: output.toolName,
+        isError: Boolean(output.result.isError),
+        structuredContent: output.result.structuredContent,
+      })),
+    };
+    const output = materialized
+      ? withMaterializationHints({ structuredContent: payload }, materialized)
+          .structuredContent
+      : payload;
+    console.log(JSON.stringify(output, null, 2));
     return;
   }
 
@@ -552,6 +561,9 @@ function printComposite(
     console.log();
     console.log(`  ${bold(output.label)}`);
     console.log(getDirectToolText(output.result));
+  }
+  if (materialized) {
+    console.log(formatMaterializationHints(materialized));
   }
   console.log();
 }
@@ -604,180 +616,64 @@ function printGithubPathFallbackHint(
 export const findFilesCommand: CLICommand = {
   name: 'find',
   options: [
-    {
-      name: 'source',
-      hasValue: true,
-      description:
-        'Source selector: auto routes by target, local forces local tools, github forces GitHub search',
-    },
-    {
-      name: 'search',
-      hasValue: true,
-      description:
-        'Search mode: path finds filenames/paths, content finds text matches, both runs both modes',
-    },
-    {
-      name: 'ext',
-      hasValue: true,
-      description:
-        'Comma-separated extensions without dots; GitHub expands them into bulk queries',
-    },
-    {
-      name: 'path',
-      hasValue: true,
-      description: 'Local search root override or GitHub repo subpath',
-    },
-    {
-      name: 'limit',
-      hasValue: true,
-      description: 'Maximum results per underlying tool call',
-    },
-    {
-      name: 'page',
-      hasValue: true,
-      description: 'Result page for paginated local or GitHub results',
-    },
-    {
-      name: 'page-size',
-      hasValue: true,
-      description: 'Results per page, passed to local tools',
-    },
-    { name: 'owner', hasValue: true, description: 'GitHub owner' },
-    { name: 'repo', hasValue: true, description: 'GitHub repository' },
-    { name: 'filename', hasValue: true, description: 'GitHub filename filter' },
-    { name: 'name', hasValue: true, description: 'Local find name pattern(s)' },
-    {
-      name: 'path-pattern',
-      hasValue: true,
-      description: 'Local path pattern filter',
-    },
-    { name: 'regex', hasValue: true, description: 'Local find regex' },
-    { name: 'entry', hasValue: true, description: 'Local entry type: f or d' },
-    { name: 'min-depth', hasValue: true, description: 'Local minimum depth' },
-    { name: 'max-depth', hasValue: true, description: 'Local maximum depth' },
-    { name: 'empty', description: 'Find empty local files/directories' },
-    {
-      name: 'modified-within',
-      hasValue: true,
-      description: 'Local modified-within filter',
-    },
-    {
-      name: 'modified-before',
-      hasValue: true,
-      description: 'Local modified-before filter',
-    },
-    {
-      name: 'accessed-within',
-      hasValue: true,
-      description: 'Local accessed-within filter',
-    },
-    {
-      name: 'size-greater',
-      hasValue: true,
-      description: 'Local size greater-than filter',
-    },
-    {
-      name: 'size-less',
-      hasValue: true,
-      description: 'Local size less-than filter',
-    },
-    {
-      name: 'permissions',
-      hasValue: true,
-      description: 'Local permissions filter',
-    },
-    { name: 'executable', description: 'Find executable local files' },
-    { name: 'readable', description: 'Find readable local files' },
-    { name: 'writable', description: 'Find writable local files' },
-    {
-      name: 'exclude-dir',
-      hasValue: true,
-      description: 'Local directories to exclude',
-    },
-    {
-      name: 'sort',
-      hasValue: true,
-      description:
-        'Local sort field: path/modified for both; name/size also for path; accessed/created also for content',
-    },
-    {
-      name: 'include',
-      hasValue: true,
-      description: 'Local content include globs',
-    },
-    {
-      name: 'exclude',
-      hasValue: true,
-      description: 'Local content exclude globs',
-    },
-    {
-      name: 'mode',
-      hasValue: true,
-      description: 'Local content mode: paginated, discovery, detailed',
-    },
-    { name: 'fixed-string', description: 'Use fixed-string content search' },
-    { name: 'perl-regex', description: 'Use Perl-compatible regex search' },
-    {
-      name: 'case-insensitive',
-      description: 'Case-insensitive content search',
-    },
-    { name: 'case-sensitive', description: 'Case-sensitive content search' },
-    { name: 'whole-word', description: 'Match whole words in content search' },
-    { name: 'invert-match', description: 'Invert local content matches' },
-    { name: 'hidden', description: 'Search hidden local files' },
-    {
-      name: 'no-ignore',
-      description: 'Ignore ignore files during local search',
-    },
-    { name: 'files-only', description: 'Return matching file paths only' },
-    {
-      name: 'files-without-match',
-      description: 'Return files without a content match',
-    },
-    {
-      name: 'context-lines',
-      hasValue: true,
-      description: 'Context lines around content matches',
-    },
-    {
-      name: 'match-length',
-      hasValue: true,
-      description: 'Maximum match text length',
-    },
-    {
-      name: 'max-matches-per-file',
-      hasValue: true,
-      description: 'Maximum matches per file',
-    },
-    {
-      name: 'max-files',
-      hasValue: true,
-      description: 'Maximum local content files',
-    },
-    {
-      name: 'match-page',
-      hasValue: true,
-      description: 'Page within matches for a file',
-    },
-    { name: 'multiline', description: 'Enable multiline local search' },
-    {
-      name: 'multiline-dotall',
-      description: 'Make dot match newlines in multiline search',
-    },
-    { name: 'sort-reverse', description: 'Reverse local content sort' },
-    { name: 'count-lines', description: 'Count matching lines per file' },
-    { name: 'count-matches', description: 'Count matches per file' },
-    { name: 'details', description: 'Show local file metadata' },
-    {
-      name: 'show-modified',
-      description: 'Show local file modification timestamps',
-    },
-    { name: 'verbose', description: 'Verbose GitHub search results' },
-    {
-      name: 'concise',
-      description: 'Flat path list, no snippets — cheapest orientation',
-    },
-    { name: 'json', description: 'Output raw JSON results' },
+    { name: 'source', hasValue: true },
+    { name: 'search', hasValue: true },
+    { name: 'ext', hasValue: true },
+    { name: 'path', hasValue: true },
+    { name: 'limit', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'page-size', hasValue: true },
+    { name: 'owner', hasValue: true },
+    { name: 'repo', hasValue: true },
+    { name: 'branch', hasValue: true },
+    { name: 'force-refresh' },
+    { name: 'filename', hasValue: true },
+    { name: 'name', hasValue: true },
+    { name: 'path-pattern', hasValue: true },
+    { name: 'regex', hasValue: true },
+    { name: 'entry', hasValue: true },
+    { name: 'min-depth', hasValue: true },
+    { name: 'max-depth', hasValue: true },
+    { name: 'empty' },
+    { name: 'modified-within', hasValue: true },
+    { name: 'modified-before', hasValue: true },
+    { name: 'accessed-within', hasValue: true },
+    { name: 'size-greater', hasValue: true },
+    { name: 'size-less', hasValue: true },
+    { name: 'permissions', hasValue: true },
+    { name: 'executable' },
+    { name: 'readable' },
+    { name: 'writable' },
+    { name: 'exclude-dir', hasValue: true },
+    { name: 'sort', hasValue: true },
+    { name: 'include', hasValue: true },
+    { name: 'exclude', hasValue: true },
+    { name: 'mode', hasValue: true },
+    { name: 'fixed-string' },
+    { name: 'perl-regex' },
+    { name: 'case-insensitive' },
+    { name: 'case-sensitive' },
+    { name: 'whole-word' },
+    { name: 'invert-match' },
+    { name: 'hidden' },
+    { name: 'no-ignore' },
+    { name: 'files-only' },
+    { name: 'files-without-match' },
+    { name: 'context-lines', hasValue: true },
+    { name: 'match-length', hasValue: true },
+    { name: 'max-matches-per-file', hasValue: true },
+    { name: 'max-files', hasValue: true },
+    { name: 'match-page', hasValue: true },
+    { name: 'multiline' },
+    { name: 'multiline-dotall' },
+    { name: 'sort-reverse' },
+    { name: 'count-lines' },
+    { name: 'count-matches' },
+    { name: 'details' },
+    { name: 'show-modified' },
+    { name: 'verbose' },
+    { name: 'concise' },
+    { name: 'json' },
   ],
   handler: async args => {
     const jsonOutput = getBool(args.options, 'json');
@@ -816,11 +712,16 @@ export const findFilesCommand: CLICommand = {
     const hasGithubPair = Boolean(
       getString(args.options, 'owner') && getString(args.options, 'repo')
     );
+    const repoOption = getString(args.options, 'repo');
+    const materializeRepo = isFullRepoOption({
+      owner: getString(args.options, 'owner') || undefined,
+      repo: repoOption || undefined,
+    });
     const optionError = validateOptions(
       args.options,
       source,
       search,
-      targetIsGithub || hasGithubPair
+      targetIsGithub || (hasGithubPair && !materializeRepo)
     );
     if (optionError) {
       error(optionError, jsonOutput);
@@ -833,7 +734,10 @@ export const findFilesCommand: CLICommand = {
       return;
     }
 
-    if (source === 'local' && (targetIsGithub || hasGithubPair)) {
+    if (
+      source === 'local' &&
+      (targetIsGithub || (hasGithubPair && !materializeRepo))
+    ) {
       error(
         'Cannot use --source local with a GitHub reference target.',
         jsonOutput
@@ -843,7 +747,7 @@ export const findFilesCommand: CLICommand = {
 
     const effectiveSource: Exclude<SourceMode, 'auto'> =
       source === 'auto'
-        ? targetIsGithub || hasGithubPair
+        ? targetIsGithub || (hasGithubPair && !materializeRepo)
           ? 'github'
           : 'local'
         : source;
@@ -855,9 +759,56 @@ export const findFilesCommand: CLICommand = {
     }> = [];
 
     let githubTargetForHints: { owner: string; repo: string } | undefined;
+    let materializedRemote: RemoteMaterialization | undefined;
 
     try {
-      if (effectiveSource === 'github') {
+      if (materializeRepo) {
+        if (source === 'github') {
+          error(
+            '--repo owner/repo[@ref] materializes locally; omit --source github or use --owner/--repo for GitHub code search.',
+            jsonOutput
+          );
+          return;
+        }
+        materializedRemote = await materializeRemoteForCli({
+          repoRef: repoOption,
+          path: getString(args.options, 'path') || targetArg || undefined,
+          branch: getString(args.options, 'branch') || undefined,
+          forceRefresh: getBool(args.options, 'force-refresh') || undefined,
+          kind: getString(args.options, 'path') || targetArg ? 'tree' : 'repo',
+        });
+        if (!jsonOutput) {
+          process.stderr.write(
+            `  ${dim(`Searching files in ${materializedRemote.localPath} ...`)}\n`
+          );
+        }
+
+        if (search === 'path' || search === 'both') {
+          const call = {
+            label: 'Local path matches',
+            toolName: 'localFindFiles',
+            query: buildLocalFindQuery(
+              query,
+              materializedRemote.localPath,
+              args.options
+            ),
+          };
+          outputs.push({ ...call, result: await runCall(call) });
+        }
+
+        if (search === 'content' || search === 'both') {
+          const call = {
+            label: 'Local content matches',
+            toolName: 'localSearchCode',
+            query: buildLocalSearchQuery(
+              query,
+              materializedRemote.localPath,
+              args.options
+            ),
+          };
+          outputs.push({ ...call, result: await runCall(call) });
+        }
+      } else if (effectiveSource === 'github') {
         const target = resolveGithubTarget({
           target: targetArg,
           owner: getString(args.options, 'owner') || undefined,
@@ -942,12 +893,22 @@ export const findFilesCommand: CLICommand = {
         }
       }
 
-      if (getBool(args.options, 'concise') && effectiveSource === 'local') {
+      if (
+        getBool(args.options, 'concise') &&
+        effectiveSource === 'local' &&
+        !jsonOutput
+      ) {
         printLocalConcise(outputs);
+        if (materializedRemote) {
+          console.log(formatMaterializationHints(materializedRemote));
+        }
       } else if (outputs.length === 1) {
-        printDirectToolResult(outputs[0]!.result, jsonOutput);
+        const outputResult = materializedRemote
+          ? withMaterializationHints(outputs[0]!.result, materializedRemote)
+          : outputs[0]!.result;
+        printDirectToolResult(outputResult, jsonOutput);
       } else {
-        printComposite(outputs, jsonOutput);
+        printComposite(outputs, jsonOutput, materializedRemote);
       }
       if (!jsonOutput) {
         printGithubPathFallbackHint(outputs, githubTargetForHints);

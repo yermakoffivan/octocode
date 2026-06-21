@@ -35,8 +35,6 @@ struct RgMatchData {
     path: RgTextPath,
     lines: RgTextLines,
     line_number: u32,
-    #[allow(dead_code)]
-    absolute_offset: u64,
     submatches: Vec<RgSubmatch>,
 }
 
@@ -45,8 +43,6 @@ struct RgContextData {
     path: RgTextPath,
     lines: RgTextLines,
     line_number: u32,
-    #[allow(dead_code)]
-    absolute_offset: u64,
 }
 
 #[derive(Deserialize, Debug)]

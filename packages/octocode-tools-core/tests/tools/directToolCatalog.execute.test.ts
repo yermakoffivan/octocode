@@ -22,7 +22,7 @@ describe('executeDirectTool - invalid input handling (finding 3)', () => {
     cleanup();
   });
 
-  it('rejects a local tool when ENABLE_LOCAL is false (CLI/direct gate)', async () => {
+  it('rejects a local tool when ENABLE_LOCAL is false', async () => {
     process.env.ENABLE_LOCAL = 'false';
     cleanup(); // invalidate the cached config so the new env is read
 
@@ -70,7 +70,9 @@ describe('executeDirectTool - invalid input handling (finding 3)', () => {
   });
 
   it('rejects ghCloneRepo when ENABLE_CLONE is false', async () => {
+    process.env.ENABLE_LOCAL = 'true';
     process.env.ENABLE_CLONE = 'false';
+    cleanup();
 
     const result = await executeDirectTool(
       STATIC_TOOL_NAMES.GITHUB_CLONE_REPO,
@@ -98,5 +100,34 @@ describe('executeDirectTool - invalid input handling (finding 3)', () => {
       | undefined;
     expect(structured?.error?.code).toBe('cloneDisabled');
     expect(structured?.error?.message).toContain('ENABLE_CLONE=true');
+  });
+
+  it('rejects ghGetFileContent directory materialization when ENABLE_CLONE is false', async () => {
+    process.env.ENABLE_LOCAL = 'true';
+    process.env.ENABLE_CLONE = 'false';
+    cleanup();
+
+    const result = await executeDirectTool(
+      STATIC_TOOL_NAMES.GITHUB_FETCH_CONTENT,
+      {
+        queries: [
+          {
+            owner: 'octocat',
+            repo: 'Hello-World',
+            path: 'src',
+            type: 'directory',
+            mainResearchGoal: 'Verify directory fetch clone gate',
+            researchGoal:
+              'Ensure directory fetch requires clone support before provider work',
+            reasoning: 'Regression test for ghGetFileContent directory gate',
+          },
+        ],
+      }
+    );
+
+    expect(result.isError).toBe(true);
+    const text = JSON.stringify(result.structuredContent);
+    expect(text).toContain('Directory fetch requires local clone support');
+    expect(text).toContain('ENABLE_CLONE=true');
   });
 });

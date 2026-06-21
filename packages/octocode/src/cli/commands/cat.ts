@@ -14,6 +14,10 @@ import {
   markDirectToolFailure,
   printDirectToolResult,
 } from './direct-tool-output.js';
+import {
+  materializeRemoteForCli,
+  withMaterializationHints,
+} from '../remote-local.js';
 
 type MinifyMode = 'standard' | 'symbols' | 'none';
 
@@ -40,6 +44,7 @@ const OPTION_NAMES = new Set([
   'full-content',
   'force-refresh',
   'content-type',
+  'repo',
 ]);
 
 function reportUsage(message: string, jsonOutput: boolean): void {
@@ -173,6 +178,32 @@ function extractRawContent(result: DirectToolResult): string | undefined {
   return typeof content === 'string' ? content : undefined;
 }
 
+type ContentPagination = {
+  readonly hasMore?: boolean;
+  readonly charOffset?: number;
+  readonly charLength?: number;
+  readonly currentPage?: number;
+  readonly totalPages?: number;
+};
+
+/**
+ * Extract the content pagination block. Local results carry it at
+ * `data.pagination`; GitHub file results nest it under `data.files[0]`.
+ */
+function extractContentPagination(
+  result: DirectToolResult
+): ContentPagination | undefined {
+  const data = (
+    result.structuredContent as { results?: Array<{ data?: unknown }> }
+  )?.results?.[0]?.data;
+  const filePagination = (
+    data as { files?: Array<{ pagination?: ContentPagination }> }
+  )?.files?.[0]?.pagination;
+  return (
+    filePagination ?? (data as { pagination?: ContentPagination })?.pagination
+  );
+}
+
 function printRawContent(result: DirectToolResult): boolean {
   const content = extractRawContent(result);
   if (content === undefined) {
@@ -188,79 +219,31 @@ function printRawContent(result: DirectToolResult): boolean {
 export const catCommand: CLICommand = {
   name: 'cat',
   options: [
-    {
-      name: 'raw',
-      description:
-        'Print only file content, no YAML envelope; implies --mode none unless --mode is set',
-    },
-    {
-      name: 'mode',
-      hasValue: true,
-      description:
-        'Minification mode: standard for readable code, symbols for outline, none for exact text',
-    },
-    {
-      name: 'branch',
-      hasValue: true,
-      description: 'Branch or ref for GitHub paths',
-    },
-    {
-      name: 'match-string',
-      hasValue: true,
-      description: 'Return slices matching this string',
-    },
-    {
-      name: 'match-regex',
-      description: 'Treat --match-string as a regex',
-    },
-    {
-      name: 'match-case-sensitive',
-      description: 'Match string case-sensitively',
-    },
-    { name: 'start-line', hasValue: true, description: 'First line to return' },
-    { name: 'end-line', hasValue: true, description: 'Last line to return' },
-    {
-      name: 'context-lines',
-      hasValue: true,
-      description: 'Context around match-string slices',
-    },
-    {
-      name: 'page-size',
-      hasValue: true,
-      description: 'Characters per page',
-    },
-    {
-      name: 'page',
-      hasValue: true,
-      description: 'Page number when using --page-size',
-    },
-    {
-      name: 'char-offset',
-      hasValue: true,
-      description: 'Character offset for content pagination',
-    },
-    {
-      name: 'char-length',
-      hasValue: true,
-      description: 'Character length for content pagination',
-    },
-    {
-      name: 'full-content',
-      description: 'Return the whole file instead of a page or match slice',
-    },
-    {
-      name: 'content-type',
-      hasValue: true,
-      description: 'GitHub content type: file or directory',
-    },
-    { name: 'force-refresh', description: 'Bypass GitHub cache' },
-    { name: 'json', description: 'Output raw JSON results' },
+    { name: 'raw' },
+    { name: 'mode', hasValue: true },
+    { name: 'branch', hasValue: true },
+    { name: 'repo', hasValue: true },
+    { name: 'match-string', hasValue: true },
+    { name: 'match-regex' },
+    { name: 'match-case-sensitive' },
+    { name: 'start-line', hasValue: true },
+    { name: 'end-line', hasValue: true },
+    { name: 'context-lines', hasValue: true },
+    { name: 'page-size', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'char-offset', hasValue: true },
+    { name: 'char-length', hasValue: true },
+    { name: 'full-content' },
+    { name: 'content-type', hasValue: true },
+    { name: 'force-refresh' },
+    { name: 'json' },
   ],
   handler: async args => {
     const target = args.args[0] ?? '';
     const jsonOutput = getBool(args.options, 'json');
     const rawOutput = getBool(args.options, 'raw');
     const branchOverride = getString(args.options, 'branch');
+    const repoOption = getString(args.options, 'repo');
 
     if (!target) {
       reportUsage('Provide a file path or GitHub reference.', jsonOutput);
@@ -268,7 +251,10 @@ export const catCommand: CLICommand = {
     }
 
     const ref = resolveRef(target, branchOverride || undefined);
-    const optionError = validateOptions(args.options, isGithubRef(ref));
+    const optionError = validateOptions(
+      args.options,
+      Boolean(repoOption) || isGithubRef(ref)
+    );
     if (optionError) {
       reportUsage(optionError, jsonOutput);
       return;
@@ -279,32 +265,51 @@ export const catCommand: CLICommand = {
     }
 
     try {
-      const toolName = isGithubRef(ref)
-        ? 'ghGetFileContent'
-        : 'localGetFileContent';
-      const query = isGithubRef(ref)
-        ? {
-            ...buildSharedQuery(ref.subpath || '.', args.options),
-            owner: ref.owner,
-            repo: ref.repo,
-            branch: ref.branch,
+      const materialized = repoOption
+        ? await materializeRemoteForCli({
+            repoRef: repoOption,
+            path: target,
+            branch: branchOverride || undefined,
             forceRefresh: getBool(args.options, 'force-refresh') || undefined,
-            type: getString(args.options, 'content-type') || undefined,
-            mainResearchGoal: 'Fetch GitHub file content',
-            researchGoal: `Read ${refLabel(ref)}`,
-            reasoning: 'CLI cat command',
+            kind: 'file',
+          })
+        : undefined;
+      const toolName = materialized
+        ? 'localGetFileContent'
+        : isGithubRef(ref)
+          ? 'ghGetFileContent'
+          : 'localGetFileContent';
+      const query = materialized
+        ? {
+            ...buildSharedQuery(materialized.localPath, args.options),
+            mainResearchGoal: 'Fetch materialized GitHub file content locally',
+            researchGoal: `Read ${materialized.localPath}`,
+            reasoning: 'CLI cat --repo command',
           }
-        : {
-            ...buildSharedQuery(ref.path, args.options),
-            mainResearchGoal: 'Fetch local file content',
-            researchGoal: `Read ${ref.path}`,
-            reasoning: 'CLI cat command',
-          };
+        : isGithubRef(ref)
+          ? {
+              ...buildSharedQuery(ref.subpath || '.', args.options),
+              owner: ref.owner,
+              repo: ref.repo,
+              branch: ref.branch,
+              forceRefresh: getBool(args.options, 'force-refresh') || undefined,
+              type: getString(args.options, 'content-type') || undefined,
+              mainResearchGoal: 'Fetch GitHub file content',
+              researchGoal: `Read ${refLabel(ref)}`,
+              reasoning: 'CLI cat command',
+            }
+          : {
+              ...buildSharedQuery(ref.path, args.options),
+              mainResearchGoal: 'Fetch local file content',
+              researchGoal: `Read ${ref.path}`,
+              reasoning: 'CLI cat command',
+            };
 
       const result = await executeDirectTool(toolName, { queries: [query] });
 
       if (
         result.isError &&
+        !materialized &&
         isGithubRef(ref) &&
         /path is a directory/i.test(getDirectToolText(result))
       ) {
@@ -343,8 +348,26 @@ export const catCommand: CLICommand = {
         return;
       }
 
-      printDirectToolResult(result, jsonOutput);
-      markDirectToolFailure(result);
+      const outputResult =
+        materialized && !rawOutput
+          ? withMaterializationHints(result, materialized)
+          : result;
+      printDirectToolResult(outputResult, jsonOutput);
+      if (!jsonOutput && !result.isError) {
+        const pagination = extractContentPagination(outputResult);
+        if (pagination?.hasMore) {
+          const nextOffset =
+            (pagination.charOffset ?? 0) + (pagination.charLength ?? 0);
+          const page = pagination.currentPage ? pagination.currentPage + 1 : 2;
+          const totalPages = pagination.totalPages
+            ? `/${pagination.totalPages}`
+            : '';
+          console.log(
+            `  ${dim(`More content — use --char-offset ${nextOffset} (page ${page}${totalPages})`)}\n`
+          );
+        }
+      }
+      markDirectToolFailure(outputResult);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
       if (jsonOutput) {

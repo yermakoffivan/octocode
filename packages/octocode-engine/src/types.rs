@@ -293,15 +293,6 @@ pub enum PatchLineType {
 }
 
 #[napi(object)]
-#[derive(Debug, Clone)]
-pub struct ParsedPatchLine {
-    pub original_line_number: Option<u32>,
-    pub new_line_number: Option<u32>,
-    pub content: String,
-    pub line_type: PatchLineType,
-}
-
-#[napi(object)]
 #[derive(Debug, Clone, Default)]
 pub struct FilterPatchOptions {
     /// Only keep additions at these new-file line numbers.

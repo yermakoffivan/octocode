@@ -37,6 +37,53 @@ function okEnvelope() {
   };
 }
 
+function treeEnvelope(
+  localPath = '/tmp/octocode/tmp/tree/facebook/react/main/packages/react'
+) {
+  return {
+    isError: false,
+    content: [],
+    structuredContent: {
+      results: [
+        {
+          id: 'facebook/react',
+          directories: [
+            {
+              localPath,
+              repoRoot: '/tmp/octocode/tmp/tree/facebook/react/main',
+              resolvedBranch: 'main',
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function fileEnvelope(
+  localPath = '/tmp/octocode/tmp/tree/facebook/react/main/packages/react/src/ReactHooks.js'
+) {
+  return {
+    isError: false,
+    content: [],
+    structuredContent: {
+      results: [
+        {
+          id: 'facebook/react',
+          files: [
+            {
+              content: 'useState',
+              localPath,
+              repoRoot: '/tmp/octocode/tmp/tree/facebook/react/main',
+              resolvedBranch: 'main',
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 /** Grab the queries payload from the most recent executeDirectTool call. */
 function lastQuery() {
   const call = executeDirectTool.mock.calls.at(-1);
@@ -90,6 +137,38 @@ describe('grep command', () => {
     expect(q.pattern).toBe('x($Y)');
   });
 
+  it('--repo materializes remote structural search before running local AST search', async () => {
+    executeDirectTool
+      .mockResolvedValueOnce(treeEnvelope())
+      .mockResolvedValueOnce(okEnvelope());
+
+    await run(['packages/react'], {
+      repo: 'facebook/react',
+      pattern: 'useState($$$ARGS)',
+      type: 'js',
+    });
+
+    expect(executeDirectTool).toHaveBeenCalledTimes(2);
+    expect(executeDirectTool.mock.calls[0]?.[0]).toBe('ghGetFileContent');
+    expect(executeDirectTool.mock.calls[0]?.[1]).toMatchObject({
+      queries: [
+        {
+          owner: 'facebook',
+          repo: 'react',
+          path: 'packages/react',
+          type: 'directory',
+        },
+      ],
+    });
+    expect(executeDirectTool.mock.calls[1]?.[0]).toBe('localSearchCode');
+    expect(lastQuery()).toMatchObject({
+      path: '/tmp/octocode/tmp/tree/facebook/react/main/packages/react',
+      mode: 'structural',
+      pattern: 'useState($$$ARGS)',
+      include: ['*.js'],
+    });
+  });
+
   it('rejects shell-expanded structural metavars with a clear quoting error', async () => {
     await run(['src'], { pattern: 'useEffect(12345)' });
 
@@ -111,6 +190,70 @@ describe('grep command', () => {
     await run(['needle', 'src'], { mode: 'discovery' });
     const q = lastQuery();
     expect(q.mode).toBe('discovery');
+  });
+
+  it('--repo materializes remote text search before running local search', async () => {
+    executeDirectTool
+      .mockResolvedValueOnce(treeEnvelope())
+      .mockResolvedValueOnce(okEnvelope());
+
+    await run(['useState', 'packages/react'], {
+      repo: 'facebook/react',
+      mode: 'discovery',
+      branch: 'main',
+    });
+
+    expect(executeDirectTool).toHaveBeenCalledTimes(2);
+    expect(executeDirectTool.mock.calls[0]?.[0]).toBe('ghGetFileContent');
+    expect(executeDirectTool.mock.calls[0]?.[1]).toMatchObject({
+      queries: [
+        {
+          owner: 'facebook',
+          repo: 'react',
+          branch: 'main',
+          path: 'packages/react',
+          type: 'directory',
+        },
+      ],
+    });
+    expect(executeDirectTool.mock.calls[1]?.[0]).toBe('localSearchCode');
+    expect(lastQuery()).toMatchObject({
+      keywords: 'useState',
+      path: '/tmp/octocode/tmp/tree/facebook/react/main/packages/react',
+      mode: 'discovery',
+    });
+  });
+
+  it('--repo text search materializes a file target under tmp/tree', async () => {
+    executeDirectTool
+      .mockResolvedValueOnce(fileEnvelope())
+      .mockResolvedValueOnce(okEnvelope());
+
+    await run(['useState', 'packages/react/src/ReactHooks.js'], {
+      repo: 'facebook/react',
+      type: 'js',
+    });
+
+    expect(executeDirectTool).toHaveBeenCalledTimes(2);
+    expect(executeDirectTool.mock.calls[0]?.[0]).toBe('ghGetFileContent');
+    expect(executeDirectTool.mock.calls[0]?.[1]).toMatchObject({
+      queries: [
+        {
+          owner: 'facebook',
+          repo: 'react',
+          path: 'packages/react/src/ReactHooks.js',
+          type: 'file',
+          fullContent: true,
+          minify: 'none',
+        },
+      ],
+    });
+    expect(executeDirectTool.mock.calls[1]?.[0]).toBe('localSearchCode');
+    expect(lastQuery()).toMatchObject({
+      keywords: 'useState',
+      path: '/tmp/octocode/tmp/tree/facebook/react/main/packages/react/src/ReactHooks.js',
+      include: ['*.js'],
+    });
   });
 
   it('maps local --type to include globs instead of ripgrep type filters', async () => {

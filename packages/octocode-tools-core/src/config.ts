@@ -29,3 +29,11 @@ export const MAX_CHAR_LENGTH = 50_000;
 export const GITHUB_FILE_CONTENT_DEFAULT_CHAR_LENGTH = 8_000;
 
 export const MAX_MATCH_CONTENT_LENGTH = 100_000;
+
+/**
+ * Default per-match snippet length (Unicode scalars). Mirrors the Rust engine's
+ * `DEFAULT_MAX_SNIPPET_CHARS` so GitHub code-search fragments are bounded by the
+ * same rule that bounds local ripgrep snippets — char-safe truncation with `...`.
+ * The render layer must not re-truncate; this is the single data-layer bound.
+ */
+export const DEFAULT_MATCH_SNIPPET_CHARS = 500;

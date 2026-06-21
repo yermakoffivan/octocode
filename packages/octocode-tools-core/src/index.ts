@@ -401,8 +401,12 @@ export {
   getDefaultOctocodeHome,
   paths,
   ensureHome,
+  ensureTmp,
+  ensureClone,
   ensureRepos,
   ensureLogs,
+  ensureTree,
+  ensureBinary,
   ensureUnzip,
 } from './shared/paths.js';
 export { getDirectorySizeBytes, formatBytes } from './shared/fs-utils.js';

@@ -44,9 +44,13 @@ describe('paths', () => {
     expect(mod.paths.credentials).toBe(
       '/Users/tester/.octocode/credentials.json'
     );
-    expect(mod.paths.repos).toBe('/Users/tester/.octocode/repos');
+    expect(mod.paths.tmp).toBe('/Users/tester/.octocode/tmp');
+    expect(mod.paths.clone).toBe('/Users/tester/.octocode/tmp/clone');
+    expect(mod.paths.tree).toBe('/Users/tester/.octocode/tmp/tree');
+    expect(mod.paths.binary).toBe('/Users/tester/.octocode/tmp/binary');
+    expect(mod.paths.repos).toBe('/Users/tester/.octocode/tmp/clone');
     expect(mod.paths.logs).toBe('/Users/tester/.octocode/logs');
-    expect(mod.paths.unzip).toBe('/Users/tester/.octocode/unzip');
+    expect(mod.paths.unzip).toBe('/Users/tester/.octocode/tmp/unzip');
     expect(mod.paths.lspConfig).toBe(
       '/Users/tester/.octocode/lsp-servers.json'
     );
@@ -97,7 +101,7 @@ describe('paths', () => {
     });
   });
 
-  it('ensureRepos creates repos with 0o700', async () => {
+  it('ensureRepos creates clone tmp with 0o700', async () => {
     const mod = await import('../../../src/shared/paths.js');
     mod.ensureRepos();
 
@@ -105,7 +109,39 @@ describe('paths', () => {
       recursive: true,
       mode: 0o700,
     });
-    expect(mkdirSync).toHaveBeenCalledWith(mod.paths.repos, {
+    expect(mkdirSync).toHaveBeenCalledWith(mod.paths.tmp, {
+      recursive: true,
+      mode: 0o700,
+    });
+    expect(mkdirSync).toHaveBeenCalledWith(mod.paths.clone, {
+      recursive: true,
+      mode: 0o700,
+    });
+  });
+
+  it('ensureTree creates tree tmp with 0o700', async () => {
+    const mod = await import('../../../src/shared/paths.js');
+    mod.ensureTree();
+
+    expect(mkdirSync).toHaveBeenCalledWith(mod.paths.tmp, {
+      recursive: true,
+      mode: 0o700,
+    });
+    expect(mkdirSync).toHaveBeenCalledWith(mod.paths.tree, {
+      recursive: true,
+      mode: 0o700,
+    });
+  });
+
+  it('ensureBinary creates binary tmp with 0o700', async () => {
+    const mod = await import('../../../src/shared/paths.js');
+    mod.ensureBinary();
+
+    expect(mkdirSync).toHaveBeenCalledWith(mod.paths.tmp, {
+      recursive: true,
+      mode: 0o700,
+    });
+    expect(mkdirSync).toHaveBeenCalledWith(mod.paths.binary, {
       recursive: true,
       mode: 0o700,
     });

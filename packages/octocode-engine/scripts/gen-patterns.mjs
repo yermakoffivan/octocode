@@ -123,8 +123,6 @@ for (const p of allRegexPatterns) {
 
   finalPatterns.push({
     name:          p.name,
-    description:   p.description,
-    matchAccuracy: p.matchAccuracy ?? 'medium',
     fileContext:   p.fileContext
       ? { source: p.fileContext.source, flags: p.fileContext.flags }
       : null,
@@ -159,12 +157,9 @@ const lines = [
   'use regex::{Regex, RegexSet, RegexSetBuilder};',
   'use std::sync::LazyLock;',
   '',
-  '#[allow(dead_code)]',
   '#[derive(Debug, Clone)]',
   'pub struct Pattern {',
   "    pub name: &'static str,",
-  "    pub description: &'static str,",
-  "    pub accuracy: &'static str,",
   '    pub file_context: Option<&\'static str>,',
   '}',
   '',
@@ -179,8 +174,6 @@ for (const p of finalPatterns) {
   lines.push(
     '    Pattern {',
     `        name: "${p.name}",`,
-    `        description: "${rustStringEscape(p.description)}",`,
-    `        accuracy: "${p.matchAccuracy}",`,
     `        file_context: ${fc},`,
     '    },'
   );

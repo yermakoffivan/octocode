@@ -25,7 +25,15 @@ const META_FILE_NAME = '.octocode-clone-meta.json';
 let gcInterval: ReturnType<typeof setInterval> | null = null;
 
 export function getReposBaseDir(octocodeDir: string): string {
-  return join(octocodeDir, 'repos');
+  return getCloneBaseDir(octocodeDir);
+}
+
+export function getCloneBaseDir(octocodeDir: string): string {
+  return join(octocodeDir, 'tmp', 'clone');
+}
+
+export function getTreeBaseDir(octocodeDir: string): string {
+  return join(octocodeDir, 'tmp', 'tree');
 }
 
 function sparseSuffix(sparsePath?: string): string {
@@ -45,7 +53,16 @@ export function getCloneDir(
   sparsePath?: string
 ): string {
   const dirName = `${branch}${sparseSuffix(sparsePath)}`;
-  return join(getReposBaseDir(octocodeDir), owner, repo, dirName);
+  return join(getCloneBaseDir(octocodeDir), owner, repo, dirName);
+}
+
+export function getTreeDir(
+  octocodeDir: string,
+  owner: string,
+  repo: string,
+  branch: string
+): string {
+  return join(getTreeBaseDir(octocodeDir), owner, repo, branch);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -59,7 +76,13 @@ function parseCacheMeta(raw: unknown): CloneCacheMeta | null {
   if (typeof raw.owner !== 'string') return null;
   if (typeof raw.repo !== 'string') return null;
   if (typeof raw.branch !== 'string') return null;
-  if (raw.source !== 'clone' && raw.source !== 'directoryFetch') return null;
+  if (
+    raw.source !== 'clone' &&
+    raw.source !== 'directoryFetch' &&
+    raw.source !== 'treeFetch'
+  ) {
+    return null;
+  }
   const meta: CloneCacheMeta = {
     clonedAt: raw.clonedAt,
     expiresAt: raw.expiresAt,
@@ -302,38 +325,47 @@ function evictByCapacity(
   return evicted;
 }
 
-export function evictExpiredClones(octocodeDir: string): number {
-  const reposBase = getReposBaseDir(octocodeDir);
-  if (!existsSync(reposBase)) return 0;
+function evictExpiredCacheBase(cacheBase: string): number {
+  if (!existsSync(cacheBase)) return 0;
 
   let evicted = 0;
   try {
-    evicted += evictExpiredEntries(reposBase);
+    evicted += evictExpiredEntries(cacheBase);
   } catch {
     return evicted;
   }
 
-  cleanupEmptyDirectories(reposBase);
+  cleanupEmptyDirectories(cacheBase);
 
   const lruEvicted = evictByCapacity(
-    collectLiveEntries(reposBase),
+    collectLiveEntries(cacheBase),
     getMaxCacheSizeBytes(),
     getMaxCloneCount()
   );
   evicted += lruEvicted;
 
-  if (lruEvicted > 0) cleanupEmptyDirectories(reposBase);
+  if (lruEvicted > 0) cleanupEmptyDirectories(cacheBase);
 
   return evicted;
+}
+
+export function evictExpiredClones(octocodeDir: string): number {
+  return evictExpiredCacheBase(getCloneBaseDir(octocodeDir));
+}
+
+export function evictExpiredTrees(octocodeDir: string): number {
+  return evictExpiredCacheBase(getTreeBaseDir(octocodeDir));
 }
 
 export function startCacheGC(octocodeDir: string): void {
   if (gcInterval) return;
 
   evictExpiredClones(octocodeDir);
+  evictExpiredTrees(octocodeDir);
 
   gcInterval = setInterval(() => {
     evictExpiredClones(octocodeDir);
+    evictExpiredTrees(octocodeDir);
   }, GC_INTERVAL_MS);
 
   gcInterval.unref();

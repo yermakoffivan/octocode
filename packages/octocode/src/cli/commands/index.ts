@@ -27,6 +27,7 @@ const commandLoaders: Record<string, CommandLoader> = {
   lsp: async () => (await import('./lsp.js')).lspCommand,
   binary: async () => (await import('./binary.js')).binaryCommand,
   unzip: async () => (await import('./unzip.js')).unzipCommand,
+  cache: async () => (await import('./cache.js')).cacheCommand,
   clone: async () => (await import('./clone.js')).cloneCommand,
   install: async () => (await import('./install.js')).installCommand,
   auth: async () => (await import('./auth.js')).authCommand,

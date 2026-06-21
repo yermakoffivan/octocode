@@ -30,41 +30,13 @@ const SUPPORTED_INSTALL_CLIENTS_TEXT = formatSupportedMCPClients();
 export const installCommand: CLICommand = {
   name: 'install',
   options: [
-    {
-      name: 'ide',
-      description: `IDE to configure: ${SUPPORTED_INSTALL_CLIENTS_TEXT}`,
-      hasValue: true,
-    },
-    {
-      name: 'method',
-      description: 'Installation method (npx)',
-      hasValue: true,
-      default: 'npx',
-    },
-    {
-      name: 'force',
-      description: 'Overwrite existing configuration',
-    },
-    {
-      name: 'check',
-      description:
-        'Pre-flight only: verify config path is writable and show what would be written',
-    },
-    {
-      name: 'rollback',
-      description:
-        'Restore the most recent backup (--backup-path <path> or auto-detected)',
-    },
-    {
-      name: 'backup-path',
-      description: 'Path to the backup file to restore (used with --rollback)',
-      hasValue: true,
-    },
-    {
-      name: 'json',
-      description:
-        'Output result as JSON: { success, ide, configPath, method, error }',
-    },
+    { name: 'ide', hasValue: true },
+    { name: 'method', hasValue: true, default: 'npx' },
+    { name: 'force' },
+    { name: 'check' },
+    { name: 'rollback' },
+    { name: 'backup-path', hasValue: true },
+    { name: 'json' },
   ],
   handler: async (args: ParsedArgs) => {
     const rawIde = args.options['ide'];

@@ -171,47 +171,15 @@ function renderCommits(
 export const historyCommand: CLICommand = {
   name: 'history',
   options: [
-    {
-      name: 'since',
-      hasValue: true,
-      description: 'Start date (ISO 8601), e.g. 2024-01-01T00:00:00Z',
-    },
-    {
-      name: 'until',
-      hasValue: true,
-      description: 'End date (ISO 8601)',
-    },
-    {
-      name: 'author',
-      hasValue: true,
-      description: 'Filter by commit author',
-    },
-    {
-      name: 'branch',
-      hasValue: true,
-      description: 'Branch or SHA to walk history from (also from @branch)',
-    },
-    {
-      name: 'diff',
-      description:
-        'Include per-commit file diffs (larger output — use sparingly)',
-    },
-    {
-      name: 'limit',
-      hasValue: true,
-      description: 'Max commits to return/show (default: 20)',
-    },
-    {
-      name: 'page',
-      hasValue: true,
-      description: 'Result page (default: 1)',
-    },
-    {
-      name: 'page-size',
-      hasValue: true,
-      description: 'Results per page (defaults to --limit)',
-    },
-    { name: 'json', description: 'Output raw JSON results' },
+    { name: 'since', hasValue: true },
+    { name: 'until', hasValue: true },
+    { name: 'author', hasValue: true },
+    { name: 'branch', hasValue: true },
+    { name: 'diff' },
+    { name: 'limit', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'page-size', hasValue: true },
+    { name: 'json' },
   ],
   handler: async args => {
     const { options } = args;

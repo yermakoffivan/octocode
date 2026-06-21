@@ -777,20 +777,9 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
 export const toolCommand: CLICommand = {
   name: 'tools',
   options: [
-    {
-      name: 'queries',
-      description: 'JSON-stringified tool input (query object or array).',
-      hasValue: true,
-    },
-    {
-      name: 'list',
-      description: 'List available tools.',
-    },
-    {
-      name: 'scheme',
-      description:
-        'Show the selected tool schema summary instead of running it.',
-    },
+    { name: 'queries', hasValue: true },
+    { name: 'list' },
+    { name: 'scheme' },
   ],
   handler: async (args: ParsedArgs) => {
     const success = await executeToolCommand(args);

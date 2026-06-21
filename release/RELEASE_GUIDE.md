@@ -121,33 +121,13 @@ node release/sync-packages-local.mjs --fix
 yarn install
 ```
 
-### Build the Rust engine for your platform
+### Build
+
+The canonical build procedure — native engine for all 6 platforms, the four-stage build chain, TS packages, and build order — lives in [Build](#build). For the dev loop:
 
 ```bash
-# macOS Apple Silicon
-yarn workspace @octocodeai/octocode-engine run build:darwin-arm64
-
-# macOS Intel
-yarn workspace @octocodeai/octocode-engine run build:darwin-x64
-```
-
-The compiled `.node` is placed where the engine loader can resolve it for local development.
-
-### Build TS packages
-
-```bash
-# From the package directory you changed:
-yarn build:dev    # fast build when available
-yarn build        # full package build
-
-# Or rebuild everything from the repo root:
-yarn workspaces foreach -pt run build:dev
-```
-
-Build order matters. Always build dependencies before consumers:
-
-```
-@octocodeai/octocode-engine → @octocodeai/octocode-tools-core → octocode-mcp / octocode / octocode-mcp-vscode
+yarn workspace @octocodeai/octocode-engine run build:darwin-arm64   # host-platform .node for local dev
+yarn build:dev                                                      # from the changed TS package (fast)
 ```
 
 ### Test
@@ -194,58 +174,69 @@ node release/sync-packages-local.mjs --verbose
 ### Prerequisites
 
 ```bash
-yarn install
+yarn install          # wires workspace:* links; no npm publish needed for local builds
 ```
 
-### Build a package
+### Build the native engine — all 6 platforms (release)
+
+The engine is the only Rust crate; it ships one `.node` per platform via 6 `optionalDependencies`. Every per-platform build runs the same four-stage chain (defined in `packages/octocode-engine/package.json`):
+
+```
+prebuild.cjs  →  napi build --platform --release [--cross-compile] --target <triple>  →  postbuild.cjs  →  tsc
+```
+
+| Stage | What it does |
+|---|---|
+| `prebuild.cjs` | regenerates `src/security/patterns.rs` from the canonical TS regex source via `scripts/gen-patterns.mjs` — keeps the Rust detector in lockstep with the JS fallback |
+| `napi build` | compiles Rust → one `octocode-engine.<triple>.node` at the package root. `--cross-compile` is set automatically on every non-host target (napi-rs provides the zig-backed cross toolchain for Linux gnu/musl/arm64 and Windows MSVC) |
+| `postbuild.cjs` | restores the canonical hand-authored loaders from `loader/` over napi's generated `index.{js,cjs,d.ts}` — the package is `"type":"module"`, and the napi-generated CJS `index.js` would break every ESM `import` (see the 16.5.0 bug below). Also copies the just-built `.node` into `npm/<platform>/` |
+| `tsc` (`build:ts`) | emits `dist/` — the TS wrappers (`security/`, `lsp/`) consumed by `@octocodeai/octocode-tools-core` |
+
+Build all six platforms on one machine, then confirm every `.node` landed in its `npm/<platform>/` dir:
 
 ```bash
-# From the package directory:
-yarn build
-yarn build:dev    # when available
+yarn workspace @octocodeai/octocode-engine run build:all        # 6 native targets, then build:ts
+yarn workspace @octocodeai/octocode-engine run platforms:check  # asserts all 6 .node present
 ```
 
-### Build native binaries (Rust)
+Root shortcuts exist for both: `yarn build:native:all` / `yarn platforms:check`.
+
+> There is **no CI matrix** building the per-platform binaries — `build:all` (cross-compile via napi-rs/zig) on a single release machine is the supported path. If a cross-target fails on your host, build that target natively on a matching runner and drop the `.node` into `npm/<platform>/`; `platforms:check` will confirm.
+
+Per-platform scripts (one target each, release):
 
 ```bash
-# Build all 6 platforms for the native engine, then verify every platform .node exists:
-yarn workspace @octocodeai/octocode-engine run build:all
-yarn workspace @octocodeai/octocode-engine run platforms:check
-
-# Or use the root aggregate scripts:
-yarn build:native:all
-yarn platforms:check
-
-# Or one platform at a time:
-yarn workspace @octocodeai/octocode-engine run build:darwin-arm64
+yarn workspace @octocodeai/octocode-engine run build:darwin-arm64     # aarch64-apple-darwin
+yarn workspace @octocodeai/octocode-engine run build:darwin-x64       # x86_64-apple-darwin
+yarn workspace @octocodeai/octocode-engine run build:linux-x64-gnu    # x86_64-unknown-linux-gnu   (--cross-compile)
+yarn workspace @octocodeai/octocode-engine run build:linux-x64-musl   # x86_64-unknown-linux-musl  (--cross-compile)
+yarn workspace @octocodeai/octocode-engine run build:linux-arm64-gnu  # aarch64-unknown-linux-gnu  (--cross-compile)
+yarn workspace @octocodeai/octocode-engine run build:windows-x64      # x86_64-pc-windows-msvc     (--cross-compile)
 ```
 
-The build scripts copy the compiled `.node` into `packages/octocode-engine/npm/{platform}/` automatically.
+> ⚠️ A plain `yarn workspace @octocodeai/octocode-engine run build` (no target) compiles **only the host platform** — fine for local dev, but it leaves the other five `npm/<platform>/` dirs empty. Never publish from a `yarn build`; publish from `build:all` + `platforms:check`.
 
-> ⚠️ A plain `yarn workspace @octocodeai/octocode-engine run build` compiles only the host platform and leaves the other five `npm/{platform}/` dirs empty. Always use `build:all` or per-target builds on matching CI runners before publishing, and let `platforms:check` confirm all six are present.
+For local dev (host platform, no release LTO): `yarn workspace @octocodeai/octocode-engine run build:dev`.
+
+### Build TS packages
+
+```bash
+# From the changed package:
+yarn build:dev      # fast dev build
+yarn build          # full build
+# Or everything, dependency-ordered:
+yarn workspaces foreach -pt run build:dev
+```
+
+Build order is fixed — build dependencies before consumers:
+
+```
+@octocodeai/octocode-engine → @octocodeai/octocode-tools-core → octocode-mcp / octocode / octocode-mcp-vscode
+```
 
 ---
 
 ## Publish
-
-### How users get binaries after `npm install`
-
-When a user runs `npm install octocode-mcp` or `npm install octocode`, npm resolves the full dependency tree automatically:
-
-```
-npm install octocode-mcp  (or octocode)
-  └─ @octocodeai/octocode-tools-core
-       └─ @octocodeai/octocode-engine
-            └─ optionalDependencies:
-                 @octocodeai/octocode-engine-darwin-arm64   ← installed on macOS Apple Silicon
-                 @octocodeai/octocode-engine-darwin-x64     ← installed on macOS Intel
-                 @octocodeai/octocode-engine-linux-x64-gnu  ← installed on Linux x64
-                 @octocodeai/octocode-engine-linux-x64-musl ← installed on Alpine/musl
-                 @octocodeai/octocode-engine-linux-arm64-gnu
-                 @octocodeai/octocode-engine-win32-x64-msvc
-```
-
-npm uses `os`, `cpu`, and `libc` fields on each platform package to install exactly one `.node` file — the one that matches the user's machine. No post-install scripts, no compilation on the user's machine.
 
 ### Pre-publish checks
 
@@ -269,13 +260,13 @@ The 6 `.npm` platform packages (`@octocodeai/octocode-engine-<platform>`) each c
 #    published with --ignore-scripts, which skips the prepublishOnly hook.
 yarn workspace @octocodeai/octocode-engine run version:sync
 
-# 3. Rebuild all 6 native targets + TS (use matching CI runners for cross-compile):
+# 3. Rebuild all 6 native targets + TS (see [Build](#build) — `build:all` cross-compiles on one machine):
 yarn workspace @octocodeai/octocode-engine run build:all
 
 # 4. Fast gate: version + loader entries + tarball purity + 6 binaries.
 yarn workspace @octocodeai/octocode-engine run prepublish:verify
 
-# 5. Full gate: cargo check/fmt/clippy/test/audit + tsc + vitest + benchmarks.
+# 5. Full gate: cargo check/fmt/clippy/test/udeps/audit (`dead_code`+`unused_*` are `deny` in `[lints.rust]`) + tsc + vitest + benchmarks.
 yarn workspace @octocodeai/octocode-engine run verify
 
 # 6. Prove both entry points load on this host:
@@ -295,6 +286,8 @@ cd ../..
 | `platforms:check` | missing / empty / duplicate `.node` in any platform dir |
 | `cargo clippy -D warnings`, `cargo fmt --check` | Rust lint / format (`cargo fmt --all` to fix) |
 | `cargo check` / `cargo test` | Rust compile + behavior |
+| `dead_code` / `unused_*` = `deny` (`[lints.rust]` in `Cargo.toml`) | unused code fails **every** cargo invocation (check/build/clippy), not just clippy — catches dead crates, fields, and functions at compile |
+| `cargo +nightly udeps` (`udeps:rust`, part of `verify:rust`) | unused Cargo deps. Prereq (once): `rustup toolchain install nightly && cargo +nightly install cargo-udeps --locked` |
 | ESM/CJS load (step 6) + post-publish smoke | entry points failing to import |
 
 > Why this matters: 16.5.0 shipped an auto-gen **CJS** `index.js` under `"type": "module"`, so every ESM `import` threw `require is not defined in ES module scope`. `loader:check` (now in `verify` and `prepublish:verify`) fails the build if that recurs; the `loader/` canonical sources make it self-heal.

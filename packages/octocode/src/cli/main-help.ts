@@ -199,7 +199,12 @@ export async function showHelp(): Promise<void> {
     quick(
       'clone',
       '<owner/repo[/path][@branch]>',
-      `clone a repo or subtree → ${paths.repos}`
+      `clone a repo or subtree → ${paths.clone}`
+    ),
+    quick(
+      'cache',
+      'fetch <owner/repo> [path]',
+      'save remote content locally + return local-tool hints'
     ),
     '',
 

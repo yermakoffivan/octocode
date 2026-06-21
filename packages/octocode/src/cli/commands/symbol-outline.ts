@@ -51,6 +51,11 @@ type RenderedFile = {
   readonly totalSymbols?: number;
 };
 
+type OutlineExtraOutput = {
+  readonly structured?: Record<string, unknown>;
+  readonly text?: string;
+};
+
 function parseExtensions(value: string): string[] {
   if (!value) return [...DEFAULT_SOURCE_EXTENSIONS];
   return value
@@ -248,7 +253,8 @@ function parsePositiveInt(value: string, fallback: number): number {
  */
 export async function outlineSymbols(
   target: string,
-  options: Record<string, string | boolean>
+  options: Record<string, string | boolean>,
+  extraOutput?: OutlineExtraOutput
 ): Promise<void> {
   const jsonOutput = getBool(options, 'json');
   const kindFilter = getString(options, 'kind');
@@ -291,10 +297,17 @@ export async function outlineSymbols(
 
     if (files.length === 0) {
       if (jsonOutput) {
-        console.log(JSON.stringify({ files: [], symbols: [] }, null, 2));
+        console.log(
+          JSON.stringify(
+            { files: [], symbols: [], ...(extraOutput?.structured ?? {}) },
+            null,
+            2
+          )
+        );
       } else {
         console.log();
         console.log(dim('No source files found.'));
+        if (extraOutput?.text) console.log(extraOutput.text);
         console.log();
       }
       return;
@@ -313,12 +326,19 @@ export async function outlineSymbols(
     );
 
     if (jsonOutput) {
-      console.log(JSON.stringify({ files, results: structured }, null, 2));
+      console.log(
+        JSON.stringify(
+          { files, results: structured, ...(extraOutput?.structured ?? {}) },
+          null,
+          2
+        )
+      );
       return;
     }
 
     console.log();
     console.log(renderSymbols(rendered, kindFilter));
+    if (extraOutput?.text) console.log(extraOutput.text);
     console.log();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

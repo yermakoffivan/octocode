@@ -4,7 +4,7 @@
 /// `patch.split('\n')` independently in both `filterPatch` and `trimDiffContext`,
 /// allocating the line array twice per invocation. This module processes a diff
 /// in a single pass combining both operations.
-use crate::types::{FilterPatchOptions, ParsedPatchLine, PatchLineType};
+use crate::types::{FilterPatchOptions, PatchLineType};
 
 // ── internal patch line type ──────────────────────────────────────────────────
 
@@ -294,20 +294,6 @@ fn format_patch_line(pl: &PatchLine) -> String {
             format!(" {}: {content_body}", pl.new_line_number.unwrap_or(0))
         }
     }
-}
-
-/// Expose parsed patch lines for testing. Returns a simplified representation.
-#[allow(dead_code)]
-pub(crate) fn parse_patch_for_inspection(patch: &str) -> Vec<ParsedPatchLine> {
-    parse_patch(patch)
-        .into_iter()
-        .map(|pl| ParsedPatchLine {
-            original_line_number: pl.original_line_number,
-            new_line_number: pl.new_line_number,
-            content: pl.content,
-            line_type: pl.line_type,
-        })
-        .collect()
 }
 
 // ── unit tests ────────────────────────────────────────────────────────────────

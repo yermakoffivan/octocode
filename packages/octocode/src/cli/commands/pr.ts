@@ -602,125 +602,30 @@ async function fetchPRDetail(
 export const prCommand: CLICommand = {
   name: 'pr',
   options: [
-    {
-      name: 'pr',
-      hasValue: true,
-      description: 'PR number to view (alternative to owner/repo#N)',
-    },
-    {
-      name: 'concise',
-      description:
-        'List mode: flat "#number title" lines — leanest output for triage before deep-reading one PR',
-    },
-    {
-      name: 'query',
-      hasValue: true,
-      description: 'Keyword search within PR titles/bodies (list mode)',
-    },
-    {
-      name: 'state',
-      hasValue: true,
-      description: 'Filter by state: open (default) · closed · merged',
-    },
-    {
-      name: 'author',
-      hasValue: true,
-      description: 'Filter by PR author (list mode)',
-    },
-    {
-      name: 'label',
-      hasValue: true,
-      description: 'Filter by label (list mode)',
-    },
-    {
-      name: 'base',
-      hasValue: true,
-      description: 'Filter by base branch (list mode)',
-    },
-    {
-      name: 'sort',
-      hasValue: true,
-      description:
-        'Sort list results: created · updated · best-match · comments · reactions (list mode)',
-    },
-    {
-      name: 'order',
-      hasValue: true,
-      description: 'Sort direction: asc · desc (list mode, default: desc)',
-    },
-    {
-      name: 'draft',
-      description: 'Show only draft PRs (list mode)',
-    },
-    {
-      name: 'created',
-      hasValue: true,
-      description: 'Filter by creation date, e.g. >2024-01-01 (list mode)',
-    },
-    {
-      name: 'merged-at',
-      hasValue: true,
-      description: 'Filter by merge date, e.g. >2024-06-01 (list mode)',
-    },
-    {
-      name: 'limit',
-      hasValue: true,
-      description: 'Max PRs to return/show in list mode (default: 10)',
-    },
-    {
-      name: 'patches',
-      description: 'Include unified diffs for all changed files (view mode)',
-    },
-    {
-      name: 'file',
-      hasValue: true,
-      description: 'Show diff for a specific file path only (view mode)',
-    },
-    {
-      name: 'comments',
-      description: 'Include discussion and inline review comments (view mode)',
-    },
-    {
-      name: 'commits',
-      description: 'Include commit list (view mode)',
-    },
-    {
-      name: 'deep',
-      description:
-        'Full deep-dive: patches + comments + commits + reviews (view mode)',
-    },
-    {
-      name: 'match-string',
-      hasValue: true,
-      description:
-        'Narrow PR content to section matching this string (view mode)',
-    },
-    {
-      name: 'char-length',
-      hasValue: true,
-      description:
-        'Cap PR body/diff size in chars — prevents token flood on large PRs (view mode)',
-    },
-    {
-      name: 'char-offset',
-      hasValue: true,
-      description:
-        'Continue reading PR body from this char offset for pagination (view mode)',
-    },
-    {
-      name: 'page',
-      hasValue: true,
-      description: 'Page number for paginated results (default: 1)',
-    },
-    {
-      name: 'page-size',
-      hasValue: true,
-      description: 'Results per page (defaults to --limit)',
-    },
-    {
-      name: 'json',
-      description: 'Output raw JSON',
-    },
+    { name: 'pr', hasValue: true },
+    { name: 'concise' },
+    { name: 'query', hasValue: true },
+    { name: 'state', hasValue: true },
+    { name: 'author', hasValue: true },
+    { name: 'label', hasValue: true },
+    { name: 'base', hasValue: true },
+    { name: 'sort', hasValue: true },
+    { name: 'order', hasValue: true },
+    { name: 'draft' },
+    { name: 'created', hasValue: true },
+    { name: 'merged-at', hasValue: true },
+    { name: 'limit', hasValue: true },
+    { name: 'patches' },
+    { name: 'file', hasValue: true },
+    { name: 'comments' },
+    { name: 'commits' },
+    { name: 'deep' },
+    { name: 'match-string', hasValue: true },
+    { name: 'char-length', hasValue: true },
+    { name: 'char-offset', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'page-size', hasValue: true },
+    { name: 'json' },
   ],
   handler: async args => {
     const { options } = args;

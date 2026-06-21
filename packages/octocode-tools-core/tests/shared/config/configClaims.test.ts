@@ -75,9 +75,9 @@ describe('README/CONFIGURATION config claims', () => {
     });
   });
 
-  describe('ENABLE_LOCAL -> local.enabled (default true)', () => {
-    it('defaults to true', () => {
-      expect(resolveLocal(undefined).enabled).toBe(true);
+  describe('ENABLE_LOCAL -> local.enabled (MCP default false)', () => {
+    it('defaults to false on the MCP surface', () => {
+      expect(resolveLocal(undefined).enabled).toBe(false);
     });
     it('ENABLE_LOCAL=false disables, overriding file=true', () => {
       process.env.ENABLE_LOCAL = 'false';
@@ -242,9 +242,17 @@ describe('README/CONFIGURATION config claims', () => {
     describe('CLI surface', () => {
       beforeEach(() => setRuntimeSurface('cli'));
 
-      it('local is ALWAYS enabled (ENABLE_LOCAL is ignored)', () => {
+      it('local defaults to ENABLED', () => {
+        expect(resolveLocal(undefined).enabled).toBe(true);
+      });
+
+      it('local honors ENABLE_LOCAL=false', () => {
         process.env.ENABLE_LOCAL = 'false';
-        expect(resolveLocal({ enabled: false }).enabled).toBe(true);
+        expect(resolveLocal(undefined).enabled).toBe(false);
+      });
+
+      it('.octocoderc local.enabled=false still disables local tools', () => {
+        expect(resolveLocal({ enabled: false }).enabled).toBe(false);
       });
 
       it('clone defaults to ENABLED', () => {
@@ -264,10 +272,19 @@ describe('README/CONFIGURATION config claims', () => {
     describe('MCP surface (default)', () => {
       beforeEach(() => setRuntimeSurface('mcp'));
 
-      it('local honors ENABLE_LOCAL (default on, false disables)', () => {
-        expect(resolveLocal(undefined).enabled).toBe(true);
-        process.env.ENABLE_LOCAL = 'false';
+      it('local honors ENABLE_LOCAL (default off, true enables)', () => {
         expect(resolveLocal(undefined).enabled).toBe(false);
+        process.env.ENABLE_LOCAL = 'true';
+        expect(resolveLocal(undefined).enabled).toBe(true);
+      });
+
+      it('.octocoderc local.enabled=true enables local tools', () => {
+        expect(resolveLocal({ enabled: true }).enabled).toBe(true);
+      });
+
+      it('ENABLE_LOCAL=false disables, even when file config enables local', () => {
+        process.env.ENABLE_LOCAL = 'false';
+        expect(resolveLocal({ enabled: true }).enabled).toBe(false);
       });
 
       it('clone defaults to DISABLED', () => {

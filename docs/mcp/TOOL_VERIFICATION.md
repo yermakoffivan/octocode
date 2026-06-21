@@ -136,7 +136,7 @@ Primary code: [src/tools/github_clone_repo/](https://github.com/bgauryy/octocode
 | Implementation | Requires clone/local enablement, resolves branch fallback, reuses cache when valid, refreshes expired cache, and returns a safe `localPath`. |
 | Pagination | No native pagination is expected, but bulk response pagination must still work. |
 | Empty | Not applicable. A missing repository, branch, or path is an error with recovery context. |
-| Data management | Verify cache TTL, cache invalidation, concurrent clone locking, cleanup on failed clone, and no writes outside the clone cache root. |
+| Data management | Verify cache TTL, cache invalidation, concurrent clone locking, cleanup on failed clone, and no writes outside the tmp materialization roots. |
 | Research quality | Returned `localPath` should be immediately usable by `localSearchCode`, `localViewStructure`, `localGetFileContent`, and LSP tools. |
 
 ### `localSearchCode`

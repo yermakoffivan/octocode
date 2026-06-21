@@ -155,6 +155,8 @@ const BOOLEAN_OPTIONS = new Set([
   'decompress',
   'inspect',
   'offsets',
+  'repos',
+  'all',
 ]);
 
 function shouldConsumeNextValue(args: ParsedArgs, key: string): boolean {

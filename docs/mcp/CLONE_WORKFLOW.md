@@ -15,14 +15,14 @@ Octocode MCP has two worlds of tools:
 | **GitHub** | `ghSearchCode`, `ghGetFileContent`, `ghViewRepoStructure` | Fast, no disk usage, works on any repo | No LSP, no semantic analysis, API rate limits |
 | **Local + LSP** | `localSearchCode`, `localViewStructure`, `localFindFiles`, `localGetFileContent`, `lspGetSemantics` | Semantic navigation, call tracing, full ripgrep power | Only works on files on disk |
 
-**Two tools bridge these worlds** — they download content to `<octocode-home>/repos/` so local and LSP tools can analyze it:
+**Two tools bridge these worlds** — they download content to `<octocode-home>/tmp/` so local and LSP tools can analyze it:
 
 | Bridge Tool | When to Use | How it Works |
 |-------------|-------------|--------------|
-| **`ghCloneRepo`** | Full repo or sparse subtree | Uses `git clone` (requires git) |
-| **`ghGetFileContent`** (type: `"directory"`) | Single directory of files | Uses GitHub API + `download_url` (no git needed) |
+| **`ghCloneRepo`** | Full repo or sparse subtree | Uses `git clone` into `tmp/clone` (requires git) |
+| **`ghGetFileContent`** (type: `"directory"`) | Single directory of files | Uses GitHub API + `download_url` into `tmp/tree` (no git needed) |
 
-Both share the **same cache** (`<octocode-home>/repos/{owner}/{repo}/{branch}/`) with 24-hour TTL. Fetching a directory and then cloning the same repo reuses the cache location.
+Clones and API-fetched trees use separate tmp buckets with the same 24-hour TTL policy: `<octocode-home>/tmp/clone/{owner}/{repo}/{branch}/` for git clones, and `<octocode-home>/tmp/tree/{owner}/{repo}/{branch}/` for file/tree materialization.
 
 **Branch resolution:** Both tools auto-detect the repository's default branch via the GitHub API when no `branch` is specified (falls back to `main`). The resolved branch name is always included in the result and the cache path.
 
@@ -82,7 +82,7 @@ ghCloneRepo:
 owner: vercel
 repo: next.js
 branch: main
-localPath: <octocode-home>/repos/vercel/next.js/main
+localPath: <octocode-home>/tmp/clone/vercel/next.js/main
 ```
 
 ### Mode 2: Sparse (Folder) Fetch
@@ -101,7 +101,7 @@ ghCloneRepo:
 owner: microsoft
 repo: TypeScript
 branch: main
-localPath: <octocode-home>/repos/microsoft/TypeScript/main__sp_a3f8c1
+localPath: <octocode-home>/tmp/clone/microsoft/TypeScript/main__sp_a3f8c1
 sparse_path: "src/compiler"
 ```
 
@@ -118,7 +118,7 @@ sparse_path: "src/compiler"
 ```
 Step 1: Clone the repo
   ghCloneRepo(owner="facebook", repo="react")
-  → localPath = "<octocode-home>/repos/facebook/react/main"
+  → localPath = "<octocode-home>/tmp/clone/facebook/react/main"
 
 Step 2: Browse the tree
   localViewStructure(path=localPath, depth=2)
@@ -202,15 +202,15 @@ Step 4: Find files by metadata
 | Behavior | Details |
 |----------|---------|
 | **TTL** | 24 hours by default (configurable via `OCTOCODE_CACHE_TTL_MS` env var) |
-| **Location** | `<octocode-home>/repos/{owner}/{repo}/{branch}/` |
+| **Location** | clones: `<octocode-home>/tmp/clone/{owner}/{repo}/{branch}/`; file/tree fetches: `<octocode-home>/tmp/tree/{owner}/{repo}/{branch}/` |
 | **Branch** | Auto-detected via GitHub API when omitted; resolved branch always included in path and result |
 | **Sparse clones** | Separate cache: `{branch}__sp_{hash}/` |
 | **Coexistence** | Full clone and sparse clones of the same repo can coexist |
 | **Cache hit** | Returns instantly (no network call) |
-| **Clone vs directory** | Clone-cache is never overwritten by directory fetch — if a git clone exists, directory fetch reuses it as-is |
+| **Clone vs directory** | Clone-cache and directory/file materialization are separate; directory fetch never overwrites a git clone |
 | **Expired** | Automatically evicted by periodic GC (every 10 min) and on next request |
 | **Force refresh** | Set `forceRefresh: true` in the query to bypass cache and re-clone/re-fetch |
-| **Periodic GC** | Expired clones are cleaned up every 10 minutes (runs on server startup and periodically) |
+| **Periodic GC** | Expired clone/tree materializations are cleaned up every 10 minutes (runs on server startup and periodically) |
 | **Manual clear** | Delete the `localPath` directory to force re-clone |
 
 ---
@@ -219,12 +219,12 @@ Step 4: Find files by metadata
 
 Local tools validate all paths against allowed roots. Cloned repos are accessible because:
 
-1. **Clone destination**: `<octocode-home>/repos/...` is under the Octocode home directory
+1. **Tmp destination**: `<octocode-home>/tmp/...` is under the Octocode home directory
 2. **PathValidator & ExecutionContextValidator**: Both automatically add Octocode home as an allowed root alongside the workspace directory
 3. **Workspace root resolution**: Local tools validate paths against allowed roots, and LSP tools automatically choose project context from the target file path. If a cloned file is inside `WORKSPACE_ROOT`, Octocode keeps that root; otherwise it walks up from the file to the nearest project marker (`package.json`, `tsconfig.json`, `.git`, `Cargo.toml`, `go.mod`, `pyproject.toml`, etc.)
 4. **Result**: Any `localPath` returned by `ghCloneRepo` or `ghGetFileContent` (directory mode) is automatically valid for all local + LSP tools, even when the cloned repo lives outside your current shell workspace
 
-No extra configuration is needed beyond `ENABLE_LOCAL=true` (the default) and `ENABLE_CLONE=true`.
+For MCP, set `ENABLE_LOCAL=true` and `ENABLE_CLONE=true`. The CLI defaults both local and clone support on unless explicitly disabled.
 
 For TypeScript/JavaScript LSP:
 

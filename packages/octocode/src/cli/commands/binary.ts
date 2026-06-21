@@ -73,77 +73,23 @@ function resolveMode(
 export const binaryCommand: CLICommand = {
   name: 'binary',
   options: [
-    { name: 'list', description: 'List archive entries (.zip/.tar.*/.jar/…)' },
-    {
-      name: 'extract',
-      hasValue: true,
-      description: 'Extract one archive entry by exact path (run --list first)',
-    },
-    {
-      name: 'inspect',
-      description:
-        'Structure of a native binary: format, arch, counts, and deps',
-    },
-    {
-      name: 'detailed',
-      description:
-        'inspect: include full symbols/imports/exports/sections arrays',
-    },
-    {
-      name: 'strings',
-      description: 'Readable strings of a native binary (.so/.dylib/.node/…)',
-    },
-    {
-      name: 'decompress',
-      description: 'Decompress a single-stream file (.gz/.xz/.zst/…)',
-    },
-    {
-      name: 'match',
-      hasValue: true,
-      description:
-        'Keep only extracted/decompressed lines matching this string (search in content)',
-    },
-    {
-      name: 'min-length',
-      hasValue: true,
-      description: 'strings: shortest run to keep (raise to ~12 for symbols)',
-    },
-    {
-      name: 'max-entries',
-      hasValue: true,
-      description: 'list: cap number of entries returned',
-    },
-    {
-      name: 'format',
-      hasValue: true,
-      description:
-        'decompress: force format (gzip|bzip2|xz|lzma|zstd|lz4|brotli|lzfse)',
-    },
-    { name: 'verbose', description: 'list: include entry size and mtime' },
-    {
-      name: 'offsets',
-      description: 'strings: prefix each string with its hex byte offset',
-    },
-    {
-      name: 'scan-offset',
-      hasValue: true,
-      description:
-        'strings: absolute byte offset to start the scan window — follow the nextScanOffset cursor to page a large binary losslessly (no string split across windows)',
-    },
-    {
-      name: 'char-offset',
-      hasValue: true,
-      description:
-        'strings/decompress/extract: char offset to read from (follow the charOffset=N hint to page)',
-    },
-    {
-      name: 'char-length',
-      hasValue: true,
-      description:
-        'strings/decompress/extract: characters per page window (default: server default)',
-    },
-    { name: 'page', hasValue: true, description: 'Result page (list mode)' },
-    { name: 'json', description: 'Output raw JSON results' },
+    { name: 'list' },
+    { name: 'extract', hasValue: true },
+    { name: 'inspect' },
+    { name: 'detailed' },
+    { name: 'strings' },
+    { name: 'decompress' },
+    { name: 'match', hasValue: true },
+    { name: 'min-length', hasValue: true },
+    { name: 'max-entries', hasValue: true },
+    { name: 'format', hasValue: true },
+    { name: 'verbose' },
+    { name: 'offsets' },
+    { name: 'scan-offset', hasValue: true },
+    { name: 'char-offset', hasValue: true },
+    { name: 'char-length', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'json' },
   ],
   handler: async args => {
     const { options } = args;

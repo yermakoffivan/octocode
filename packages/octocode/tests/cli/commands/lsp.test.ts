@@ -51,6 +51,30 @@ function lspEnvelope(payload: Record<string, unknown>) {
   };
 }
 
+function materializedFileEnvelope(
+  localPath = '/tmp/octocode/tmp/tree/facebook/react/main/src/index.ts'
+) {
+  return {
+    isError: false,
+    content: [],
+    structuredContent: {
+      results: [
+        {
+          id: 'facebook/react',
+          files: [
+            {
+              content: 'export function runCLI() {}',
+              localPath,
+              repoRoot: '/tmp/octocode/tmp/tree/facebook/react/main',
+              resolvedBranch: 'main',
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 describe('lsp command', () => {
   beforeEach(() => {
     executeDirectTool.mockReset();
@@ -162,6 +186,54 @@ describe('lsp command', () => {
       'lspGetSemantics',
       expect.objectContaining({
         queries: [expect.objectContaining({ lineHint: 42 })],
+      })
+    );
+  });
+
+  it('--repo materializes the remote file and defaults workspaceRoot to the saved repo root', async () => {
+    executeDirectTool
+      .mockResolvedValueOnce(materializedFileEnvelope())
+      .mockResolvedValueOnce(
+        lspEnvelope({ kind: 'definition', locations: [] })
+      );
+
+    await run({
+      repo: 'facebook/react',
+      branch: 'main',
+      'force-refresh': true,
+    });
+
+    expect(executeDirectTool).toHaveBeenCalledTimes(2);
+    expect(executeDirectTool).toHaveBeenNthCalledWith(
+      1,
+      'ghGetFileContent',
+      expect.objectContaining({
+        queries: [
+          expect.objectContaining({
+            owner: 'facebook',
+            repo: 'react',
+            branch: 'main',
+            path: 'src/index.ts',
+            type: 'file',
+            forceRefresh: true,
+            fullContent: true,
+            minify: 'none',
+          }),
+        ],
+      })
+    );
+    expect(executeDirectTool).toHaveBeenNthCalledWith(
+      2,
+      'lspGetSemantics',
+      expect.objectContaining({
+        queries: [
+          expect.objectContaining({
+            uri: '/tmp/octocode/tmp/tree/facebook/react/main/src/index.ts',
+            workspaceRoot: '/tmp/octocode/tmp/tree/facebook/react/main',
+            symbolName: 'runCLI',
+            lineHint: 10,
+          }),
+        ],
       })
     );
   });

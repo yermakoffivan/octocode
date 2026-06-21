@@ -14,10 +14,12 @@ octocode <command> [options]
 
 # Quick research commands
 octocode cat <path|owner/repo/path>
+octocode cat <repo-relative-file> --repo <owner/repo[@ref]>
 octocode ls <path|owner/repo>                       # tree; a file or --symbols shows a symbol outline
 octocode grep <keywords> <path|owner/repo>          # text/regex; --pattern/--rule for AST shape
 octocode find <query> [path|owner/repo]
 octocode clone <owner/repo[/path][@branch]|url>
+octocode cache fetch <owner/repo[@ref]> [path]
 octocode pr <owner/repo[#N]|PR-URL>
 octocode repo <keywords...>
 octocode pkg <package>
@@ -36,18 +38,19 @@ octocode context [--full] [--json]
 
 | Command | Purpose |
 |---------|---------|
-| `cat` | Read local or GitHub file content, with minification, line ranges, and match slices. |
-| `ls` | Browse local/GitHub trees; local files or `--symbols` return symbol outlines. |
-| `grep` | Search text/regex locally or on GitHub; local `--pattern`/`--rule` runs structural AST search. |
-| `find` | Find files by name/path/metadata, or local/GitHub content matches. |
+| `cat` | Read local/GitHub files, or materialize `--repo` and read the saved local file, with minification, line ranges, and match slices. |
+| `ls` | Browse local/GitHub trees, or materialize `--repo`; files or `--symbols` return symbol outlines. |
+| `grep` | Search text/regex locally/GitHub, or materialize `--repo`; local and `--repo` support structural AST search. |
+| `find` | Find files by name/path/metadata, or local/GitHub/clone-backed content matches. |
 | `pr` | Search pull requests or deep-read one PR. |
 | `history` | Inspect commit history for a GitHub repo, directory, or file. |
 | `repo` | Discover GitHub repositories. |
 | `pkg` | Search npm packages and hand off to source repositories. |
 | `binary` | Inspect binaries (format/symbols/imports/deps), list/extract archives, decompress streams, or read strings. |
-| `unzip` | Unpack an archive to `<octocode-home>/unzip/<name>-<timestamp>/`. |
-| `clone` | Clone a GitHub repo or sparse subtree to the Octocode home repo cache. |
-| `lsp` | Run symbol-anchored semantic queries: definition, references, callers, hover, type/implementation. |
+| `unzip` | Unpack an archive to `<octocode-home>/tmp/unzip/<name>-<timestamp>/`. |
+| `clone` | Clone a GitHub repo or sparse subtree to `<octocode-home>/tmp/clone/`. |
+| `cache` | Materialize remote files/trees/repos, inspect status, or clear tmp storage. |
+| `lsp` | Run symbol-anchored semantic queries on local or clone-backed remote files. |
 | `tools` | List tools, read schemas, and run any MCP tool directly. |
 | `context` | Print agent-facing protocol, system prompt, tool descriptions, and schemas. |
 | `install` | Configure Octocode in supported MCP clients. |
@@ -76,7 +79,7 @@ Use `octocode context --full` for complete tool descriptions, and `octocode cont
 | Search text or code structure | `grep` (text/regex; `--pattern`/`--rule` for AST shape) |
 | Read less, cite exact evidence | `cat --mode symbols`, `cat --match-string`, `cat --start-line ... --end-line ...` |
 | Outline a file / trace symbols semantically | `ls <file>` or `ls <dir> --symbols`, then `lsp --type ... --symbol ... --line ...` |
-| Inspect PRs/history or clone for local analysis | `pr`, `history`, `clone` |
+| Inspect PRs/history or clone for local analysis | `pr`, `history`, `clone`, `cache fetch`, or quick-command `--repo` |
 | Inspect archives/binaries | `binary`, `unzip` |
 | Configure Octocode | `install`, `auth`, `login`, `logout`, `status` |
 | Run any MCP tool directly | `tools <name> --scheme`, then `tools <name> --queries '<json>'` |
@@ -95,22 +98,23 @@ Unknown flags are rejected before a command runs. The error lists valid flags fo
 
 ## Quick Commands
 
-Auto-route based on target: a local path routes to local tools; `owner/repo[/path][@branch]` routes to GitHub. All commands support `--json`.
+Auto-route based on target: a local path routes to local tools; `owner/repo[/path][@branch]` routes to GitHub. For `cat`, `ls`, `grep`, `find`, and `lsp`, `--repo owner/repo[@ref]` first materializes the remote target under Octocode's `.octocode` storage, then runs the local tool and returns absolute local-path hints. All commands support `--json`.
 
 | Command | Routes to | What it does |
 |---------|-----------|------|
-| `cat` | `localGetFileContent` / `ghGetFileContent` | Read and minify file content |
-| `ls` | `localViewStructure` / `ghViewRepoStructure` / `lspGetSemantics` | Directory tree; a file or `--symbols` shows a symbol outline (local) |
-| `grep` | `localSearchCode` / `ghSearchCode` | Text/regex search; `--pattern`/`--rule` for Octocode AST shape (local) |
-| `find` | `localFindFiles` / `localSearchCode` / `ghSearchCode` | Find files by name, path, or content |
-| `clone` | `ghCloneRepo` | Clone a repo or subtree to the Octocode home `repos/` cache |
+| `cat` | `localGetFileContent` / `ghGetFileContent` / `ghCloneRepo` | Read and minify file content; `--repo` reads the saved local clone path |
+| `ls` | `localViewStructure` / `ghViewRepoStructure` / `lspGetSemantics` / `ghCloneRepo` | Directory tree; a file or `--symbols` shows a symbol outline |
+| `grep` | `localSearchCode` / `ghSearchCode` / `ghCloneRepo` | Text/regex search; `--pattern`/`--rule` for Octocode AST shape (local or `--repo`) |
+| `find` | `localFindFiles` / `localSearchCode` / `ghSearchCode` / `ghCloneRepo` | Find files by name, path, or content |
+| `clone` | `ghCloneRepo` | Clone a repo or subtree to the Octocode home `tmp/clone/` cache |
+| `cache` | `ghGetFileContent` / `ghCloneRepo` | Materialize a remote file/tree/repo, report storage status, or clear tmp outputs |
 | `pr` | `ghHistoryResearch` | List or deep-dive pull requests |
 | `history` | `ghHistoryResearch` (commits) | Commit history for a repo, dir, or file (→ `#PR` deep-read) |
 | `repo` | `ghSearchRepos` | Discover GitHub repositories |
 | `pkg` | `npmSearch` | npm package metadata + source repo |
 | `lsp` | `lspGetSemantics` | Definition, references, callers, callees, call hierarchy, hover, type definition, implementation |
 | `binary` | `localBinaryInspect` | Archives, compressed files, native binaries |
-| `unzip` | `localBinaryInspect` (unpack) | Unpack an archive to a fresh `<octocode-home>/unzip/<name>-<timestamp>/` directory |
+| `unzip` | `localBinaryInspect` (unpack) | Unpack an archive to a fresh `<octocode-home>/tmp/unzip/<name>-<timestamp>/` directory |
 
 ## Minimize First
 
@@ -121,11 +125,13 @@ Use the CLI in this order: map cheaply, search narrowly, then read the smallest 
 - `cat --mode symbols` gives a line-numbered skeleton before reading bodies.
 - `cat --match-string`, `--start-line`, and `--end-line` keep evidence reads small and quotable.
 - `grep --mode discovery` finds files only; switch to paginated/detailed only after narrowing.
+- For remote multi-step work, prefer `--repo owner/repo[@ref]` or `cache fetch`: output hints include the absolute saved path so the next step can use local `ls`, `grep`, `cat`, and `lsp`.
 
 ### cat
 
 ```
 cat <path|owner/repo/path>
+    --repo <owner/repo[@ref]>        materialize remote repo first; path is repo-relative
     --mode  none|standard|symbols    minification (default: standard)
     --branch <ref>                   branch for GitHub paths
     --match-string <s>               return only sections containing this string
@@ -144,6 +150,8 @@ cat <path|owner/repo/path>
     --json
 ```
 
+Without `--repo`, GitHub targets use direct GitHub file fetch. With `--repo`, the CLI checks/materializes the requested branch and path under Octocode's `.octocode` storage, reads the saved local file, and returns hints with the absolute local path for follow-up local tools.
+
 Examples:
 
 ```bash
@@ -153,19 +161,22 @@ octocode cat src/index.ts --match-string "runCLI" --mode none
 octocode cat src/index.ts --start-line 40 --end-line 90 --mode none
 octocode cat facebook/react/packages/react/index.js
 octocode cat facebook/react/packages/react/index.js --branch 18.2.0
+octocode cat packages/react/index.js --repo facebook/react --mode symbols
 ```
 
 ### ls
 
-Shows structure at any zoom. A **directory** (local or GitHub) lists a **tree**; a local **file** — or any local path with `--symbols` — shows a **semantic symbol outline** (`lspGetSemantics type=documentSymbols`). The outline is **local-only** and replaces the former `symbols` command.
+Shows structure at any zoom. A **directory** (local or GitHub) lists a **tree**; a local **file** — or any path materialized with `--repo` and `--symbols` — shows a **semantic symbol outline** (`lspGetSemantics type=documentSymbols`). The outline replaces the former `symbols` command.
 
 ```
-ls <path|owner/repo>
-    --symbols        show a symbol outline instead of a tree (local only;
+ls [path|owner/repo]
+    --repo <owner/repo[@ref]>  materialize remote repo first; path is repo-relative
+    --symbols        show a symbol outline instead of a tree (local or --repo;
                      auto-enabled when the target is a file)
     --kind <kind>    outline: filter by kind — function, class, method, …
     --depth <n>      tree: recursion depth · outline: directory discovery depth
-    --branch <ref>   branch for GitHub paths
+    --branch <ref>   branch for GitHub paths or --repo materialization
+    --force-refresh  re-clone --repo materialization
     --pattern <glob> name filter (local tree only)
     --ext <list>     comma-separated extension whitelist (tree filter; outline: which source files)
     --sort name|size|time|extension   (local tree only)
@@ -187,8 +198,10 @@ Examples:
 octocode ls src
 octocode ls src --depth 3 --ext ts,tsx
 octocode ls facebook/react --branch 18.2.0 --depth 2
+octocode ls packages/react --repo facebook/react --depth 2
 octocode ls src/index.ts                       # file → symbol outline
 octocode ls src --symbols --ext ts,tsx --limit 10
+octocode ls packages/react/index.js --repo facebook/react --symbols
 octocode ls src/index.ts --symbols --kind function
 ```
 
@@ -196,12 +209,14 @@ octocode ls src/index.ts --symbols --kind function
 
 ```
 grep <keywords> <path|owner/repo>          text/regex search
-grep <path> --pattern <shape>              AST shape search (local only)
-grep <path> --rule <yaml>                  AST relational rule (local only)
-    --pattern <ast>    AST shape — switches grep to structural search (local only).
+grep <keywords> [path] --repo <owner/repo[@ref]>  materialize remote then local search
+grep <path> --pattern <shape>              AST shape search (local or --repo)
+grep <path> --rule <yaml>                  AST relational rule (local or --repo)
+    --repo <owner/repo[@ref]>  materialize remote repo first; path is repo-relative
+    --pattern <ast>    AST shape — switches grep to structural search (local or --repo).
                        Metavars: $X = one node, $$$ARGS = a list. e.g. 'eval($X)'
     --rule <yaml>      relational YAML rule — not/inside/has/all/any.
-                       Mutually exclusive with --pattern. Local only.
+                       Mutually exclusive with --pattern. Local or --repo.
     --type <ext|lang>  filter by language or extension (ts, rust, typescript, "*.rs")
     --mode paginated|discovery|detailed   (local only, default: paginated)
     --concise          paths only, no snippets — cheapest orientation
@@ -225,14 +240,15 @@ grep <path> --rule <yaml>                  AST relational rule (local only)
     --max-matches <n>   max matches per file (local only)
     --max-files <n>     max matched files returned (local only)
     --match-page <n>    page within one file's matches (local only)
-    --branch <ref>      branch for GitHub paths
+    --branch <ref>      branch for GitHub paths or --repo materialization
+    --force-refresh     re-clone --repo materialization
     --limit <n>         max files in output
     --page <n>
     --page-size <n>
     --json
 ```
 
-Text/regex runs locally or on GitHub. AST shape search (`--pattern`/`--rule`) is **local-only** — comments and strings never false-match.
+Text/regex runs locally or on GitHub. With `--repo`, the CLI materializes the branch/path under Octocode's `.octocode` storage, runs local search, and returns hints with the absolute saved path. AST shape search (`--pattern`/`--rule`) runs locally, including clone-backed `--repo` paths — comments and strings never false-match.
 Quote structural patterns with single quotes so the shell does not expand `$A`,
 `$X`, or `$$$ARGS` before Octocode sees them. Once the shell has already
 expanded a metavariable, the CLI cannot recover the original pattern.
@@ -247,8 +263,10 @@ octocode grep 'runCLI\s*\(' packages/octocode/src --perl-regex --context 1 --max
 octocode grep '\w+\.cursor\.sh' bundle.min.js --only-matching            # enumerate every hit on a minified one-liner
 octocode grep 'api\d' bundle.min.js --only-matching --match-window 12     # matched span + surrounding context
 octocode grep "useState" facebook/react --type ts
+octocode grep "useState" packages/react --repo facebook/react --type js --mode discovery
 octocode grep "executeCloneRepo" bgauryy/octocode-mcp --concise
 octocode grep src --pattern 'eval($X)'
+octocode grep packages/react --repo facebook/react --pattern 'useState($$$ARGS)' --type js
 octocode grep packages/octocode/src --pattern 'console.log($$$ARGS)' --type ts
 octocode grep packages/octocode/src --pattern '$A && $A()' --type ts
 octocode grep src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_statement\n    stopBy: end'
@@ -258,12 +276,15 @@ octocode grep src --rule 'rule:\n  pattern: await $C\n  inside:\n    kind: for_s
 
 ```
 find <query> [path|owner/repo]
+    --repo <owner/repo[@ref]>       materialize remote repo first; --path/target is repo-relative
     --source auto|local|github      routing (default: auto)
     --search path|content|both      search mode (default: path)
     --ext <list>                    comma-separated extensions
     --path <subpath>                local root or GitHub repo subpath
+    --branch <ref>                  branch for --repo materialization
+    --force-refresh                 re-clone --repo materialization
     --owner <owner>                 GitHub owner
-    --repo <repo>                   GitHub repository
+    --repo <repo>                   with --owner, GitHub repository filter
     --filename <name>               GitHub filename filter
     --limit <n>
     --page <n>
@@ -309,15 +330,18 @@ find <query> [path|owner/repo]
     --count-lines / --count-matches
     --files-only / --files-without-match
     --verbose                       GitHub only
-    --concise                       GitHub only, flat owner/repo:path list
+    --concise                       flat paths for GitHub or lean local output
     --json
 ```
+
+Without `--owner`, `--repo owner/repo[@ref]` is remote-as-local mode: Octocode materializes the requested repo/subpath under `.octocode`, runs `localFindFiles` / `localSearchCode`, and hints the absolute saved path for follow-up local commands. With `--owner`, `--repo <repo>` keeps the old GitHub search-filter meaning.
 
 Examples:
 
 ```bash
 octocode find auth src --source local --search path --ext ts
 octocode find executeDirectTool . --source local --search content --ext ts
+octocode find useState --repo facebook/react --path packages/react --search both --ext js
 octocode find auth bgauryy/octocode-mcp --source github --search path --ext ts
 octocode find auth . --search both --limit 20
 ```
@@ -326,7 +350,7 @@ octocode find auth . --search both --limit 20
 
 ### clone
 
-Clone a GitHub repo or subtree locally. Clones land at `<octocode-home>/repos/<owner>/<repo>/<branch>/` with a 24-hour cache. Requires `ENABLE_CLONE=true`.
+Clone a GitHub repo or subtree locally. Clones land at `<octocode-home>/tmp/clone/<owner>/<repo>/<branch>/` with a 24-hour cache. In the CLI, clone is enabled by default unless `ENABLE_CLONE=false`; MCP clone tools require `ENABLE_CLONE=true`.
 
 ```
 clone <owner/repo[/path][@branch]|url>
@@ -354,13 +378,38 @@ octocode clone facebook/react@18.2.0/packages/react
 octocode clone https://github.com/vercel/next.js/tree/main/packages/next
 ```
 
-After cloning, use local tools against the cloned path:
+Clone output includes the absolute saved path and local-tool hints. After cloning, use local tools against that path:
 
 ```bash
 octocode ls <localPath-from-clone-output>
 octocode grep "useState" <localPath-from-clone-output>
 octocode cat <localPath-from-clone-output>/packages/react/index.js
 octocode ls <localPath-from-clone-output>/packages/react/index.js --symbols
+```
+
+For one-step remote-as-local research, use `cat`, `ls`, `grep`, `find`, or `lsp` with `--repo owner/repo[@ref]`; these commands materialize first and immediately run the local tool.
+
+### cache
+
+Materialize remote files, trees, or whole repos into Octocode's `<octocode-home>/tmp/` storage and print agent-facing local-tool hints. Files and API-fetched trees land in `tmp/tree`; git clones land in `tmp/clone`.
+
+```
+cache fetch <owner/repo[@ref]> [path]
+    --depth file|tree|clone  requested materialization depth (default: tree with path, clone without path)
+    --branch <ref>           branch, tag, or SHA
+    --force-refresh          bypass existing tmp materialization and refresh
+    --json
+
+cache status [--json]
+cache clear --clone|--repos|--tree|--binary|--unzip|--all [--json]
+```
+
+Examples:
+
+```bash
+octocode cache fetch facebook/react packages/react
+octocode cache fetch facebook/react packages/react/index.js --depth file
+octocode cache status
 ```
 
 ### pr
@@ -485,6 +534,9 @@ octocode pkg "http client typescript"
 
 ```
 lsp <file> --type <type> --symbol <name> --line <n>
+    --repo <owner/repo[@ref]>   materialize remote repo first; file is repo-relative
+    --branch <ref>              branch for --repo materialization
+    --force-refresh             re-clone --repo materialization
     --type   definition|references|callers|callees|callHierarchy
              hover|typeDefinition|implementation   (required)
     --symbol <name>             required
@@ -498,7 +550,7 @@ lsp <file> --type <type> --symbol <name> --line <n>
     --json
 ```
 
-Run `grep` or `ls --symbols` first to get a real `--line` value. Never guess `--line`. Semantic misses such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls` exit with code `3` so shell scripts can fail fast without parsing JSON.
+Run `grep` or `ls --symbols` first to get a real `--line` value. Never guess `--line`. With `--repo`, the CLI materializes the remote file locally, defaults `--workspace-root` to the saved repo root, and returns hints with the absolute saved path for follow-up local tools. Semantic misses such as `symbolNotFound`, `noLocations`, `noReferences`, `noHover`, or `noCalls` exit with code `3` so shell scripts can fail fast without parsing JSON.
 
 All raw `lspGetSemantics` types are: `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored types that require `--symbol` and `--line`; use `octocode ls <file|dir> --symbols` for `documentSymbols`. For TypeScript/JavaScript import aliases, `definition` follows local imports to the exported declaration when the language server first returns the import binding.
 
@@ -507,6 +559,7 @@ Examples:
 ```bash
 octocode ls packages/octocode/src/cli/index.ts --symbols
 octocode lsp packages/octocode/src/cli/index.ts --type references --symbol runCLI --line 73
+octocode lsp packages/react/src/ReactHooks.js --repo facebook/react --type references --symbol useState --line 72
 octocode lsp packages/octocode/src/index.ts --type definition --symbol runCLI --line 10 --format compact
 octocode lsp packages/octocode/src/cli/index.ts --type hover --symbol runCLI --line 73
 ```
@@ -553,7 +606,7 @@ octocode binary huge.bin --strings --scan-offset 67108863   # page past the firs
 
 ### unzip
 
-Unpack an archive to a fresh `<octocode-home>/unzip/<name>-<timestamp>/` directory, then use local commands on the extracted tree. The command returns `localPath`; use that exact path for follow-up `ls`, `grep`, `cat`, and `lsp` calls.
+Unpack an archive to a fresh `<octocode-home>/tmp/unzip/<name>-<timestamp>/` directory, then use local commands on the extracted tree. The command returns `localPath`; use that exact path for follow-up `ls`, `grep`, `cat`, and `lsp` calls.
 
 ```
 unzip <archive> [--json]
@@ -645,7 +698,7 @@ octocode tools ghCloneRepo --queries '{"owner":"facebook","repo":"react","sparse
 | `GITHUB_TOKEN` | GitHub token fallback. |
 | `OCTOCODE_HOME` | Override Octocode data directory. Defaults: macOS `~/.octocode`, Windows `%APPDATA%\octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/octocode`. |
 | `ENABLE_LOCAL` | Enable local filesystem tools (default: `true`). |
-| `ENABLE_CLONE` | Enable `ghCloneRepo` / `clone` command (default: `false`). |
+| `ENABLE_CLONE` | Clone gate. CLI clone/materialization is enabled by default and only disabled by `ENABLE_CLONE=false`; MCP clone tools require `ENABLE_CLONE=true`. |
 | `NO_COLOR` | Disable terminal color. |
 
 ## Exit Codes

@@ -18,7 +18,11 @@ function gh(input: string): GithubRef {
 describe('resolveRef — GitHub ref parsing', () => {
   it('parses owner/repo with no subpath or branch', () => {
     const ref = gh('facebook/react');
-    expect(ref).toMatchObject({ owner: 'facebook', repo: 'react', subpath: '' });
+    expect(ref).toMatchObject({
+      owner: 'facebook',
+      repo: 'react',
+      subpath: '',
+    });
     expect(ref.branch).toBeUndefined();
   });
 
@@ -66,7 +70,9 @@ describe('resolveRef — GitHub ref parsing', () => {
   });
 
   it('parses GitHub tree URLs', () => {
-    const ref = gh('https://github.com/facebook/react/tree/main/packages/react');
+    const ref = gh(
+      'https://github.com/facebook/react/tree/main/packages/react'
+    );
     expect(ref).toMatchObject({
       owner: 'facebook',
       repo: 'react',

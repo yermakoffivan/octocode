@@ -16,8 +16,11 @@ import {
 import { lsCommand } from '../../src/cli/commands/ls.js';
 import type { ParsedArgs } from '../../src/cli/types.js';
 
-function args(options: ParsedArgs['options']): ParsedArgs {
-  return { command: null, args: [], options };
+function args(
+  options: ParsedArgs['options'],
+  command: ParsedArgs['command'] = null
+): ParsedArgs {
+  return { command, args: [], options };
 }
 
 describe('command option validation', () => {
@@ -68,6 +71,12 @@ describe('findInvalidNumericOptions', () => {
     expect(findInvalidNumericOptions(args({ depth: '3x' }))).toEqual([
       '--depth=3x',
     ]);
+  });
+
+  it('allows cache --depth enum values', () => {
+    expect(findInvalidNumericOptions(args({ depth: 'tree' }, 'cache'))).toEqual(
+      []
+    );
   });
 
   it('validates grep --match-length as numeric', () => {

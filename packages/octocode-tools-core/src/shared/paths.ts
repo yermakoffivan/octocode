@@ -40,9 +40,13 @@ export const paths = {
   key: join(OCTOCODE_HOME, '.key'),
   session: join(OCTOCODE_HOME, 'session.json'),
   stats: join(OCTOCODE_HOME, 'stats.json'),
-  repos: join(OCTOCODE_HOME, 'repos'),
+  tmp: join(OCTOCODE_HOME, 'tmp'),
+  clone: join(OCTOCODE_HOME, 'tmp', 'clone'),
+  tree: join(OCTOCODE_HOME, 'tmp', 'tree'),
+  binary: join(OCTOCODE_HOME, 'tmp', 'binary'),
+  repos: join(OCTOCODE_HOME, 'tmp', 'clone'),
   logs: join(OCTOCODE_HOME, 'logs'),
-  unzip: join(OCTOCODE_HOME, 'unzip'),
+  unzip: join(OCTOCODE_HOME, 'tmp', 'unzip'),
   cliConfig: join(OCTOCODE_HOME, 'config.json'),
   lspConfig: join(OCTOCODE_HOME, 'lsp-servers.json'),
 } as const;
@@ -54,9 +58,20 @@ export function ensureHome(): void {
 }
 
 export function ensureRepos(): void {
+  ensureClone();
+}
+
+export function ensureTmp(): void {
   ensureHome();
-  if (!existsSync(paths.repos)) {
-    mkdirSync(paths.repos, { recursive: true, mode: DIR_MODE });
+  if (!existsSync(paths.tmp)) {
+    mkdirSync(paths.tmp, { recursive: true, mode: DIR_MODE });
+  }
+}
+
+export function ensureClone(): void {
+  ensureTmp();
+  if (!existsSync(paths.clone)) {
+    mkdirSync(paths.clone, { recursive: true, mode: DIR_MODE });
   }
 }
 
@@ -67,8 +82,22 @@ export function ensureLogs(): void {
   }
 }
 
+export function ensureTree(): void {
+  ensureTmp();
+  if (!existsSync(paths.tree)) {
+    mkdirSync(paths.tree, { recursive: true, mode: DIR_MODE });
+  }
+}
+
+export function ensureBinary(): void {
+  ensureTmp();
+  if (!existsSync(paths.binary)) {
+    mkdirSync(paths.binary, { recursive: true, mode: DIR_MODE });
+  }
+}
+
 export function ensureUnzip(): void {
-  ensureHome();
+  ensureTmp();
   if (!existsSync(paths.unzip)) {
     mkdirSync(paths.unzip, { recursive: true, mode: DIR_MODE });
   }

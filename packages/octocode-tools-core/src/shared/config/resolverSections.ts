@@ -87,12 +87,12 @@ export function resolveLocal(
   const envWorkspaceRoot = process.env.WORKSPACE_ROOT?.trim() || undefined;
 
   return {
-    // Local tools: the CLI is a local terminal, so local access is always on
-    // and ENABLE_LOCAL is ignored. Only the MCP server honors ENABLE_LOCAL
-    // (default on) so a deployment can restrict what an assistant may touch.
-    enabled: isCli
-      ? true
-      : (envEnableLocal ?? fileConfig?.enabled ?? DEFAULT_LOCAL_CONFIG.enabled),
+    // Local tools: both surfaces honor ENABLE_LOCAL and file config. Only the
+    // fallback differs: CLI defaults on for terminal use; MCP defaults off.
+    enabled:
+      envEnableLocal ??
+      fileConfig?.enabled ??
+      (isCli ? true : DEFAULT_LOCAL_CONFIG.enabled),
     // Clone: an explicit ENABLE_CLONE (env) or .octocoderc value wins for both
     // surfaces, so `false` disables everywhere. Otherwise the default is
     // surface-specific: ENABLED for the CLI, DISABLED for the MCP server.

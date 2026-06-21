@@ -19,19 +19,9 @@ import { readAllClientConfigs, analyzeSyncState } from '../../features/sync.js';
 export const statusCommand: CLICommand = {
   name: 'status',
   options: [
-    {
-      name: 'hostname',
-      description: 'GitHub Enterprise hostname (default: github.com)',
-      hasValue: true,
-    },
-    {
-      name: 'sync',
-      description: 'Include MCP sync analysis (needsSync, conflicts)',
-    },
-    {
-      name: 'json',
-      description: 'Output as JSON: { auth, mcpClients, cache, sync? }',
-    },
+    { name: 'hostname', hasValue: true },
+    { name: 'sync' },
+    { name: 'json' },
   ],
   handler: async (args: ParsedArgs) => {
     const hostnameOpt = args.options['hostname'];
@@ -61,11 +51,19 @@ export const statusCommand: CLICommand = {
     });
 
     const octocodeHome = paths.home;
-    const reposDir = paths.repos;
+    const tmpDir = paths.tmp;
+    const cloneDir = paths.clone;
+    const treeDir = paths.tree;
+    const binaryDir = paths.binary;
+    const unzipDir = paths.unzip;
     const logsDir = paths.logs;
-    const reposBytes = getDirectorySizeBytes(reposDir);
+    const cloneBytes = getDirectorySizeBytes(cloneDir);
+    const treeBytes = getDirectorySizeBytes(treeDir);
+    const binaryBytes = getDirectorySizeBytes(binaryDir);
+    const unzipBytes = getDirectorySizeBytes(unzipDir);
     const logsBytes = getDirectorySizeBytes(logsDir);
-    const totalCacheBytes = reposBytes + logsBytes;
+    const tmpBytes = cloneBytes + treeBytes + binaryBytes + unzipBytes;
+    const totalCacheBytes = tmpBytes + logsBytes;
 
     let syncData: {
       summary: {
@@ -106,10 +104,30 @@ export const statusCommand: CLICommand = {
           mcpClients,
           cache: {
             home: octocodeHome,
-            repos: {
-              path: reposDir,
-              sizeBytes: reposBytes,
-              sizeFormatted: formatBytes(reposBytes),
+            tmp: {
+              path: tmpDir,
+              sizeBytes: tmpBytes,
+              sizeFormatted: formatBytes(tmpBytes),
+            },
+            clone: {
+              path: cloneDir,
+              sizeBytes: cloneBytes,
+              sizeFormatted: formatBytes(cloneBytes),
+            },
+            tree: {
+              path: treeDir,
+              sizeBytes: treeBytes,
+              sizeFormatted: formatBytes(treeBytes),
+            },
+            binary: {
+              path: binaryDir,
+              sizeBytes: binaryBytes,
+              sizeFormatted: formatBytes(binaryBytes),
+            },
+            unzip: {
+              path: unzipDir,
+              sizeBytes: unzipBytes,
+              sizeFormatted: formatBytes(unzipBytes),
             },
             logs: {
               path: logsDir,
@@ -155,7 +173,11 @@ export const statusCommand: CLICommand = {
     console.log(
       `  ${bold('Cache')}  ${dim(formatBytes(totalCacheBytes))} total`
     );
-    console.log(`    ${c('cyan', '•')} repos:  ${formatBytes(reposBytes)}`);
+    console.log(`    ${c('cyan', '•')} tmp:    ${formatBytes(tmpBytes)}`);
+    console.log(`    ${c('cyan', '•')} clone:  ${formatBytes(cloneBytes)}`);
+    console.log(`    ${c('cyan', '•')} tree:   ${formatBytes(treeBytes)}`);
+    console.log(`    ${c('cyan', '•')} binary: ${formatBytes(binaryBytes)}`);
+    console.log(`    ${c('cyan', '•')} unzip:  ${formatBytes(unzipBytes)}`);
     console.log(`    ${c('cyan', '•')} logs:   ${formatBytes(logsBytes)}`);
 
     if (syncData) {

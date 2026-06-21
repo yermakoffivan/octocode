@@ -19,21 +19,9 @@ const MODE_VALUES = new Set(['lean', 'full']);
 export const pkgCommand: CLICommand = {
   name: 'pkg',
   options: [
-    {
-      name: 'mode',
-      hasValue: true,
-      description:
-        'lean (default, token-efficient summary) or full (all metadata fields)',
-    },
-    {
-      name: 'page',
-      hasValue: true,
-      description: 'Result page for keyword-query searches',
-    },
-    {
-      name: 'json',
-      description: 'Output raw JSON results',
-    },
+    { name: 'mode', hasValue: true },
+    { name: 'page', hasValue: true },
+    { name: 'json' },
   ],
   handler: async args => {
     const packageName = args.args[0] ?? '';

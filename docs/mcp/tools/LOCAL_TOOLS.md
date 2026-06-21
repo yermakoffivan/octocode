@@ -38,7 +38,7 @@ Useful local-tool environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `ENABLE_LOCAL` | Enables local filesystem tools. Defaults to `true`. |
+| `ENABLE_LOCAL` | Enables local filesystem tools. Defaults to `true` for CLI and `false` for MCP. |
 | `WORKSPACE_ROOT` | Root used to resolve relative local paths. Overrides `local.workspaceRoot` in config. |
 | `ALLOWED_PATHS` | Optional comma-separated allowlist. Empty means all paths are allowed after normal validation. |
 | `ENABLE_CLONE` | Enables clone-backed workflows and GitHub directory fetches that materialize local files. |

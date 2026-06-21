@@ -12,7 +12,10 @@ import {
 } from '../utils.js';
 import { FileContentQueryLocalSchema } from './scheme.js';
 import type { MinifyMode } from '../../scheme/fields.js';
-import { fetchDirectoryContents } from '../../github/directoryFetch.js';
+import {
+  fetchDirectoryContents,
+  fetchFileContentToDisk,
+} from '../../github/directoryFetch.js';
 import { resolveDefaultBranch } from '../../github/client.js';
 import { countSerializedChars } from '../../utils/response/charSavings.js';
 import {
@@ -26,6 +29,7 @@ import {
   providerSupports,
 } from '../providerExecution.js';
 import { buildGithubFetchContentFinalizer } from './finalizer.js';
+import { getConfigSync } from '../../shared/index.js';
 
 type FileContentInputQuery = z.input<typeof FileContentQueryLocalSchema>;
 
@@ -61,7 +65,7 @@ export async function fetchMultipleGitHubFileContents(
           );
         }
 
-        return handleFileFetch(effectiveQuery, providerContext);
+        return handleFileFetch(effectiveQuery, authInfo, providerContext);
       } catch (error) {
         return handleCatchError(
           error,
@@ -85,6 +89,20 @@ async function handleDirectoryFetch(
   authInfo: AuthInfo | undefined,
   providerContext: ReturnType<typeof createProviderExecutionContext>
 ) {
+  const config = getConfigSync();
+  if (!(config.local.enabled && config.local.enableClone)) {
+    return createErrorResult(
+      'Directory fetch requires local clone support. Set ENABLE_LOCAL=true and ENABLE_CLONE=true.',
+      query,
+      {
+        customHints: [
+          'File mode still works without clone support.',
+          'For MCP directory materialization, enable clone support before using type="directory".',
+        ],
+      }
+    );
+  }
+
   if (!providerSupports(providerContext, 'fetchDirectoryToDisk')) {
     return handleCatchError(
       new Error(
@@ -122,6 +140,7 @@ async function handleDirectoryFetch(
 
   const resultData: Record<string, unknown> = {
     localPath: result.localPath,
+    repoRoot: result.repoRoot,
     fileCount: result.fileCount,
     totalSize: result.totalSize,
     files: result.files,
@@ -137,6 +156,11 @@ async function handleDirectoryFetch(
     true,
     TOOL_NAMES.GITHUB_FETCH_CONTENT,
     {
+      extraHints: [
+        `Saved locally at absolute path "${result.localPath}". Use localViewStructure(path="${result.localPath}") to inspect the tree.`,
+        `Use localSearchCode(path="${result.localPath}", keywords="<term>") or localFindFiles(path="${result.localPath}") to research it locally.`,
+        `Use localGetFileContent(path="${result.localPath}/<file>") to read exact files, then lspGetSemantics(uri="<absolute-file>", lineHint=<line>) when project context is complete enough.`,
+      ],
       rawResponse: result.totalSize ?? countSerializedChars(result),
     }
   );
@@ -144,6 +168,7 @@ async function handleDirectoryFetch(
 
 async function handleFileFetch(
   query: PartialFileContentQuery,
+  authInfo: AuthInfo | undefined,
   providerContext: ReturnType<typeof createProviderExecutionContext>
 ) {
   const providerResult = await executeProviderOperation(query, () =>
@@ -154,10 +179,32 @@ async function handleFileFetch(
     return providerResult.result;
   }
 
-  const providerHints = providerResult.response.hints;
+  const providerHints = providerResult.response.hints ?? [];
+  const materialized =
+    query.fullContent === true && query.minify === 'none'
+      ? await materializeExactFile(query, authInfo)
+      : undefined;
+  const materializationHints = materialized
+    ? [
+        `Saved locally at absolute path "${materialized.localPath}". Use localGetFileContent(path="${materialized.localPath}") to read it exactly.`,
+        `Use localSearchCode(path="${materialized.localPath}", keywords="<term>") to search the saved file locally.`,
+      ]
+    : [];
+  const hints = [...providerHints, ...materializationHints];
+
   const resultData = {
     ...mapFileContentProviderResult(providerResult.response.data, query),
-    ...(providerHints?.length ? { hints: providerHints } : {}),
+    ...(materialized
+      ? {
+          localPath: materialized.localPath,
+          repoRoot: materialized.repoRoot,
+          cached: materialized.cached,
+          ...(materialized.branch !== query.branch
+            ? { resolvedBranch: materialized.branch }
+            : {}),
+        }
+      : {}),
+    ...(hints.length ? { hints } : {}),
   };
 
   const hasContent = Boolean(
@@ -180,5 +227,27 @@ async function handleFileFetch(
         endLine: providerResult.response.data.endLine,
       },
     }
+  );
+}
+
+async function materializeExactFile(
+  query: PartialFileContentQuery,
+  authInfo: AuthInfo | undefined
+) {
+  if (!query.owner || !query.repo || typeof query.path !== 'string') {
+    return undefined;
+  }
+
+  const branch =
+    query.branch ??
+    (await resolveDefaultBranch(query.owner, query.repo, authInfo));
+
+  return fetchFileContentToDisk(
+    query.owner,
+    query.repo,
+    query.path,
+    branch,
+    authInfo,
+    Boolean(query.forceRefresh)
   );
 }

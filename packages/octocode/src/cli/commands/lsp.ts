@@ -9,6 +9,11 @@ import {
   markDirectToolFailure,
   printDirectToolResult,
 } from './direct-tool-output.js';
+import {
+  materializeRemoteForCli,
+  type RemoteMaterialization,
+  withMaterializationHints,
+} from '../remote-local.js';
 
 // Relational / identity queries only. For a file or directory outline
 // (documentSymbols) use `ls <file|dir> --symbols` instead.
@@ -281,64 +286,26 @@ async function inferLineHint(uri: string, symbolName: string): Promise<number> {
 export const lspCommand: CLICommand = {
   name: 'lsp',
   options: [
-    {
-      name: 'type',
-      hasValue: true,
-      description:
-        'Semantic query: definition, references, callers, callees, callHierarchy, hover, typeDefinition, implementation',
-    },
-    {
-      name: 'symbol',
-      hasValue: true,
-      description: 'Symbol name (required)',
-    },
-    {
-      name: 'line',
-      hasValue: true,
-      description:
-        'Line hint for the symbol; inferred with a local fixed-string search when omitted',
-    },
-    {
-      name: 'workspace-root',
-      hasValue: true,
-      description: 'Workspace root for the language server',
-    },
-    {
-      name: 'page',
-      hasValue: true,
-      description: 'Result page for large LSP responses',
-    },
-    {
-      name: 'page-size',
-      hasValue: true,
-      description: 'Results per page',
-    },
-    {
-      name: 'context-lines',
-      hasValue: true,
-      description: 'Context lines around returned locations',
-    },
-    {
-      name: 'depth',
-      hasValue: true,
-      description: 'Call hierarchy depth where supported',
-    },
-    {
-      name: 'format',
-      hasValue: true,
-      description:
-        'Output format passed to the LSP tool: structured or compact',
-    },
-    {
-      name: 'json',
-      description: 'Output raw JSON results',
-    },
+    { name: 'type', hasValue: true },
+    { name: 'symbol', hasValue: true },
+    { name: 'line', hasValue: true },
+    { name: 'workspace-root', hasValue: true },
+    { name: 'repo', hasValue: true },
+    { name: 'branch', hasValue: true },
+    { name: 'force-refresh' },
+    { name: 'page', hasValue: true },
+    { name: 'page-size', hasValue: true },
+    { name: 'context-lines', hasValue: true },
+    { name: 'depth', hasValue: true },
+    { name: 'format', hasValue: true },
+    { name: 'json' },
   ],
   handler: async args => {
     const target = args.args[0] ?? '';
     const jsonOutput = getBool(args.options, 'json');
     const rawType = getString(args.options, 'type');
     const symbolName = getString(args.options, 'symbol');
+    const repoOption = getString(args.options, 'repo');
     let lineHint = parsePositiveInt(getString(args.options, 'line'));
 
     if (!target) {
@@ -374,14 +341,34 @@ export const lspCommand: CLICommand = {
       process.exitCode = EXIT.USAGE;
       return;
     }
-    const uri = path.resolve(target);
-    if (existsSync(uri) && statSync(uri).isDirectory()) {
+    let uri = path.resolve(target);
+    let materializedWorkspaceRoot: string | undefined;
+    let materializedRemote: RemoteMaterialization | undefined;
+    if (repoOption) {
+      try {
+        materializedRemote = await materializeRemoteForCli({
+          repoRef: repoOption,
+          path: target,
+          branch: getString(args.options, 'branch') || undefined,
+          forceRefresh: getBool(args.options, 'force-refresh') || undefined,
+          kind: 'file',
+        });
+        uri = materializedRemote.localPath;
+        materializedWorkspaceRoot = materializedRemote.repoRoot;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        printUsageError(message, jsonOutput);
+        process.exitCode = EXIT.TOOL;
+        return;
+      }
+    } else if (existsSync(uri) && statSync(uri).isDirectory()) {
       printUsageError('Provide a file path, not a directory.', jsonOutput);
       process.exitCode = EXIT.USAGE;
       return;
     }
 
-    const workspaceRoot = getString(args.options, 'workspace-root');
+    const workspaceRoot =
+      getString(args.options, 'workspace-root') || materializedWorkspaceRoot;
     const page = parsePositiveInt(getString(args.options, 'page'));
     const itemsPerPage = parsePositiveInt(getString(args.options, 'page-size'));
     const contextLines = parsePositiveInt(
@@ -435,9 +422,12 @@ export const lspCommand: CLICommand = {
         ],
       });
 
-      printLspToolResult(result, jsonOutput);
-      markLspSemanticFailure(result);
-      markDirectToolFailure(result);
+      const outputResult = materializedRemote
+        ? withMaterializationHints(result, materializedRemote)
+        : result;
+      printLspToolResult(outputResult, jsonOutput);
+      markLspSemanticFailure(outputResult);
+      markDirectToolFailure(outputResult);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (jsonOutput) {

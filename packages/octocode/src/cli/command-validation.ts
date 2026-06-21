@@ -67,6 +67,7 @@ const NUMERIC_FLAGS = new Set([
 export function findInvalidNumericOptions(args: ParsedArgs): string[] {
   const bad: string[] = [];
   for (const [key, val] of Object.entries(args.options)) {
+    if (args.command === 'cache' && key === 'depth') continue;
     if (!NUMERIC_FLAGS.has(key) || typeof val !== 'string') continue;
     const n = Number.parseInt(val, 10);
     if (!Number.isInteger(n) || String(n) !== val.trim() || n < 0) {

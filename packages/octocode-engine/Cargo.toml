@@ -16,6 +16,15 @@ dbg_macro      = "deny"
 print_stdout   = "deny"
 print_stderr   = "deny"
 
+[lints.rust]
+# Dead-code family: warn-by-default → deny, so `cargo check`/`clippy`/`build`
+# all FAIL hard on unused code (codifies the clean state; prevents regressions).
+# `#[allow(...)]` still overrides per-site (e.g. feature-gated `unused_mut`).
+dead_code        = "deny"
+unused_imports   = "deny"
+unused_variables = "deny"
+unused_mut       = "deny"
+
 [lib]
 crate-type = ["cdylib"]
 
@@ -27,7 +36,6 @@ serde_json  = "1"
 serde_yaml_ng = "0.10"  # maintained continuation of serde_yaml (archived upstream)
 regex       = "1"
 tokio       = { version = "1", features = ["fs", "io-util", "process", "rt-multi-thread", "sync", "time"] }
-lsp-types   = "0.97"
 url         = "2"
 which       = "8"
 

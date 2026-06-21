@@ -84,7 +84,13 @@ export async function executeCloneRepo(
           const baseHints: string[] = [];
           if (result.cached) baseHints.push(CACHE_HIT_HINT);
           baseHints.push(
-            `Use localViewStructure with path="${result.localPath}" to explore, then localGetFileContent to read files.`
+            `Saved locally at absolute path "${result.localPath}". Use localViewStructure(path="${result.localPath}") to inspect the tree.`
+          );
+          baseHints.push(
+            `Use localSearchCode(path="${result.localPath}", keywords="<term>") or localFindFiles(path="${result.localPath}") to research it locally.`
+          );
+          baseHints.push(
+            `Use localGetFileContent(path="${result.localPath}/<file>") to read exact files, then lspGetSemantics(uri="<absolute-file>", lineHint=<line>) when project context is complete enough.`
           );
 
           return createSuccessResult(
