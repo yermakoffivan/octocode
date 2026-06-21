@@ -43,7 +43,6 @@ function fetchFileEnvelope(
           ],
         },
       ],
-      hints: ['Saved locally at absolute path'],
     },
   };
 }
@@ -62,7 +61,7 @@ describe('cache command', () => {
     process.exitCode = undefined;
   });
 
-  it('cache fetch materializes a remote path and returns absolute local-tool hints', async () => {
+  it('cache fetch materializes a remote path and returns structured location data', async () => {
     await run(['fetch', 'facebook/react', 'packages/react/index.js'], {
       depth: 'file',
       json: true,
@@ -90,7 +89,16 @@ describe('cache command', () => {
       source: string;
       localPath: string;
       repoRoot: string;
-      hints: string[];
+      location: {
+        kind: string;
+        localPath: string;
+        repoRoot?: string;
+        requestedPath?: string;
+        source?: string;
+        cached?: boolean;
+        complete?: boolean;
+        resolvedBranch?: string;
+      };
     };
     expect(parsed.success).toBe(true);
     expect(parsed.source).toBe('tree');
@@ -98,8 +106,17 @@ describe('cache command', () => {
     expect(parsed.localPath).toBe(
       '/tmp/octocode/tmp/tree/facebook/react/main/packages/react/index.js'
     );
-    expect(parsed.hints.join('\n')).toContain('localGetFileContent');
-    expect(parsed.hints.join('\n')).toContain('localSearchCode');
-    expect(parsed.hints.join('\n')).toContain('lspGetSemantics');
+    expect(parsed.location.kind).toBe('file');
+    expect(parsed.location.source).toBe('tree');
+    expect(parsed.location.localPath).toBe(
+      '/tmp/octocode/tmp/tree/facebook/react/main/packages/react/index.js'
+    );
+    expect(parsed.location.repoRoot).toBe(
+      '/tmp/octocode/tmp/tree/facebook/react/main'
+    );
+    expect(parsed.location.requestedPath).toBe('packages/react/index.js');
+    expect(parsed.location.resolvedBranch).toBe('main');
+    expect(parsed.location.cached).toBe(true);
+    expect(parsed.location.complete).toBe(true);
   });
 });

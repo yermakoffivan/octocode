@@ -125,20 +125,48 @@ function filterByMatchString(
   return result.length ? result.join('\n') : null;
 }
 
+interface ContentCharPagination {
+  currentPage: number;
+  totalPages: number;
+  hasMore: boolean;
+  charOffset: number;
+  charLength: number;
+  totalChars: number;
+  nextCharOffset?: number;
+}
+
 function paginateContent(
   content: string,
   charOffset: number | undefined,
   charLength: number | undefined,
   defaultLimit: number
-): { content: string; isPartial: boolean; nextCharOffset?: number } {
+): { content: string; isPartial: boolean; pagination?: ContentCharPagination } {
   const limit = charLength ?? defaultLimit;
   const offset = charOffset ?? 0;
   const meta = applyPagination(content, offset, limit);
 
+  // Surface the char cursor as structured data (the only continuation signal,
+  // now that the prose `charOffset=N` hint is gone). Emitted only when the
+  // content actually spans more than one page, matching localGetFileContent.
+  const pagination: ContentCharPagination | undefined =
+    meta.hasMore || meta.totalPages > 1
+      ? {
+          currentPage: meta.currentPage,
+          totalPages: meta.totalPages,
+          hasMore: meta.hasMore,
+          charOffset: meta.charOffset,
+          charLength: meta.charLength,
+          totalChars: meta.totalChars,
+          ...(meta.hasMore && meta.nextCharOffset !== undefined
+            ? { nextCharOffset: meta.nextCharOffset }
+            : {}),
+        }
+      : undefined;
+
   return {
     content: meta.paginatedContent,
     isPartial: meta.hasMore,
-    nextCharOffset: meta.hasMore ? meta.nextCharOffset : undefined,
+    pagination,
   };
 }
 
@@ -173,7 +201,7 @@ function handleInspect(path: string, query: BinaryInspectQuery) {
     ...(info.libraries.length ? { libraries: info.libraries } : {}),
     ...(detailed ? { detailed: true } : {}),
     ...(info.truncated ? { truncated: true } : {}),
-    ...(info.notes.length ? { hints: info.notes } : {}),
+    ...(info.notes.length ? { warnings: info.notes } : {}),
   };
 }
 
@@ -278,12 +306,6 @@ async function handleExtract(path: string, query: BinaryInspectQuery) {
     query.charLength,
     defaultLimit
   );
-  const hints = [
-    `Extracted entry saved to ${localPath} — use localGetFileContent or localSearchCode on that file.`,
-    ...(paginated.nextCharOffset !== undefined
-      ? [`charOffset=${paginated.nextCharOffset}`]
-      : []),
-  ];
 
   return {
     status: 'success' as const,
@@ -295,7 +317,7 @@ async function handleExtract(path: string, query: BinaryInspectQuery) {
     content: paginated.content,
     contentLength: content.length,
     isPartial: paginated.isPartial,
-    hints,
+    ...(paginated.pagination ? { pagination: paginated.pagination } : {}),
   };
 }
 
@@ -344,12 +366,6 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
     query.charLength,
     defaultLimit
   );
-  const hints = [
-    `Decompressed content saved to ${localPath} — use localGetFileContent or localSearchCode on that file.`,
-    ...(paginated.nextCharOffset !== undefined
-      ? [`charOffset=${paginated.nextCharOffset}`]
-      : []),
-  ];
 
   return {
     status: 'success' as const,
@@ -361,7 +377,7 @@ async function handleDecompress(path: string, query: BinaryInspectQuery) {
     content: paginated.content,
     contentLength: content.length,
     isPartial: paginated.isPartial,
-    hints,
+    ...(paginated.pagination ? { pagination: paginated.pagination } : {}),
   };
 }
 
@@ -402,24 +418,6 @@ async function handleStrings(path: string, query: BinaryInspectQuery) {
     defaultLimit
   );
 
-  const hints: string[] = [];
-  if (paginated.nextCharOffset !== undefined) {
-    hints.push(`charOffset=${paginated.nextCharOffset}`);
-  }
-  if (localPath) {
-    hints.push(
-      `Strings window saved to ${localPath} — use localGetFileContent or localSearchCode on that file.`
-    );
-  }
-  // Only advance the scan window once this window's strings are fully paged out,
-  // so the two cursors don't fight.
-  const windowFullyRead = paginated.nextCharOffset === undefined;
-  if (result.nextScanOffset !== undefined && windowFullyRead) {
-    hints.push(
-      `More of the file remains — continue scanning with scanOffset=${result.nextScanOffset} (lossless; no string is split across the boundary).`
-    );
-  }
-
   return {
     status: 'success' as const,
     mode: 'strings' as const,
@@ -429,11 +427,11 @@ async function handleStrings(path: string, query: BinaryInspectQuery) {
     contentLength: content.length,
     totalFound: result.totalFound ?? 0,
     isPartial: paginated.isPartial,
+    ...(paginated.pagination ? { pagination: paginated.pagination } : {}),
     scanOffset,
     ...(result.nextScanOffset !== undefined
       ? { nextScanOffset: result.nextScanOffset }
       : {}),
-    ...(hints.length ? { hints } : {}),
   };
 }
 
@@ -479,9 +477,6 @@ async function handleUnpack(path: string, query: BinaryInspectQuery) {
     localPath: destDir,
     cached: false,
     topLevelEntries,
-    hints: [
-      `Unpacked to ${destDir} — now run localViewStructure(path="${destDir}"), localSearchCode, or localGetFileContent on it.`,
-    ],
   };
 }
 

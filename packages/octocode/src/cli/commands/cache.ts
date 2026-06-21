@@ -55,9 +55,27 @@ function renderMaterialization(result: RemoteMaterialization): void {
     console.log(`  ${dim('path:')}      ${result.requestedPath}`);
   }
   console.log();
-  console.log('hints:');
-  for (const hint of result.hints) {
-    console.log(`- ${hint}`);
+  const { location } = result;
+  console.log('location:');
+  console.log(`  ${dim('kind:')}      ${location.kind}`);
+  console.log(`  ${dim('localPath:')} ${location.localPath}`);
+  if (location.repoRoot) {
+    console.log(`  ${dim('repoRoot:')}  ${location.repoRoot}`);
+  }
+  if (location.requestedPath) {
+    console.log(`  ${dim('requestedPath:')} ${location.requestedPath}`);
+  }
+  if (location.source) {
+    console.log(`  ${dim('source:')}    ${location.source}`);
+  }
+  if (location.resolvedBranch) {
+    console.log(`  ${dim('resolvedBranch:')} ${location.resolvedBranch}`);
+  }
+  if (location.cached !== undefined) {
+    console.log(`  ${dim('cached:')}    ${location.cached}`);
+  }
+  if (location.complete !== undefined) {
+    console.log(`  ${dim('complete:')}  ${location.complete}`);
   }
   console.log();
 }

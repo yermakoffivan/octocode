@@ -153,6 +153,7 @@ async function searchGitHubCodeAPIInternal(
           totalMatchesKind: 'reported',
           totalMatchesCapped: reportedTotalMatches > totalMatches,
           hasMore,
+          ...(hasMore ? { nextPage: clampedPage + 1 } : {}),
           uniqueFileCount: optimizedResult._researchContext?.uniqueFileCount,
         },
       },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MATCH_SNIPPET_CHARS } from '../../../src/config.js';
-import { truncateSnippetChars } from '../../../src/tools/providerMappers.js';
+import { DEFAULT_MATCH_SNIPPET_CHARS } from '../../src/config.js';
+import { truncateSnippetChars } from '../../src/tools/providerMappers.js';
 
 describe('truncateSnippetChars (GitHub code-search fragment bound)', () => {
   it('mirrors the Rust engine: char-boundary cut + "..." suffix', () => {
@@ -24,12 +24,13 @@ describe('truncateSnippetChars (GitHub code-search fragment bound)', () => {
   });
 
   it('truncates multibyte content without splitting a codepoint', () => {
-    // 6 scalars, limit 5 → 2 head chars + "..." (3) = 5.
-    const out = truncateSnippetChars('a😀b😀c', 5);
-    expect([...out].length).toBeLessThanOrEqual(5);
+    // 7 scalars (a,😀,b,😀,c,😀,d), limit 6 → 3 head scalars + "..." (3) = 6.
+    const out = truncateSnippetChars('a😀b😀c😀d', 6);
+    expect([...out].length).toBeLessThanOrEqual(6);
     expect(out.endsWith('...')).toBe(true);
-    // The emoji is never split mid-codepoint.
-    expect(out.includes('\ud83d')).toBe(false);
+    // No codepoint is split: there is no unpaired surrogate in the output.
+    expect(out).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/);
+    expect(out).not.toMatch(/(?<![\ud800-\udbff])[\udc00-\udfff]/);
   });
 
   it('defaults to DEFAULT_MATCH_SNIPPET_CHARS (mirrors engine default 500)', () => {

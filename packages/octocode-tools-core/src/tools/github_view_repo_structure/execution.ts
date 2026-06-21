@@ -27,78 +27,6 @@ import {
   executeProviderOperation,
 } from '../providerExecution.js';
 
-const CONCISE_TOP_ENTRIES = 5;
-
-function collectAllStructureEntries(structure: unknown): string[] {
-  if (!structure || typeof structure !== 'object') return [];
-  const folders: string[] = [];
-  const files: string[] = [];
-  for (const entry of Object.values(structure as Record<string, unknown>)) {
-    const e = entry as { files?: unknown; folders?: unknown };
-    if (Array.isArray(e.folders))
-      for (const f of e.folders)
-        if (typeof f === 'string') folders.push(`${f}/`);
-    if (Array.isArray(e.files))
-      for (const f of e.files) if (typeof f === 'string') files.push(f);
-  }
-  return [...folders, ...files];
-}
-
-function collectTopStructureEntries(
-  structure: unknown,
-  limit: number
-): string[] {
-  return collectAllStructureEntries(structure).slice(0, limit);
-}
-
-function buildStructureNavigationHint(input: {
-  owner?: string;
-  repo?: string;
-  truncated: boolean;
-  hasMore: boolean;
-}): string | undefined {
-  if (!input.owner || !input.repo) return undefined;
-
-  const prefix =
-    input.truncated || input.hasMore
-      ? 'Structure page is partial'
-      : 'Structure complete';
-
-  return `${prefix} - use ghSearchCode(owner="${input.owner}", repo="${input.repo}") to find patterns, or ghGetFileContent to read specific files.`;
-}
-
-function buildNextPathHints(
-  structure: unknown,
-  entryCount: number,
-  truncated: boolean
-): string[] {
-  if (!truncated) return [];
-  const topEntries = collectTopStructureEntries(structure, CONCISE_TOP_ENTRIES);
-  if (topEntries.length === 0) return [];
-  const more =
-    entryCount > topEntries.length
-      ? ` (+${entryCount - topEntries.length} more)`
-      : '';
-  return [`Next paths: ${topEntries.join(', ')}${more}`];
-}
-
-function buildStructurePageHint(pagination: {
-  currentPage?: number;
-  totalPages?: number;
-  totalEntries?: number;
-  entriesPerPage?: number;
-}): string {
-  const currentPage = pagination.currentPage ?? 1;
-  const totalPages = pagination.totalPages ?? currentPage + 1;
-  const totalEntries = pagination.totalEntries;
-  const entriesPerPage = pagination.entriesPerPage;
-  const visible =
-    typeof totalEntries === 'number' && typeof entriesPerPage === 'number'
-      ? ` (showing ${Math.min(currentPage * entriesPerPage, totalEntries)} of ${totalEntries})`
-      : '';
-  return `Page ${currentPage}/${totalPages}${visible}. Next: page=${currentPage + 1}`;
-}
-
 function normalizeStructureErrorResult(
   result: ProcessedBulkResult,
   query: PartialRepoStructureQuery
@@ -219,51 +147,17 @@ export async function exploreMultipleRepositoryStructures(
           0
         );
 
-        const pagination = (
-          resultData as {
-            pagination?: {
-              hasMore?: boolean;
-              currentPage?: number;
-              totalPages?: number;
-              totalEntries?: number;
-              entriesPerPage?: number;
-            };
-          }
-        ).pagination;
-        const hasMorePages = Boolean(pagination?.hasMore);
-
-        const navigationHint =
-          hasContent && !hasMorePages
-            ? buildStructureNavigationHint({
-                owner: query.owner,
-                repo: query.repo,
-                truncated: wasTruncated,
-                hasMore: false,
-              })
-            : undefined;
-        const extraHintsForOutput = hasMorePages
-          ? [buildStructurePageHint(pagination ?? {})]
-          : [...apiHints, ...(navigationHint ? [navigationHint] : [])];
-
-        const truncatedReasons: string[] = [];
-        if (hasMorePages) {
-          const currentPage = pagination?.currentPage ?? 1;
-          const totalPages = pagination?.totalPages;
-          truncatedReasons.push(
-            `Tree paginated (page ${currentPage}${totalPages ? ` of ${totalPages}` : ''}); use page=${currentPage + 1} to fetch the remaining entries.`
-          );
-        } else if (wasTruncated) {
-          truncatedReasons.push(
-            `Tree truncated at maxDepth=${query.maxDepth ?? 'default'}; re-query with a deeper maxDepth or a more specific path to see the rest.`
-          );
-        }
-
+        // Successful structure results carry their evidence in structured
+        // fields (incl. the `pagination` object); per-call pagination/next-step
+        // hints are redundant token waste on success and are dropped centrally
+        // by createSuccessResult. Provider `apiHints` are forwarded as recovery
+        // aids and remain gated on the success path.
         const shaped = buildRepoStructureOutput(
           {
             data: resultData as Record<string, unknown>,
             entryCount,
             wasTruncated,
-            extraHints: extraHintsForOutput,
+            extraHints: apiHints,
           },
           query
         );
@@ -287,7 +181,7 @@ export async function exploreMultipleRepositoryStructures(
               ),
             },
             prefixHints: branchHints,
-            extraHints: [...truncatedReasons, ...shaped.extraHints],
+            extraHints: shaped.extraHints,
             rawResponse: providerResult.response.rawResponseChars,
           }
         );
@@ -325,14 +219,11 @@ export function buildRepoStructureOutput(
   },
   _query: PartialRepoStructureQuery
 ): { data: Record<string, unknown>; extraHints: string[] } {
-  const nextPathHints = buildNextPathHints(
-    (input.data as { structure?: unknown }).structure,
-    input.entryCount,
-    input.wasTruncated
-  );
-
+  // Next-path / navigation hints on the success path are redundant token waste
+  // (the structure itself lists the paths) and are dropped centrally by
+  // createSuccessResult. Forward only the caller-supplied (provider) hints.
   return {
     data: input.data,
-    extraHints: [...nextPathHints, ...input.extraHints],
+    extraHints: input.extraHints,
   };
 }

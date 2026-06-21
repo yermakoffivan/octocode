@@ -24,7 +24,6 @@ import {
   safeParseOrError,
 } from '../utils.js';
 import {
-  buildPaginationHints,
   mapPullRequestProviderResultData,
   mapPullRequestToolQuery,
 } from '../providerMappers.js';
@@ -36,10 +35,7 @@ import {
   hasExpensiveContentRequest,
   normalizePullRequestContentRequest,
 } from './contentRequest.js';
-import {
-  buildContentHints,
-  shapePullRequestForContent,
-} from './contentResponse.js';
+import { shapePullRequestForContent } from './contentResponse.js';
 import { fetchHistory } from '../../github/history.js';
 import { isGitHubAPIError } from '../../github/githubAPI.js';
 
@@ -135,34 +131,11 @@ export async function searchMultipleGitHubPullRequests(
 
           const { commits, pagination } = result.data;
           const hasContent = commits.length > 0;
-          const extraHints: string[] = [];
 
-          if (pagination.hasMore && pagination.nextPage) {
-            extraHints.push(
-              `${commits.length} commit${commits.length === 1 ? '' : 's'} returned — re-call with page:${pagination.nextPage} for more.`
-            );
-          }
-
-          const PR_REF_RE = /#(\d+)/;
-          if (hasContent) {
-            const mergeCommit = commits.find(c => {
-              const headline = (c as unknown as Record<string, unknown>)
-                .messageHeadline;
-              return typeof headline === 'string' && PR_REF_RE.test(headline);
-            });
-            if (mergeCommit) {
-              const headline = (
-                mergeCommit as unknown as Record<string, unknown>
-              ).messageHeadline as string;
-              const prMatch = PR_REF_RE.exec(headline);
-              if (prMatch) {
-                extraHints.push(
-                  `Merge commits embed PR refs — e.g. "${headline}" → use ghHistoryResearch(owner:"${q.owner}", repo:"${q.repo}", prNumber:${prMatch[1]}) to read that PR's body, diffs, comments, and reviews.`
-                );
-              }
-            }
-          }
-
+          // Success-path navigation hints (next-page / merge-commit PR refs)
+          // are dropped centrally by createSuccessResult; the evidence lives in
+          // the structured commits + pagination fields. Empty-path recovery
+          // hints come from getHints('empty') via hintContext below.
           return createSuccessResult(
             query,
             result.data as unknown as Record<string, unknown>,
@@ -175,7 +148,6 @@ export async function searchMultipleGitHubPullRequests(
                 matchCount: commits.length,
                 hasMorePages: pagination.hasMore,
               },
-              extraHints,
               rawResponse: result.rawResponseChars,
             }
           );
@@ -262,16 +234,13 @@ export async function searchMultipleGitHubPullRequests(
           ? contentRequest.changedFiles ||
             contentRequest.patches.mode !== 'none'
           : false;
-        const {
-          pullRequests,
-          resultData,
-          pagination: rawPagination,
-        } = mapPullRequestProviderResultData(providerResult.response.data, {
-          includeFileChanges,
-        });
+        const { pullRequests, resultData } = mapPullRequestProviderResultData(
+          providerResult.response.data,
+          {
+            includeFileChanges,
+          }
+        );
 
-        const pagination =
-          effectiveQuery.prNumber !== undefined ? undefined : rawPagination;
         if (effectiveQuery.prNumber !== undefined) {
           delete (resultData as Record<string, unknown>).pagination;
         }
@@ -313,99 +282,16 @@ export async function searchMultipleGitHubPullRequests(
         }
 
         const hasContent = shapedPullRequests.length > 0;
-        const paginationHints = pagination
-          ? buildPaginationHints(
-              {
-                currentPage: pagination.currentPage,
-                totalPages: pagination.totalPages,
-                hasMore: pagination.hasMore,
-                totalMatches: pagination.totalMatches,
-                entriesPerPage: pagination.perPage,
-              },
-              'PRs'
-            )
-          : [];
 
-        const resultHints: string[] = hasContent
-          ? [
-              `Found ${shapedPullRequests.length} PR${shapedPullRequests.length === 1 ? '' : 's'}.`,
-              ...(showContentMap
-                ? buildContentHints(shapedPullRequests, contentRequest)
-                : []),
-            ]
-          : [];
-
-        const fileChangeHints: string[] = [];
-        const largeFileChangePRs = pullRequests.filter(
-          (pr: Record<string, unknown>) => {
-            const count =
-              typeof pr.changedFilesCount === 'number'
-                ? pr.changedFilesCount
-                : Array.isArray(pr.fileChanges)
-                  ? (pr.fileChanges as unknown[]).length
-                  : 0;
-            return count > 30;
-          }
-        );
-        if (largeFileChangePRs.length > 0) {
-          const prNumbers = largeFileChangePRs
-            .map((pr: Record<string, unknown>) => `#${pr.number}`)
-            .join(', ');
-          const maxFiles = Math.max(
-            ...largeFileChangePRs.map((pr: Record<string, unknown>) => {
-              if (typeof pr.changedFilesCount === 'number')
-                return pr.changedFilesCount;
-              return Array.isArray(pr.fileChanges)
-                ? (pr.fileChanges as unknown[]).length
-                : 0;
-            })
-          );
-          fileChangeHints.push(
-            `Large PR(s) ${prNumbers} have ${maxFiles}+ file changes.`
-          );
-        }
-        const requestedAnyContent =
-          contentRequest.body ||
-          contentRequest.changedFiles ||
-          contentRequest.patches.mode !== 'none' ||
-          Boolean(contentRequest.comments) ||
-          contentRequest.reviews ||
-          Boolean(contentRequest.commits);
-        const deliveredAnyContent = hasPrNumber && requestedAnyContent;
-        if (!includeFileChanges && !deliveredAnyContent) {
-          const withChanges = pullRequests.filter(
-            (pr: Record<string, unknown>) =>
-              typeof pr.changedFilesCount === 'number' &&
-              pr.changedFilesCount > 0
-          ).length;
-          if (withChanges > 0) {
-            fileChangeHints.push(
-              'Metadata mode: changedFiles details omitted (changedFilesCount available). Re-call with prNumber + content.changedFiles=true for file paths, content.patches={mode:"selected",files:["src/foo.ts"]} for targeted diffs, or reviewMode="full" for all content in one call.'
-            );
-          }
-        }
-
-        const matchStringHints =
-          hasPrNumber &&
-          typeof (effectiveQuery as { matchString?: string }).matchString ===
-            'string' &&
-          (effectiveQuery as { matchString: string }).matchString.trim()
-            ? [
-                `matchString filter active — pagination totals count only items matching "${(effectiveQuery as { matchString: string }).matchString.trim()}"; drop matchString for the full set.`,
-              ]
-            : [];
-
+        // Per-call result/file-change/matchString hints were computed only from
+        // populated results and dropped centrally by createSuccessResult on the
+        // success path; they are removed as dead code. downgradeHints are
+        // query-shape guidance that still flow on the empty-recovery path.
         const shaped = buildPRSearchOutput(
           {
             data: resultData,
             pullRequests,
-            extraHints: [
-              ...resultHints,
-              ...paginationHints,
-              ...downgradeHints,
-              ...fileChangeHints,
-              ...matchStringHints,
-            ],
+            extraHints: [...downgradeHints],
           },
           effectiveQuery as PartialPRQuery
         );

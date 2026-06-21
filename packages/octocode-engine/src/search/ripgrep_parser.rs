@@ -103,12 +103,19 @@ impl FileEntry {
 
 // ── core parsing logic ────────────────────────────────────────────────────────
 
-/// Strips a single trailing `\r\n` or `\n` from a line, matching ripgrep's
-/// included newline in the `lines.text` field.
-pub(crate) fn strip_trailing_newline(s: &str) -> &str {
-    s.strip_suffix("\r\n")
-        .or_else(|| s.strip_suffix('\n'))
-        .unwrap_or(s)
+/// Strips a single trailing `\r\n` or `\n` from `s` in place, matching
+/// ripgrep's included newline in the `lines.text` field. Takes ownership so
+/// callers moving an owned `String` truncate in place — no re-allocation,
+/// vs. the borrow + `.to_owned()` it replaced (which copied into a fresh
+/// buffer and dropped the original `String`'s heap allocation).
+pub(crate) fn strip_trailing_newline(mut s: String) -> String {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+    s
 }
 
 /// Truncates a string to at most `max_chars` Unicode scalar values, appending
@@ -236,7 +243,7 @@ pub(crate) fn parse_ripgrep_json_inner(
         match msg {
             RgMessage::Match(m) => {
                 let path = m.path.text;
-                let line_text = strip_trailing_newline(&m.lines.text).to_owned();
+                let line_text = strip_trailing_newline(m.lines.text);
                 // rg reports submatch start as a BYTE offset; convert to a 0-based
                 // UTF-16 char column so multibyte lines align with JS string indices
                 // (and match the structural-search engine's column convention).
@@ -252,7 +259,7 @@ pub(crate) fn parse_ripgrep_json_inner(
             }
             RgMessage::Context(c) => {
                 let path = c.path.text;
-                let line_text = strip_trailing_newline(&c.lines.text).to_owned();
+                let line_text = strip_trailing_newline(c.lines.text);
                 let entry = entry_for_path(&mut file_map, &mut file_order, path);
                 entry.contexts.insert(c.line_number, line_text);
             }

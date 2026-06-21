@@ -3,16 +3,12 @@ import type { z } from 'zod';
 import type { NpmPackageQuerySchema } from '@octocodeai/octocode-core/schemas';
 
 type NpmSearchQuery = z.input<typeof NpmPackageQuerySchema>;
-import {
-  searchPackage,
-  checkNpmDeprecation,
-} from '../../utils/package/common.js';
+import { searchPackage } from '../../utils/package/common.js';
 import type {
   NpmSearchAPIResult,
   NpmSearchError,
   PackageResult,
   NpmPackageResult,
-  DeprecationInfo,
 } from '../../utils/package/common.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import { createSuccessResult, createErrorResult } from '../utils.js';
@@ -46,18 +42,6 @@ function cleanRelativePath(
   return clean.length > 0 ? clean : undefined;
 }
 
-function parseGitHubRepo(url: string | null | undefined): {
-  owner?: string;
-  repo?: string;
-} {
-  if (!url) return {};
-  const m = url.match(/github\.com\/([^/]+)\/([^/]+)/);
-  if (m?.[1] && m[2]) {
-    return { owner: m[1], repo: m[2].replace(/\.git$/, '').replace(/\/$/, '') };
-  }
-  return {};
-}
-
 type PackageData = {
   name: string;
   version?: string;
@@ -87,41 +71,6 @@ function formatPackageData(pkg: PackageResult): PackageData {
   return data;
 }
 
-function exactHints(pkg: PackageResult, dep: DeprecationInfo | null): string[] {
-  const hints: string[] = [];
-  const name = getPackageName(pkg);
-
-  if (dep?.deprecated)
-    hints.push(`DEPRECATED: ${name} — ${dep.message ?? 'use an alternative'}`);
-
-  const src = isNpm(pkg) ? pkg.source : undefined;
-  if (src === 'cdn')
-    hints.push(
-      'Metadata from npm CDN cache — verify version when registry access is restored.'
-    );
-  else if (src === 'web')
-    hints.push(
-      'Metadata from npms.io fallback — verify version when registry access is restored.'
-    );
-
-  hints.push(`Install: npm install ${name}`);
-
-  const url = getPackageRepo(pkg);
-  const { owner, repo } = parseGitHubRepo(url);
-  if (owner && repo)
-    hints.push(
-      `Browse source: use ghViewRepoStructure owner=${owner} repo=${repo}`
-    );
-  else if (url)
-    hints.push(`Repository: ${url} — use ghSearchRepos to find on GitHub.`);
-  else
-    hints.push(
-      `No repository URL for "${name}" — use ghSearchRepos to find the source repo.`
-    );
-
-  return hints;
-}
-
 type PackagePagination = {
   currentPage: number;
   totalPages: number;
@@ -129,6 +78,7 @@ type PackagePagination = {
   totalFound: number;
   returned: number;
   hasMore: boolean;
+  nextPage?: number;
 };
 
 function buildPackagePagination(
@@ -140,36 +90,16 @@ function buildPackagePagination(
   const currentPage = Math.max(1, (query as { page?: number }).page ?? 1);
   const perPage = isKeyword ? 10 : 1;
   const totalPages = Math.max(1, Math.ceil(totalFound / perPage));
+  const hasMore = currentPage < totalPages;
   return {
     currentPage,
     totalPages,
     perPage,
     totalFound,
     returned,
-    hasMore: currentPage < totalPages,
+    hasMore,
+    ...(hasMore ? { nextPage: currentPage + 1 } : {}),
   };
-}
-
-function packagePaginationHints(pagination: PackagePagination): string[] {
-  if (pagination.totalFound === 0 || pagination.totalPages <= 1) return [];
-  if (pagination.currentPage > pagination.totalPages) {
-    return [
-      `Requested page ${pagination.currentPage}/${pagination.totalPages} is past the end. Retry page=${pagination.totalPages}.`,
-    ];
-  }
-  const start = (pagination.currentPage - 1) * pagination.perPage + 1;
-  const end = Math.min(start + pagination.returned - 1, pagination.totalFound);
-  return pagination.hasMore
-    ? [
-        `Page ${pagination.currentPage}/${pagination.totalPages} (showing ${start}-${end} of ${pagination.totalFound} packages). Next: page=${pagination.currentPage + 1}`,
-      ]
-    : [];
-}
-
-function keywordHints(count: number, totalFound: number): string[] {
-  return [
-    `Found ${count}${totalFound > count ? ` of ${totalFound}` : ''} packages. Re-run with an exact name for source details, install command, and repo navigation.`,
-  ];
 }
 
 export async function searchPackages(
@@ -219,24 +149,15 @@ export async function searchPackages(
           packages.length,
           isKeyword
         );
-        let dep: DeprecationInfo | null = null;
-        if (!isKeyword && hasContent && raw[0]) {
-          const src = isNpm(raw[0]) ? raw[0].source : undefined;
-          if (src !== 'cdn' && src !== 'web') {
-            dep = await checkNpmDeprecation(getPackageName(raw[0]));
-          }
-        }
 
-        const extraHints = [
-          ...packagePaginationHints(pagination),
-          ...(!hasContent
-            ? getHints(TOOL_NAMES.PACKAGE_SEARCH, 'empty', {
-                name: query.packageName,
-              } as never)
-            : isKeyword
-              ? keywordHints(packages.length, apiResult.totalFound)
-              : exactHints(raw[0]!, dep)),
-        ];
+        // Success results discard per-call hints (createSuccessResult keeps
+        // hints only on the empty path), so only build the empty-recovery
+        // hints here. Pagination/keyword/exact hints were dead on success.
+        const extraHints = !hasContent
+          ? getHints(TOOL_NAMES.PACKAGE_SEARCH, 'empty', {
+              name: query.packageName,
+            } as never)
+          : [];
 
         const data = {
           packages,

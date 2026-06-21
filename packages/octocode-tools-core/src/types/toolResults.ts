@@ -21,6 +21,8 @@ export interface PaginationInfo {
   currentPage: number;
   totalPages: number;
   hasMore: boolean;
+  nextPage?: number;
+  nextMatchPage?: number;
   charOffset?: number;
   charLength?: number;
   totalChars?: number;

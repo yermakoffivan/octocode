@@ -189,17 +189,24 @@ describe('rankFiles — determinism', () => {
 });
 
 describe('rankFiles — candidate cap (pagination guard)', () => {
-  it('caps scoring to top-K and reports the truncation', () => {
+  it('caps scoring to top-K but still returns every file (never gates)', () => {
     const files = Array.from({ length: 50 }, (_, i) =>
       file(`/repo/src/f${String(i).padStart(3, '0')}.ts`, i + 1, [
         'const fallback = 1',
       ])
     );
     const r = rankFiles(files, 'relevance', ctx(), { candidateCap: 10 });
+    // Only the top-K are relevance-scored...
     expect(r.cappedCandidates).toBe(40);
-    expect(r.files.length).toBe(10);
-    // Prefilter keeps the highest match counts (49..40 here), deterministically.
-    expect(r.files.every(f => (f.matchCount ?? 0) >= 40)).toBe(true);
+    // ...but ranking enriches order, it never drops files: the unscored tail
+    // is appended so pagination can still reach all of them.
+    expect(r.files.length).toBe(50);
+    // The scored top-K (highest match counts 49..40) sort to the front.
+    expect(r.files.slice(0, 10).every(f => (f.matchCount ?? 0) >= 40)).toBe(
+      true
+    );
+    // No file is lost.
+    expect(new Set(r.files.map(f => f.path)).size).toBe(50);
   });
 
   it('does not cap when under the limit', () => {

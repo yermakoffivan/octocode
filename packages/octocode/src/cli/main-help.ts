@@ -204,7 +204,7 @@ export async function showHelp(): Promise<void> {
     quick(
       'cache',
       'fetch <owner/repo> [path]',
-      'save remote content locally + return local-tool hints'
+      'save remote content locally + return structured location data'
     ),
     '',
 

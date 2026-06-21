@@ -601,12 +601,9 @@ async function getDocumentSymbols(
       ...(empty ? { empty } : {}),
     },
     pagination,
-    hints: [
-      ...(pagination.hasMore
-        ? [formatItemPageHint(pagination, 'symbols')]
-        : []),
-      ...semanticHints('documentSymbols', complete),
-    ],
+    // Success carries its evidence in structured fields; hints are recovery
+    // aids emitted only on the empty/unavailable path.
+    ...(empty ? { hints: semanticHints('documentSymbols', false) } : {}),
   };
 }
 
@@ -793,12 +790,9 @@ function locationsEnvelope(
           reason: `${provider} returned no locations`,
         },
     ...(complete ? { pagination } : {}),
-    hints: [
-      ...(complete && pagination.hasMore
-        ? [formatItemPageHint(pagination, 'locations')]
-        : []),
-      ...semanticHints(query.type, complete),
-    ],
+    // Success carries its evidence in structured fields; hints are recovery
+    // aids emitted only on the empty path.
+    ...(complete ? {} : { hints: semanticHints(query.type, false) }),
   };
 }
 
@@ -857,22 +851,21 @@ function referencesEnvelope(
       ...(empty ? { empty } : {}),
     },
     pagination,
-    hints: [
-      ...(pagination.hasMore
-        ? [
-            formatItemPageHint(
-              pagination,
-              byFile ? 'reference files' : 'references'
-            ),
-          ]
-        : []),
-      ...(native
-        ? [
-            'source: native (oxc) — same-file references only; install a language server for cross-file references.',
-          ]
-        : []),
-      ...semanticHints('references', true),
-    ],
+    // Success carries its evidence in structured fields; hints are recovery
+    // aids emitted only on the empty path. The native-source caveat is retained
+    // there because it explains why cross-file refs are absent.
+    ...(empty
+      ? {
+          hints: [
+            ...(native
+              ? [
+                  'source: native (oxc) — same-file references only; install a language server for cross-file references.',
+                ]
+              : []),
+            ...semanticHints('references', false),
+          ],
+        }
+      : {}),
   };
 }
 
@@ -939,7 +932,9 @@ async function hoverEnvelope(
           category: 'noHover',
           reason: 'hoverProvider returned no hover content',
         },
-    hints: semanticHints(query.type, complete),
+    // Success carries its evidence in structured fields; hints are recovery
+    // aids emitted only on the empty path.
+    ...(complete ? {} : { hints: semanticHints(query.type, false) }),
   };
 }
 
@@ -1056,27 +1051,11 @@ async function callsEnvelope(
         : {}),
     },
     pagination,
-    hints: [
-      ...(pagination.hasMore ? [formatItemPageHint(pagination, 'calls')] : []),
-      ...semanticHints(query.type, true),
-      ...(incomingResult.truncatedByDepth || outgoingResult.truncatedByDepth
-        ? [
-            'Calls exist beyond the traversal depth — increase depth to follow the chain further.',
-          ]
-        : []),
-    ],
+    // Success carries its evidence in structured fields (incl. the
+    // `completeness` object that already flags depth truncation); hints are
+    // recovery aids emitted only on the empty path.
+    ...(calls.length === 0 ? { hints: semanticHints(query.type, false) } : {}),
   };
-}
-
-function formatItemPageHint(pagination: PaginationInfo, label: string): string {
-  const shown =
-    Math.min(
-      pagination.currentPage * pagination.itemsPerPage,
-      pagination.totalResults
-    ) -
-    (pagination.currentPage - 1) * pagination.itemsPerPage;
-  const next = pagination.nextPage ?? pagination.currentPage + 1;
-  return `Page ${pagination.currentPage}/${pagination.totalPages} (${shown} of ${pagination.totalResults} ${label}). Next: page=${next}`;
 }
 
 function paginateItems<T>(

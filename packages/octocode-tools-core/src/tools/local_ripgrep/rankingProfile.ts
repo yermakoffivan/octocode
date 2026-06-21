@@ -707,11 +707,18 @@ export function rankFiles(
   // relevance
   const cap = opts.candidateCap ?? RANK_CANDIDATE_CAP;
   let candidates = files;
+  let tail: LocalSearchCodeFile[] = [];
   let cappedCandidates = 0;
   if (files.length > cap) {
-    // Deterministic prefilter before expensive scoring.
-    candidates = [...files].sort(compareByMatchCount).slice(0, cap);
-    cappedCandidates = files.length - cap;
+    // Deterministic prefilter before expensive scoring: relevance-score only
+    // the highest match-count files, but KEEP the remainder as a matchCount-
+    // ordered tail. Ranking reorders the top of the set; it must never drop
+    // files, or pagination (which derives totalFiles from this list) could
+    // never reach them. See the "ranking enriches, never gates" invariant.
+    const ordered = [...files].sort(compareByMatchCount);
+    candidates = ordered.slice(0, cap);
+    tail = ordered.slice(cap);
+    cappedCandidates = tail.length;
   }
   const rarity = buildCandidateTermRarity(candidates, ctx);
 
@@ -733,7 +740,9 @@ export function rankFiles(
   });
 
   const result: RankResult = {
-    files: scored.map(x => x.file),
+    // Relevance-scored files first, then the unscored matchCount-ordered tail.
+    // The tail keeps every matched file reachable through pagination.
+    files: [...scored.map(x => x.file), ...tail],
     cappedCandidates,
   };
   if (opts.debug) {

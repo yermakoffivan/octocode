@@ -16,7 +16,6 @@ import {
   type DirectoryEntry,
 } from './structureFilters.js';
 import {
-  buildEntryPaginationHints,
   buildWalkWarnings,
   paginateEntries,
   summarizeEntries,
@@ -136,7 +135,7 @@ function viewStructureNative(
   }
 
   const totalEntries = filteredEntries.length;
-  const { paginatedEntries, endIdx, pagination } = paginateEntries(
+  const { paginatedEntries, pagination } = paginateEntries(
     filteredEntries,
     query as { itemsPerPage?: number; page?: number }
   );
@@ -178,18 +177,12 @@ function viewStructureNative(
     extensions: query.extensions,
     pattern: queryPattern,
   } as Record<string, unknown>;
-  const baseHints =
+  // Hints are emitted only for empty / extension-miss recovery. A successful
+  // (non-empty) listing carries its evidence in the structured fields.
+  const recoveryHints =
     isEmpty || extensionMiss
       ? getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'empty', emptyHintCtx)
-      : [
-          'Use localSearchCode to search or localGetFileContent to read discovered files.',
-        ];
-  const entryPaginationHints = buildEntryPaginationHints(
-    filteredEntries,
-    paginatedEntries.length,
-    pagination,
-    endIdx
-  );
+      : [];
   const summary = summarizeEntries(filteredEntries);
 
   return attachRawResponseChars(
@@ -202,7 +195,7 @@ function viewStructureNative(
           ? { pagination }
           : {}),
         ...(warnings.length > 0 && { warnings }),
-        hints: [...baseHints, ...entryPaginationHints],
+        ...(recoveryHints.length > 0 ? { hints: recoveryHints } : {}),
       },
       query
     ),

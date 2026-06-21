@@ -103,6 +103,7 @@ export function applyStructurePagination(
     currentPage,
     totalPages,
     hasMore,
+    ...(hasMore ? { nextPage: currentPage + 1 } : {}),
     entriesPerPage,
     totalEntries,
   };

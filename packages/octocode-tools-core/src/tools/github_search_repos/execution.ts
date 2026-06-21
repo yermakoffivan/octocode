@@ -154,7 +154,6 @@ import {
 } from '../utils.js';
 import type { RepoSearchResult as ProviderRepoSearchResult } from '../../providers/types.js';
 import {
-  buildPaginationHints,
   mapRepoSearchProviderRepositories,
   mapRepoSearchToolQuery,
 } from '../providerMappers.js';
@@ -378,6 +377,9 @@ function buildResultPagination(pagination: {
     perPage: pagination.entriesPerPage || 10,
     totalMatches: pagination.totalMatches || 0,
     hasMore: pagination.hasMore,
+    ...(pagination.hasMore
+      ? { nextPage: pagination.currentPage + 1 }
+      : {}),
   };
 }
 
@@ -418,13 +420,6 @@ function buildMergedPagination(
         : 'exact',
     totalMatchesCapped: pages.some(p => p.totalMatchesCapped === true),
   };
-}
-
-function buildMergedPaginationHints(pagination: EffectivePagination): string[] {
-  if (!pagination.hasMore) return [];
-  return [
-    `Page ${pagination.currentPage}/${pagination.totalPages} for merged topic+keyword results (~${pagination.totalMatches ?? 0} upper-bound total). Next: page=${pagination.currentPage + 1}.`,
-  ];
 }
 
 function createVariantFailureHints(
@@ -598,11 +593,6 @@ export async function searchMultipleGitHubRepos(
           isMergedResult
             ? buildMergedPagination(successfulVariants)
             : onlySuccessfulVariant?.response.data.pagination;
-        const paginationHints = effectivePagination
-          ? isMergedResult
-            ? buildMergedPaginationHints(effectivePagination)
-            : buildPaginationHints(effectivePagination, 'repos')
-          : [];
         const resultPagination = effectivePagination
           ? buildResultPagination(effectivePagination)
           : undefined;
@@ -647,30 +637,16 @@ export async function searchMultipleGitHubRepos(
           query
         );
 
-        const escalationHints: string[] = [];
-        if (hasContent) {
-          const top = repositories[0];
-          if (top?.owner && top?.repo) {
-            escalationHints.push(
-              `Top result: ${top.owner}/${top.repo} — use ghViewRepoStructure to browse or ghSearchCode to search within it.`
-            );
-          }
-          if (repositories.length >= 3) {
-            escalationHints.push(
-              'Use multiple ghViewRepoStructure queries in parallel to compare the layouts of top results.'
-            );
-          }
-        }
-        const allExtraHints = [
+        // Success-only escalation hints (top-result / parallel-structure
+        // nudges) were dropped centrally by createSuccessResult, so they are
+        // not built here. The hints below are empty/recovery aids.
+        const finalExtraHints = [
           ...pageExceededHints,
           ...scopeHints,
           ...shape.extraHints,
           ...partialFailureHints,
-          ...paginationHints,
           ...(searchHints || []),
-          ...escalationHints,
         ];
-        const finalExtraHints = allExtraHints;
 
         return createSuccessResult(
           query,

@@ -164,6 +164,7 @@ export interface CodeSearchPagination {
   totalMatchesKind?: 'exact' | 'reported' | 'lowerBound';
   totalMatchesCapped?: boolean;
   hasMore: boolean;
+  nextPage?: number;
   uniqueFileCount?: number;
 }
 
@@ -293,6 +294,9 @@ export function mapCodeSearchProviderResult(
       totalMatches: data.pagination.totalMatches || 0,
       ...countMetadata(data.pagination),
       hasMore: data.pagination.hasMore,
+      ...(data.pagination.hasMore
+        ? { nextPage: data.pagination.currentPage + 1 }
+        : {}),
     };
   }
 
@@ -590,6 +594,9 @@ export function mapPullRequestProviderResultData(
           : {}),
         ...countMetadata(data.pagination),
         hasMore: data.pagination.hasMore,
+        ...(data.pagination.hasMore
+          ? { nextPage: data.pagination.currentPage + 1 }
+          : {}),
       }
     : undefined;
 

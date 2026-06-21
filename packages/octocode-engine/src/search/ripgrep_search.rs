@@ -169,7 +169,7 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
         let line_number = mat.line_number().unwrap_or(0) as u32;
         let bytes = mat.bytes();
         let line_cow = String::from_utf8_lossy(bytes);
-        let line_text = strip_trailing_newline(&line_cow).to_owned();
+        let line_text = strip_trailing_newline(line_cow.into_owned());
 
         // Count submatches on this line for --count-matches. A matched line has
         // at least one match even if find_iter is conservative.
@@ -243,7 +243,7 @@ impl<M: Matcher> Sink for CollectSink<'_, M> {
     fn context(&mut self, _searcher: &Searcher, ctx: &SinkContext<'_>) -> std::io::Result<bool> {
         let line_number = ctx.line_number().unwrap_or(0) as u32;
         let line_cow = String::from_utf8_lossy(ctx.bytes());
-        let line_text = strip_trailing_newline(&line_cow).to_owned();
+        let line_text = strip_trailing_newline(line_cow.into_owned());
         self.entry.contexts.insert(line_number, line_text);
         Ok(true)
     }

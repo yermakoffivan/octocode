@@ -319,21 +319,11 @@ function appendResponsePagination<T extends Record<string, unknown>>(
   pagination?: NonNullable<BulkToolResponse['responsePagination']>
 ): T {
   if (!pagination) return structuredContent;
-  const startChar = pagination.charOffset + 1;
-  const endChar = pagination.charOffset + pagination.charLength;
+  // The responsePagination object carries the cursor; restating it as a hint is
+  // redundant token waste. The page banner remains in the text channel header.
   return {
     ...structuredContent,
     responsePagination: pagination,
-    hints: [
-      ...(Array.isArray(structuredContent.hints)
-        ? structuredContent.hints.filter(
-            (hint): hint is string => typeof hint === 'string'
-          )
-        : []),
-      pagination.hasMore
-        ? `Response page ${pagination.currentPage}/${pagination.totalPages} (chars ${startChar}-${endChar} of ${pagination.totalChars}). Next: responseCharOffset=${pagination.nextCharOffset}`
-        : `Response page ${pagination.currentPage}/${pagination.totalPages} (chars ${startChar}-${endChar} of ${pagination.totalChars}).`,
-    ],
   };
 }
 

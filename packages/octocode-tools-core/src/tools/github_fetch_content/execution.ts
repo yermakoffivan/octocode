@@ -150,17 +150,14 @@ async function handleDirectoryFetch(
       : {}),
   };
 
+  // Always a content result (hasContent=true); per-call next-step hints are
+  // dropped centrally by createSuccessResult, so none are built here.
   return createSuccessResult(
     query,
     resultData,
     true,
     TOOL_NAMES.GITHUB_FETCH_CONTENT,
     {
-      extraHints: [
-        `Saved locally at absolute path "${result.localPath}". Use localViewStructure(path="${result.localPath}") to inspect the tree.`,
-        `Use localSearchCode(path="${result.localPath}", keywords="<term>") or localFindFiles(path="${result.localPath}") to research it locally.`,
-        `Use localGetFileContent(path="${result.localPath}/<file>") to read exact files, then lspGetSemantics(uri="<absolute-file>", lineHint=<line>) when project context is complete enough.`,
-      ],
       rawResponse: result.totalSize ?? countSerializedChars(result),
     }
   );
@@ -179,18 +176,10 @@ async function handleFileFetch(
     return providerResult.result;
   }
 
-  const providerHints = providerResult.response.hints ?? [];
   const materialized =
     query.fullContent === true && query.minify === 'none'
       ? await materializeExactFile(query, authInfo)
       : undefined;
-  const materializationHints = materialized
-    ? [
-        `Saved locally at absolute path "${materialized.localPath}". Use localGetFileContent(path="${materialized.localPath}") to read it exactly.`,
-        `Use localSearchCode(path="${materialized.localPath}", keywords="<term>") to search the saved file locally.`,
-      ]
-    : [];
-  const hints = [...providerHints, ...materializationHints];
 
   const resultData = {
     ...mapFileContentProviderResult(providerResult.response.data, query),
@@ -204,7 +193,6 @@ async function handleFileFetch(
             : {}),
         }
       : {}),
-    ...(hints.length ? { hints } : {}),
   };
 
   const hasContent = Boolean(

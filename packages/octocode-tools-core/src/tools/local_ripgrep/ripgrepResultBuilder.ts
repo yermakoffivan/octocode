@@ -7,7 +7,6 @@ import type { RipgrepQuery } from './scheme.js';
 import {
   rankFiles,
   isLowSignalQueryPath,
-  RANK_CANDIDATE_CAP,
   type FileScore,
   type RankContext,
   type RankSort,
@@ -124,12 +123,6 @@ export async function buildSearchResult(
   const filesWithMetadata = ranked.files;
   const rankDebug = ranked.debug;
 
-  if (ranked.cappedCandidates > 0) {
-    warnings.push(
-      `Ranking scored the top ${RANK_CANDIDATE_CAP} of ${parsedFiles.length} matched files (truncated ${ranked.cappedCandidates} low-match-count candidates for relevance). Narrow the query or use sort:"matchCount" to rank all files by count.`
-    );
-  }
-
   let limitedFiles = filesWithMetadata;
   let wasLimited = false;
   if (
@@ -215,6 +208,9 @@ export async function buildSearchResult(
                 matchesPerPage,
                 totalMatches: totalFileMatches,
                 hasMore: matchPage < totalMatchPages,
+                ...(matchPage < totalMatchPages
+                  ? { nextMatchPage: matchPage + 1 }
+                  : {}),
               }
             : undefined,
       } as LocalSearchCodeFile & { ranking?: RankingDebug };
@@ -222,57 +218,7 @@ export async function buildSearchResult(
     }
   );
 
-  const paginationHints: string[] =
-    currentPage < totalFilePages
-      ? [
-          `Page ${currentPage}/${totalFilePages} (${finalFiles.length} of ${totalFiles} files${isPathListMode ? '' : `, ${totalMatches} matches`}). Next: page=${currentPage + 1}`,
-        ]
-      : totalFilePages > 0 && currentPage > totalFilePages
-        ? [
-            `Page ${currentPage} is outside range (1–${totalFilePages}). Use page=${totalFilePages}.`,
-          ]
-        : [];
-
-  if (wasLimited) {
-    paginationHints.push(
-      `Results limited to ${configuredQuery.maxFiles} files (found ${filesWithMetadata.length} matching)`
-    );
-  }
-
   const filesWithMoreMatches = finalFiles.filter(f => f.pagination?.hasMore);
-  if (filesWithMoreMatches.length > 0) {
-    paginationHints.push(
-      `Note: ${filesWithMoreMatches.length} file(s) have more matches — use matchPage=${(aligned.matchPage || 1) + 1} with maxMatchesPerFile to continue matches inside those files`
-    );
-  }
-
-  const refinementHints = _getStructuredResultSizeHints(
-    finalFiles,
-    configuredQuery,
-    totalMatches
-  );
-
-  const q = configuredQuery as Record<string, unknown>;
-  const activeFilters: string[] = [];
-  const includeGlobs = q.include as string[] | undefined;
-  if (Array.isArray(includeGlobs) && includeGlobs.length > 0) {
-    activeFilters.push(`include: ${includeGlobs.join(', ')}`);
-  }
-  const excludeGlobs = q.exclude as string[] | undefined;
-  if (Array.isArray(excludeGlobs) && excludeGlobs.length > 0) {
-    activeFilters.push(`exclude: ${excludeGlobs.join(', ')}`);
-  }
-  const excludeDir = q.excludeDir as string[] | undefined;
-  if (Array.isArray(excludeDir) && excludeDir.length > 0) {
-    activeFilters.push(`excludeDir: ${excludeDir.join(', ')}`);
-  }
-  const fileType = q.langType as string | undefined;
-  if (fileType) activeFilters.push(`langType: ${fileType}`);
-  if (q.caseSensitive) activeFilters.push('case-sensitive');
-  if (q.wholeWord) activeFilters.push('whole-word');
-  if (activeFilters.length > 0) {
-    refinementHints.unshift(`Active filters — ${activeFilters.join(' | ')}`);
-  }
 
   const next = buildSearchNextMap(finalFiles, configuredQuery, searchEngine, {
     isFileListMode,
@@ -294,29 +240,10 @@ export async function buildSearchResult(
       totalFiles,
       ...(isPathListMode ? {} : { totalMatches }),
       hasMore: currentPage < totalFilePages,
+      ...(currentPage < totalFilePages ? { nextPage: currentPage + 1 } : {}),
       ...(wasLimited ? { totalFilesFound: filesWithMetadata.length } : {}),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
-    hints: [
-      ...(totalFiles > 0 && !isFileListMode
-        ? [
-            'Use localGetFileContent with the full path (prepend base to each returned path) and line numbers to read surrounding code.',
-            'Pass line numbers as lineHint to lspGetSemantics for definitions, references, or call flow.',
-          ]
-        : []),
-      ...(totalFiles > 0 && isFileListMode
-        ? [
-            'Use localGetFileContent to read listed files, or rerun localSearchCode without filesOnly/count mode for matched snippets.',
-          ]
-        : []),
-      ...(Object.keys(next).length > 0
-        ? [
-            'Response includes next.* query objects for localGetFileContent, lspGetSemantics, or localSearchCode follow-ups.',
-          ]
-        : []),
-      ...paginationHints,
-      ...refinementHints,
-    ],
     ...(Object.keys(next).length > 0 ? { next } : {}),
   };
 
@@ -521,29 +448,6 @@ function withoutUndefined(
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== undefined)
   );
-}
-
-function _getStructuredResultSizeHints(
-  files: LocalSearchCodeFile[],
-  query: RipgrepQuery,
-  totalMatches: number
-): string[] {
-  const hints: string[] = [];
-
-  if (totalMatches > 100 || files.length > 20) {
-    const recoveries: string[] = [];
-    if (!query.langType && !query.include)
-      recoveries.push('add langType or include');
-    if (!query.excludeDir?.length) recoveries.push('add excludeDir');
-    if ((query.keywords?.length ?? 0) < 5) recoveries.push('lengthen pattern');
-    if (recoveries.length > 0) {
-      hints.push(
-        `Large result set (${totalMatches} matches in ${files.length} files). Narrow: ${recoveries.join(', ')}.`
-      );
-    }
-  }
-
-  return hints;
 }
 
 type RankingDebug = {

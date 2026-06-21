@@ -60,13 +60,20 @@ export function createSuccessResult<T extends object>(
     ...data,
   } as ToolSuccessResult & T;
 
-  const hints =
-    status === 'empty' ? getHints(toolName, 'empty', options?.hintContext) : [];
-  const prefixHints = options?.prefixHints || [];
-  const extraHints = options?.extraHints || [];
+  // Successful results carry their evidence in structured fields and the
+  // schema's own field guidance; per-call hint boilerplate is redundant token
+  // waste. Hints are emitted only for empty-result recovery (errors get theirs
+  // via createErrorResult). prefix/extra hints are recovery aids too, so they
+  // are kept only on the empty path.
+  const isEmpty = status === 'empty';
+  const recoveryHints = isEmpty
+    ? getHints(toolName, 'empty', options?.hintContext)
+    : [];
+  const prefixHints = isEmpty ? options?.prefixHints || [] : [];
+  const extraHints = isEmpty ? options?.extraHints || [] : [];
 
   const allHints = [
-    ...new Set([...prefixHints, ...hints, ...extraHints]),
+    ...new Set([...prefixHints, ...recoveryHints, ...extraHints]),
   ].filter((h): h is string => typeof h === 'string' && h.trim().length > 0);
 
   if (allHints.length > 0) {

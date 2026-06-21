@@ -340,6 +340,7 @@ async function viewGitHubRepositoryStructureAPIInternal(
       currentPage,
       totalPages,
       hasMore,
+      ...(hasMore ? { nextPage: currentPage + 1 } : {}),
       entriesPerPage,
       totalEntries,
     };

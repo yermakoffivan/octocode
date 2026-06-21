@@ -102,7 +102,9 @@ describe('searchContentStructural', () => {
       endColumn: 14,
       metavars: { X: ['value'] },
     });
-    expect(result.hints?.join('\n')).toContain('captured metavars');
+    // Successful structural searches carry evidence in structured fields; no
+    // next-step hint boilerplate is emitted on success.
+    expect(result.hints).toBeUndefined();
   });
 
   it('passes caller include and excludeDir options to native Rust', async () => {

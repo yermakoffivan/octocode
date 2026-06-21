@@ -8,7 +8,6 @@ import {
 } from '../../utils/response/groupedFinalizer.js';
 import type { GitHubCodeSearchOutputLocal } from './scheme.js';
 import {
-  buildPaginationHints,
   type CodeSearchFlatResult,
   type CodeSearchGroupedMatch,
   type CodeSearchGroupedResult,
@@ -206,12 +205,6 @@ function collectPeerHints(results: readonly FlatQueryResult[]): string[] {
   );
 }
 
-function hasPathOnlyFileMatches(
-  groups: readonly CodeSearchGroupedResult[]
-): boolean {
-  return groups.some(group => group.matches.some(match => match.pathOnly));
-}
-
 export function buildGhSearchCodeFinalizer<
   TQuery extends QueryWithPagination,
 >(): BulkFinalizer<TQuery, GitHubCodeSearchOutputLocal> {
@@ -271,22 +264,10 @@ export function buildGhSearchCodeFinalizer<
       allKeywords
     );
 
-    const paginationHints =
-      upstreamPagination && upstreamPaginationQueries === 1
-        ? buildPaginationHints(upstreamPagination, 'matches')
-        : [];
-
     const errors = collectFlatErrors(results);
-    const pathOnlyHints = hasPathOnlyFileMatches(groups)
-      ? [
-          'Some match="file" results are path-only because GitHub did not return text matches; use ghGetFileContent with matchString or startLine/endLine to inspect content.',
-        ]
-      : [];
-    const hints = dedupeHints([
-      ...(config.peerHints ? collectPeerHints(results) : []),
-      ...paginationHints,
-      ...pathOnlyHints,
-    ]);
+    const hints = dedupeHints(
+      config.peerHints ? collectPeerHints(results) : []
+    );
     const resultPagination =
       upstreamPagination && upstreamPaginationQueries === 1
         ? upstreamPagination

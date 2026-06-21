@@ -93,7 +93,7 @@ describe('find command', () => {
     expect(query.mode).toBe('discovery');
   });
 
-  it('--repo materializes remote content and includes remoteLocal metadata for composite output', async () => {
+  it('--repo materializes remote content and includes structured location metadata for composite output', async () => {
     executeDirectTool.mockResolvedValueOnce(materializedTreeEnvelope());
 
     await run(['useState'], {
@@ -135,12 +135,19 @@ describe('find command', () => {
 
     const output = vi.mocked(console.log).mock.calls.flat().join('\n');
     const parsed = JSON.parse(output) as {
-      remoteLocal?: { localPath?: string };
-      hints?: string[];
+      location?: {
+        kind?: string;
+        localPath?: string;
+        repoRoot?: string;
+        requestedPath?: string;
+        source?: string;
+      };
     };
-    expect(parsed.remoteLocal?.localPath).toBe(
+    expect(parsed.location?.kind).toBe('directory');
+    expect(parsed.location?.localPath).toBe(
       '/tmp/octocode/tmp/tree/facebook/react/main/packages/react'
     );
-    expect(parsed.hints?.join('\n')).toContain('localSearchCode');
+    expect(parsed.location?.source).toBe('tree');
+    expect(parsed.location?.requestedPath).toBe('packages/react');
   });
 });

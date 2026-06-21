@@ -62,6 +62,7 @@ export const NpmSearchOutputLocalSchema = z
                   totalFound: z.number(),
                   returned: z.number(),
                   hasMore: z.boolean(),
+                  nextPage: z.number().optional(),
                 })
                 .optional(),
             })

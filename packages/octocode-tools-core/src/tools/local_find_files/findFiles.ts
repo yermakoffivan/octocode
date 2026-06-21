@@ -37,96 +37,23 @@ function computeEffectiveExcludeDirs(
   return rawExcludeDirs.filter(dir => !searchPathParts.has(dir));
 }
 
-function buildFindFilesHints(ctx: {
+// Empty-result recovery hints only. A successful (non-empty) find emits no
+// hints — the evidence is in the structured files[]/pagination fields.
+function buildEmptyFindFilesHints(ctx: {
   query: FindFilesQuery;
-  currentPage: number;
-  totalPages: number;
-  shownCount: number;
   totalFiles: number;
-  wasFileCapped: boolean;
-  maxFiles: number;
-  discoveredFileCount: number;
   hasConfigFiles: boolean;
-  extraHints?: string[];
 }): string[] {
-  const {
-    query,
-    currentPage,
-    totalPages,
-    shownCount,
-    totalFiles,
-    wasFileCapped,
-    maxFiles,
-    discoveredFileCount,
+  const { query, totalFiles, hasConfigFiles } = ctx;
+  return getHints(TOOL_NAMES.LOCAL_FIND_FILES, 'empty', {
+    fileCount: totalFiles,
     hasConfigFiles,
-    extraHints = [],
-  } = ctx;
-
-  const q = query as Record<string, unknown>;
-  const activeFilters: string[] = [];
-  if (Array.isArray(q.names) && q.names.length > 0) {
-    activeFilters.push(`names: ${(q.names as string[]).join(', ')}`);
-  }
-  if (q.entryType)
-    activeFilters.push(
-      `entryType: ${q.entryType === 'f' ? 'files' : q.entryType === 'd' ? 'directories' : String(q.entryType)}`
-    );
-  const timeFilterNote = (value: unknown): string =>
-    typeof value === 'string' && !VALID_TIME_STRING_RE.test(value)
-      ? ' (skipped: invalid format)'
-      : '';
-  if (q.modifiedBefore)
-    activeFilters.push(
-      `modified before: ${q.modifiedBefore}${timeFilterNote(q.modifiedBefore)}`
-    );
-  if (q.modifiedWithin)
-    activeFilters.push(
-      `modified within: ${q.modifiedWithin}${timeFilterNote(q.modifiedWithin)}`
-    );
-  if (q.sizeGreater) activeFilters.push(`size > ${q.sizeGreater}`);
-  if (q.sizeLess) activeFilters.push(`size < ${q.sizeLess}`);
-  if (Array.isArray(q.excludeDir) && q.excludeDir.length > 0) {
-    activeFilters.push(`excluding: ${(q.excludeDir as string[]).join(', ')}`);
-  }
-
-  return [
-    ...extraHints,
-    ...(activeFilters.length > 0
-      ? [`Active filters — ${activeFilters.join(' | ')}`]
-      : []),
-    ...(currentPage < totalPages
-      ? [
-          `Page ${currentPage}/${totalPages} (${shownCount} of ${totalFiles}). Next: page=${currentPage + 1}`,
-        ]
-      : []),
-    ...(totalPages > 0 && currentPage > totalPages
-      ? [
-          `Requested page ${currentPage} is outside available range (1-${totalPages}). Use page=${totalPages} for the last page.`,
-        ]
-      : []),
-    ...(wasFileCapped
-      ? [
-          `Results capped at ${maxFiles} of ${discoveredFileCount} discovered. All ${maxFiles} are reachable via page; to see the rest, narrow with names/entryType/time filters. Note: sorting applies only within the capped set — limit is a pre-sort discovery cap.`,
-        ]
-      : []),
-    ...(totalFiles === 0
-      ? getHints(TOOL_NAMES.LOCAL_FIND_FILES, 'empty', {
-          fileCount: totalFiles,
-          hasConfigFiles,
-          path: query.path,
-          names: query.names,
-          modifiedWithin: query.modifiedWithin,
-          sizeGreater: query.sizeGreater,
-          sizeLess: query.sizeLess,
-        } as Record<string, unknown>)
-      : [
-          q.entryType === 'f'
-            ? `Found ${totalFiles} file${totalFiles === 1 ? '' : 's'}. Use localSearchCode to search or localGetFileContent to read.`
-            : q.entryType === 'd'
-              ? `Found ${totalFiles} director${totalFiles === 1 ? 'y' : 'ies'}. Use localViewStructure to browse or localSearchCode to search.`
-              : `Found ${totalFiles} entr${totalFiles === 1 ? 'y' : 'ies'} — pass entryType="f" for files, entryType="d" for directories. Use localSearchCode or localGetFileContent.`,
-        ]),
-  ];
+    path: query.path,
+    names: query.names,
+    modifiedWithin: query.modifiedWithin,
+    sizeGreater: query.sizeGreater,
+    sizeLess: query.sizeLess,
+  } as Record<string, unknown>);
 }
 
 export async function findFiles(
@@ -191,7 +118,6 @@ export async function findFiles(
     );
     const sortBy = query.sortBy || 'modified';
     sortLocalFindFilesEntrys(files, sortBy, collectModified);
-    const sortHints: string[] = [];
 
     const filesForOutput = formatForOutput(files, details, showLastModified);
     const totalFiles = filesForOutput.length;
@@ -232,21 +158,19 @@ export async function findFiles(
         filesPerPage,
         totalFiles,
         hasMore: currentPage < totalPages,
+        ...(currentPage < totalPages ? { nextPage: currentPage + 1 } : {}),
         ...(wasFileCapped ? { totalFilesFound: discoveredFileCount } : {}),
       },
       ...(allWarnings.length > 0 && { warnings: allWarnings }),
-      hints: buildFindFilesHints({
-        query,
-        currentPage,
-        totalPages,
-        shownCount: finalFiles.length,
-        totalFiles,
-        wasFileCapped,
-        maxFiles,
-        discoveredFileCount,
-        hasConfigFiles,
-        extraHints: sortHints,
-      }),
+      ...(totalFiles === 0
+        ? {
+            hints: buildEmptyFindFilesHints({
+              query,
+              totalFiles,
+              hasConfigFiles,
+            }),
+          }
+        : {}),
     };
 
     return attachRawResponseChars(

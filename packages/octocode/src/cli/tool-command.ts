@@ -401,7 +401,7 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
   console.log(`  ${bold('Output Schema')}`);
   console.log(`    ${dim('Default (YAML):')}`);
   console.log(
-    `      ${dim('Clean YAML — read directly. Trust hints[] for next steps.')}`
+    `      ${dim('Clean YAML — read directly. Next steps come from typed fields: pagination, next, location, warnings, error.')}`
   );
   console.log(`    ${dim('--json envelope:')}`);
   console.log(
@@ -417,7 +417,19 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
     `      ${c('cyan', 'structuredContent.base')}           ${dim('cwd / workspace root used for the query')}`
   );
   console.log(
-    `      ${c('cyan', 'structuredContent.hints[]')}        ${dim('next-step suggestions — follow them')}`
+    `      ${c('cyan', 'structuredContent.pagination')}     ${dim('nextPage / nextCharOffset — page only when present')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.next')}           ${dim('typed follow-up params for the next call')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.location')}       ${dim('where remote content was saved (kind, localPath, repoRoot, ...)')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.warnings[]')}     ${dim('non-fatal issues to account for')}`
+  );
+  console.log(
+    `      ${c('cyan', 'structuredContent.error')}          ${dim('failure detail when isError is true')}`
   );
   console.log(
     `      ${c('cyan', 'structuredContent.evidence')}       ${dim('{ answerReady, complete, kind }')}`
@@ -536,7 +548,7 @@ export async function getToolsContextString(
       '  minify:"none"        exact raw text — for quotes, diffs, exact matching',
       '',
       '  *** PAGINATION ***',
-      '  Follow hints[] — every response embeds the exact next charOffset, page, or matchPage.',
+      '  Read the typed fields — pagination (nextPage/nextCharOffset) and next carry the exact follow-up params.',
       '  Page only when pagination.hasMore or contentPagination.*.hasMore is true; narrow scope before paging.',
       '  responseCharLength/responseCharOffset (root params, siblings of queries) cap the whole envelope.',
       '',
@@ -570,7 +582,11 @@ export async function getToolsContextString(
       '    content[].text: string                 YAML string (same as default output)',
       '    structuredContent.results[]: array     tool result objects (id + data)',
       '    structuredContent.base: string         cwd / workspace root used for the query',
-      '    structuredContent.hints[]: string[]    next-step suggestions — follow them',
+      '    structuredContent.pagination: object   nextPage / nextCharOffset — page only when present',
+      '    structuredContent.next: object         typed follow-up params for the next call',
+      '    structuredContent.location: object     where remote content was saved (kind, localPath, repoRoot, ...)',
+      '    structuredContent.warnings[]: string[] non-fatal issues to account for',
+      '    structuredContent.error: object        failure detail when isError is true',
       '    structuredContent.evidence: object     { answerReady: boolean, complete: boolean, kind: string }',
       '  Trust evidence.answerReady — when true, the answer is complete; stop calling.',
     ].join('\n'),

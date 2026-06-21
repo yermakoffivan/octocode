@@ -193,22 +193,6 @@ function readFileEntry(
   };
 }
 
-function formatContentPageHint(groupId: string, file: FileEntry): string {
-  const pagination = file.pagination;
-  const currentOffset = pagination?.charOffset ?? 0;
-  const currentLength = pagination?.charLength ?? 0;
-  const nextOffset = currentOffset + currentLength;
-  const page =
-    pagination?.currentPage && pagination.totalPages
-      ? `Page ${pagination.currentPage}/${pagination.totalPages}`
-      : 'Content page';
-  const range =
-    typeof pagination?.totalChars === 'number' && currentLength > 0
-      ? ` (chars ${currentOffset + 1}-${nextOffset} of ${pagination.totalChars})`
-      : '';
-  return `${page}${range}. Next: charOffset=${nextOffset} for ${groupId}:${file.path}`;
-}
-
 function readDirectoryEntry(
   data: Record<string, unknown>,
   query: PartialFileContentQuery
@@ -264,65 +248,6 @@ function buildGroups(
   return Array.from(groups.values());
 }
 
-function buildRuntimeHints(groups: readonly RepoGroup[]): string[] {
-  const hints: string[] = [];
-
-  for (const group of groups) {
-    for (const file of group.files ?? []) {
-      if (
-        file.pagination?.hasMore &&
-        typeof file.pagination.charOffset === 'number'
-      ) {
-        const currentLength = file.pagination.charLength ?? 0;
-        const nextOffset = file.pagination.charOffset + currentLength;
-        const nextBlockChar = file.pagination.nextBlockChar;
-
-        if (typeof nextBlockChar === 'number') {
-          const extendBy = nextBlockChar - nextOffset;
-          hints.push(
-            `${formatContentPageHint(group.id, file)}. Page cut mid-block at char ${nextOffset}. ` +
-              `Next top-level definition starts at char ${nextBlockChar}. ` +
-              `Re-request with charLength=${currentLength + extendBy} to extend this page to the next boundary, ` +
-              `or use charOffset=${nextOffset} to continue page-by-page.`
-          );
-        } else {
-          hints.push(formatContentPageHint(group.id, file));
-        }
-      }
-      if (
-        file.isPartial &&
-        !file.matchRanges?.length &&
-        typeof file.endLine === 'number' &&
-        typeof file.totalLines === 'number' &&
-        file.endLine < file.totalLines
-      ) {
-        hints.push(
-          `File content is partial (lines ${file.startLine ?? 1}–${file.endLine} of ${file.totalLines}). Use startLine=${file.endLine + 1} to read the next section of ${group.id}:${file.path}.`
-        );
-      }
-      if (file.localPath) {
-        hints.push(
-          `Saved ${group.id}:${file.path} locally at absolute path "${file.localPath}". Use localGetFileContent(path="${file.localPath}") to read it exactly or localSearchCode(path="${file.localPath}", keywords="<term>") to search it.`
-        );
-      }
-    }
-
-    for (const directory of group.directories ?? []) {
-      if (directory.cached)
-        hints.push(
-          `Directory ${group.id}:${directory.path} served from cache.`
-        );
-      if (directory.localPath) {
-        hints.push(
-          `Directory ${group.id}:${directory.path} saved locally at absolute path "${directory.localPath}". Use localViewStructure(path="${directory.localPath}") or localSearchCode(path="${directory.localPath}", keywords="<term>") to research it.`
-        );
-      }
-    }
-  }
-
-  return dedupeHints(hints);
-}
-
 function errorHints(error: string, status?: number): string[] | undefined {
   const lower = error.toLowerCase();
   if (status === 404 || lower.includes('not found') || lower.includes('404')) {
@@ -366,10 +291,9 @@ export function buildGithubFetchContentFinalizer<
     const groups = buildGroups(results, queries);
 
     const errors = collectFileErrors(results, queries);
-    const hints = dedupeHints([
-      ...(config.peerHints ? collectPeerHints(results) : []),
-      ...buildRuntimeHints(groups),
-    ]);
+    const hints = dedupeHints(
+      config.peerHints ? collectPeerHints(results) : []
+    );
     const responseData: FileContentResponse = { results: groups };
 
     if (hints.length > 0) responseData.hints = hints;

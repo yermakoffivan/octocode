@@ -7,7 +7,6 @@ import {
   applyPagination,
   createPaginationInfo,
 } from '../../utils/pagination/core.js';
-import { generatePaginationHints } from '../../utils/pagination/hints.js';
 import {
   snapToSemanticBoundary,
   isMidBlockCut,
@@ -456,48 +455,6 @@ function buildExtractionState(
   };
 }
 
-function lineRangeContinuationHints(r: {
-  isPartial?: boolean;
-  startLine?: number;
-  endLine?: number;
-  totalLines?: number;
-  matchRanges?: unknown;
-}): string[] {
-  if (
-    r.isPartial === true &&
-    r.matchRanges === undefined &&
-    typeof r.startLine === 'number' &&
-    typeof r.endLine === 'number' &&
-    typeof r.totalLines === 'number' &&
-    r.endLine < r.totalLines
-  ) {
-    const remaining = r.totalLines - r.endLine;
-    return [
-      `More content: use startLine=${r.endLine + 1} to continue (${remaining} line${remaining === 1 ? '' : 's'} remaining)`,
-    ];
-  }
-  return [];
-}
-
-function buildContentNextStepHints(
-  query: FetchContentQuery,
-  extraction: ExtractionState
-): string[] {
-  if (extraction.matchRanges !== undefined) {
-    return [
-      'Use the matched line numbers as lineHint anchors for lspGetSemantics, or increase contextLines for more surrounding code.',
-    ];
-  }
-
-  if (query.minify === 'symbols') {
-    return [];
-  }
-
-  return [
-    'Use localSearchCode to find related occurrences, or lspGetSemantics with a symbolName + lineHint from this file.',
-  ];
-}
-
 function buildSuccessResult(
   query: FetchContentQuery,
   extraction: ExtractionState,
@@ -569,24 +526,7 @@ function buildSuccessResult(
 
   const isPartial = extraction.isPartial || pagination.hasMore;
 
-  const baseHints: string[] = lineRangeContinuationHints({
-    isPartial,
-    startLine: extraction.actualStartLine,
-    endLine: extraction.actualEndLine,
-    totalLines,
-    matchRanges: extraction.matchRanges,
-  });
-  const nextStepHints = buildContentNextStepHints(query, extraction);
-
-  const paginationHints =
-    effectiveCharLength || autoPaginated
-      ? generatePaginationHints(pagination, {
-          toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
-        })
-      : [];
-
   let nextBlockChar: number | undefined;
-  const midBlockHints: string[] = [];
   if (
     pagination.hasMore &&
     chunkMode === 'char-limit' &&
@@ -594,37 +534,6 @@ function buildSuccessResult(
   ) {
     const cutPos = pagination.charOffset + pagination.charLength;
     nextBlockChar = findNextBlockBoundary(outputContent, cutPos, queryPath);
-    if (nextBlockChar !== undefined) {
-      const extendBy = nextBlockChar - cutPos;
-      midBlockHints.push(
-        `Page cut mid-block at char ${cutPos}. ` +
-          `Next top-level definition at char ${nextBlockChar}. ` +
-          `Re-request with charLength=${(resolvedCharLength ?? pagination.charLength) + extendBy} to extend this page to the next boundary, ` +
-          `or use charOffset=${cutPos} to continue page-by-page.`
-      );
-    }
-  }
-
-  const largeFileHints: string[] = [];
-  if (
-    totalLines > 2000 &&
-    query.minify !== 'symbols' &&
-    !query.matchString &&
-    !query.startLine &&
-    !query.endLine &&
-    !query.fullContent &&
-    pagination.hasMore
-  ) {
-    const tailLine = Math.max(1, totalLines - 200);
-    largeFileHints.push(
-      `Large file (${totalLines} lines) — minify:"symbols" for an export index, or startLine=${tailLine} for the tail.`
-    );
-  }
-
-  if (query.minify !== 'none' && totalLines > 300 && !query.matchString) {
-    largeFileHints.push(
-      'If you need exact comment text (// … or /* … */), test assertions, or doc-strings, re-fetch with minify:"none" and add matchString to anchor on the relevant section.'
-    );
   }
 
   return {
@@ -652,13 +561,6 @@ function buildSuccessResult(
       },
     }),
     ...(warnings.length > 0 && { warnings }),
-    hints: [
-      ...baseHints,
-      ...midBlockHints,
-      ...paginationHints,
-      ...largeFileHints,
-      ...nextStepHints,
-    ],
   };
 }
 
@@ -753,13 +655,6 @@ export async function fetchContent(
           queryPath
         );
 
-        const symbolsHints: string[] = [contextUtils.SIGNATURES_ONLY_HINT];
-        if (query.matchString) {
-          symbolsHints.push(
-            `matchString was ignored — minify:"symbols" returns the full skeleton index. Use startLine/endLine from the gutter to read the matching body.`
-          );
-        }
-        if (secretWarning) symbolsHints.push(secretWarning);
         return attachRawResponseChars(
           {
             path: query.path,
@@ -768,7 +663,7 @@ export async function fetchContent(
             isSkeleton: true,
             totalLines: totalLinesOrig,
             ...sourceSizeFields(sourceChars, sourceBytes),
-            hints: symbolsHints,
+            ...(secretWarning ? { warnings: [secretWarning] } : {}),
           },
           sourceChars
         );

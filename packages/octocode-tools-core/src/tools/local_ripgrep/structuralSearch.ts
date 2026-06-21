@@ -128,21 +128,11 @@ export async function searchContentStructural(
   );
 
   const stats: SearchStats = { matchCount: nativeResult.totalMatches };
-  const result = await buildSearchResult(
+  return await buildSearchResult(
     files,
     query,
     'structural',
     nativeResult.warnings,
     stats
   );
-
-  if (nativeResult.totalMatches > 0) {
-    const hints = Array.isArray(result.hints) ? [...result.hints] : [];
-    hints.push(
-      'Structural matches include captured metavars when the pattern uses $X or $$$ARGS, and matches[].line can be passed as the lspGetSemantics lineHint.'
-    );
-    return { ...result, hints } as LocalSearchCodeToolResult;
-  }
-
-  return result;
 }

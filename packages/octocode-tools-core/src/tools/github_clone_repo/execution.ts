@@ -24,8 +24,6 @@ import type { z } from 'zod';
 
 type CloneRepoQuery = z.infer<typeof CloneRepoQueryLocalSchema>;
 
-const CACHE_HIT_HINT = 'Served from 24-hour cache.';
-
 const CLONE_FAILURE_HINTS = [
   'Verify the owner/repo (and branch) exist — use ghSearchRepos to confirm the repository name.',
   'For private repositories, ensure the GitHub token is set and has repo read access.',
@@ -81,25 +79,14 @@ export async function executeCloneRepo(
               : {}),
           };
 
-          const baseHints: string[] = [];
-          if (result.cached) baseHints.push(CACHE_HIT_HINT);
-          baseHints.push(
-            `Saved locally at absolute path "${result.localPath}". Use localViewStructure(path="${result.localPath}") to inspect the tree.`
-          );
-          baseHints.push(
-            `Use localSearchCode(path="${result.localPath}", keywords="<term>") or localFindFiles(path="${result.localPath}") to research it locally.`
-          );
-          baseHints.push(
-            `Use localGetFileContent(path="${result.localPath}/<file>") to read exact files, then lspGetSemantics(uri="<absolute-file>", lineHint=<line>) when project context is complete enough.`
-          );
-
+          // Always a content result (hasContent=true); per-call next-step
+          // hints are dropped centrally by createSuccessResult on success.
           return createSuccessResult(
             query,
             resultData,
             true,
             TOOL_NAMES.GITHUB_CLONE_REPO,
             {
-              extraHints: baseHints,
               rawResponse: getDirectorySizeBytes(result.localPath),
             }
           );

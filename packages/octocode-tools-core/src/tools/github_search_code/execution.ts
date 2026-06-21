@@ -112,24 +112,12 @@ export async function searchMultipleGitHubCode(
             group.matches.map(m => m.path)
           ),
         };
-        const fileCount = new Set(
-          flat.results.flatMap(group =>
-            group.matches.map(
-              match => `${group.owner}/${group.repo}:${match.path}`
-            )
-          )
-        ).size;
+        // The per-call "found matches" navigation hint was dropped centrally
+        // by createSuccessResult on the success path (evidence lives in the
+        // structured results + matchIndices), so it is not built here. The
+        // remaining successHints below (unreachable-cap, path-looks-like-file)
+        // are recovery aids that still flow on the empty path.
         const successHints: string[] = [];
-        if (flat.results.length > 0) {
-          const firstKeyword =
-            Array.isArray(query.keywords) &&
-            typeof query.keywords[0] === 'string'
-              ? query.keywords[0]
-              : '<keyword>';
-          successHints.push(
-            `Found matches in ${fileCount} file${fileCount === 1 ? '' : 's'} — matchIndices[].lineOffset is the 0-based line within the snippet; use ghGetFileContent(path, matchString="${firstKeyword}") to land on the matched region (returns lineHint for lspGetSemantics).`
-          );
-        }
         if (flat.pagination) {
           const {
             totalPages,
