@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 const hoist = vi.hoisted(() => {
   const mockMetadata = {
-    instructions: 'Test instructions',
+    systemPrompt: 'Test instructions',
     prompts: {
       testPrompt: {
         name: 'testPrompt',
@@ -218,7 +218,7 @@ describe('toolMetadata', () => {
       const result = await loadToolContent();
 
       expect(result).toBeDefined();
-      expect(typeof result.instructions).toBe('string');
+      expect(typeof result.systemPrompt).toBe('string');
       expect(result.toolNames).toBeDefined();
     });
 
@@ -325,18 +325,6 @@ describe('toolMetadata', () => {
     });
   });
 
-  describe('GENERIC_ERROR_HINTS proxy', () => {
-    it('should return hints after initialization', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { GENERIC_ERROR_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      expect(GENERIC_ERROR_HINTS.length).toBeGreaterThanOrEqual(0);
-    });
-  });
-
   describe('Async accessors', () => {
     it('should access tools via loadToolContent', async () => {
       const { initializeToolMetadata, loadToolContent } =
@@ -367,82 +355,6 @@ describe('toolMetadata', () => {
 
       const description = DESCRIPTIONS['nonExistent'];
       expect(description).toBe('');
-    });
-
-    it('should get tool hints via getToolHintsSync', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('ghSearchCode', 'hasResults');
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should get empty hints for non-existent tool', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('nonExistent', 'hasResults');
-      expect(hints).toEqual([]);
-    });
-
-    it('should get generic error hints', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getGenericErrorHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getGenericErrorHintsSync();
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should access base hints via TOOL_HINTS proxy', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = TOOL_HINTS.base;
-      expect(hints).toBeDefined();
-      expect(typeof hints).toBe('object');
-    });
-  });
-
-  describe('getToolHintsSync', () => {
-    it('should return hints array', async () => {
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      const hints = getToolHintsSync('ghSearchCode', 'hasResults');
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should return tool hints (base hints moved to server.instructions)', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('ghSearchCode', 'empty');
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should return empty array for non-existent tool', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('nonExistent', 'hasResults');
-      expect(hints).toEqual([]);
     });
   });
 
@@ -475,59 +387,6 @@ describe('toolMetadata', () => {
     });
   });
 
-  describe('getDynamicHints', () => {
-    it('should return dynamic hints when available', async () => {
-      const metadataWithDynamic = {
-        ...mockMetadata,
-        tools: {
-          ...mockMetadata.tools,
-          ghSearchCode: {
-            ...mockMetadata.tools.ghSearchCode,
-            hints: {
-              ...mockMetadata.tools.ghSearchCode.hints,
-              dynamic: {
-                topicsHasResults: ['Topic hint 1'],
-                topicsEmpty: ['Empty topic hint'],
-                keywordsEmpty: ['Empty keyword hint'],
-              },
-            },
-          },
-        },
-      };
-      hoist.store.current = withBulkQuery(metadataWithDynamic);
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getDynamicHints } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getDynamicHints('ghSearchCode', 'topicsHasResults');
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should return empty array for missing dynamic hints', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getDynamicHints } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getDynamicHints('ghSearchCode', 'topicsHasResults');
-      expect(hints).toEqual([]);
-    });
-
-    it('should return empty array for non-existent tool', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getDynamicHints } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getDynamicHints('nonExistent', 'topicsHasResults');
-      expect(hints).toEqual([]);
-    });
-  });
-
   describe('DESCRIPTIONS proxy', () => {
     it('should return description for existing tool', async () => {
       const { initializeToolMetadata } =
@@ -547,71 +406,6 @@ describe('toolMetadata', () => {
       await initializeToolMetadata();
 
       expect(DESCRIPTIONS.nonExistent).toBe('');
-    });
-  });
-
-  describe('TOOL_HINTS proxy', () => {
-    it('should return hints structure for existing tool', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = TOOL_HINTS.ghSearchCode;
-      expect(hints).toBeDefined();
-      expect(typeof hints).toBe('object');
-    });
-
-    it('should return base hints structure', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = TOOL_HINTS.base;
-      expect(hints).toBeDefined();
-      expect(typeof hints).toBe('object');
-    });
-
-    it('should return empty hints for non-existent tool', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = TOOL_HINTS.nonExistent;
-      expect(hints?.hasResults).toEqual([]);
-      expect(hints?.empty).toEqual([]);
-    });
-
-    it('should support ownKeys trap', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const keys = Object.keys(TOOL_HINTS);
-      expect(keys).toContain('base');
-      expect(keys).toContain('ghSearchCode');
-    });
-
-    it('should support getOwnPropertyDescriptor trap', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const descriptor = Object.getOwnPropertyDescriptor(
-        TOOL_HINTS,
-        'ghSearchCode'
-      );
-      expect(descriptor).toBeDefined();
-      expect(descriptor?.enumerable).toBe(true);
     });
   });
 
@@ -670,42 +464,6 @@ describe('toolMetadata', () => {
     });
   });
 
-  describe('Error Scenarios', () => {
-    it('should handle TOOL_HINTS proxy for non-existent tool', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = TOOL_HINTS['nonExistentTool'];
-      expect(hints).toEqual({ hasResults: [], empty: [] });
-    });
-
-    it('should handle TOOL_HINTS base property', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { TOOL_HINTS } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const baseHints = TOOL_HINTS.base;
-      expect(baseHints).toBeDefined();
-      expect(typeof baseHints).toBe('object');
-    });
-
-    it('should handle getDynamicHints for tool without dynamic hints', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getDynamicHints } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getDynamicHints('ghSearchCode', 'topicsHasResults');
-      expect(hints).toEqual([]);
-    });
-  });
-
   describe('Proxy edge cases', () => {
     it('should handle DESCRIPTIONS proxy for tool', async () => {
       const { initializeToolMetadata } =
@@ -728,52 +486,6 @@ describe('toolMetadata', () => {
 
       const desc = DESCRIPTIONS['nonExistentTool'];
       expect(desc).toBe('');
-    });
-  });
-
-  describe('getToolHintsSync (base hints in server.instructions)', () => {
-    it('should return only tool-specific hints for local tools', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('localSearchCode', 'empty');
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should return only tool-specific hints for localGetFileContent', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('localGetFileContent', 'empty');
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should return only tool-specific hints for GitHub tools', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('ghSearchCode', 'empty');
-      expect(Array.isArray(hints)).toBe(true);
-    });
-
-    it('should return only tool-specific empty hints for local tools', async () => {
-      const { initializeToolMetadata } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/state.js');
-      const { getToolHintsSync } =
-        await import('../../../octocode-tools-core/src/tools/toolMetadata/proxies.js');
-      await initializeToolMetadata();
-
-      const hints = getToolHintsSync('localSearchCode', 'empty');
-      expect(Array.isArray(hints)).toBe(true);
     });
   });
 });

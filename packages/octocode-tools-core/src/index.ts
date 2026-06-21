@@ -1,6 +1,5 @@
 export * from './security/bridge.js';
 export * from './commands/BaseCommandBuilder.js';
-export * from './commands/RipgrepCommandBuilder.js';
 export * from './config.js';
 export * from './errors/domainErrors.js';
 export * from './errors/errorFactories.js';
@@ -26,7 +25,6 @@ export * from './github/repoStructure.js';
 export * from './github/repoStructurePagination.js';
 export * from './github/repoStructureRecursive.js';
 export * from './github/responseHeaders.js';
-export * from './hints/types.js';
 export * from './providers/capabilities.js';
 export * from './providers/factory.js';
 export * from './providers/github/githubContent.js';
@@ -75,10 +73,8 @@ export * from './tools/local_find_files/execution.js';
 export * from './tools/local_find_files/findFiles.js';
 export * from './tools/local_find_files/scheme.js';
 export * from './tools/local_ripgrep/execution.js';
-export * from './tools/local_ripgrep/grepFallbackExecutor.js';
 export * from './tools/local_ripgrep/patternValidation.js';
 export * from './tools/local_ripgrep/ripgrepExecutor.js';
-export * from './tools/local_ripgrep/ripgrepParser.js';
 export * from './tools/local_ripgrep/ripgrepResultBuilder.js';
 export * from './tools/local_ripgrep/scheme.js';
 export * from './tools/local_ripgrep/searchContentRipgrep.js';
@@ -110,7 +106,6 @@ export * from './tools/toolNames.js';
 export * from './tools/utils.js';
 export * from './types/bulk.js';
 export * from './types/execution.js';
-export * from './types/metadata.js';
 export * from './types/promise.js';
 export * from './types/responseTypes.js';
 export * from './types/server.js';
@@ -119,12 +114,11 @@ export * from './types/toolResults.js';
 export * from './utils/core/bestEffort.js';
 export * from './utils/core/compare.js';
 export * from './utils/core/constants.js';
+export * from './utils/core/lines.js';
 export * from './utils/core/promise.js';
 export * from './utils/core/safeRegex.js';
 export * from './utils/environment/environmentDetection.js';
-export * from './utils/exec/commandAvailability.js';
 export * from './utils/exec/npm.js';
-export * from './utils/exec/ripgrepBinary.js';
 export * from './utils/exec/safe.js';
 export * from './utils/exec/spawn.js';
 export * from './utils/file/byteOffset.js';
@@ -210,8 +204,6 @@ export type {
   GitHubAPIResponse,
 } from './github/githubAPI.js';
 
-export { HINTS, hasDynamicHints } from './hints/dynamic.js';
-
 export {
   summarizeEntries,
   paginateEntries,
@@ -221,51 +213,182 @@ export {
 
 export type { ExecResult } from './utils/core/types.js';
 
-export { getHints } from './hints/index.js';
-
-export { hints as ghSearchCodeHints } from './tools/github_search_code/hints.js';
-export { hints as githubFetchContentHints } from './tools/github_fetch_content/hints.js';
-export { hints as ghViewRepoStructureHints } from './tools/github_view_repo_structure/hints.js';
-export { hints as githubSearchReposHints } from './tools/github_search_repos/hints.js';
-export { hints as ghSearchPRsHints } from './tools/github_search_pull_requests/hints.js';
-export { hints as ghCloneRepoHints } from './tools/github_clone_repo/hints.js';
-export { hints as localRipgrepHints } from './tools/local_ripgrep/hints.js';
-export { hints as localViewStructureHints } from './tools/local_view_structure/hints.js';
-export { hints as localFindFilesHints } from './tools/local_find_files/hints.js';
-export { hints as localFetchContentHints } from './tools/local_fetch_content/hints.js';
-export { hints as lspSemanticContentHints } from './tools/lsp/semantic_content/hints.js';
-export { hints as npmSearchHints } from './tools/package_search/hints.js';
-
-export { getDynamicHints as getDynamicToolHints } from './hints/dynamic.js';
-
-export { securityRegistry, ContentSanitizer } from 'octocode-security';
-export { maskSensitiveData } from 'octocode-security/mask';
-export { configureSecurity } from 'octocode-security/withSecurityValidation';
-
 export {
-  getOctocodeDir,
-  paths,
-  getDirectorySizeBytes,
-  formatBytes,
-  isWindows,
-  isMac,
-  HOME,
-  getAppDataPath,
+  securityRegistry,
+  ContentSanitizer,
+} from '@octocodeai/octocode-engine/security';
+export { maskSensitiveData } from '@octocodeai/octocode-engine/mask';
+export { configureSecurity } from '@octocodeai/octocode-engine/withSecurityValidation';
+
+export type {
+  OAuthToken,
+  StoredCredentials,
+  StoreResult,
+  DeleteResult,
+  CredentialsStore,
+  TokenSource,
+  GetCredentialsOptions,
+  ResolvedToken,
+  TokenWithRefreshResult,
+  ResolvedTokenWithRefresh,
+  RefreshResult,
+  FullTokenResolution,
+  GhCliTokenGetter,
+} from './shared/credentials/index.js';
+export {
   storeCredentials,
   getCredentials,
   getCredentialsSync,
   deleteCredentials,
+  updateToken,
+  invalidateCredentialsCache,
+  getToken,
+  getTokenSync,
+  resolveToken,
+  getTokenWithRefresh,
+  resolveTokenWithRefresh,
+  refreshAuthToken,
+  resolveTokenFull,
+  resetTokenResolution,
+  listStoredHosts,
+  listStoredHostsSync,
+  hasCredentials,
+  hasCredentialsSync,
   isTokenExpired,
   isRefreshTokenExpired,
   getCredentialsFilePath,
+  readCredentialsStore,
+  encrypt,
+  decrypt,
+  ensureOctocodeDir,
+  OCTOCODE_DIR,
+  CREDENTIALS_FILE,
+  KEY_FILE,
+  ENV_TOKEN_VARS,
+  getTokenFromEnv,
   getEnvTokenSource,
   hasEnvToken,
-  resolveTokenFull,
-  refreshAuthToken,
-  getTokenWithRefresh,
   getGhCliToken,
-} from 'octocode-shared';
-export type { OAuthToken, StoredCredentials } from 'octocode-shared';
+} from './shared/credentials/index.js';
+export {
+  isWindows,
+  isMac,
+  isLinux,
+  HOME,
+  getAppDataPath,
+  getLocalAppDataPath,
+  getPlatformName,
+  getArchitecture,
+} from './shared/platform/index.js';
+export type {
+  ToolCharSavingsStats,
+  GitHubCacheHitStats,
+  StatsCounterMap,
+  SessionTotalUsageStats,
+  SessionStats,
+  PersistedSession,
+  PersistedStats,
+  SessionUpdateResult,
+  SessionOptions,
+} from './shared/session/index.js';
+export {
+  SESSION_FILE,
+  STATS_FILE,
+  getSessionId,
+  getOrCreateSession,
+  updateSessionStats,
+  resetSessionStats,
+  flushSession,
+  flushSessionSync,
+  deleteSession,
+  incrementToolCalls,
+  incrementErrors,
+  incrementRateLimits,
+  incrementRateLimitByProvider,
+  incrementGitHubCacheHits,
+  incrementGitHubCacheRateLimits,
+  incrementPackageRegistryFailures,
+  incrementToolCharSavings,
+  _resetSessionState,
+} from './shared/session/index.js';
+export type {
+  OctocodeConfig,
+  ResolvedConfig,
+  ValidationResult,
+  LoadConfigResult,
+  GitHubConfigOptions,
+  LocalConfigOptions,
+  ToolsConfigOptions,
+  NetworkConfigOptions,
+  TelemetryConfigOptions,
+  LspConfigOptions,
+  OutputConfigOptions,
+  OutputPaginationConfigOptions,
+  RequiredGitHubConfig,
+  RequiredLocalConfig,
+  RequiredToolsConfig,
+  RequiredNetworkConfig,
+  RequiredTelemetryConfig,
+  RequiredLspConfig,
+  RequiredOutputConfig,
+  RequiredOutputPaginationConfig,
+} from './shared/config/index.js';
+export {
+  CONFIG_SCHEMA_VERSION,
+  CONFIG_FILE_NAME,
+  DEFAULT_CONFIG,
+  DEFAULT_GITHUB_CONFIG,
+  DEFAULT_LOCAL_CONFIG,
+  DEFAULT_TOOLS_CONFIG,
+  DEFAULT_NETWORK_CONFIG,
+  DEFAULT_TELEMETRY_CONFIG,
+  DEFAULT_LSP_CONFIG,
+  DEFAULT_OUTPUT_CONFIG,
+  MIN_TIMEOUT,
+  MAX_TIMEOUT,
+  MIN_RETRIES,
+  MAX_RETRIES,
+  MIN_OUTPUT_DEFAULT_CHAR_LENGTH,
+  MAX_OUTPUT_DEFAULT_CHAR_LENGTH,
+  CONFIG_FILE_PATH,
+  loadConfig,
+  loadConfigSync,
+  configExists,
+  getConfigPath,
+  getOctocodeDir,
+  validateConfig,
+  getConfig,
+  getConfigSync,
+  reloadConfig,
+  resolveConfig,
+  resolveConfigSync,
+  invalidateConfigCache,
+  getConfigValue,
+  _resetConfigCache,
+  _getCacheState,
+  parseLoggingEnv,
+  OctocodeConfigSchema,
+} from './shared/config/index.js';
+export {
+  createLogger,
+  setLogHandler,
+  _getLogHandler,
+} from './shared/logger/index.js';
+export type { LogLevel, LogEntry } from './shared/logger/index.js';
+export {
+  OCTOCODE_HOME,
+  getDefaultOctocodeHome,
+  paths,
+  ensureHome,
+  ensureTmp,
+  ensureClone,
+  ensureRepos,
+  ensureLogs,
+  ensureTree,
+  ensureBinary,
+  ensureUnzip,
+} from './shared/paths.js';
+export { getDirectorySizeBytes, formatBytes } from './shared/fs-utils.js';
 
 export { completeMetadata } from '@octocodeai/octocode-core';
 

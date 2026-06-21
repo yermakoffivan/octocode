@@ -74,6 +74,125 @@ describe('buildSearchResult - exact localSearchCode output fields', () => {
     expect(hints).toContain('localGetFileContent');
     expect(hints).toContain('lspGetSemantics');
   });
+
+  it('emits machine-readable fetch and LSP follow-up calls for match results', async () => {
+    const files = [makeFile('/test/a.ts', 1)];
+    const result = (await buildSearchResult(
+      files,
+      baseQuery({ keywords: 'targetSymbol' }),
+      'rg',
+      []
+    )) as any;
+
+    expect(result.next.fetchExact).toMatchObject({
+      tool: 'localGetFileContent',
+      query: {
+        path: '/test/a.ts',
+        startLine: 1,
+        endLine: 9,
+        minify: 'none',
+      },
+      confidence: 'exact',
+    });
+    expect(result.next.fetchStandard.query.minify).toBe('standard');
+    expect(result.next.fetchSymbols.query).toEqual({
+      path: '/test/a.ts',
+      minify: 'symbols',
+    });
+    expect(result.next.lspDefinition).toMatchObject({
+      tool: 'lspGetSemantics',
+      query: {
+        uri: '/test/a.ts',
+        type: 'definition',
+        symbolName: 'targetSymbol',
+        lineHint: 1,
+      },
+    });
+  });
+
+  it('uses structural metavars, not whole-match text, for LSP follow-up guesses', async () => {
+    const files = [
+      {
+        path: '/test/a.ts',
+        matchCount: 1,
+        matches: [
+          {
+            line: 12,
+            endLine: 12,
+            column: 1,
+            value: 'left && left()',
+            metavars: { A: ['left'] },
+          },
+        ],
+      },
+    ] as any;
+
+    const result = (await buildSearchResult(
+      files,
+      baseQuery({ mode: 'structural', pattern: '$A && $A()' }),
+      'structural',
+      []
+    )) as any;
+
+    expect(result.next.lspDefinition).toMatchObject({
+      tool: 'lspGetSemantics',
+      query: {
+        uri: '/test/a.ts',
+        symbolName: 'left',
+        lineHint: 12,
+        type: 'definition',
+      },
+      confidence: 'heuristic',
+    });
+  });
+
+  it('does not emit structural LSP follow-ups when no capture identifies a symbol', async () => {
+    const files = [
+      {
+        path: '/test/a.ts',
+        matchCount: 1,
+        matches: [{ line: 5, value: 'if (flag) { work(); }' }],
+      },
+    ] as any;
+
+    const result = (await buildSearchResult(
+      files,
+      baseQuery({ mode: 'structural', pattern: 'if ($C) { $$$BODY }' }),
+      'structural',
+      []
+    )) as any;
+
+    expect(result.next.fetchExact).toBeDefined();
+    expect(result.next.lspDefinition).toBeUndefined();
+    expect(result.next.lspReferences).toBeUndefined();
+  });
+
+  it('preserves the actual search engine in the result', async () => {
+    const files = [makeFile('/test/a.ts', 1)];
+
+    await expect(
+      buildSearchResult(files, baseQuery(), 'rg', [])
+    ).resolves.toMatchObject({ searchEngine: 'rg' });
+    await expect(
+      buildSearchResult(files, baseQuery(), 'structural', [])
+    ).resolves.toMatchObject({ searchEngine: 'structural' });
+  });
+
+  it('preserves native search stats for observability', async () => {
+    const files = [makeFile('/test/a.ts', 1)];
+    const stats = {
+      matchCount: 1,
+      matchedLines: 1,
+      filesMatched: 1,
+      filesSearched: 3,
+      bytesSearched: 1234,
+      searchTime: '0.001000s',
+    };
+
+    await expect(
+      buildSearchResult(files, baseQuery(), 'rg', [], stats)
+    ).resolves.toMatchObject({ stats });
+  });
 });
 
 describe('buildSearchResult - maxFiles limiting (lines 57-58, 136)', () => {
@@ -172,6 +291,10 @@ describe('buildSearchResult - per-file match pagination (lines 106, 143)', () =>
     expect(file?.pagination?.hasMore).toBe(true);
     const hints = (result.hints ?? []).join('\n');
     expect(hints).toContain('have more matches');
+    expect((result as any).next.nextMatchPage).toMatchObject({
+      tool: 'localSearchCode',
+      query: { matchPage: 2, maxMatchesPerFile: 10 },
+    });
   });
 
   it('uses matchPage to continue per-file match pagination without losing matches', async () => {

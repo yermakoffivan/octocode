@@ -1,6 +1,6 @@
 # Release Guide
 
-> Build, publish, and ship all Octocode packages — npm, native binaries, standalones, and Homebrew.
+> Build, publish, and ship the Octocode packages — npm, native binaries, standalones, and Homebrew.
 
 ## Contents
 
@@ -16,97 +16,95 @@
 
 ## Package Dependency Flows
 
-Two entry points. Each ships to users independently:
+Two interface packages ship to users independently:
 
 ```
 npx octocode-mcp          →  octocode-mcp
-npx octocode / Homebrew   →  octocode-cli
+npx octocode / Homebrew   →  octocode
 ```
+
+Only these workspace packages are part of the monorepo:
+
+| Directory | npm package | Role |
+|---|---|---|
+| `packages/octocode` | `octocode` | CLI/interface package: direct tool runner, auth, install, status, token, MCP marketplace, cache, and skills workflows. |
+| `packages/octocode-mcp` | `octocode-mcp` | MCP server/interface package for AI assistants. |
+| `packages/octocode-engine` | `@octocodeai/octocode-engine` | Rust-based native engine. |
+| `packages/octocode-tools-core` | `@octocodeai/octocode-tools-core` | Core tool implementations and shared credentials/session/config/platform utilities. |
+| `packages/octocode-vscode` | `octocode-mcp-vscode` | VS Code extension. |
 
 ### Dependency tree
 
 ```
 octocode-mcp ──────────────────────────────────────────────────────────────────┐
-octocode-cli ──────────────────────────────────────────────────────────────────┤
-    │                                                                           │
-    └─▶ @octocodeai/octocode-tools-core   (compiled; bundles octokit/node-cache)
-              ├─▶ octocode-security          (Rust .node — secret detection)
-              ├─▶ @octocodeai/octocode-context-utils  (Rust .node — minify/YAML)
-              ├─▶ octocode-lsp               (Rust .node — LSP engine; TS wrapper)
-              └─▶ octocode-shared            (credentials/session/platform)
+octocode ──────────────────────────────────────────────────────────────────────┤
+                                                                              │
+    └─▶ @octocodeai/octocode-tools-core  (compiled; core tool implementations)
+              ├─▶ @octocodeai/octocode-engine  (Rust .node native engine)
+              └─▶ shared interfaces            (credentials/session/config/platform)
 ```
 
-`octocode-mcp` adds `@modelcontextprotocol/sdk` and the MCP server layer on top. `octocode-cli` skips the MCP layer and talks to `octocode-tools-core` directly — so the CLI has no runtime dependency on `octocode-mcp`.
+`octocode-mcp` adds `@modelcontextprotocol/sdk` and the MCP server layer on top. `octocode` skips the MCP layer and talks to `@octocodeai/octocode-tools-core` directly, so the CLI has no runtime dependency on `octocode-mcp`.
 
 ### What each package bundles vs. externalizes
 
-| Package | Bundles (esbuild packs into dist) | Externalizes (npm installs separately) |
+| Package | Bundles (build output packs into dist/out) | Externalizes (npm installs separately) |
 |---|---|---|
-| `octocode-security` | — | — (no runtime JS deps) |
-| `@octocodeai/octocode-context-utils` | — | — (no runtime JS deps) |
-| `octocode-shared` | — | `@octokit/oauth-methods`, `@octokit/request`, `zod` |
-| `octocode-lsp` | — | `vscode-*`, `zod`, `octocode-security`, `octocode-shared`; **ships its own Rust `.node` via 6 platform `optionalDependencies`** |
-| `@octocodeai/octocode-tools-core` | `@octokit/*`, `octokit`, `node-cache`, `zod` | `octocode-{security,lsp,shared}`, `@octocodeai/{octocode-context-utils,octocode-core}`, `@modelcontextprotocol/sdk`, `@vscode/ripgrep`, `typescript`, `typescript-language-server` |
-| `octocode-mcp` | `zod` | `@modelcontextprotocol/sdk`, `@octocodeai/{octocode-tools-core,octocode-core}`, `octocode-{security,shared}` |
-| `octocode-cli` | `@inquirer/*`, `@octokit/*`, `open`, `zod` | `@octocodeai/octocode-tools-core`, `octocode-shared` |
+| `@octocodeai/octocode-engine` | TypeScript wrapper/build output | `zod`; ships its Rust `.node` via 6 platform `optionalDependencies` |
+| `@octocodeai/octocode-tools-core` | Core tool implementation build output | `@modelcontextprotocol/sdk`, `@octocodeai/octocode-core`, `@octocodeai/octocode-engine`, `@octokit/*`, `@vscode/ripgrep`, `node-cache`, `octokit`, `zod` |
+| `octocode-mcp` | MCP server build output | `@modelcontextprotocol/sdk`, `@octocodeai/octocode-tools-core` |
+| `octocode` | CLI build output | `@inquirer/prompts`, `@octocodeai/octocode-tools-core`, `@octokit/*`, `open` |
+| `octocode-mcp-vscode` | VS Code extension bundle | VS Code runtime APIs |
 
 ---
 
 ## Native Binaries
 
-**Three** packages compile Rust to `.node` native addons via [napi-rs](https://napi.rs/docs/deep-dive/release): `octocode-security`, `@octocodeai/octocode-context-utils`, and `octocode-lsp`. Each owns its own binary distribution — no other package copies or re-declares the binaries.
+One workspace package compiles Rust to a `.node` native addon via [napi-rs](https://napi.rs/docs/deep-dive/release): `@octocodeai/octocode-engine`.
 
-All three native packages now have matching tooling: `napi` config + 6 platform `optionalDependencies`, per-target cross-compile scripts (`build:<target>`), a `build:all` aggregate, a `pack:check` guard for the root loader, a `platforms:check` guard for the six platform tarballs, and inclusion in the root `build:native:all` script. `octocode-lsp` also ships a `bundle-lsp.mjs` so the standalone binary contains the lsp `.node`.
+The engine owns the Rust-backed runtime work: security scanning/sanitization, path and command validation helpers, context minification, signature extraction, structural search helpers, ripgrep parsing, diff filtering, YAML serialization, pagination offsets, and LSP support.
 
-### How they ship (napi-rs pattern)
+### How it ships (napi-rs pattern)
 
-Each native package publishes one root package + 6 platform-specific packages:
+The native package publishes one root package + 6 platform-specific packages:
 
 ```
-octocode-security                        ← JS loader only (no .node in tarball)
+@octocodeai/octocode-engine                 ← JS/TS loader only (no .node in tarball)
   optionalDependencies:
-    octocode-security-darwin-arm64       ← contains .node for macOS Apple Silicon
-    octocode-security-darwin-x64
-    octocode-security-linux-arm64-gnu
-    octocode-security-linux-x64-gnu
-    octocode-security-linux-x64-musl     ← musl declares libc: ["musl"]
-    octocode-security-win32-x64-msvc
+    @octocodeai/octocode-engine-darwin-arm64       ← contains .node for macOS Apple Silicon
+    @octocodeai/octocode-engine-darwin-x64
+    @octocodeai/octocode-engine-linux-arm64-gnu
+    @octocodeai/octocode-engine-linux-x64-gnu
+    @octocodeai/octocode-engine-linux-x64-musl     ← musl declares libc: ["musl"]
+    @octocodeai/octocode-engine-win32-x64-msvc
 ```
 
-At `npm install` time, npm checks `os` + `cpu` + `libc` on each platform package and installs only the match. The user gets exactly one `.node` file per native package.
+At `npm install` time, npm checks `os` + `cpu` + `libc` on each platform package and installs only the match. The user gets exactly one `.node` file for the engine package.
 
-### How users get the binaries
+### How users get the binary
 
-Both entry points deliver the same binaries through `octocode-tools-core`:
+Both interface packages deliver the same native engine through `@octocodeai/octocode-tools-core`:
 
 ```
-npm install octocode-mcp            npm install octocode-cli
+npm install octocode-mcp            npm install octocode
   └─ @octocodeai/octocode-tools-core  └─ @octocodeai/octocode-tools-core
-       └─ octocode-security                  └─ octocode-security
-       └─ @octocodeai/octocode-               └─ @octocodeai/octocode-
-            context-utils                          context-utils
+       └─ @octocodeai/octocode-engine      └─ @octocodeai/octocode-engine
+            └─ one matching platform optionalDependency
 ```
 
 ### Runtime loader resolution order
 
-The JS loaders in each native package try paths in this order:
-
-1. `OCTOCODE_SECURITY_NATIVE_PATH` / `OCTOCODE_CONTEXT_NATIVE_PATH` env override
-2. `.node` next to the loader ← dev build only
-3. `dist/runtime/{security,context-utils}/` ← standalone binary layout
-4. `../runtime/{security,context-utils}/` ← CLI standalone layout
-5. platform `optionalDependency` ← **standard npm install path**
-6. napi-rs CJS fallback loader
+The engine JS loader resolves the native binary through the package's runtime loader and platform `optionalDependencies`. Standalone binaries also place the engine `.node` under their bundled `dist/runtime/engine/` layout.
 
 ### Local development (Yarn workspaces)
 
-The `npm/{platform}/` directories are declared as workspaces in the root `package.json`. Yarn resolves the exact-pinned `optionalDependencies` versions to the local workspace — no root-level `resolutions` needed.
+The `packages/octocode-engine/npm/{platform}/` directories are declared as workspaces in the root `package.json`. Yarn resolves the exact-pinned `optionalDependencies` versions to the local workspace — no root-level `resolutions` needed.
 
 ---
 
 ## Dev Workflow
 
-Day-to-day development loop for working across the Rust/TS library packages and the interface packages that consume them.
+Day-to-day development loop for working across the Rust engine, core tool implementations, and interface packages that consume them.
 
 ### First-time setup
 
@@ -114,56 +112,29 @@ Day-to-day development loop for working across the Rust/TS library packages and 
 yarn install
 ```
 
-This wires all workspace packages together. Because every internal dep uses `workspace:*`, Yarn links siblings directly — no npm publish needed to test changes locally.
+This wires all workspace packages together. Because internal dependencies use `workspace:*`, Yarn links siblings directly — no npm publish needed to test changes locally.
 
-If any `package.json` has a pinned version instead of `workspace:*` (e.g. after a publish run), restore workspace refs:
+If any `package.json` has a pinned version instead of `workspace:*` after a publish run, restore workspace refs:
 
 ```bash
 node release/sync-packages-local.mjs --fix
 yarn install
 ```
 
-### Build native Rust libs for your platform
+### Build
 
-`octocode-security` and `octocode-context-utils` compile to `.node` native addons. Build only the platform you're on:
-
-```bash
-# macOS Apple Silicon
-yarn workspace octocode-security run build:rust:darwin-arm64
-yarn workspace @octocodeai/octocode-context-utils run build:darwin-arm64
-
-# macOS Intel
-yarn workspace octocode-security run build:rust:darwin-x64
-yarn workspace @octocodeai/octocode-context-utils run build:darwin-x64
-```
-
-The compiled `.node` is placed next to the JS loader. In dev the loader resolves it via the "`.node` next to the loader" path — no install step needed.
-
-### Build TS packages
+The canonical build procedure — native engine for all 6 platforms, the four-stage build chain, TS packages, and build order — lives in [Build](#build). For the dev loop:
 
 ```bash
-# From the package directory you changed:
-yarn build:dev    # bundle only, skip lint (fast)
-yarn build        # lint + bundle
-
-# Or rebuild everything from the repo root:
-yarn workspaces foreach -pt run build:dev
-```
-
-Build order matters. Always build dependencies before consumers:
-
-```
-octocode-shared → octocode-security → octocode-context-utils → octocode-lsp
-  → octocode-tools-core → octocode-mcp / octocode-cli
+yarn workspace @octocodeai/octocode-engine run build:darwin-arm64   # host-platform .node for local dev
+yarn build:dev                                                      # from the changed TS package (fast)
 ```
 
 ### Test
 
 ```bash
 # From any package directory:
-yarn test          # run with coverage
-yarn test:watch    # watch mode
-yarn test:quiet    # minimal output
+yarn test          # run package tests when available
 
 # From the root (all packages):
 yarn verify        # lint + typecheck + tests everywhere
@@ -182,18 +153,18 @@ node release/sync-packages-version.mjs
 To check that no package has accidentally lost its `workspace:*` ref:
 
 ```bash
-node release/sync-packages-local.mjs          # exits 1 on any violation
-node release/sync-packages-local.mjs --verbose # see every dep that was checked
+node release/sync-packages-local.mjs
+node release/sync-packages-local.mjs --verbose
 ```
 
 ### Typical change cycle
 
 ```
-1. Edit source in packages/octocode-security|lsp|context-utils|tools-core
+1. Edit source in packages/octocode-engine or packages/octocode-tools-core
 2. yarn build:dev  (from the changed package)
-3. yarn build:dev  (from octocode-tools-core if a lib changed)
+3. yarn build:dev  (from octocode-tools-core if the engine changed)
 4. yarn test       (from the affected package)
-5. Test end-to-end from octocode-mcp or octocode-cli
+5. Test end-to-end from octocode-mcp or octocode
 ```
 
 ---
@@ -203,98 +174,130 @@ node release/sync-packages-local.mjs --verbose # see every dep that was checked
 ### Prerequisites
 
 ```bash
-yarn install
+yarn install          # wires workspace:* links; no npm publish needed for local builds
 ```
 
-### Build a package
+### Build the native engine — all 6 platforms (release)
+
+The engine is the only Rust crate; it ships one `.node` per platform via 6 `optionalDependencies`. Every per-platform build runs the same four-stage chain (defined in `packages/octocode-engine/package.json`):
+
+```
+prebuild.cjs  →  napi build --platform --release [--cross-compile] --target <triple>  →  postbuild.cjs  →  tsc
+```
+
+| Stage | What it does |
+|---|---|
+| `prebuild.cjs` | regenerates `src/security/patterns.rs` from the canonical TS regex source via `scripts/gen-patterns.mjs` — keeps the Rust detector in lockstep with the JS fallback |
+| `napi build` | compiles Rust → one `octocode-engine.<triple>.node` at the package root. `--cross-compile` is set automatically on every non-host target (napi-rs provides the zig-backed cross toolchain for Linux gnu/musl/arm64 and Windows MSVC) |
+| `postbuild.cjs` | restores the canonical hand-authored loaders from `loader/` over napi's generated `index.{js,cjs,d.ts}` — the package is `"type":"module"`, and the napi-generated CJS `index.js` would break every ESM `import` (see the 16.5.0 bug below). Also copies the just-built `.node` into `npm/<platform>/` |
+| `tsc` (`build:ts`) | emits `dist/` — the TS wrappers (`security/`, `lsp/`) consumed by `@octocodeai/octocode-tools-core` |
+
+Build all six platforms on one machine, then confirm every `.node` landed in its `npm/<platform>/` dir:
 
 ```bash
-# From the package directory:
-yarn build        # lint + bundle
-yarn build:dev    # bundle only (skip lint)
+yarn workspace @octocodeai/octocode-engine run build:all        # 6 native targets, then build:ts
+yarn workspace @octocodeai/octocode-engine run platforms:check  # asserts all 6 .node present
 ```
 
-### Build native binaries (Rust)
+Root shortcuts exist for both: `yarn build:native:all` / `yarn platforms:check`.
+
+> There is **no CI matrix** building the per-platform binaries — `build:all` (cross-compile via napi-rs/zig) on a single release machine is the supported path. If a cross-target fails on your host, build that target natively on a matching runner and drop the `.node` into `npm/<platform>/`; `platforms:check` will confirm.
+
+Per-platform scripts (one target each, release):
 
 ```bash
-# Build all 6 platforms for all three native packages
-# (security + context-utils + lsp), then verify every platform .node exists:
-yarn build:native:all
-yarn platforms:check          # fails if any platform dir is missing its .node
-
-# Or one platform at a time:
-yarn workspace octocode-security run build:rust:darwin-arm64
-yarn workspace @octocodeai/octocode-context-utils run build:darwin-arm64
-yarn workspace octocode-lsp run build:darwin-arm64
+yarn workspace @octocodeai/octocode-engine run build:darwin-arm64     # aarch64-apple-darwin
+yarn workspace @octocodeai/octocode-engine run build:darwin-x64       # x86_64-apple-darwin
+yarn workspace @octocodeai/octocode-engine run build:linux-x64-gnu    # x86_64-unknown-linux-gnu   (--cross-compile)
+yarn workspace @octocodeai/octocode-engine run build:linux-x64-musl   # x86_64-unknown-linux-musl  (--cross-compile)
+yarn workspace @octocodeai/octocode-engine run build:linux-arm64-gnu  # aarch64-unknown-linux-gnu  (--cross-compile)
+yarn workspace @octocodeai/octocode-engine run build:windows-x64      # x86_64-pc-windows-msvc     (--cross-compile)
 ```
 
-The build scripts copy the compiled `.node` into `npm/{platform}/` automatically.
+> ⚠️ A plain `yarn workspace @octocodeai/octocode-engine run build` (no target) compiles **only the host platform** — fine for local dev, but it leaves the other five `npm/<platform>/` dirs empty. Never publish from a `yarn build`; publish from `build:all` + `platforms:check`.
 
-> ⚠️ A plain `yarn workspace <pkg> run build` (no target) compiles **only the host
-> platform** and leaves the other five `npm/{platform}/` dirs empty. Always use
-> `build:all` (or per-target builds on matching CI runners) before publishing, and
-> let `platforms:check` confirm all six are present.
+For local dev (host platform, no release LTO): `yarn workspace @octocodeai/octocode-engine run build:dev`.
+
+### Build TS packages
+
+```bash
+# From the changed package:
+yarn build:dev      # fast dev build
+yarn build          # full build
+# Or everything, dependency-ordered:
+yarn workspaces foreach -pt run build:dev
+```
+
+Build order is fixed — build dependencies before consumers:
+
+```
+@octocodeai/octocode-engine → @octocodeai/octocode-tools-core → octocode-mcp / octocode / octocode-mcp-vscode
+```
 
 ---
 
 ## Publish
 
-### How users get binaries after `npm install`
-
-When a user runs `npm install octocode-mcp` or `npm install octocode-cli`, npm resolves the full dependency tree automatically:
-
-```
-npm install octocode-mcp  (or octocode-cli)
-  └─ @octocodeai/octocode-tools-core
-       ├─ octocode-security
-       │    └─ optionalDependencies:
-       │         octocode-security-darwin-arm64   ← installed on macOS Apple Silicon
-       │         octocode-security-darwin-x64     ← installed on macOS Intel
-       │         octocode-security-linux-x64-gnu  ← installed on Linux x64
-       │         octocode-security-linux-x64-musl ← installed on Alpine/musl
-       │         octocode-security-linux-arm64-gnu
-       │         octocode-security-win32-x64-msvc
-       └─ @octocodeai/octocode-context-utils
-            └─ optionalDependencies: (same 6 platforms as above)
-```
-
-npm uses `os`, `cpu`, and `libc` fields on each platform package to install **exactly one `.node` file** — the one that matches the user's machine. No post-install scripts, no compilation on the user's machine.
-
-**This only works if all packages are published to npm.** Publishing in the correct order (dependencies before consumers) and publishing every platform sub-package before the root loader is what makes `npm install` deliver the right binary to end users.
-
 ### Pre-publish checks
 
+> **Versioned independently** (engine `16.5.x`, tools-core `16.3.x`, octocode-mcp `16.2.x`). For an engine-only release, bump `packages/octocode-engine/package.json` and use the engine's `version:sync`. Do **not** run `release/sync-packages-version.mjs` — it forces every package to octocode-mcp's version and would downgrade the engine.
+
+#### The engine is Rust → TS — verify both layers
+
+| Layer | Produced by | Output | Guarded by |
+|---|---|---|---|
+| Rust native | `napi build` (×6 targets) | one `.node` per `npm/<platform>/` | `platforms:check` |
+| JS/TS loader | `postbuild.cjs` restores `loader/{index.js,index.cjs,index.d.ts}` over the napi-generated files | root `index.*` (ESM `import` → `index.js`, CJS `require` → `index.cjs`) | `loader:check` |
+| TS build | `tsc` | `dist/` (security + lsp) | `tsc` / `verify` |
+
+The 6 `.npm` platform packages (`@octocodeai/octocode-engine-<platform>`) each carry exactly one `.node` and are exact-pinned in the root's `optionalDependencies`. The root tarball ships **no** `.node`.
+
+#### Engine readiness (from repo root)
+
 ```bash
-# 1. Bump the version in packages/octocode-mcp/package.json, then:
-#    Sync version to every package AND pin all internal deps to exact version.
-#    This also rewrites the external file: dep on @octocodeai/octocode-core
-#    (sibling repo) to its published semver — see EXTERNAL_FILE_DEPS in the script.
-#    (neither workspace: nor file: refs are valid on npm — this step removes both):
-node release/sync-packages-version.mjs --pin-for-publish
+# 1. Bump packages/octocode-engine/package.json (16.5.0 is taken → 16.5.1+).
+# 2. Propagate to Cargo + all 6 platform package.json. Run MANUALLY — the root is
+#    published with --ignore-scripts, which skips the prepublishOnly hook.
+yarn workspace @octocodeai/octocode-engine run version:sync
 
-# 2. Verify no workspace: or file: refs remain — npm publish will fail if any do:
-rg '"workspace:' packages/*/package.json packages/*/npm/*/package.json
-rg '"file:'      packages/*/package.json packages/*/npm/*/package.json
-# → both must be empty
+# 3. Rebuild all 6 native targets + TS (see [Build](#build) — `build:all` cross-compiles on one machine):
+yarn workspace @octocodeai/octocode-engine run build:all
 
-# Root native packages must NOT contain a .node (all three have a pack:check guard):
-yarn workspace octocode-security run pack:check
-yarn workspace @octocodeai/octocode-context-utils run pack:check
-yarn workspace octocode-lsp run pack:check
+# 4. Fast gate: version + loader entries + tarball purity + 6 binaries.
+yarn workspace @octocodeai/octocode-engine run prepublish:verify
 
-# Each platform package must contain exactly one non-empty .node.
-# This is the critical guard: a host-only build populates just ONE of the six
-# platform dirs and silently skips the rest. Run from the repo root — it checks
-# all three native packages and exits 1 if ANY platform binary is missing/empty:
-yarn platforms:check
-# (or per-package: yarn workspace octocode-lsp run platforms:check)
-#
-# Belt-and-suspenders: each of the 18 platform packages also has a prepublishOnly
-# hook (node ../verify-binary.cjs) that aborts `npm publish` for that package if
-# its own .node is missing — so even a forgotten platforms:check cannot ship an
-# empty platform tarball.
+# 5. Full gate: cargo check/fmt/clippy/test/udeps/audit (`dead_code`+`unused_*` are `deny` in `[lints.rust]`) + tsc + vitest + benchmarks.
+yarn workspace @octocodeai/octocode-engine run verify
 
-# All tests pass:
+# 6. Prove both entry points load on this host:
+cd packages/octocode-engine
+node --input-type=module -e "const m=await import('./index.js'); if(typeof m.applyContentViewMinification!=='function')throw Error('ESM broken'); console.log('ESM OK')"
+node -e "if(typeof require('./index.cjs').applyContentViewMinification!=='function')throw Error('CJS broken'); console.log('CJS OK')"
+cd ../..
+```
+
+#### What each check catches
+
+| Check | Catches |
+|---|---|
+| `version:check` | Cargo / npm / 6-platform version drift |
+| `loader:check` | CJS in the ESM entry (the 16.5.0 bug), napi auto-gen drift, `loader/` ↔ root mismatch |
+| `pack:check` | a `.node` leaking into the root tarball |
+| `platforms:check` | missing / empty / duplicate `.node` in any platform dir |
+| `cargo clippy -D warnings`, `cargo fmt --check` | Rust lint / format (`cargo fmt --all` to fix) |
+| `cargo check` / `cargo test` | Rust compile + behavior |
+| `dead_code` / `unused_*` = `deny` (`[lints.rust]` in `Cargo.toml`) | unused code fails **every** cargo invocation (check/build/clippy), not just clippy — catches dead crates, fields, and functions at compile |
+| `cargo +nightly udeps` (`udeps:rust`, part of `verify:rust`) | unused Cargo deps. Prereq (once): `rustup toolchain install nightly && cargo +nightly install cargo-udeps --locked` |
+| ESM/CJS load (step 6) + post-publish smoke | entry points failing to import |
+
+> Why this matters: 16.5.0 shipped an auto-gen **CJS** `index.js` under `"type": "module"`, so every ESM `import` threw `require is not defined in ES module scope`. `loader:check` (now in `verify` and `prepublish:verify`) fails the build if that recurs; the `loader/` canonical sources make it self-heal.
+
+#### Monorepo ref hygiene (when releasing more than the engine)
+
+```bash
+rg '"workspace:|"file:' packages/*/package.json packages/*/npm/*/package.json
+# → must be empty for whatever you publish. (CLI keeps a dev file: dep on
+#   @octocodeai/octocode-core — pin it before publishing the CLI. Engine has none.)
 yarn verify
 ```
 
@@ -303,63 +306,39 @@ yarn verify
 Dependencies must exist on npm before dependents. Publish in this order:
 
 ```
-1. octocode-shared
-2. octocode-security npm/{platform} × 6
-3. octocode-security
-4. @octocodeai/octocode-context-utils npm/{platform} × 6
-5. @octocodeai/octocode-context-utils
-6. octocode-lsp npm/{platform} × 6
-7. octocode-lsp
-8. @octocodeai/octocode-tools-core
-9. octocode-mcp
-10. octocode-cli  →  then update Homebrew tap
+1. @octocodeai/octocode-engine npm/{platform} × 6
+2. @octocodeai/octocode-engine
+3. @octocodeai/octocode-tools-core
+4. octocode-mcp
+5. octocode
+6. octocode-mcp-vscode, when releasing the VS Code extension
+7. Homebrew tap update for octocode
 ```
 
 ### Publish commands
+
+> The engine root uses `--ignore-scripts` (no rebuild at publish), which also skips `prepublishOnly` — so `version:sync` + `prepublish:verify` must already have been run above.
 
 ```bash
 npm whoami   # confirm auth
 
 # Dry-run first:
-npm publish packages/octocode-shared            --access public --provenance --dry-run
-for dir in packages/octocode-security/npm/*; do
+for dir in packages/octocode-engine/npm/*; do
   npm publish "$dir" --access public --provenance --dry-run
 done
-# ... repeat for context-utils and octocode-lsp, then:
-npm publish packages/octocode-tools-core        --access public --provenance --dry-run
-npm publish packages/octocode-mcp               --access public --provenance --ignore-scripts --dry-run
-npm publish packages/octocode-cli               --access public --provenance --dry-run
+npm publish packages/octocode-engine          --access public --provenance --ignore-scripts --dry-run
+npm publish packages/octocode-tools-core      --access public --provenance --dry-run
+npm publish packages/octocode-mcp             --access public --provenance --ignore-scripts --dry-run
+npm publish packages/octocode                 --access public --provenance --dry-run
 
 # Live publish (same commands, drop --dry-run):
-npm publish packages/octocode-shared            --access public --provenance
-
-npm publish packages/octocode-security/npm/darwin-arm64   --access public --provenance
-npm publish packages/octocode-security/npm/darwin-x64     --access public --provenance
-npm publish packages/octocode-security/npm/linux-x64-gnu  --access public --provenance
-npm publish packages/octocode-security/npm/linux-x64-musl --access public --provenance
-npm publish packages/octocode-security/npm/linux-arm64-gnu --access public --provenance
-npm publish packages/octocode-security/npm/win32-x64-msvc --access public --provenance
-npm publish packages/octocode-security          --access public --provenance --ignore-scripts
-
-npm publish packages/octocode-context-utils/npm/darwin-arm64   --access public --provenance
-npm publish packages/octocode-context-utils/npm/darwin-x64     --access public --provenance
-npm publish packages/octocode-context-utils/npm/linux-x64-gnu  --access public --provenance
-npm publish packages/octocode-context-utils/npm/linux-x64-musl --access public --provenance
-npm publish packages/octocode-context-utils/npm/linux-arm64-gnu --access public --provenance
-npm publish packages/octocode-context-utils/npm/win32-x64-msvc --access public --provenance
-npm publish packages/octocode-context-utils     --access public --provenance --ignore-scripts
-
-npm publish packages/octocode-lsp/npm/darwin-arm64    --access public --provenance
-npm publish packages/octocode-lsp/npm/darwin-x64      --access public --provenance
-npm publish packages/octocode-lsp/npm/linux-x64-gnu   --access public --provenance
-npm publish packages/octocode-lsp/npm/linux-x64-musl  --access public --provenance
-npm publish packages/octocode-lsp/npm/linux-arm64-gnu --access public --provenance
-npm publish packages/octocode-lsp/npm/win32-x64-msvc  --access public --provenance
-npm publish packages/octocode-lsp               --access public --provenance
-
-npm publish packages/octocode-tools-core        --access public --provenance
-npm publish packages/octocode-mcp               --access public --provenance --ignore-scripts
-npm publish packages/octocode-cli               --access public --provenance
+for dir in packages/octocode-engine/npm/*; do
+  npm publish "$dir" --access public --provenance
+done
+npm publish packages/octocode-engine          --access public --provenance --ignore-scripts
+npm publish packages/octocode-tools-core      --access public --provenance
+npm publish packages/octocode-mcp             --access public --provenance --ignore-scripts
+npm publish packages/octocode                 --access public --provenance
 ```
 
 ### Restore workspace refs after publish
@@ -367,15 +346,15 @@ npm publish packages/octocode-cli               --access public --provenance
 After publishing, internal deps are pinned to the exact version. Restore `workspace:*` so local development works again:
 
 ```bash
-node release/sync-packages-version.mjs   # converts pinned refs back to workspace:*
-yarn install                             # re-sync the lockfile
+node release/sync-packages-version.mjs
+yarn install
 ```
 
 Or verify first, then fix:
 
 ```bash
-node release/sync-packages-local.mjs        # shows any remaining pinned refs
-node release/sync-packages-local.mjs --fix  # rewrites them to workspace:*
+node release/sync-packages-local.mjs
+node release/sync-packages-local.mjs --fix
 yarn install
 ```
 
@@ -383,10 +362,8 @@ yarn install
 
 ```bash
 tmp=$(mktemp -d) && cd "$tmp" && npm init -y >/dev/null
-npm install octocode-mcp@X.Y.Z octocode-cli@X.Y.Z
-node --input-type=module -e "const s = await import('octocode-security'); console.log('security:', Boolean(s.securityRegistry))"
-node --input-type=module -e "const c = await import('@octocodeai/octocode-context-utils'); console.log('context-utils:', c.getSupportedSignatureExtensions().length > 0)"
-node --input-type=module -e "await import('octocode-lsp'); console.log('lsp: native .node loaded ✓')"  # throws if no platform optionalDependency was installed
+npm install octocode-mcp@X.Y.Z octocode@X.Y.Z
+node --input-type=module -e "const e = await import('@octocodeai/octocode-engine'); console.log('engine:', typeof e.applyContentViewMinification === 'function')"
 npx octocode-mcp --help
 npx octocode --version
 ```
@@ -395,7 +372,7 @@ npx octocode --version
 
 ## Standalone Binaries
 
-Standalone binaries bundle Bun + all runtime assets (`rg`, `.node` files) into a single executable per platform. Used for the GitHub Release and Homebrew tap.
+Standalone binaries bundle Bun + runtime assets (`rg`, `.node` files) into a single executable per platform. Used for the GitHub Release and Homebrew tap.
 
 ```bash
 yarn workspace octocode-mcp run build:bin:darwin-arm64
@@ -411,18 +388,17 @@ shasum -a 256 octocode-mcp-* > checksums-sha256.txt
 
 Upload the 6 binaries + `checksums-sha256.txt` to the GitHub Release for `vX.Y.Z`.
 
-**Layout inside each standalone binary** (built by `bundle-rg.mjs`, `bundle-security.mjs`, `bundle-context-utils.mjs`):
+**Layout inside each standalone binary**:
 
 ```
 dist/
   octocode-mcp-darwin-arm64
   runtime/
     rg/rg-darwin-arm64
-    security/octocode-security.darwin-arm64.node
-    context-utils/octocode-context-utils.darwin-arm64.node
+    engine/octocode-engine.darwin-arm64.node
 ```
 
-The loaders check `dist/runtime/` before falling back to npm `optionalDependencies`, so standalone users need no npm install.
+The loader checks bundled runtime paths before falling back to npm `optionalDependencies`, so standalone users need no npm install.
 
 ---
 
@@ -430,7 +406,7 @@ The loaders check `dist/runtime/` before falling back to npm `optionalDependenci
 
 **Tap repo:** [`bgauryy/homebrew-octocode`](https://github.com/bgauryy/homebrew-octocode)
 
-The formula installs the published `octocode-cli` npm tarball. Publish `octocode-cli` first, then:
+The formula installs the published `octocode` npm tarball. Publish `octocode` first, then:
 
 ```bash
 cd /Users/guybary/Documents/homebrew-octocode
@@ -442,7 +418,7 @@ brew install bgauryy/octocode/octocode
 octocode --version && octocode tools
 ```
 
-Homebrew users get native binaries through the same `optionalDependencies` chain: `octocode-cli → octocode-tools-core → octocode-security + octocode-context-utils → platform .node`.
+Homebrew users get native binaries through the same `optionalDependencies` chain: `octocode → @octocodeai/octocode-tools-core → @octocodeai/octocode-engine → platform .node`.
 
 ---
 

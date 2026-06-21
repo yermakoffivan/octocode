@@ -32,6 +32,7 @@ export function paginateEntries(
     entriesPerPage: number;
     totalEntries: number;
     hasMore: boolean;
+    nextPage?: number;
   };
 } {
   const totalEntries = entries.length;
@@ -41,6 +42,7 @@ export function paginateEntries(
   const currentPage = Math.min(query.page || 1, totalPages);
   const startIdx = (currentPage - 1) * entriesPerPage;
   const endIdx = Math.min(startIdx + entriesPerPage, totalEntries);
+  const hasMore = currentPage < totalPages;
   return {
     paginatedEntries: entries.slice(startIdx, endIdx),
     endIdx,
@@ -49,7 +51,8 @@ export function paginateEntries(
       totalPages,
       entriesPerPage,
       totalEntries,
-      hasMore: currentPage < totalPages,
+      hasMore,
+      ...(hasMore ? { nextPage: currentPage + 1 } : {}),
     },
   };
 }

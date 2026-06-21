@@ -4,7 +4,7 @@ import {
   shouldUseMCPLsp,
   getLspEnvironmentHint,
 } from '../../../../octocode-tools-core/src/utils/environment/environmentDetection.js';
-import { _resetConfigCache } from 'octocode-shared';
+import { _resetConfigCache } from '@octocodeai/octocode-tools-core/config';
 
 describe('Environment Detection', () => {
   const originalEnv = { ...process.env };
@@ -93,7 +93,7 @@ describe('Environment Detection', () => {
 
   describe('shouldUseMCPLsp - error handling', () => {
     it('should return false when getConfigSync throws', async () => {
-      const mod = await import('octocode-shared');
+      const mod = await import('@octocodeai/octocode-tools-core/config');
       const spy = vi.spyOn(mod, 'getConfigSync').mockImplementation(() => {
         throw new Error('Config file corrupted');
       });

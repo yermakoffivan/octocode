@@ -1,0 +1,95 @@
+# Research Binary — Archives, Compressed Streams, Native Binaries
+
+Use this when a file is an archive, compressed stream, native binary, `.node` addon, `.wasm`, `.jar`, `.zip`, `.tar.*`, `.7z`, `.dmg`, `.deb`, or unknown binary. The binary tool only opens/unpacks; after unpacking, continue with local research tools.
+
+## CLI ↔ MCP map
+
+| Job | CLI | MCP |
+|---|---|---|
+| Identify file type | `octocode binary <file> --identify` | `localBinaryInspect(mode:"identify")` |
+| List archive entries | `octocode binary <file> --list` | `localBinaryInspect(mode:"list")` |
+| Extract one archive entry | `octocode binary <file> --extract <entry>` | `localBinaryInspect(mode:"extract", archiveFile:"entry")` |
+| Decompress single stream | `octocode binary <file> --decompress` | `localBinaryInspect(mode:"decompress")` |
+| Read printable strings | `octocode binary <file> --strings` | `localBinaryInspect(mode:"strings")` |
+| Unpack full archive | `octocode unzip <archive>` | `localBinaryInspect(mode:"unpack")` |
+
+## Decision flow
+
+```text
+unknown file
+→ identify
+→ if archive: list
+   → one target entry: extract exact entry
+   → many files / codebase: unpack → localPath
+→ if compressed stream: decompress
+→ if native binary: strings
+→ if unpacked localPath: localViewStructure → localSearchCode/AST → localGetFileContent → LSP if source files exist
+```
+
+## Modes
+
+### `identify`
+
+Start here when unsure. Returns file type, magic bytes, and hints.
+
+### `list`
+
+Use on archives before `extract`.
+
+Options:
+- `entriesPerPage`, `entryPageNumber` — page entry list.
+- `verbose:true` — include size/mtime.
+- `maxEntries` — cap returned entries while preserving total count.
+
+### `extract`
+
+Use for one exact archive entry.
+
+Rules:
+- Run `list` first; do not guess `archiveFile`.
+- Entry is case-sensitive and must not start with `-`.
+- Use `matchString` to filter streamed content when needed.
+- For many entries, use `unpack` instead.
+
+### `decompress`
+
+Use for single-stream compression: `.gz`, `.bz2`, `.xz`, `.zst`, `.lz4`, `.br`, `.lzfse`.
+
+Rules:
+- Not for multi-entry archives.
+- `format:"auto"` is default; override only when extension lies.
+- Use `matchString` to filter lines during decompression.
+
+### `strings`
+
+Use on `.node`, `.so`, `.dylib`, `.exe`, `.wasm`, native libraries.
+
+Options:
+- `minLength:12|16` — reduce noise to URLs/symbols/version strings.
+- `includeOffsets:true` — include byte offsets for follow-up binary investigation.
+
+### `unpack`
+
+Use for archives that contain many source files.
+
+Output:
+- `localPath` under the octocode archive cache.
+
+Then continue:
+
+```text
+localViewStructure(localPath, recursive:true, maxDepth:1)
+→ localFindFiles(localPath, names/pathPattern)
+→ localSearchCode(localPath, mode:"discovery")
+→ localSearchCode(localPath, mode:"structural") when source grammar exists
+→ localGetFileContent(path, minify:"symbols")
+→ lspGetSemantics if language server can handle unpacked source
+```
+
+## Gotchas
+
+- `extract` on `.tar.*` / `.7z` may require `7z` on PATH; `.zip` usually does not.
+- Binary inspection is not full-text search across entries. Unpack first, then use local search.
+- Never LSP an archive path directly. LSP needs real source files on disk.
+- Treat `strings` findings as hints; prove behavior with source, exported symbols, docs, or runtime tests.
+- If content is sanitized/redacted, cite that caveat in findings.

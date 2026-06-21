@@ -35,9 +35,9 @@ vi.mock('octocode-security/contentSanitizer', () => ({
   ContentSanitizer: mockContentSanitizer,
 }));
 
-vi.mock('@octocodeai/octocode-context-utils', async importOriginal => {
+vi.mock('@octocodeai/octocode-engine', async importOriginal => {
   const actual =
-    await importOriginal<typeof import('@octocodeai/octocode-context-utils')>();
+    await importOriginal<typeof import('@octocodeai/octocode-engine')>();
   return { ...actual, minifyContent: mockminifyContent };
 });
 

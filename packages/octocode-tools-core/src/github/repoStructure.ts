@@ -26,7 +26,10 @@ import {
 } from '../utils/response/charSavings.js';
 
 import { applyStructurePagination } from './repoStructurePagination.js';
-import { fetchDirectoryContentsRecursivelyAPI } from './repoStructureRecursive.js';
+import {
+  fetchDirectoryContentsRecursivelyAPI,
+  getRecursiveFetchFailureCount,
+} from './repoStructureRecursive.js';
 
 import type { Octokit } from 'octokit';
 
@@ -270,6 +273,7 @@ async function viewGitHubRepositoryStructureAPIInternal(
     let rawResponseChars = countSerializedChars(data);
     const rawItems = Array.isArray(data) ? data : [data];
     let allItems = mapApiItems(rawItems);
+    let partialTreeFailures = 0;
 
     if (depth > 1) {
       const recursiveItems = await fetchDirectoryContentsRecursivelyAPI(
@@ -281,6 +285,7 @@ async function viewGitHubRepositoryStructureAPIInternal(
         1,
         depth
       );
+      partialTreeFailures = getRecursiveFetchFailureCount(recursiveItems);
       rawResponseChars += getRawResponseChars(recursiveItems) ?? 0;
       const combined = [...allItems, ...recursiveItems];
       allItems = combined.filter(
@@ -335,6 +340,7 @@ async function viewGitHubRepositoryStructureAPIInternal(
       currentPage,
       totalPages,
       hasMore,
+      ...(hasMore ? { nextPage: currentPage + 1 } : {}),
       entriesPerPage,
       totalEntries,
     };
@@ -350,6 +356,12 @@ async function viewGitHubRepositoryStructureAPIInternal(
       allFiles,
       allFolders,
     });
+
+    if (partialTreeFailures > 0) {
+      hints.unshift(
+        `Partial tree: ${partialTreeFailures} subdirectory subtree(s) failed to load and are missing from this structure. The listing is incomplete — retry or narrow the path/depth.`
+      );
+    }
 
     return {
       owner,

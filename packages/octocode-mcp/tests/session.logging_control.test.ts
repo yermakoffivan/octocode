@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { deleteSession, _resetSessionState } from 'octocode-shared';
+import {
+  deleteSession,
+  _resetSessionState,
+} from '@octocodeai/octocode-tools-core/session';
 
 import {
   initializeSession,
@@ -312,7 +315,8 @@ describe('Session Logging Control', () => {
     });
 
     it('should still update persistent stats even when LOG=false', async () => {
-      const { incrementToolCalls } = await import('octocode-shared');
+      const { incrementToolCalls } =
+        await import('@octocodeai/octocode-tools-core/session');
       initializeSession();
 
       await logToolCall(TOOL_NAMES.GITHUB_SEARCH_CODE, ['owner/repo']);

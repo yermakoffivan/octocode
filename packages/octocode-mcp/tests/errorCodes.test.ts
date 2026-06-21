@@ -1,6 +1,6 @@
 import os from 'os';
 import { describe, it, expect, vi } from 'vitest';
-import { getConfigSync } from 'octocode-shared';
+import { getConfigSync } from '@octocodeai/octocode-tools-core/config';
 import {
   CONFIG_ERRORS,
   VALIDATION_ERRORS,

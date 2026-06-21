@@ -47,4 +47,11 @@ export const entryPoints = [
   { entryPoints: ['src/index.ts'], outfile: 'dist/index.js' },
   { entryPoints: ['src/direct.ts'], outfile: 'dist/direct.js' },
   { entryPoints: ['src/zod.ts'], outfile: 'dist/zod.js' },
+  { entryPoints: ['src/shared/credentials/index.ts'], outfile: 'dist/shared/credentials/index.js' },
+  { entryPoints: ['src/shared/platform/index.ts'], outfile: 'dist/shared/platform/index.js' },
+  { entryPoints: ['src/shared/session/index.ts'], outfile: 'dist/shared/session/index.js' },
+  { entryPoints: ['src/shared/config/index.ts'], outfile: 'dist/shared/config/index.js' },
+  { entryPoints: ['src/shared/paths.ts'], outfile: 'dist/shared/paths.js' },
+  { entryPoints: ['src/shared/fs-utils.ts'], outfile: 'dist/shared/fs-utils.js' },
+  { entryPoints: ['src/shared/credentials/testing.ts'], outfile: 'dist/shared/credentials/testing.js' },
 ];

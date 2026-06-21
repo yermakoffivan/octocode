@@ -1,7 +1,6 @@
-import { readFile, stat } from 'node:fs/promises';
-
 import type { LocalSearchCodeFile } from '@octocodeai/octocode-core/types';
 import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-types';
+import type { StructuralSearchFileResult } from '@octocodeai/octocode-engine';
 
 import { contextUtils } from '../../utils/contextUtils.js';
 import {
@@ -13,106 +12,67 @@ import type { SearchStats } from '../../utils/core/types.js';
 import { buildSearchResult } from './ripgrepResultBuilder.js';
 import type { RipgrepQuery } from './scheme.js';
 
-// File extensions whose grammar the structural engine ships (mirrors
-// octocode-context-utils' signatures/languages.rs LANGUAGE_TABLE). Used only to
-// shortlist candidate files before parsing — the engine is the source of truth
-// and throws on anything it cannot parse.
-const STRUCTURAL_EXTENSIONS = [
-  'ts',
-  'tsx',
-  'js',
-  'jsx',
-  'mjs',
-  'cjs',
-  'py',
-  'go',
-  'rs',
-  'java',
-  'c',
-  'h',
-  'cpp',
-  'cc',
-  'cxx',
-  'hpp',
-  'hh',
-  'hxx',
-  'cs',
-  'sh',
-  'bash',
-  'zsh',
-] as const;
+// No directories excluded by default — structural search must not silently
+// skip node_modules/build/dist either. Pass `excludeDir` to trim a search.
+const DEFAULT_STRUCTURAL_EXCLUDE_DIRS: string[] = [];
 
-const DEFAULT_STRUCTURAL_EXCLUDE_DIRS = [
-  'node_modules',
-  'dist',
-  '.git',
-  'build',
-  'coverage',
-  '.next',
-  'out',
-  'target',
-];
-
-// Cap candidate files when none was supplied, so a structural search rooted at
-// a large tree cannot fan out unbounded.
 const DEFAULT_MAX_STRUCTURAL_FILES = 2000;
-// Skip files larger than this from a parse — they are almost never the target
-// of a structural query and dominate latency. Matches the engine's own guard.
 const MAX_STRUCTURAL_FILE_BYTES = 1_000_000;
 
+// Guidance appended to the typed `warnings` channel when a structural search
+// parses fine but matches nothing — the usual cause is an incomplete pattern.
+const ZERO_MATCH_GUIDANCE =
+  '0 structural matches. A pattern matches a complete AST node — a class/function usually needs a body (add `$$$BODY`), and Python/TS definitions may carry a return type (`-> $RET:`) or decorators the pattern must include. For partial or relational matches use a YAML `rule` instead of `pattern`.';
+
 /**
- * Derive a literal text anchor from a pattern so ripgrep-style pre-filtering
- * (here, a cheap `content.includes`) can skip the expensive PARSE of files that
- * cannot contain a match. Sound by construction: any literal identifier in the
- * pattern must appear verbatim in every match (only metavars vary). Returns
- * `undefined` for rules or metavar-only patterns → full-corpus parse.
+ * Native structural search filters candidate files by `include` globs (or scans
+ * every supported extension when none are given). `langType` is the ergonomic
+ * the regex path uses, so map it to `*.ext` include globs here — otherwise
+ * `mode:"structural", langType:"ts"` would also parse HTML/CSS/Scala/etc.
  */
-function deriveLiteralAnchor(pattern: string | undefined): string | undefined {
-  if (!pattern) return undefined;
-  // Strip metavariables ($X, $$$ARGS, $_) before extracting literals.
-  const withoutMetavars = pattern.replace(/\$+[A-Za-z0-9_]*/g, ' ');
-  const literals: string[] =
-    withoutMetavars.match(/[A-Za-z_][A-Za-z0-9_]{2,}/g) ?? [];
-  // The longest literal is the most selective anchor.
-  let anchor: string | undefined;
-  for (const literal of literals) {
-    if (!anchor || literal.length > anchor.length) anchor = literal;
-  }
-  return anchor;
-}
+const LANG_TYPE_EXTENSIONS: Record<string, string[]> = {
+  ts: ['ts', 'tsx', 'mts', 'cts'],
+  typescript: ['ts', 'tsx', 'mts', 'cts'],
+  tsx: ['tsx'],
+  js: ['js', 'jsx', 'mjs', 'cjs'],
+  javascript: ['js', 'jsx', 'mjs', 'cjs'],
+  jsx: ['jsx'],
+  py: ['py', 'pyi'],
+  python: ['py', 'pyi'],
+  go: ['go'],
+  rs: ['rs'],
+  rust: ['rs'],
+  java: ['java'],
+  c: ['c', 'h'],
+  cpp: ['cpp', 'hpp', 'cc', 'cxx', 'hh', 'hxx'],
+  'c++': ['cpp', 'hpp', 'cc', 'cxx', 'hh', 'hxx'],
+  cs: ['cs'],
+  csharp: ['cs'],
+  sh: ['sh', 'bash', 'zsh'],
+  bash: ['sh', 'bash', 'zsh'],
+  shell: ['sh', 'bash', 'zsh'],
+  html: ['html', 'htm'],
+  css: ['css'],
+  scss: ['scss'],
+  less: ['less'],
+  scala: ['scala', 'sc', 'sbt'],
+  json: ['json', 'jsonc'],
+  yaml: ['yaml', 'yml'],
+  yml: ['yaml', 'yml'],
+  toml: ['toml'],
+};
 
-async function collectCandidateFiles(
-  rootPath: string,
-  query: RipgrepQuery
-): Promise<string[]> {
-  const stats = await stat(rootPath);
-  if (stats.isFile()) {
-    return [rootPath];
-  }
-
-  const include = query.include?.length ? query.include : undefined;
-  const names = include ?? STRUCTURAL_EXTENSIONS.map(ext => `*.${ext}`);
-  const excludeDir = query.excludeDir?.length
-    ? query.excludeDir
-    : DEFAULT_STRUCTURAL_EXCLUDE_DIRS;
-
-  const result = contextUtils.queryFileSystem({
-    path: rootPath,
-    recursive: true,
-    entryType: 'f',
-    names,
-    excludeDir,
-    limit: query.maxFiles ?? DEFAULT_MAX_STRUCTURAL_FILES,
-  });
-
-  return result.entries.map(entry => entry.path);
+function includeGlobsForLangType(langType?: string): string[] | undefined {
+  if (!langType) return undefined;
+  const key = langType.trim().toLowerCase();
+  const exts = LANG_TYPE_EXTENSIONS[key] ?? [key.replace(/^[.*]+/, '')];
+  return exts.filter(Boolean).map(ext => `*.${ext}`);
 }
 
 /**
- * mode:"structural" execution path. Resolves candidate files, pre-filters them
- * with a literal anchor when the pattern provides one, runs the AST engine per
- * file, and reuses the ripgrep result builder so the output shape (pagination,
- * sizing) is identical to the other localSearchCode modes.
+ * mode:"structural" execution path. Path validation and result shaping stay in
+ * TypeScript with the rest of localSearchCode; filesystem traversal, file reads,
+ * pre-filtering, parsing, and Octocode AST matching run in native Rust.
  */
 export async function searchContentStructural(
   query: RipgrepQuery
@@ -121,113 +81,64 @@ export async function searchContentStructural(
   if (!pathValidation.isValid) {
     return pathValidation.errorResult as LocalSearchCodeToolResult;
   }
-  const rootPath = pathValidation.sanitizedPath;
 
-  const pattern = query.pattern;
-  const rule = query.rule;
-  const anchor = deriveLiteralAnchor(pattern);
-
-  let candidateFiles: string[];
+  let nativeResult: ReturnType<typeof contextUtils.structuralSearchFiles>;
   try {
-    candidateFiles = await collectCandidateFiles(rootPath, query);
-  } catch (error) {
-    return createErrorResult(error, query, {
-      toolName: TOOL_NAMES.LOCAL_RIPGREP,
-    }) as LocalSearchCodeToolResult;
-  }
-
-  const files: LocalSearchCodeFile[] = [];
-  const warnings: string[] = [];
-  let totalMatches = 0;
-  let parsedFiles = 0;
-  let skippedByPreFilter = 0;
-  let fatalError: string | undefined;
-
-  for (const filePath of candidateFiles) {
-    if (fatalError) break;
-
-    let content: string;
-    try {
-      const fileStat = await stat(filePath);
-      if (fileStat.size > MAX_STRUCTURAL_FILE_BYTES) continue;
-      content = await readFile(filePath, 'utf8');
-    } catch {
-      // Unreadable / vanished file — skip, do not abort the whole search.
-      continue;
-    }
-
-    // Sound pre-filter: a file lacking the pattern's literal anchor cannot
-    // contain a match, so skip the parse entirely (KPI #8).
-    if (anchor && !content.includes(anchor)) {
-      skippedByPreFilter++;
-      continue;
-    }
-
-    let matches: ReturnType<typeof contextUtils.structuralSearch>;
-    try {
-      matches = contextUtils.structuralSearch(content, filePath, pattern, rule);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // The engine rejects extensions it has no grammar for — skip those files.
-      // Any other error is a bad pattern/rule and applies to every file, so
-      // surface it once instead of repeating it per file.
-      if (message.includes('does not support')) continue;
-      fatalError = message;
-      break;
-    }
-
-    parsedFiles++;
-    if (matches.length === 0) continue;
-
-    totalMatches += matches.length;
-    files.push({
-      path: filePath,
-      matchCount: matches.length,
-      matches: matches.map(match => ({
-        line: match.startLine,
-        value: match.text.split('\n', 1)[0],
-        column: match.startCol,
-      })),
+    nativeResult = contextUtils.structuralSearchFiles({
+      path: pathValidation.sanitizedPath,
+      pattern: query.pattern,
+      rule: query.rule,
+      // Honor langType by scoping to its extensions when no explicit include was
+      // given; explicit include globs always win.
+      include: query.include?.length
+        ? query.include
+        : includeGlobsForLangType(query.langType),
+      excludeDir: query.excludeDir?.length
+        ? query.excludeDir
+        : DEFAULT_STRUCTURAL_EXCLUDE_DIRS,
+      maxFiles: query.maxFiles ?? DEFAULT_MAX_STRUCTURAL_FILES,
+      maxFileBytes: MAX_STRUCTURAL_FILE_BYTES,
     });
-  }
-
-  if (fatalError) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const langType = query.langType || 'source';
     return createErrorResult(
       new Error(
-        `Invalid structural ${rule ? 'rule' : 'pattern'}: ${fatalError}`
+        `Invalid structural ${query.rule ? 'rule' : 'pattern'}: ${message} — patterns must be valid ${langType} and match a complete node; a class/def usually needs a body (add \`$$$BODY\`). Run \`octocode tools localSearchCode --scheme\` for the live schema.`
       ),
       query,
       {
         toolName: TOOL_NAMES.LOCAL_RIPGREP,
-        customHints: [
-          rule
-            ? 'Check the YAML rule shape. Relational sub-rules (inside/has) need `stopBy: end` to walk all ancestors/descendants, else they silently match nothing.'
-            : 'Check the pattern syntax. Use $X for a single node, $$$ARGS for a list. The pattern must be a complete code fragment for the target language.',
-        ],
       }
     ) as LocalSearchCodeToolResult;
   }
 
-  if (!anchor) {
-    warnings.push(
-      `No literal anchor in the ${rule ? 'rule' : 'pattern'} — parsed all ${parsedFiles} candidate file(s) with no text pre-filter.`
-    );
-  } else if (skippedByPreFilter > 0) {
-    warnings.push(
-      `Pre-filter on "${anchor}" skipped parsing ${skippedByPreFilter} file(s); parsed ${parsedFiles}.`
-    );
+  const files: LocalSearchCodeFile[] = nativeResult.files.map(
+    (file: StructuralSearchFileResult) => ({
+      path: file.path,
+      matchCount: file.matches.length,
+      matches: file.matches.map(match => ({
+        line: match.startLine,
+        endLine: match.endLine,
+        value: match.text.split('\n', 1)[0],
+        column: match.startCol,
+        endColumn: match.endCol,
+        metavars: match.metavars,
+        // Precise per-capture ranges → an agent can feed a capture straight to
+        // lspGetSemantics (uri + line) without re-searching for the symbol.
+        ...(match.metavarRanges && Object.keys(match.metavarRanges).length > 0
+          ? { metavarRanges: match.metavarRanges }
+          : {}),
+      })),
+    })
+  );
+
+  const stats: SearchStats = { matchCount: nativeResult.totalMatches };
+  // A successful-but-empty structural search is almost always an incomplete
+  // pattern; surface remediation through the typed warnings channel (not hints).
+  const warnings = [...nativeResult.warnings];
+  if (files.length === 0 || nativeResult.totalMatches === 0) {
+    warnings.push(ZERO_MATCH_GUIDANCE);
   }
-
-  const stats: SearchStats = { matchCount: totalMatches };
-  const result = await buildSearchResult(files, query, 'rg', warnings, stats);
-
-  if (totalMatches > 0) {
-    const hints = Array.isArray(result.hints) ? [...result.hints] : [];
-    hints.push(
-      'Structural matches return node ranges — pass matches[].line as the lspGetSemantics lineHint to navigate semantically.'
-    );
-    return { ...result, hints } as LocalSearchCodeToolResult;
-  }
-
-  return result;
+  return await buildSearchResult(files, query, 'structural', warnings, stats);
 }

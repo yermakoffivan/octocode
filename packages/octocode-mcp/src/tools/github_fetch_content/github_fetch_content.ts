@@ -10,5 +10,4 @@ export const registerFetchGitHubFileContentTool = createRemoteToolRegistration({
   title: 'GitHub File Content Fetch',
   inputSchema: FileContentBulkQueryLocalSchema,
   executionFn: fetchMultipleGitHubFileContents,
-  annotations: { readOnlyHint: false },
 });

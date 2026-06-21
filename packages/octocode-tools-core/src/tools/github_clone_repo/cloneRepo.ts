@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getOctocodeDir } from 'octocode-shared';
+import { getOctocodeDir } from '../../shared/index.js';
 import { resolveDefaultBranch } from '../../github/client.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {
@@ -75,10 +75,10 @@ export async function cloneRepo(
       resolvedToken
     );
     if (!existsSync(join(cloneDir, sparsePath))) {
-      removeCloneDir(cloneDir); // don't cache a clone missing its sparse dir
+      removeCloneDir(cloneDir); // don't cache a clone missing its sparse path
       throw new Error(
         `sparsePath "${sparsePath}" does not exist in ${owner}/${repo}@${branch} — nothing was checked out for it. ` +
-          'Verify the directory path with ghViewRepoStructure, then retry with the correct sparsePath (or omit it for a full clone).'
+          'Verify the path with ghViewRepoStructure, then retry with the correct sparsePath (or omit it for a full clone).'
       );
     }
   } else {
@@ -155,6 +155,7 @@ async function executeSparseClone(
     targetDir,
     'sparse-checkout',
     'set',
+    '--skip-checks',
     '--',
     sparsePath,
   ];

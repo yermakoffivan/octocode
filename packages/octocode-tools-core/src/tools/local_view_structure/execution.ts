@@ -6,7 +6,7 @@ import {
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import { viewStructure } from './local_view_structure.js';
-import { createErrorResult } from '../utils.js';
+import { safeParseOrError } from '../utils.js';
 import { executeWithToolBoundary } from '../executionGuard.js';
 import type { ToolExecutionArgs } from '../../types/execution.js';
 import type { LocalViewStructureToolResult } from '@octocodeai/octocode-core/extra-types';
@@ -26,14 +26,14 @@ export async function executeViewStructure(
         query,
         contextMessage: 'localViewStructure execution failed',
         execute: async () => {
-          const validation = LocalViewStructureQuerySchema.safeParse(query);
-          if (!validation.success) {
-            const messages = validation.error.issues
-              .map(i => i.message)
-              .join('; ');
-            return createErrorResult(`Validation error: ${messages}`, query);
+          const parsed = safeParseOrError<ViewStructureQuery>(
+            LocalViewStructureQuerySchema,
+            query
+          );
+          if (parsed.ok === false) {
+            return parsed.error;
           }
-          const result = await viewStructure(validation.data);
+          const result = await viewStructure(parsed.data);
           return result;
         },
       }),
@@ -47,7 +47,6 @@ export async function executeViewStructure(
         'folders',
         'entries',
       ] satisfies Array<keyof LocalViewStructureToolResult>,
-      peerHints: true,
     },
     args
   );

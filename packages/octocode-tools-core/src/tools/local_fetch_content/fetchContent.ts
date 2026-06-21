@@ -1,19 +1,18 @@
 import { open, readFile, stat } from 'fs/promises';
-import { getHints } from '../../hints/index.js';
 import { extractMatchingLines } from './contentExtractor.js';
 import { contextUtils } from '../../utils/contextUtils.js';
-import { ContentSanitizer } from 'octocode-security/contentSanitizer';
+import { ContentSanitizer } from '@octocodeai/octocode-engine/contentSanitizer';
 import {
   applyPagination,
   createPaginationInfo,
 } from '../../utils/pagination/core.js';
-import { generatePaginationHints } from '../../utils/pagination/hints.js';
 import {
   snapToSemanticBoundary,
   isMidBlockCut,
   findNextBlockBoundary,
 } from '../../utils/pagination/boundary.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
+import { countLines } from '../../utils/core/lines.js';
 import { getOutputCharLimit } from '../../utils/pagination/charLimit.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
@@ -70,9 +69,6 @@ function validateExtractionOptions(
       status: 'error',
       error:
         'Cannot use fullContent with matchString — these are mutually exclusive extraction methods. Choose ONE: fullContent=true to read the entire file, OR matchString to extract matching sections, OR startLine+endLine for a known line range.',
-      hints: [
-        'fullContent and matchString are mutually exclusive. Pick one — matchString is more token-efficient when you know what to look for.',
-      ],
     };
     return result;
   }
@@ -82,9 +78,6 @@ function validateExtractionOptions(
       status: 'error',
       error:
         'Cannot use fullContent with startLine/endLine — these are mutually exclusive extraction methods. Choose ONE: fullContent=true to read the entire file, OR startLine+endLine for a known line range, OR matchString to extract matching sections.',
-      hints: [
-        'fullContent and startLine/endLine are mutually exclusive. Pick one extraction mode so line ranges are never silently ignored.',
-      ],
     };
     return result;
   }
@@ -94,9 +87,6 @@ function validateExtractionOptions(
       status: 'error',
       error:
         'Cannot use matchString with startLine/endLine — these are mutually exclusive extraction methods. Choose ONE: matchString to extract matching sections, OR startLine+endLine for a known line range, OR fullContent=true to read the entire file.',
-      hints: [
-        'matchString and startLine/endLine are mutually exclusive. Use matchString for search-driven extraction or startLine/endLine for a known range.',
-      ],
     };
     return result;
   }
@@ -107,20 +97,12 @@ function validateExtractionOptions(
     return {
       status: 'error',
       error: `startLine=${query.startLine} provided without endLine — both are required for line-range extraction.`,
-      hints: [
-        `Add endLine to complete the range, e.g. endLine=${query.startLine! + 50}.`,
-        'Use matchString for search-driven extraction when you do not know the exact end line.',
-      ],
     };
   }
   if (hasEndLine && !hasStartLine) {
     return {
       status: 'error',
       error: `endLine=${query.endLine} provided without startLine — both are required for line-range extraction.`,
-      hints: [
-        `Add startLine to complete the range, e.g. startLine=1.`,
-        'Use matchString for search-driven extraction when you do not know the exact start line.',
-      ],
     };
   }
 
@@ -150,7 +132,6 @@ async function getFileStatsOrError(
         extra: {
           resolvedPath: absolutePath,
         },
-        hintContext: { path: query.path },
       }) as LocalGetFileContentToolResult,
     };
   }
@@ -182,7 +163,6 @@ function createLargeFileErrorResult(
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
     extra: { resolvedPath: absolutePath },
-    hintContext: { fileSize: fileSizeKB * 1024, isLarge: true },
   }) as LocalGetFileContentToolResult;
 }
 
@@ -195,7 +175,6 @@ function createBinaryFileErrorResult(
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
     extra: { resolvedPath: absolutePath },
-    customHints: ['Binary or non-UTF-8 content.'],
   }) as LocalGetFileContentToolResult;
 }
 
@@ -283,7 +262,6 @@ async function readFileContentOrError(
     return {
       errorResult: createErrorResult(toolError, query, {
         toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
-        hintContext: { path: query.path },
         extra: { resolvedPath: absolutePath },
       }) as LocalGetFileContentToolResult,
     };
@@ -291,27 +269,13 @@ async function readFileContentOrError(
 }
 
 function createNoMatchesResult(
-  query: FetchContentQuery,
+  _query: FetchContentQuery,
   totalLines: number
 ): LocalGetFileContentToolResult {
-  const hints: string[] = [
-    `No matches for "${query.matchString}" in ${query.path} (${totalLines} line${totalLines === 1 ? '' : 's'} scanned).`,
-  ];
-  if (query.matchStringIsRegex) {
-    hints.push('Regex is per-line only — verify the pattern fits on one line.');
-  } else {
-    hints.push(
-      'Try matchStringIsRegex=true for pattern matching (e.g. "export.*function").'
-    );
-  }
-  if (query.matchStringCaseSensitive) {
-    hints.push('caseSensitive=true is active — disable for fuzzier matching.');
-  }
   return {
     status: 'empty',
     errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
     totalLines,
-    hints,
   };
 }
 
@@ -390,8 +354,7 @@ function buildLineRangeExtractionState(
         status: 'empty',
         totalLines,
         errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
-        hints: [
-          ...getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
+        warnings: [
           `startLine ${requestedStartLine} is greater than endLine ${requestedEndLine} — startLine must be ≤ endLine`,
           `Use startLine=1 to ${totalLines} with startLine ≤ endLine for a valid range`,
         ],
@@ -406,8 +369,7 @@ function buildLineRangeExtractionState(
         status: 'empty',
         totalLines,
         errorCode: LOCAL_TOOL_ERROR_CODES.NO_MATCHES,
-        hints: [
-          ...getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
+        warnings: [
           `Requested startLine ${requestedStartLine} exceeds file length (${totalLines} lines)`,
           `Use startLine=1 to ${totalLines} for valid range`,
         ],
@@ -439,7 +401,7 @@ function buildExtractionState(
   _defaultOutputCharLength: number
 ): ExtractionState {
   const lines = content.split('\n');
-  const totalLines = lines.length;
+  const totalLines = countLines(content);
 
   if (query.matchString) {
     return buildMatchExtractionState(query, lines, totalLines);
@@ -453,48 +415,6 @@ function buildExtractionState(
     resultContent: content,
     isPartial: false,
   };
-}
-
-function lineRangeContinuationHints(r: {
-  isPartial?: boolean;
-  startLine?: number;
-  endLine?: number;
-  totalLines?: number;
-  matchRanges?: unknown;
-}): string[] {
-  if (
-    r.isPartial === true &&
-    r.matchRanges === undefined &&
-    typeof r.startLine === 'number' &&
-    typeof r.endLine === 'number' &&
-    typeof r.totalLines === 'number' &&
-    r.endLine < r.totalLines
-  ) {
-    const remaining = r.totalLines - r.endLine;
-    return [
-      `More content: use startLine=${r.endLine + 1} to continue (${remaining} line${remaining === 1 ? '' : 's'} remaining)`,
-    ];
-  }
-  return [];
-}
-
-function buildContentNextStepHints(
-  query: FetchContentQuery,
-  extraction: ExtractionState
-): string[] {
-  if (extraction.matchRanges !== undefined) {
-    return [
-      'Use the matched line numbers as lineHint anchors for lspGetSemantics, or increase contextLines for more surrounding code.',
-    ];
-  }
-
-  if (query.minify === 'symbols') {
-    return [];
-  }
-
-  return [
-    'Use localSearchCode to find related occurrences, or lspGetSemantics with a symbolName + lineHint from this file.',
-  ];
 }
 
 function buildSuccessResult(
@@ -513,7 +433,6 @@ function buildSuccessResult(
     return {
       status: 'empty',
       totalLines,
-      hints: getHints(TOOL_NAMES.LOCAL_FETCH_CONTENT, 'empty'),
     };
   }
 
@@ -568,24 +487,7 @@ function buildSuccessResult(
 
   const isPartial = extraction.isPartial || pagination.hasMore;
 
-  const baseHints: string[] = lineRangeContinuationHints({
-    isPartial,
-    startLine: extraction.actualStartLine,
-    endLine: extraction.actualEndLine,
-    totalLines,
-    matchRanges: extraction.matchRanges,
-  });
-  const nextStepHints = buildContentNextStepHints(query, extraction);
-
-  const paginationHints =
-    effectiveCharLength || autoPaginated
-      ? generatePaginationHints(pagination, {
-          toolName: TOOL_NAMES.LOCAL_FETCH_CONTENT,
-        })
-      : [];
-
   let nextBlockChar: number | undefined;
-  const midBlockHints: string[] = [];
   if (
     pagination.hasMore &&
     chunkMode === 'char-limit' &&
@@ -593,38 +495,24 @@ function buildSuccessResult(
   ) {
     const cutPos = pagination.charOffset + pagination.charLength;
     nextBlockChar = findNextBlockBoundary(outputContent, cutPos, queryPath);
-    if (nextBlockChar !== undefined) {
-      const extendBy = nextBlockChar - cutPos;
-      midBlockHints.push(
-        `Page cut mid-block at char ${cutPos}. ` +
-          `Next top-level definition at char ${nextBlockChar}. ` +
-          `Re-request with charLength=${(resolvedCharLength ?? pagination.charLength) + extendBy} to extend this page to the next boundary, ` +
-          `or use charOffset=${cutPos} to continue page-by-page.`
-      );
-    }
   }
 
-  const largeFileHints: string[] = [];
-  if (
-    totalLines > 2000 &&
-    query.minify !== 'symbols' &&
-    !query.matchString &&
-    !query.startLine &&
-    !query.endLine &&
-    !query.fullContent &&
-    pagination.hasMore
-  ) {
-    const tailLine = Math.max(1, totalLines - 200);
-    largeFileHints.push(
-      `Large file (${totalLines} lines) — minify:"symbols" for an export index, or startLine=${tailLine} for the tail.`
-    );
-  }
-
-  if (query.minify !== 'none' && totalLines > 300 && !query.matchString) {
-    largeFileHints.push(
-      'If you need exact comment text (// … or /* … */), test assertions, or doc-strings, re-fetch with minify:"none" and add matchString to anchor on the relevant section.'
-    );
-  }
+  // Ready continuation query for the next char page. Same shape convention as
+  // localSearchCode's `next` map (see ripgrepResultBuilder buildSearchNextMap).
+  const next =
+    pagination.hasMore && pagination.nextCharOffset !== undefined
+      ? {
+          continueChars: {
+            tool: 'localGetFileContent' as const,
+            query: {
+              path: queryPath,
+              charOffset: pagination.nextCharOffset,
+              charLength: effectiveCharLength ?? pagination.charLength,
+              minify: query.minify,
+            },
+          },
+        }
+      : undefined;
 
   return {
     path: queryPath,
@@ -650,14 +538,8 @@ function buildSuccessResult(
         ...(nextBlockChar !== undefined && { nextBlockChar }),
       },
     }),
+    ...(next ? { next } : {}),
     ...(warnings.length > 0 && { warnings }),
-    hints: [
-      ...baseHints,
-      ...midBlockHints,
-      ...paginationHints,
-      ...largeFileHints,
-      ...nextStepHints,
-    ],
   };
 }
 
@@ -746,19 +628,12 @@ export async function fetchContent(
         signaturesSkippedWarning = `minify:"symbols" is not supported for this file type (${queryPath.split('.').pop() ?? 'unknown'}) — falling back to standard content view.`;
       }
       if (sigs !== null) {
-        const totalLinesOrig = content.split('\n').length;
+        const totalLinesOrig = countLines(content);
         const sigsProcessed = contextUtils.applyContentViewMinification(
           sigs,
           queryPath
         );
 
-        const symbolsHints: string[] = [contextUtils.SIGNATURES_ONLY_HINT];
-        if (query.matchString) {
-          symbolsHints.push(
-            `matchString was ignored — minify:"symbols" returns the full skeleton index. Use startLine/endLine from the gutter to read the matching body.`
-          );
-        }
-        if (secretWarning) symbolsHints.push(secretWarning);
         return attachRawResponseChars(
           {
             path: query.path,
@@ -767,14 +642,14 @@ export async function fetchContent(
             isSkeleton: true,
             totalLines: totalLinesOrig,
             ...sourceSizeFields(sourceChars, sourceBytes),
-            hints: symbolsHints,
+            ...(secretWarning ? { warnings: [secretWarning] } : {}),
           },
           sourceChars
         );
       }
     }
 
-    const totalLines = content.split('\n').length;
+    const totalLines = countLines(content);
     const extraction = buildExtractionState(
       query,
       content,

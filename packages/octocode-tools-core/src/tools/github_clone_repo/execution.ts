@@ -1,5 +1,5 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { getDirectorySizeBytes } from 'octocode-shared';
+import { getDirectorySizeBytes } from '../../shared/index.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import type {
@@ -23,13 +23,6 @@ import type { CloneRepoQueryLocalSchema } from './scheme.js';
 import type { z } from 'zod';
 
 type CloneRepoQuery = z.infer<typeof CloneRepoQueryLocalSchema>;
-
-const CACHE_HIT_HINT = 'Served from 24-hour cache.';
-
-const CLONE_FAILURE_HINTS = [
-  'Verify the owner/repo (and branch) exist — use ghSearchRepos to confirm the repository name.',
-  'For private repositories, ensure the GitHub token is set and has repo read access.',
-];
 
 export async function executeCloneRepo(
   args: ToolExecutionArgs<PartialCloneRepoQuery>
@@ -66,43 +59,75 @@ export async function executeCloneRepo(
               error instanceof Error ? error.message : String(error);
             return createErrorResult(
               `Clone failed for ${query.owner}/${query.repo}: ${message}`,
-              query,
-              { customHints: CLONE_FAILURE_HINTS }
+              query
             );
           }
+
+          const totalSize = getDirectorySizeBytes(result.localPath);
+
+          const location: Record<string, unknown> = {
+            kind: query.sparsePath ? 'tree' : 'repo',
+            localPath: result.localPath,
+            repoRoot: result.localPath,
+            source: 'clone',
+            cached: result.cached,
+            complete: !query.sparsePath,
+            resolvedBranch: result.branch,
+            ...(query.sparsePath ? { requestedPath: query.sparsePath } : {}),
+          };
+
+          const next: Record<string, unknown> = {
+            localSearch: {
+              tool: 'localSearchCode',
+              query: {
+                path: result.localPath,
+                keywords: 'TODO',
+                mode: 'discovery',
+              },
+            },
+            viewStructure: {
+              tool: 'localViewStructure',
+              query: { path: result.localPath },
+            },
+          };
 
           const resultData: Record<string, unknown> = {
             owner: query.owner,
             repo: query.repo,
             localPath: result.localPath,
-            ...(result.cached ? { cached: true } : {}),
-            ...(query.branch !== result.branch
-              ? { resolvedBranch: result.branch }
-              : {}),
+            resolvedBranch: result.branch,
+            cached: result.cached,
+            ...(query.sparsePath ? { sparsePath: query.sparsePath } : {}),
+            totalSize,
+            location,
+            next,
           };
 
-          const baseHints: string[] = [];
-          if (result.cached) baseHints.push(CACHE_HIT_HINT);
-          baseHints.push(
-            `Use localViewStructure with path="${result.localPath}" to explore, then localGetFileContent to read files.`
-          );
-
+          // Always a content result (hasContent=true); per-call next-step
+          // hints are dropped centrally by createSuccessResult on success.
           return createSuccessResult(
             query,
             resultData,
             true,
             TOOL_NAMES.GITHUB_CLONE_REPO,
             {
-              extraHints: baseHints,
-              rawResponse: getDirectorySizeBytes(result.localPath),
+              rawResponse: totalSize,
             }
           );
         },
       }),
     {
       toolName: TOOL_NAMES.GITHUB_CLONE_REPO,
-      keysPriority: ['resolvedBranch', 'localPath', 'cached', 'error'],
-      peerHints: true,
+      keysPriority: [
+        'localPath',
+        'resolvedBranch',
+        'cached',
+        'sparsePath',
+        'totalSize',
+        'fileCount',
+        'location',
+        'error',
+      ],
     },
     args
   );

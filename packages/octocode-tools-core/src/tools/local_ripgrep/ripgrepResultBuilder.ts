@@ -4,19 +4,124 @@ import type { LocalSearchCodeToolResult } from '@octocodeai/octocode-core/extra-
 import type { SearchStats } from '../../utils/core/types.js';
 import { RESOURCE_LIMITS } from '../../utils/core/constants.js';
 import type { RipgrepQuery } from './scheme.js';
+import {
+  rankFiles,
+  isLowSignalQueryPath,
+  type FileScore,
+  type RankContext,
+  type RankSort,
+  type RankingProfileId,
+} from './rankingProfile.js';
+
+export type LocalSearchEngine = 'rg' | 'structural';
+
+type NextToolName =
+  | 'localGetFileContent'
+  | 'lspGetSemantics'
+  | 'localSearchCode';
+
+type NextConfidence = 'exact' | 'heuristic';
+
+type SearchNextCall = {
+  tool: NextToolName;
+  query: Record<string, unknown>;
+  why: string;
+  confidence?: NextConfidence;
+};
+
+type SearchNextMap = {
+  fetchExact?: SearchNextCall;
+  fetchStandard?: SearchNextCall;
+  fetchSymbols?: SearchNextCall;
+  lspDefinition?: SearchNextCall;
+  lspReferences?: SearchNextCall;
+  nextPage?: SearchNextCall;
+  nextMatchPage?: SearchNextCall;
+};
+
+type LocalSearchResultWithNext = LocalSearchCodeToolResult & {
+  next?: SearchNextMap;
+};
+
+type FlowMatch = {
+  line?: number;
+  endLine?: number;
+  value?: string;
+  metavars?: Record<string, string[]>;
+};
+
+type FlowFile = {
+  path?: string;
+  matches?: FlowMatch[];
+  pagination?: { hasMore?: boolean };
+};
+
+const FETCH_CONTEXT_LINES = 8;
+const RESERVED_SYMBOL_WORDS = new Set([
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'def',
+  'do',
+  'else',
+  'enum',
+  'export',
+  'for',
+  'function',
+  'if',
+  'import',
+  'interface',
+  'let',
+  'match',
+  'return',
+  'struct',
+  'switch',
+  'type',
+  'var',
+  'while',
+  // Literals and contextual keywords that are never resolvable symbols.
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'NaN',
+  'Infinity',
+  'this',
+  'super',
+]);
+
+// A candidate is only an LSP-resolvable symbol when its *entire* value is one
+// bare identifier — anchored, no surrounding regex/punctuation/whitespace.
+const BARE_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 export async function buildSearchResult(
   parsedFiles: LocalSearchCodeFile[],
   configuredQuery: RipgrepQuery,
-  _searchEngine: 'rg' | 'grep',
+  searchEngine: LocalSearchEngine,
   warnings: string[],
   stats?: SearchStats
 ): Promise<LocalSearchCodeToolResult> {
-  const filesWithMetadata = parsedFiles;
-
-  filesWithMetadata.sort((a, b) =>
-    compareRipgrepFilesByRelevance(a, b, configuredQuery)
-  );
+  const sort: RankSort = (configuredQuery.sort as RankSort) ?? 'relevance';
+  // Ranking enriches ordering; it must never gate results. Any unexpected
+  // failure degrades to the engine's original order so every matched file is
+  // still returned to the tool.
+  let ranked: ReturnType<typeof rankFiles>;
+  try {
+    ranked = rankFiles(parsedFiles, sort, buildRankContext(configuredQuery), {
+      debug: Boolean(configuredQuery.debugRanking),
+    });
+  } catch {
+    ranked = { files: parsedFiles, cappedCandidates: 0 };
+    warnings.push(
+      'Relevance ranking failed; returning results in unranked engine order.'
+    );
+  }
+  const filesWithMetadata = ranked.files;
+  const rankDebug = ranked.debug;
 
   let limitedFiles = filesWithMetadata;
   let wasLimited = false;
@@ -76,6 +181,7 @@ export async function buildSearchResult(
         ? undefined
         : file.matches?.slice(matchStartIdx, matchEndIdx);
 
+      const debugScore = rankDebug?.get(file.path);
       const result = {
         path: file.path,
         ...(isPathListMode
@@ -84,6 +190,16 @@ export async function buildSearchResult(
               matchCount: isCountMode ? file.matchCount || 1 : totalFileMatches,
             }),
         ...(paginatedMatches !== undefined && { matches: paginatedMatches }),
+        ...(debugScore
+          ? {
+              ranking: {
+                score: debugScore.score,
+                profile: debugScore.profile,
+                pathRole: debugScore.pathRole,
+                reasons: debugScore.reasons,
+              },
+            }
+          : {}),
         pagination:
           !isFileListMode && totalFileMatches > matchesPerPage
             ? {
@@ -92,66 +208,30 @@ export async function buildSearchResult(
                 matchesPerPage,
                 totalMatches: totalFileMatches,
                 hasMore: matchPage < totalMatchPages,
+                ...(matchPage < totalMatchPages
+                  ? { nextMatchPage: matchPage + 1 }
+                  : {}),
               }
             : undefined,
-      } as LocalSearchCodeFile;
+      } as LocalSearchCodeFile & { ranking?: RankingDebug };
       return result;
     }
   );
 
-  const paginationHints: string[] =
-    currentPage < totalFilePages
-      ? [
-          `Page ${currentPage}/${totalFilePages} (${finalFiles.length} of ${totalFiles} files${isPathListMode ? '' : `, ${totalMatches} matches`}). Next: page=${currentPage + 1}`,
-        ]
-      : totalFilePages > 0 && currentPage > totalFilePages
-        ? [
-            `Page ${currentPage} is outside range (1–${totalFilePages}). Use page=${totalFilePages}.`,
-          ]
-        : [];
-
-  if (wasLimited) {
-    paginationHints.push(
-      `Results limited to ${configuredQuery.maxFiles} files (found ${filesWithMetadata.length} matching)`
-    );
-  }
-
   const filesWithMoreMatches = finalFiles.filter(f => f.pagination?.hasMore);
-  if (filesWithMoreMatches.length > 0) {
-    paginationHints.push(
-      `Note: ${filesWithMoreMatches.length} file(s) have more matches — use matchPage=${(aligned.matchPage || 1) + 1} with maxMatchesPerFile to continue matches inside those files`
-    );
-  }
 
-  const refinementHints = _getStructuredResultSizeHints(
-    finalFiles,
-    configuredQuery,
-    totalMatches
-  );
+  const next = buildSearchNextMap(finalFiles, configuredQuery, searchEngine, {
+    isFileListMode,
+    currentPage,
+    totalFilePages,
+    matchPage: aligned.matchPage || 1,
+    matchesPerPage,
+    hasFileWithMoreMatches: filesWithMoreMatches.length > 0,
+  });
 
-  const q = configuredQuery as Record<string, unknown>;
-  const activeFilters: string[] = [];
-  const includeGlobs = q.include as string[] | undefined;
-  if (Array.isArray(includeGlobs) && includeGlobs.length > 0) {
-    activeFilters.push(`include: ${includeGlobs.join(', ')}`);
-  }
-  const excludeGlobs = q.exclude as string[] | undefined;
-  if (Array.isArray(excludeGlobs) && excludeGlobs.length > 0) {
-    activeFilters.push(`exclude: ${excludeGlobs.join(', ')}`);
-  }
-  const excludeDir = q.excludeDir as string[] | undefined;
-  if (Array.isArray(excludeDir) && excludeDir.length > 0) {
-    activeFilters.push(`excludeDir: ${excludeDir.join(', ')}`);
-  }
-  const fileType = q.langType as string | undefined;
-  if (fileType) activeFilters.push(`langType: ${fileType}`);
-  if (q.caseSensitive) activeFilters.push('case-sensitive');
-  if (q.wholeWord) activeFilters.push('whole-word');
-  if (activeFilters.length > 0) {
-    refinementHints.unshift(`Active filters — ${activeFilters.join(' | ')}`);
-  }
-
-  const fullResult: LocalSearchCodeToolResult = {
+  const fullResult: LocalSearchResultWithNext = {
+    searchEngine,
+    ...(stats ? { stats } : {}),
     files: finalFiles,
     pagination: {
       currentPage,
@@ -160,24 +240,11 @@ export async function buildSearchResult(
       totalFiles,
       ...(isPathListMode ? {} : { totalMatches }),
       hasMore: currentPage < totalFilePages,
+      ...(currentPage < totalFilePages ? { nextPage: currentPage + 1 } : {}),
       ...(wasLimited ? { totalFilesFound: filesWithMetadata.length } : {}),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
-    hints: [
-      ...(totalFiles > 0 && !isFileListMode
-        ? [
-            'Use localGetFileContent with the full path (prepend base to each returned path) and line numbers to read surrounding code.',
-            'Pass line numbers as lineHint to lspGetSemantics for definitions, references, or call flow.',
-          ]
-        : []),
-      ...(totalFiles > 0 && isFileListMode
-        ? [
-            'Use localGetFileContent to read listed files, or rerun localSearchCode without filesOnly/count mode for matched snippets.',
-          ]
-        : []),
-      ...paginationHints,
-      ...refinementHints,
-    ],
+    ...(Object.keys(next).length > 0 ? { next } : {}),
   };
 
   return finalizeRipgrepResult(fullResult, configuredQuery, {
@@ -194,36 +261,221 @@ export function finalizeRipgrepResult(
   return result;
 }
 
-function _getStructuredResultSizeHints(
+function buildSearchNextMap(
   files: LocalSearchCodeFile[],
   query: RipgrepQuery,
-  totalMatches: number
-): string[] {
-  const hints: string[] = [];
+  searchEngine: LocalSearchEngine,
+  options: {
+    isFileListMode: boolean;
+    currentPage: number;
+    totalFilePages: number;
+    matchPage: number;
+    matchesPerPage: number;
+    hasFileWithMoreMatches: boolean;
+  }
+): SearchNextMap {
+  const firstFile = (files as FlowFile[]).find(file => file.path);
+  const firstMatch = firstFile?.matches?.find(match => match.line);
+  const next: SearchNextMap = {};
 
-  if (totalMatches > 100 || files.length > 20) {
-    const recoveries: string[] = [];
-    if (!query.langType && !query.include)
-      recoveries.push('add langType or include');
-    if (!query.excludeDir?.length) recoveries.push('add excludeDir');
-    if ((query.keywords?.length ?? 0) < 5) recoveries.push('lengthen pattern');
-    if (recoveries.length > 0) {
-      hints.push(
-        `Large result set (${totalMatches} matches in ${files.length} files). Narrow: ${recoveries.join(', ')}.`
-      );
+  if (firstFile?.path) {
+    if (firstMatch?.line) {
+      const range = lineRangeAroundMatch(firstMatch);
+      next.fetchExact = {
+        tool: 'localGetFileContent',
+        query: withoutUndefined({
+          path: firstFile.path,
+          startLine: range.startLine,
+          endLine: range.endLine,
+          minify: 'none',
+        }),
+        why: 'Read exact source around the first grep match before editing, quoting, or validating comments/tests.',
+        confidence: 'exact',
+      };
+      next.fetchStandard = {
+        tool: 'localGetFileContent',
+        query: withoutUndefined({
+          path: firstFile.path,
+          startLine: range.startLine,
+          endLine: range.endLine,
+          minify: 'standard',
+        }),
+        why: 'Read a token-efficient source slice around the first grep match.',
+        confidence: 'exact',
+      };
+    } else if (options.isFileListMode) {
+      next.fetchStandard = {
+        tool: 'localGetFileContent',
+        query: { path: firstFile.path, minify: 'standard' },
+        why: 'Read the first matched file from file-list/count mode.',
+        confidence: 'heuristic',
+      };
+    }
+
+    next.fetchSymbols = {
+      tool: 'localGetFileContent',
+      query: { path: firstFile.path, minify: 'symbols' },
+      why: 'Get a symbol skeleton for fast orientation before opening large bodies.',
+      confidence: 'exact',
+    };
+
+    const symbolName = inferLspSymbolName(firstMatch, query, searchEngine);
+    if (symbolName && firstMatch?.line) {
+      const lspBase = {
+        uri: firstFile.path,
+        symbolName,
+        lineHint: firstMatch.line,
+      };
+      next.lspDefinition = {
+        tool: 'lspGetSemantics',
+        query: { ...lspBase, type: 'definition' },
+        why: 'Use the grep line as an LSP lineHint to resolve the symbol definition.',
+        confidence: 'heuristic',
+      };
+      next.lspReferences = {
+        tool: 'lspGetSemantics',
+        query: { ...lspBase, type: 'references' },
+        why: 'Use the grep line as an LSP lineHint to inspect semantic usages.',
+        confidence: 'heuristic',
+      };
     }
   }
 
-  return hints;
+  if (options.currentPage < options.totalFilePages) {
+    next.nextPage = {
+      tool: 'localSearchCode',
+      query: withoutUndefined({
+        ...query,
+        page: options.currentPage + 1,
+      }),
+      why: 'Continue to the next page of matched files.',
+      confidence: 'exact',
+    };
+  }
+
+  if (options.hasFileWithMoreMatches) {
+    next.nextMatchPage = {
+      tool: 'localSearchCode',
+      query: withoutUndefined({
+        ...query,
+        maxMatchesPerFile: options.matchesPerPage,
+        matchPage: options.matchPage + 1,
+      }),
+      why: 'Continue within files that have more matches than this response returned.',
+      confidence: 'exact',
+    };
+  }
+
+  return next;
 }
 
-function compareRipgrepFilesByRelevance(
-  a: LocalSearchCodeFile,
-  b: LocalSearchCodeFile,
-  _query: RipgrepQuery
-): number {
-  const matchDelta = (b.matchCount ?? 0) - (a.matchCount ?? 0);
-  if (matchDelta !== 0) return matchDelta;
+function lineRangeAroundMatch(match: FlowMatch): {
+  startLine: number;
+  endLine: number;
+} {
+  const line = Math.max(1, match.line ?? 1);
+  const endLine = Math.max(line, match.endLine ?? line);
+  return {
+    startLine: Math.max(1, line - FETCH_CONTEXT_LINES),
+    endLine: endLine + FETCH_CONTEXT_LINES,
+  };
+}
 
-  return a.path.localeCompare(b.path);
+// LSP next-call inference is intentionally conservative: a wrong symbolName
+// sends the agent to resolve a bogus anchor. We only infer when the evidence is
+// an exact bare identifier, never from regex syntax, literals, dotted property
+// text, multi-token snippets, windowed context, or aggregate count output.
+export function inferLspSymbolName(
+  match: FlowMatch | undefined,
+  query: RipgrepQuery,
+  searchEngine: LocalSearchEngine
+): string | undefined {
+  // Aggregate / count output has no single-symbol anchor.
+  if (
+    query.countLinesPerFile ||
+    query.countMatchesPerFile ||
+    query.countUnique ||
+    query.unique
+  ) {
+    return undefined;
+  }
+
+  // Structural search may only infer from a metavar whose full capture is one
+  // bare identifier (e.g. `$NAME` bound to `getUser`, never to `false`).
+  if (searchEngine === 'structural') {
+    return firstBareIdentifierMetavar(match?.metavars);
+  }
+
+  // Windowed matches carry surrounding context, not a clean token.
+  if (query.matchWindow) return undefined;
+
+  // onlyMatching returns the exact matched substring — infer when it is itself a
+  // bare identifier.
+  if (query.onlyMatching) {
+    return bareIdentifier(match?.value);
+  }
+
+  // Otherwise infer only from an exact bare-identifier query. This suppresses
+  // regex-like queries (`\w+_searched`), dotted fixed strings (`query.symbolName`),
+  // and multi-token snippets, none of which are a single bare identifier.
+  return bareIdentifier(query.keywords);
+}
+
+function firstBareIdentifierMetavar(
+  metavars: Record<string, string[]> | undefined
+): string | undefined {
+  if (!metavars) return undefined;
+  for (const values of Object.values(metavars)) {
+    for (const value of values) {
+      const symbol = bareIdentifier(value);
+      if (symbol) return symbol;
+    }
+  }
+  return undefined;
+}
+
+function bareIdentifier(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!BARE_IDENTIFIER.test(trimmed)) return undefined;
+  if (RESERVED_SYMBOL_WORDS.has(trimmed)) return undefined;
+  return trimmed;
+}
+
+function withoutUndefined(
+  value: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined)
+  );
+}
+
+type RankingDebug = {
+  score: number;
+  profile: RankingProfileId;
+  pathRole: FileScore['pathRole'];
+  reasons: string[];
+};
+
+/** Build the deterministic ranking context from the validated query. */
+function buildRankContext(query: RipgrepQuery): RankContext {
+  const profileOverride = query.rankingProfile as
+    | RankContext['profileOverride']
+    | undefined;
+  // If the user explicitly scoped the search into a low-signal/test/docs area
+  // (via include globs or a path that targets such an area), don't penalize
+  // those roles. Path detection is anchored to segments — "latest/" / "contest/"
+  // must NOT count (Fix #1).
+  const explicitLowSignal = Boolean(
+    query.include?.length || isLowSignalQueryPath(query.path)
+  );
+  return {
+    queryPath: query.path,
+    keyword: query.keywords,
+    langType: query.langType,
+    caseSensitive: query.caseSensitive,
+    wholeWord: query.wholeWord,
+    profileOverride,
+    explicitLowSignal,
+  };
 }

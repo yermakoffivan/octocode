@@ -19,5 +19,3 @@ await Promise.all(
 );
 
 console.log('✓ esbuild complete');
-
-await import('./scripts/bundle-runtime-assets.mjs');

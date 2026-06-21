@@ -8,7 +8,7 @@ import {
   _setTokenResolvers,
   _resetTokenResolvers,
 } from '../../octocode-tools-core/src/serverConfig.js';
-import type { FullTokenResolution } from 'octocode-shared';
+import type { FullTokenResolution } from '@octocodeai/octocode-tools-core/credentials';
 
 describe('Token Resolution Priority (AUTHENTICATION_SETUP.md)', () => {
   const savedEnvVars: Record<string, string | undefined> = {};

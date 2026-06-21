@@ -3,12 +3,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-vi.mock('octocode-lsp/manager', () => ({
+vi.mock('@octocodeai/octocode-engine/lsp/manager', () => ({
   acquirePooledClient: vi.fn(),
   isLanguageServerAvailable: vi.fn(),
 }));
 
-vi.mock('octocode-lsp/workspaceRoot', () => ({
+vi.mock('@octocodeai/octocode-engine/lsp/workspaceRoot', () => ({
   resolveWorkspaceRootForFile: vi.fn().mockResolvedValue('/workspace'),
 }));
 
@@ -28,9 +28,8 @@ vi.mock(
 import {
   acquirePooledClient,
   isLanguageServerAvailable,
-} from 'octocode-lsp/manager';
+} from '@octocodeai/octocode-engine/lsp/manager';
 import { executeLspGetSemantics } from '../../../octocode-tools-core/src/tools/lsp/semantic_content/execution.js';
-import { hints as semanticToolHints } from '../../../octocode-tools-core/src/tools/lsp/semantic_content/hints.js';
 import {
   LspGetSemanticsOutputSchema,
   LspGetSemanticsQuerySchema,
@@ -54,7 +53,7 @@ describe('new public LSP tool execution', () => {
     vi.mocked(acquirePooledClient).mockReset();
     vi.mocked(gatherIncomingCallsRecursive).mockReset();
     vi.mocked(gatherOutgoingCallsRecursive).mockReset();
-    tempDir = await mkdtemp(join(process.cwd(), '.tmp-octocode-lsp-tools-'));
+    tempDir = await mkdtemp(join(process.cwd(), '.tmp-octocode-engine-tools-'));
     filePath = join(tempDir, 'fixture.ts');
     await writeFile(
       filePath,
@@ -728,23 +727,6 @@ describe('new public LSP tool execution', () => {
       queries: [],
     } as never);
     expect(result).toBeDefined();
-  });
-
-  it('exposes direct hint branches for the public LSP tool', () => {
-    expect(semanticToolHints.empty({ symbolName: 'target' })).toEqual(
-      expect.arrayContaining([expect.stringContaining('localSearchCode')])
-    );
-    expect(semanticToolHints.empty({ type: 'hover' } as never)).toEqual(
-      expect.arrayContaining([expect.stringContaining('localSearchCode')])
-    );
-    expect(semanticToolHints.error({ errorType: 'lsp_unavailable' })).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Language server unavailable'),
-      ])
-    );
-    expect(semanticToolHints.error({ errorType: 'symbol_not_found' })).toEqual(
-      expect.arrayContaining([expect.stringContaining('localSearchCode')])
-    );
   });
 
   it('sets isAmbiguous when symbol occurs multiple times and lineHint is far from resolved position', async () => {

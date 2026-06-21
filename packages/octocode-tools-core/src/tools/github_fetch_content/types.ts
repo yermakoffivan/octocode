@@ -54,6 +54,7 @@ export interface GitHubFileContentApiResult
 
 export interface DirectoryFetchResult {
   localPath: string;
+  repoRoot: string;
   files: Array<{ path: string; size: number; type: string }>;
   fileCount: number;
   totalSize: number;
@@ -63,4 +64,16 @@ export interface DirectoryFetchResult {
   repo: string;
   branch: string;
   directoryPath: string;
+}
+
+export interface FileMaterializationResult {
+  localPath: string;
+  repoRoot: string;
+  path: string;
+  size: number;
+  cached: boolean;
+  expiresAt: string;
+  owner: string;
+  repo: string;
+  branch: string;
 }

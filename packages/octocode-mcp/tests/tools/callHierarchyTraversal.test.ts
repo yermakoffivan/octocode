@@ -6,7 +6,7 @@ import {
   gatherIncomingCallsRecursive,
   gatherOutgoingCallsRecursive,
 } from '../../../octocode-tools-core/src/tools/lsp/shared/callHierarchyTraversal.js';
-import type { CallHierarchyItem } from 'octocode-lsp/types';
+import type { CallHierarchyItem } from '@octocodeai/octocode-engine/lsp/types';
 
 const makeItem = (name: string, uri: string, line = 0): CallHierarchyItem => ({
   name,

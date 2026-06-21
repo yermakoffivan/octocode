@@ -44,6 +44,15 @@ const FILES_THAT_MUST_BE_GONE = [
   'tests/lsp',
 ];
 
+// Files in octocode-tools-core removed when ripgrep moved in-process.
+const CORE_FILES_THAT_MUST_BE_GONE = [
+  'src/commands/RipgrepCommandBuilder.ts',
+  'src/utils/exec/ripgrepBinary.ts',
+  'src/utils/exec/commandAvailability.ts',
+  'src/tools/local_ripgrep/grepFallbackExecutor.ts',
+  'src/tools/local_ripgrep/ripgrepParser.ts',
+];
+
 const SOURCE_FILES_THAT_MUST_NOT_REFERENCE: Array<{
   file: string;
   banned: RegExp;
@@ -91,21 +100,20 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
     expect(await fileExists('tests/lsp')).toBe(false);
   });
 
-  it("REQUIRED_COMMANDS no longer includes 'grep'", async () => {
-    const { REQUIRED_COMMANDS } =
-      await import('../../octocode-tools-core/src/utils/exec/commandAvailability.js');
-    expect(
-      Object.prototype.hasOwnProperty.call(REQUIRED_COMMANDS, 'grep')
-    ).toBe(false);
-  });
-
-  it('ripgrep resolver does not fall back to PATH rg', async () => {
-    const source = await import('fs/promises').then(fs =>
-      fs.readFile(`${CORE_ROOT}/src/utils/exec/ripgrepBinary.ts`, 'utf-8')
-    );
-    expect(source).not.toMatch(/RIPGREP_PATH_FALLBACK/);
-    expect(source).not.toMatch(/return ['"]rg['"]/);
-  });
+  // Ripgrep moved in-process into the native engine: the rg binary resolver,
+  // the bundled-binary availability check, the command builder and the grep
+  // fallback are all gone. Lock those deletions in.
+  for (const path of CORE_FILES_THAT_MUST_BE_GONE) {
+    it(`removes the obsolete ripgrep-binary file octocode-tools-core/${path}`, async () => {
+      let exists = true;
+      try {
+        await access(`${CORE_ROOT}/${path}`);
+      } catch {
+        exists = false;
+      }
+      expect(exists).toBe(false);
+    });
+  }
 
   it('LSP tools never assign lspMode into result objects (LSP-only, absent ≡ semantic)', async () => {
     const { readFile } = await import('fs/promises');
@@ -124,6 +132,27 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
         `${file} must not emit lspMode into results`
       ).toHaveLength(0);
     }
+  });
+
+  it('searchContentRipgrep no longer checks rg availability or falls back to grep', async () => {
+    const { readFile } = await import('fs/promises');
+    const source = await readFile(
+      `${CORE_ROOT}/src/tools/local_ripgrep/searchContentRipgrep.ts`,
+      'utf-8'
+    );
+    expect(source).not.toMatch(/checkCommandAvailability/);
+    expect(source).not.toMatch(/grepFallback/i);
+  });
+
+  it('the executor calls the native in-process ripgrep, not a spawned binary', async () => {
+    const { readFile } = await import('fs/promises');
+    const source = await readFile(
+      `${CORE_ROOT}/src/tools/local_ripgrep/ripgrepExecutor.ts`,
+      'utf-8'
+    );
+    expect(source).toMatch(/searchRipgrep/);
+    expect(source).not.toMatch(/RipgrepCommandBuilder/);
+    expect(source).not.toMatch(/resolveRipgrepBinary/);
   });
 
   it('structured pagination never injects outputPagination into error/empty data', async () => {
@@ -150,26 +179,5 @@ describe('Cleanup contract — no fallbacks, no redundancy', () => {
       flatMatch![0],
       'paginateFlatQueryResult must guard on success (status === undefined)'
     ).toMatch(/status\s*!==\s*undefined/);
-  });
-
-  it('security validator accepts the bundled rg absolute path', async () => {
-    const { validateCommand } =
-      await import('octocode-security/commandValidator');
-    const { resolveRipgrepBinary } =
-      await import('../../octocode-tools-core/src/utils/exec/ripgrepBinary.js');
-    const binary = resolveRipgrepBinary();
-    const validation = validateCommand(binary, [
-      '-n',
-      '--column',
-      '-S',
-      '--color',
-      'never',
-      '--sort',
-      'path',
-      '--',
-      'pattern',
-      '/tmp',
-    ]);
-    expect(validation).toEqual({ isValid: true });
   });
 });

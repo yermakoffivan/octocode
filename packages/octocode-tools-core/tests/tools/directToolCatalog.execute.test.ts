@@ -1,0 +1,133 @@
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { executeDirectTool } from '../../src/tools/directToolCatalog.js';
+import { STATIC_TOOL_NAMES } from '../../src/tools/toolNames.js';
+import { cleanup } from '../../src/serverConfig.js';
+
+describe('executeDirectTool - invalid input handling (finding 3)', () => {
+  const originalEnableClone = process.env.ENABLE_CLONE;
+  const originalEnableLocal = process.env.ENABLE_LOCAL;
+
+  afterEach(() => {
+    if (originalEnableClone === undefined) {
+      delete process.env.ENABLE_CLONE;
+    } else {
+      process.env.ENABLE_CLONE = originalEnableClone;
+    }
+    if (originalEnableLocal === undefined) {
+      delete process.env.ENABLE_LOCAL;
+    } else {
+      process.env.ENABLE_LOCAL = originalEnableLocal;
+    }
+    cleanup();
+  });
+
+  it('rejects a local tool when ENABLE_LOCAL is false', async () => {
+    process.env.ENABLE_LOCAL = 'false';
+    cleanup(); // invalidate the cached config so the new env is read
+
+    const result = await executeDirectTool(STATIC_TOOL_NAMES.LOCAL_RIPGREP, {
+      queries: [
+        {
+          path: '.',
+          keywords: 'anything',
+          mainResearchGoal: 'Verify local gate',
+          researchGoal: 'Ensure direct local execution respects ENABLE_LOCAL',
+          reasoning: 'Regression test for direct CLI local gate',
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    const structured = result.structuredContent as
+      | { error?: { code?: string; message?: string } }
+      | undefined;
+    expect(structured?.error?.code).toBe('localToolsDisabled');
+    expect(structured?.error?.message).toContain('ENABLE_LOCAL=true');
+  });
+
+  it('returns a structured error result instead of throwing for invalid input', async () => {
+    // A primitive is invalid for every tool's object input schema, so the
+    // parse fails. It must surface as a structured CallToolResult error, not a
+    // thrown exception (which diverges from the execution-error path).
+    const result = await executeDirectTool(
+      STATIC_TOOL_NAMES.LOCAL_FIND_FILES,
+      'not-an-object'
+    );
+
+    expect(result.isError).toBe(true);
+    const structured = result.structuredContent as
+      | { status?: string; tool?: string }
+      | undefined;
+    expect(structured?.status).toBe('error');
+    expect(structured?.tool).toBe(STATIC_TOOL_NAMES.LOCAL_FIND_FILES);
+  });
+
+  it('still throws for an unknown tool name', async () => {
+    await expect(
+      executeDirectTool('definitely-not-a-real-tool', {})
+    ).rejects.toThrow(/Unknown tool/);
+  });
+
+  it('rejects ghCloneRepo when ENABLE_CLONE is false', async () => {
+    process.env.ENABLE_LOCAL = 'true';
+    process.env.ENABLE_CLONE = 'false';
+    cleanup();
+
+    const result = await executeDirectTool(
+      STATIC_TOOL_NAMES.GITHUB_CLONE_REPO,
+      {
+        queries: [
+          {
+            owner: 'octocat',
+            repo: 'Hello-World',
+            mainResearchGoal: 'Verify clone gate',
+            researchGoal: 'Ensure direct clone execution respects ENABLE_CLONE',
+            reasoning: 'Regression test for direct CLI clone gate',
+          },
+        ],
+      }
+    );
+
+    expect(result.isError).toBe(true);
+    const structured = result.structuredContent as
+      | {
+          error?: {
+            code?: string;
+            message?: string;
+          };
+        }
+      | undefined;
+    expect(structured?.error?.code).toBe('cloneDisabled');
+    expect(structured?.error?.message).toContain('ENABLE_CLONE=true');
+  });
+
+  it('rejects ghGetFileContent directory materialization when ENABLE_CLONE is false', async () => {
+    process.env.ENABLE_LOCAL = 'true';
+    process.env.ENABLE_CLONE = 'false';
+    cleanup();
+
+    const result = await executeDirectTool(
+      STATIC_TOOL_NAMES.GITHUB_FETCH_CONTENT,
+      {
+        queries: [
+          {
+            owner: 'octocat',
+            repo: 'Hello-World',
+            path: 'src',
+            type: 'directory',
+            mainResearchGoal: 'Verify directory fetch clone gate',
+            researchGoal:
+              'Ensure directory fetch requires clone support before provider work',
+            reasoning: 'Regression test for ghGetFileContent directory gate',
+          },
+        ],
+      }
+    );
+
+    expect(result.isError).toBe(true);
+    const text = JSON.stringify(result.structuredContent);
+    expect(text).toContain('Directory fetch requires local clone support');
+    expect(text).toContain('ENABLE_CLONE=true');
+  });
+});

@@ -1,5 +1,6 @@
 import type { components } from '@octokit/openapi-types';
 import type { RestEndpointMethodTypes } from '@octokit/plugin-rest-endpoint-methods';
+import type { DiffPreview } from '../utils/parsers/diff.js';
 
 export type Repository = components['schemas']['full-repository'];
 
@@ -55,6 +56,7 @@ export interface HistoryCommitFile {
   additions: number;
   deletions: number;
   patch?: string;
+  diff?: DiffPreview;
   previousFilename?: string;
 }
 
@@ -79,6 +81,7 @@ export interface HistoryCommit {
   deletions?: number;
   status?: string;
   patch?: string;
+  diff?: DiffPreview;
   previousFilename?: string;
   // type:"repo" fields (present when includeDiff:true)
   files?: HistoryCommitFile[];
@@ -91,7 +94,7 @@ export interface HistoryResult {
   path?: string;
   commits: HistoryCommit[];
   pagination: {
-    page: number;
+    currentPage: number;
     perPage: number;
     hasMore: boolean;
     nextPage?: number;
@@ -178,6 +181,13 @@ export type OptimizedCodeSearchResult = {
   };
 
   nonExistentScope?: boolean;
+
+  /**
+   * GitHub returned `incomplete_results: true` (the search index timed out or
+   * could not fully complete). Empty or partial `items` may be a FALSE NEGATIVE
+   * — distinct from a genuine no-match. Surfaced so callers aren't blind.
+   */
+  incompleteResults?: boolean;
 };
 
 export interface PRCommentItem {

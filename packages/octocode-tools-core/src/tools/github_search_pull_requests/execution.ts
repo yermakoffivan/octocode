@@ -21,9 +21,9 @@ import {
   handleCatchError,
   createSuccessResult,
   createErrorResult,
+  safeParseOrError,
 } from '../utils.js';
 import {
-  buildPaginationHints,
   mapPullRequestProviderResultData,
   mapPullRequestToolQuery,
 } from '../providerMappers.js';
@@ -31,14 +31,8 @@ import {
   createLazyProviderContext,
   executeProviderOperation,
 } from '../providerExecution.js';
-import {
-  hasExpensiveContentRequest,
-  normalizePullRequestContentRequest,
-} from './contentRequest.js';
-import {
-  buildContentHints,
-  shapePullRequestForContent,
-} from './contentResponse.js';
+import { normalizePullRequestContentRequest } from './contentRequest.js';
+import { shapePullRequestForContent } from './contentResponse.js';
 import { fetchHistory } from '../../github/history.js';
 import { isGitHubAPIError } from '../../github/githubAPI.js';
 
@@ -52,18 +46,17 @@ export async function searchMultipleGitHubPullRequests(
     queries,
     async (query: GitHubPullRequestSearchInput, _index: number) => {
       try {
-        const validation =
-          GitHubPullRequestSearchQueryLocalSchema.safeParse(query);
-        if (!validation.success) {
-          const messages = validation.error.issues
-            .map(i => i.message)
-            .join('; ');
-          return createErrorResult(`Validation error: ${messages}`, query);
+        const parsed = safeParseOrError(
+          GitHubPullRequestSearchQueryLocalSchema,
+          query
+        );
+        if (parsed.ok === false) {
+          return parsed.error;
         }
 
         // --- commits mode: route to commit history API ---
-        if ((validation.data as { type?: string }).type === 'commits') {
-          const q = validation.data as {
+        if ((parsed.data as { type?: string }).type === 'commits') {
+          const q = parsed.data as {
             type?: string;
             owner?: string;
             repo?: string;
@@ -116,52 +109,13 @@ export async function searchMultipleGitHubPullRequests(
           );
 
           if (isGitHubAPIError(result)) {
-            const isRateLimited =
-              result.status === 429 ||
-              result.error?.toString().toLowerCase().includes('rate limit') ||
-              false;
             return createErrorResult(result, query, {
               toolName: TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
-              hintContext: {
-                type: 'commits',
-                path,
-                isRateLimited,
-                status: result.status,
-                retryAfter: result.retryAfter,
-              },
-              hintSourceError: result,
             });
           }
 
-          const { commits, pagination } = result.data;
+          const { commits } = result.data;
           const hasContent = commits.length > 0;
-          const extraHints: string[] = [];
-
-          if (pagination.hasMore && pagination.nextPage) {
-            extraHints.push(
-              `${commits.length} commit${commits.length === 1 ? '' : 's'} returned — re-call with page:${pagination.nextPage} for more.`
-            );
-          }
-
-          const PR_REF_RE = /#(\d+)/;
-          if (hasContent) {
-            const mergeCommit = commits.find(c => {
-              const headline = (c as unknown as Record<string, unknown>)
-                .messageHeadline;
-              return typeof headline === 'string' && PR_REF_RE.test(headline);
-            });
-            if (mergeCommit) {
-              const headline = (
-                mergeCommit as unknown as Record<string, unknown>
-              ).messageHeadline as string;
-              const prMatch = PR_REF_RE.exec(headline);
-              if (prMatch) {
-                extraHints.push(
-                  `Merge commits embed PR refs — e.g. "${headline}" → use ghHistoryResearch(owner:"${q.owner}", repo:"${q.repo}", prNumber:${prMatch[1]}) to read that PR's body, diffs, comments, and reviews.`
-                );
-              }
-            }
-          }
 
           return createSuccessResult(
             query,
@@ -169,13 +123,6 @@ export async function searchMultipleGitHubPullRequests(
             hasContent,
             TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
             {
-              hintContext: {
-                type: 'commits',
-                path,
-                matchCount: commits.length,
-                hasMorePages: pagination.hasMore,
-              },
-              extraHints,
               rawResponse: result.rawResponseChars,
             }
           );
@@ -183,50 +130,15 @@ export async function searchMultipleGitHubPullRequests(
         // --- end commits mode ---
 
         const currentProviderContext = getProviderContext();
-        const effectiveQuery: PartialPRQuery = { ...validation.data };
+        const effectiveQuery: PartialPRQuery = { ...parsed.data };
         const contentRequest = normalizePullRequestContentRequest(
           effectiveQuery as never
         );
-        const downgradeHints: string[] = [];
         const hasPrNumber = effectiveQuery.prNumber !== undefined;
-
-        if (!hasPrNumber && hasExpensiveContentRequest(contentRequest)) {
-          downgradeHints.push(
-            'Broad PR search returns metadata only. Re-call with prNumber and content selectors (body, changedFiles, patches, comments, commits) or reviewMode="full" to fetch PR content.'
-          );
-        }
 
         if (!hasPrNumber) {
           (effectiveQuery as { content?: unknown }).content = undefined;
           (effectiveQuery as { reviewMode?: unknown }).reviewMode = undefined;
-        }
-
-        const hasTextQuery =
-          !hasPrNumber &&
-          ((effectiveQuery.keywordsToSearch?.length ?? 0) > 0 ||
-            Boolean(effectiveQuery.query));
-        const looksLikeArchaeology =
-          hasTextQuery &&
-          !effectiveQuery.created &&
-          (effectiveQuery.state === 'merged' ||
-            (effectiveQuery as { merged?: boolean }).merged === true);
-        if (
-          looksLikeArchaeology &&
-          !effectiveQuery.sort &&
-          !effectiveQuery.order
-        ) {
-          downgradeHints.push(
-            'To find the PR that first introduced a feature: sort:"created" order:"asc". Use match:["title"] for title-only and query:\'"exact phrase"\' for phrase matching.'
-          );
-        } else if (
-          hasTextQuery &&
-          !effectiveQuery.created &&
-          !effectiveQuery.sort &&
-          !effectiveQuery.order
-        ) {
-          downgradeHints.push(
-            'Archaeology tip: add state:"merged" sort:"created" order:"asc" to find the oldest matching merged PR. Use match:["title"] for title-only matching.'
-          );
         }
 
         const hasValidParams =
@@ -262,16 +174,13 @@ export async function searchMultipleGitHubPullRequests(
           ? contentRequest.changedFiles ||
             contentRequest.patches.mode !== 'none'
           : false;
-        const {
-          pullRequests,
-          resultData,
-          pagination: rawPagination,
-        } = mapPullRequestProviderResultData(providerResult.response.data, {
-          includeFileChanges,
-        });
+        const { pullRequests, resultData } = mapPullRequestProviderResultData(
+          providerResult.response.data,
+          {
+            includeFileChanges,
+          }
+        );
 
-        const pagination =
-          effectiveQuery.prNumber !== undefined ? undefined : rawPagination;
         if (effectiveQuery.prNumber !== undefined) {
           delete (resultData as Record<string, unknown>).pagination;
         }
@@ -313,125 +222,25 @@ export async function searchMultipleGitHubPullRequests(
         }
 
         const hasContent = shapedPullRequests.length > 0;
-        const paginationHints = pagination
-          ? buildPaginationHints(
-              {
-                currentPage: pagination.currentPage,
-                totalPages: pagination.totalPages,
-                hasMore: pagination.hasMore,
-                totalMatches: pagination.totalMatches,
-                entriesPerPage: pagination.perPage,
-              },
-              'PRs'
-            )
-          : [];
 
-        const resultHints: string[] = hasContent
-          ? [
-              `Found ${shapedPullRequests.length} PR${shapedPullRequests.length === 1 ? '' : 's'}.`,
-              ...(showContentMap
-                ? buildContentHints(shapedPullRequests, contentRequest)
-                : []),
-            ]
-          : [];
-
-        const fileChangeHints: string[] = [];
-        const largeFileChangePRs = pullRequests.filter(
-          (pr: Record<string, unknown>) => {
-            const count =
-              typeof pr.changedFilesCount === 'number'
-                ? pr.changedFilesCount
-                : Array.isArray(pr.fileChanges)
-                  ? (pr.fileChanges as unknown[]).length
-                  : 0;
-            return count > 30;
-          }
-        );
-        if (largeFileChangePRs.length > 0) {
-          const prNumbers = largeFileChangePRs
-            .map((pr: Record<string, unknown>) => `#${pr.number}`)
-            .join(', ');
-          const maxFiles = Math.max(
-            ...largeFileChangePRs.map((pr: Record<string, unknown>) => {
-              if (typeof pr.changedFilesCount === 'number')
-                return pr.changedFilesCount;
-              return Array.isArray(pr.fileChanges)
-                ? (pr.fileChanges as unknown[]).length
-                : 0;
-            })
-          );
-          fileChangeHints.push(
-            `Large PR(s) ${prNumbers} have ${maxFiles}+ file changes.`
-          );
-        }
-        const requestedAnyContent =
-          contentRequest.body ||
-          contentRequest.changedFiles ||
-          contentRequest.patches.mode !== 'none' ||
-          Boolean(contentRequest.comments) ||
-          contentRequest.reviews ||
-          Boolean(contentRequest.commits);
-        const deliveredAnyContent = hasPrNumber && requestedAnyContent;
-        if (!includeFileChanges && !deliveredAnyContent) {
-          const withChanges = pullRequests.filter(
-            (pr: Record<string, unknown>) =>
-              typeof pr.changedFilesCount === 'number' &&
-              pr.changedFilesCount > 0
-          ).length;
-          if (withChanges > 0) {
-            fileChangeHints.push(
-              'Metadata mode: changedFiles details omitted (changedFilesCount available). Re-call with prNumber + content.changedFiles=true for file paths, content.patches={mode:"selected",files:["src/foo.ts"]} for targeted diffs, or reviewMode="full" for all content in one call.'
-            );
-          }
-        }
-
-        const matchStringHints =
-          hasPrNumber &&
-          typeof (effectiveQuery as { matchString?: string }).matchString ===
-            'string' &&
-          (effectiveQuery as { matchString: string }).matchString.trim()
-            ? [
-                `matchString filter active — pagination totals count only items matching "${(effectiveQuery as { matchString: string }).matchString.trim()}"; drop matchString for the full set.`,
-              ]
-            : [];
-
-        const shaped = buildPRSearchOutput(
-          {
-            data: resultData,
-            pullRequests,
-            extraHints: [
-              ...resultHints,
-              ...paginationHints,
-              ...downgradeHints,
-              ...fileChangeHints,
-              ...matchStringHints,
-            ],
-          },
-          effectiveQuery as PartialPRQuery
-        );
-
+        // Per-call result/file-change/matchString hints were computed only from
+        // populated results and dropped centrally by createSuccessResult on the
         return createSuccessResult(
           effectiveQuery,
-          shaped.data,
+          resultData as unknown as Record<string, unknown>,
           hasContent,
           TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS,
           {
-            hintContext: {
-              matchCount: shapedPullRequests.length,
-              state: effectiveQuery.state,
-              owner: effectiveQuery.owner,
-              repo: effectiveQuery.repo,
-              author: effectiveQuery.author,
-              keywords: effectiveQuery.keywordsToSearch,
-              prNumber: effectiveQuery.prNumber,
-              prMatch: effectiveQuery.match,
-            },
-            extraHints: shaped.extraHints,
             rawResponse: providerResult.response.rawResponseChars,
           }
         );
       } catch (error) {
-        return handleCatchError(error, query);
+        return handleCatchError(
+          error,
+          query,
+          undefined,
+          TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS
+        );
       }
     },
     {
@@ -442,19 +251,7 @@ export async function searchMultipleGitHubPullRequests(
         'total_count',
         'error',
       ] satisfies Array<keyof GitHubSearchPullRequestsToolResult>,
-      peerHints: true,
     },
     args
   );
-}
-
-export function buildPRSearchOutput(
-  input: {
-    data: Record<string, unknown>;
-    pullRequests: Array<Record<string, unknown>>;
-    extraHints: string[];
-  },
-  _query: PartialPRQuery
-): { data: Record<string, unknown>; extraHints: string[] } {
-  return { data: input.data, extraHints: input.extraHints };
 }

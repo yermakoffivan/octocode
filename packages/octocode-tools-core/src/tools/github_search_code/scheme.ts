@@ -39,7 +39,6 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
       data: z.object({
         files: z.array(
           z.object({
-            id: z.string(),
             owner: z.string(),
             repo: z.string(),
             path: z.string(),
@@ -49,7 +48,13 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
                 value: z.string().optional(),
                 pathOnly: z.boolean().optional(),
                 matchIndices: z
-                  .array(z.object({ start: z.number(), end: z.number() }))
+                  .array(
+                    z.object({
+                      start: z.number(),
+                      end: z.number(),
+                      lineOffset: z.number(),
+                    })
+                  )
                   .optional(),
                 url: z.string().optional(),
               })
@@ -69,28 +74,28 @@ export const GitHubCodeSearchOutputLocalSchema = z.object({
               .optional(),
             totalMatchesCapped: z.boolean().optional(),
             hasMore: z.boolean(),
+            nextPage: z.number().optional(),
             uniqueFileCount: z.number().optional(),
           })
           .optional(),
       }),
     })
   ),
-  hints: z.array(z.string()).optional(),
   emptyQueries: z
     .array(
       z.object({
         id: z.string(),
-        hints: z.array(z.string()).optional(),
         nonExistentScope: z.literal(true).optional(),
+        incompleteResults: z.literal(true).optional(),
       })
     )
     .optional(),
+  warnings: z.array(z.string()).optional(),
   errors: z
     .array(
       z.object({
         id: z.string(),
         error: z.string(),
-        hints: z.array(z.string()).optional(),
       })
     )
     .optional(),

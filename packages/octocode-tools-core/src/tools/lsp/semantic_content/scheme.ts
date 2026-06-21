@@ -226,7 +226,6 @@ const SemanticDataSchema = z.object({
   pagination: PaginationSchema.optional(),
   summary: z.record(z.string(), z.unknown()).optional(),
   warnings: z.array(z.string()).optional(),
-  hints: z.array(z.string()).optional(),
 });
 
 export const LspGetSemanticsOutputSchema = z.object({
@@ -234,7 +233,6 @@ export const LspGetSemanticsOutputSchema = z.object({
   shared: z
     .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
     .optional(),
-  hints: z.array(z.string()).optional(),
   results: z.array(
     z.union([
       z.object({

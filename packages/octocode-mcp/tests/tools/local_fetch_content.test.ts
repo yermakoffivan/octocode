@@ -4,7 +4,7 @@ import { fetchContent as fetchContentImpl } from '../../../octocode-tools-core/s
 import {
   extractSignatures,
   applyContentViewMinification,
-} from '@octocodeai/octocode-context-utils';
+} from '@octocodeai/octocode-engine';
 import { SIGNATURE_SOURCE } from '../fixtures/signatureSource.js';
 import * as pathValidator from 'octocode-security/pathValidator';
 import * as fs from 'fs/promises';
@@ -212,7 +212,9 @@ describe('localGetFileContent', () => {
       expect(result.isPartial).toBeUndefined();
       expect(result.contentView).toBe('symbols');
       expect(result.isSkeleton).toBe(true);
-      expect(result.totalLines).toBe(src.split('\n').length);
+      // totalLines is newline-safe: a single trailing newline terminates the
+      // last line, it does not add a phantom empty one (src.split('\n') would).
+      expect(result.totalLines).toBe(src.replace(/\n$/, '').split('\n').length);
       expect((result as { sourceChars?: number }).sourceChars).toBe(src.length);
     });
 

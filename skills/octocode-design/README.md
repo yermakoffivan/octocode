@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/bgauryy/octocode-mcp/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
+  <img src="https://github.com/bgauryy/octocode/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
 
   <h1>Octocode Design</h1>
 
@@ -7,7 +7,7 @@
   <p>Project discovery • Design specification • Accessibility/performance guardrails • Implementation map</p>
 
   [![Skill](https://img.shields.io/badge/skill-agentskills.io-purple)](https://agentskills.io/what-are-skills)
-  [![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/bgauryy/octocode-mcp/blob/main/LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/bgauryy/octocode/blob/main/LICENSE)
 </div>
 
 ---
@@ -37,8 +37,8 @@ The skill is system-level, not only visual. It covers:
 - Local tools enabled (`ENABLE_LOCAL=true`) for project-level analysis.
 
 See:
-- [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md)
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md)
+- [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md)
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md)
 
 ---
 
@@ -101,4 +101,4 @@ See:
 
 MIT License © 2026 Octocode
 
-See [LICENSE](https://github.com/bgauryy/octocode-mcp/blob/main/LICENSE) for details.
+See [LICENSE](https://github.com/bgauryy/octocode/blob/main/LICENSE) for details.

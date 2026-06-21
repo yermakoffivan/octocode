@@ -26,7 +26,7 @@ node skills/octocode-harness-status/scripts/build_harness.mjs
 The script:
 1. Reads MCP configs for all supported vendors (Cursor, Claude Code, Claude Desktop, Windsurf, Antigravity, Zed, Codex, Gemini CLI, Kiro, Goose, Trae, VS Code Cline/Roo/Continue, Opencode)
 2. Scans all skill directories per vendor
-3. Checks installed CLIs and auth status (octocode-cli, gh, claude, cursor, gemini, codex, goose, opencode)
+3. Checks installed CLIs and auth status (octocode, gh, claude, cursor, gemini, codex, goose, opencode)
 4. Queries GitHub token rate limits
 5. Measures SKILL.md context load per vendor and rates it vs typical agent context windows
 6. Starts a local HTTP server, opens the dashboard in your default browser

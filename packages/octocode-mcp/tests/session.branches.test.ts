@@ -23,7 +23,8 @@ describe('session.branches', () => {
 
   describe('SessionManager.logError', () => {
     it('should call incrementErrors and sendLog when logging is enabled', async () => {
-      const { incrementErrors } = await import('octocode-shared');
+      const { incrementErrors } =
+        await import('@octocodeai/octocode-tools-core/session');
       vi.mocked(incrementErrors).mockReturnValue({
         success: true,
         session: {
@@ -65,7 +66,7 @@ describe('session.branches', () => {
   describe('SessionManager.logRateLimit', () => {
     it('should call provider rate-limit stats and sendLog when logging is enabled', async () => {
       const { updateSessionStats, incrementGitHubCacheRateLimits } =
-        await import('octocode-shared');
+        await import('@octocodeai/octocode-tools-core/session');
       vi.mocked(updateSessionStats).mockReturnValue({
         success: true,
         session: {
@@ -117,7 +118,8 @@ describe('session.branches', () => {
     });
 
     it('should update session when provider rate-limit stats return session', async () => {
-      const { updateSessionStats } = await import('octocode-shared');
+      const { updateSessionStats } =
+        await import('@octocodeai/octocode-tools-core/session');
       const updatedSession = {
         version: 1,
         sessionId: 'updated-session-id',

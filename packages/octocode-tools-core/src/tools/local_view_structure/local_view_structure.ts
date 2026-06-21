@@ -1,5 +1,4 @@
 import { formatFileSize, parseFileSize } from '../../utils/file/size.js';
-import { getHints } from '../../hints/index.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import {
   validateToolPath,
@@ -16,7 +15,6 @@ import {
   type DirectoryEntry,
 } from './structureFilters.js';
 import {
-  buildEntryPaginationHints,
   buildWalkWarnings,
   paginateEntries,
   summarizeEntries,
@@ -59,7 +57,6 @@ export async function viewStructure(
       status: 'error',
       error: toolError.message,
       errorCode: toolError.errorCode,
-      hints: getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'error'),
     };
   }
 }
@@ -90,6 +87,7 @@ function viewStructureNative(
       showHidden: query.hidden ?? false,
       maxDepth,
       names: nativeNamePatterns,
+      extensions: query.extensions,
       entryType: nativeEntryTypeFromQuery(query),
       limit: maxEntries,
     });
@@ -136,7 +134,7 @@ function viewStructureNative(
   }
 
   const totalEntries = filteredEntries.length;
-  const { paginatedEntries, endIdx, pagination } = paginateEntries(
+  const { paginatedEntries, pagination } = paginateEntries(
     filteredEntries,
     query as { itemsPerPage?: number; page?: number }
   );
@@ -164,32 +162,6 @@ function viewStructureNative(
       : []),
   ];
   const isEmpty = totalEntries === 0;
-  const queryPattern =
-    typeof (query as { pattern?: unknown }).pattern === 'string'
-      ? (query as { pattern?: string }).pattern
-      : undefined;
-  const hasFilter =
-    (query.extensions?.length ?? 0) > 0 || Boolean(queryPattern);
-  const fileCount = filteredEntries.filter(e => e.type === 'file').length;
-  const extensionMiss = hasFilter && fileCount === 0 && !isEmpty;
-  const emptyHintCtx = {
-    entryCount: totalEntries,
-    path: query.path,
-    extensions: query.extensions,
-    pattern: queryPattern,
-  } as Record<string, unknown>;
-  const baseHints =
-    isEmpty || extensionMiss
-      ? getHints(TOOL_NAMES.LOCAL_VIEW_STRUCTURE, 'empty', emptyHintCtx)
-      : [
-          'Use localSearchCode to search or localGetFileContent to read discovered files.',
-        ];
-  const entryPaginationHints = buildEntryPaginationHints(
-    filteredEntries,
-    paginatedEntries.length,
-    pagination,
-    endIdx
-  );
   const summary = summarizeEntries(filteredEntries);
 
   return attachRawResponseChars(
@@ -202,7 +174,6 @@ function viewStructureNative(
           ? { pagination }
           : {}),
         ...(warnings.length > 0 && { warnings }),
-        hints: [...baseHints, ...entryPaginationHints],
       },
       query
     ),
@@ -218,9 +189,7 @@ function hasPostNativeFilters(
     typeof (query as { pattern?: unknown }).pattern === 'string'
       ? (query as { pattern?: string }).pattern
       : undefined;
-  return Boolean(
-    (pattern && !nativeNamePatterns) || (query.extensions?.length ?? 0) > 0
-  );
+  return Boolean(pattern && !nativeNamePatterns);
 }
 
 function nativeNamePatternsFromQuery(
@@ -304,11 +273,6 @@ function createNativeAccessErrorResult(
   );
   return createErrorResult(toolError, query, {
     toolName: TOOL_NAMES.LOCAL_VIEW_STRUCTURE,
-    customHints: isNotFound
-      ? [`Path not found: ${basePath}`]
-      : isPermission
-        ? [`Permission denied: ${basePath}`]
-        : [`Cannot access path: ${basePath}`],
   }) as LocalViewStructureToolResult;
 }
 

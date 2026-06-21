@@ -5,7 +5,7 @@
 Octocode is a code-research platform with **two interfaces** over the same tool implementations:
 
 - **MCP server** (`packages/octocode-mcp`) — served via `StdioServerTransport`, registered in MCP clients (Claude, VS Code, etc.)
-- **CLI** (`packages/octocode-cli`) — direct tool invocation from the terminal without an MCP client
+- **CLI** (`packages/octocode`) — direct tool invocation from the terminal without an MCP client
 
 Both interfaces call into **`packages/octocode-tools-core`** for all tool logic.
 
@@ -18,7 +18,7 @@ octocode-mcp/ (monorepo root)
 ├── packages/
 │   ├── octocode-tools-core/    # All 13 tool implementations + execution (TypeScript)
 │   ├── octocode-mcp/           # MCP server (thin wrapper over tools-core)
-│   ├── octocode-cli/           # CLI wrapper (thin wrapper over tools-core)
+│   ├── octocode/           # CLI wrapper (thin wrapper over tools-core)
 │   ├── octocode-lsp/           # LSP client/server lifecycle (Rust + napi)
 │   ├── octocode-context-utils/ # FS queries, ripgrep parsing, YAML (Rust + napi)
 │   ├── octocode-security/      # Path validation, command allowlist, secrets (Rust + napi)
@@ -194,56 +194,109 @@ yarn build
 
 ### 2. Wire the local build into `octocode-tools-core`
 
-`packages/octocode-tools-core/package.json` must point to the local build:
+`@octocodeai/octocode-core` is the **one** internal dep that does NOT use `workspace:*` (it lives in the separate `octocode-mcp-host` repo). For local dev, point `packages/octocode-tools-core/package.json` at the local build via a `file:` dep — replace the published range:
 
 ```json
 "@octocodeai/octocode-core": "file:///Users/guybary/Documents/octocode-mcp-host/packages/octocode-core"
 ```
 
-Then sync and build:
+> ⚠️ **Local-only — never commit this.** It is an absolute, machine-specific path and would break CI/publish. Revert to the npm range (`"^16.x"`) before committing.
+
+Then re-link and build:
 
 ```bash
-cd /Users/guybary/Documents/octocode-mcp/packages/octocode-tools-core
-yarn          # re-links the file: dep
-yarn build    # compiles tools-core with local octocode-core
+cd /Users/guybary/Documents/octocode-mcp
+yarn install                                  # re-links the file: dep
+yarn workspace @octocodeai/octocode-tools-core build
 ```
 
-### 3. Propagate to MCP or CLI
+> 🐛 **Stale `file:` cache gotcha.** Yarn caches `file:` deps by content hash and will silently reuse an **old tarball** — symptom: `node_modules/@octocodeai/octocode-core/dist` contains only `data/` (no `.js`/`.d.ts`), so `tsc` fails with `Cannot find module '@octocodeai/octocode-core'`. Fix: purge the cached tarballs and reinstall so the current `dist` is re-packed:
+>
+> ```bash
+> rm -f .yarn/cache/@octocodeai-octocode-core-file-*.zip \
+>       ~/.yarn/berry/cache/@octocodeai-octocode-core-file-*.zip
+> rm -rf node_modules/@octocodeai/octocode-core
+> yarn install
+> # verify: find node_modules/@octocodeai/octocode-core/dist -name '*.js' | wc -l  → 23, not 0
+> ```
+>
+> Always rebuild `octocode-core` itself (`§1`) **before** the reinstall — yarn packs whatever `dist/` holds at install time.
 
-After rebuilding `octocode-tools-core`, rebuild whichever interface you are testing:
+### 3. Internal deps resolve from the workspace (not npm)
+
+Every internal **source** package depends on the others via the **`workspace:*`** protocol, so a local edit anywhere is what every dependent actually runs — no version-range drift, no accidental fall-back to a published npm version:
+
+| Package | Internal deps (all `workspace:*`) |
+|---------|-----------------------------------|
+| `octocode` (CLI) | `@octocodeai/octocode-tools-core`, `octocode-shared` |
+| `octocode-mcp` | `@octocodeai/octocode-tools-core` |
+| `octocode-tools-core` | `@octocodeai/octocode-context-utils`, `octocode-lsp`, `octocode-security`, `octocode-shared` |
+
+Yarn 4 replaces `workspace:*` with the real version automatically at publish time, so this is safe to commit. **Exceptions (intentionally NOT `workspace:*`):** the napi platform sub-packages (`*-darwin-arm64`, `*-linux-x64-gnu`, …) keep exact versions — local dev loads the root `.node` artifact directly — and `@octocodeai/octocode-core` is a `file:` dep from the **separate** `octocode-mcp-host` repo.
+
+Verify the links are live (each should be a symlink into `packages/`):
 
 ```bash
-# MCP
-cd /Users/guybary/Documents/octocode-mcp/packages/octocode-mcp
-yarn build
+ls -l node_modules/@octocodeai/octocode-tools-core node_modules/octocode-shared
+# → ../../packages/octocode-tools-core, ../packages/octocode-shared
+```
 
-# CLI
-cd /Users/guybary/Documents/octocode-mcp/packages/octocode-cli
+If a link is missing or you add/change an internal dep, re-run `yarn install` from the root.
+
+### 4. Build all, then check from real results
+
+`workspace:*` means **one build from root propagates every local fix** through the whole chain in dependency order (native Rust → shared → tools-core → CLI/MCP):
+
+```bash
+# From monorepo root — builds context-utils, lsp, security (Rust/napi),
+# then shared, tools-core, octocode (CLI), octocode-mcp, vscode, skills.
 yarn build
 ```
 
-### 4. Test tools via CLI (fastest loop)
+**Checking local flows (the fast TS loop).** When you only touched TypeScript (e.g. `octocode-core` metadata or `octocode-tools-core` logic), the native Rust crates don't need rebuilding — build just the consuming chain. These are the three source packages a local flow runs through:
 
-For workspace-internal testing, set all internal deps to `workspace:^` first (so they resolve from the monorepo, not npm), build all, then invoke directly:
+| Package | Role in the flow |
+|---------|------------------|
+| `@octocodeai/octocode-tools-core` | tool execution layer — consumes local `octocode-core` (`file:`), `octocode-lsp`, `octocode-security`, `octocode-context-utils` |
+| `octocode` (CLI) | thin surface that exercises tools-core — the package you run to check a flow |
+| `octocode-mcp` | the MCP server, the other tools-core consumer — build it to check the MCP path |
 
 ```bash
-# From monorepo root
-yarn build   # builds all packages in dependency order
+cd /Users/guybary/Documents/octocode-mcp
+yarn workspace @octocodeai/octocode-tools-core build   # picks up local octocode-core
+yarn workspace octocode build:dev                      # CLI (esbuild only, skips lint)
+yarn workspace octocode-mcp build                      # MCP server + bundled rg
+```
 
-# Call a tool directly (no MCP client needed)
-node /Users/guybary/Documents/octocode-mcp/packages/octocode-cli/out/octocode-cli.js \
+Confirm the local core is actually wired (the system-prompt text should match your local `octocode-core`, not the published one):
+
+```bash
+node packages/octocode/out/octocode.js context | sed -n '/Agent System Prompt/,+2p'
+```
+
+> **Native (Rust) packages:** `yarn build` runs the release napi build. For a faster local loop on just one native crate, `cd packages/octocode-context-utils && yarn build:dev` (debug, current platform) — it retains the root `.node` so `octocode-tools-core` loads your changes immediately. Always finish with a root `yarn build` before trusting end-to-end results.
+
+Then **check from the real built CLI** (`packages/octocode/out/octocode.js`) — this exercises the exact code path users hit, through the workspace links:
+
+```bash
+node /Users/guybary/Documents/octocode-mcp/packages/octocode/out/octocode.js \
   tools <tool-name> \
   --queries '[{"mainResearchGoal":"...","researchGoal":"...","reasoning":"...","<field>":"<value>"}]'
 ```
 
-Example — test `localSearchCode`:
+Example — confirm a `localSearchCode` change live:
 
 ```bash
-node packages/octocode-cli/out/octocode-cli.js tools localSearchCode \
+node packages/octocode/out/octocode.js tools localSearchCode \
   --queries '[{"mainResearchGoal":"find tool config","researchGoal":"locate toolConfig.ts","reasoning":"need entrypoint","keywords":"toolConfig","path":"/Users/guybary/Documents/octocode-mcp/packages"}]'
 ```
 
-Note: the CLI command is `octocode tools <name>` (not `octocode <name>` directly). The `keywords` field for `localSearchCode` is a **string**, not an array — multi-word terms go in a single string.
+Quick-command form (auto-routes local vs GitHub) also hits the same workspace build, e.g. `node packages/octocode/out/octocode.js grep <term> <path>`, `ast '<pattern>' <path>`, `cat <file> --mode symbols`.
+
+Notes:
+- The raw-tool form is `octocode tools <name>` (not `octocode <name>` directly).
+- `localSearchCode`'s `keywords` is a **string**, not an array — multi-word terms go in one string.
+- Local-fix checklist: **edit → (root) `yarn build` → run `out/octocode.js`** and read the real output; for unit coverage, `yarn vitest run` in the package (TS) or `cargo test --lib` (Rust).
 
 ---
 

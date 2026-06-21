@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildContentHints,
-  shapePullRequestForContent,
-} from '../../../octocode-tools-core/src/tools/github_search_pull_requests/contentResponse.js';
+import { shapePullRequestForContent } from '../../../octocode-tools-core/src/tools/github_search_pull_requests/contentResponse.js';
 import type { NormalizedPrContentRequest } from '../../../octocode-tools-core/src/tools/github_search_pull_requests/contentRequest.js';
 
 const baseRequest: NormalizedPrContentRequest = {
@@ -240,44 +237,6 @@ describe('ghHistoryResearch content response shaping', () => {
     ).toBeUndefined();
   });
 
-  it('builds content hints for missing patches and comments', () => {
-    const hints = buildContentHints([pr], baseRequest);
-    expect(hints.some(hint => hint.includes('Patches not included'))).toBe(
-      true
-    );
-    expect(hints.some(hint => hint.includes('Comments not included'))).toBe(
-      true
-    );
-  });
-
-  it('builds concise next-page hints from unified contentPagination', () => {
-    const shaped = shapePullRequestForContent(pr, query, {
-      ...baseRequest,
-      body: true,
-      changedFiles: true,
-      comments: {
-        discussion: true,
-        reviewInline: true,
-        includeBots: false,
-      },
-    });
-
-    const hints = buildContentHints([shaped], {
-      ...baseRequest,
-      body: true,
-      changedFiles: true,
-      comments: {
-        discussion: true,
-        reviewInline: true,
-        includeBots: false,
-      },
-    });
-
-    expect(hints.join('\n')).toContain('body charOffset=5');
-    expect(hints.join('\n')).toContain('changedFiles filePage=2');
-    expect(hints.join('\n')).toContain('comments commentPage=2');
-  });
-
   it('handles empty content surfaces without crashing', () => {
     const shaped = shapePullRequestForContent(
       { number: 9, title: 'empty', body: undefined },
@@ -331,25 +290,6 @@ describe('ghHistoryResearch content response shaping', () => {
     const reviews = shaped.reviews as Array<Record<string, unknown>>;
     expect(reviews[0]!.body).toBe('approval-body');
     expect(reviews[0]!.bodyPagination).toMatchObject({ hasMore: false });
-  });
-
-  it('omits optional hint branches when data is absent or already requested', () => {
-    expect(buildContentHints([], baseRequest)).toEqual([]);
-    const hints = buildContentHints([pr], {
-      ...baseRequest,
-      patches: { mode: 'all' },
-      comments: {
-        discussion: true,
-        reviewInline: true,
-        includeBots: false,
-      },
-    });
-    expect(hints.some(hint => hint.includes('Diffs are not included'))).toBe(
-      false
-    );
-    expect(hints.some(hint => hint.includes('Comments are not included'))).toBe(
-      false
-    );
   });
 
   it('covers large file preview pagination and non-string metadata body', () => {

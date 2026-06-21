@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { incrementToolCharSavings } from 'octocode-shared';
+import { incrementToolCharSavings } from '@octocodeai/octocode-tools-core/session';
 import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import { attachRawResponseChars } from '../../../octocode-tools-core/src/utils/response/charSavings.js';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
@@ -39,12 +39,12 @@ vi.mock(
   })
 );
 
-vi.mock('octocode-lsp/manager', () => ({
+vi.mock('@octocodeai/octocode-engine/lsp/manager', () => ({
   acquirePooledClient: vi.fn(),
   isLanguageServerAvailable: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock('octocode-lsp/workspaceRoot', () => ({
+vi.mock('@octocodeai/octocode-engine/lsp/workspaceRoot', () => ({
   resolveWorkspaceRootForFile: vi.fn().mockResolvedValue(process.cwd()),
 }));
 

@@ -74,14 +74,23 @@ describe('T1.7 — fs.readdir pre-flight is removed from the ripgrep hot path', 
       };
     });
 
-    vi.doMock('../../../octocode-tools-core/src/utils/exec/safe.js', () => ({
-      safeExec: vi.fn(async () => ({
-        success: true,
-        stdout: '',
-        stderr: '',
-        code: 1,
-      })),
-    }));
+    // Ripgrep runs in-process inside the native engine now; stub it so the
+    // search resolves without touching the real filesystem.
+    vi.doMock(
+      '../../../octocode-tools-core/src/utils/contextUtils.js',
+      async () => {
+        const real = await vi.importActual<
+          typeof import('../../../octocode-tools-core/src/utils/contextUtils.js')
+        >('../../../octocode-tools-core/src/utils/contextUtils.js');
+        return {
+          ...real,
+          contextUtils: {
+            ...real.contextUtils,
+            searchRipgrep: vi.fn(async () => ({ files: [], stats: {} })),
+          },
+        };
+      }
+    );
 
     vi.doMock(
       '../../../octocode-tools-core/src/utils/file/toolHelpers.js',
@@ -97,14 +106,6 @@ describe('T1.7 — fs.readdir pre-flight is removed from the ripgrep hot path', 
           })),
         };
       }
-    );
-
-    vi.doMock(
-      '../../../octocode-tools-core/src/utils/exec/commandAvailability.js',
-      () => ({
-        checkCommandAvailability: vi.fn(async () => ({ available: true })),
-        getMissingCommandError: vi.fn(() => ''),
-      })
     );
 
     const { searchContentRipgrep } =

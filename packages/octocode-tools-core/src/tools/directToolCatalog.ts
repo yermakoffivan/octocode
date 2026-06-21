@@ -1,7 +1,8 @@
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { initialize, isCloneEnabled } from '../serverConfig.js';
+import { initialize } from '../serverConfig.js';
 import { initializeProviders } from '../providers/factory.js';
+import { getConfigSync } from '../shared/index.js';
 import { STATIC_TOOL_NAMES } from './toolNames.js';
 import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from './lsp/shared/semanticTypes.js';
 import type { ToolConfig } from './toolConfig.js';
@@ -14,7 +15,7 @@ import {
   withBasicSecurityValidation,
   withSecurityValidation,
 } from '../security/bridge.js';
-import { releaseAllPooledClients } from 'octocode-lsp/manager';
+import { releaseAllPooledClients } from '@octocodeai/octocode-engine/lsp/manager';
 
 export type DirectToolInput = Record<string, unknown> & {
   queries: unknown[];
@@ -117,6 +118,8 @@ interface JsonSchemaObject extends Record<string, unknown> {
 type DirectToolRuntimeDefinition = DirectToolDefinition & {
   execute: (input: DirectToolInput) => Promise<CallToolResult>;
   security: ToolConfig['direct']['security'];
+  isLocal: boolean;
+  isClone?: boolean;
   requiresServerRuntime?: boolean;
   requiresProviders?: boolean;
 };
@@ -167,6 +170,8 @@ function createDirectTool(tool: ToolConfig): DirectToolRuntimeDefinition {
     inputSchema: direct.inputSchema,
     execute: wrapExecution(direct.executionFn),
     security: direct.security,
+    isLocal: tool.isLocal,
+    isClone: tool.isClone,
     requiresServerRuntime: direct.requiresServerRuntime,
     requiresProviders: direct.requiresProviders,
   };
@@ -528,14 +533,17 @@ function normalizeQueryObject(
   return exactQuery;
 }
 
-function describeSchemaConstraints(schema: JsonSchemaObject): string | undefined {
+function describeSchemaConstraints(
+  schema: JsonSchemaObject
+): string | undefined {
   const parts: string[] = [];
   const min = typeof schema.minimum === 'number' ? schema.minimum : undefined;
   const max = typeof schema.maximum === 'number' ? schema.maximum : undefined;
   if (min !== undefined && max !== undefined) parts.push(`${min}-${max}`);
   else if (min !== undefined) parts.push(`>=${min}`);
   else if (max !== undefined) parts.push(`<=${max}`);
-  if ('default' in schema) parts.push(`default ${JSON.stringify(schema.default)}`);
+  if ('default' in schema)
+    parts.push(`default ${JSON.stringify(schema.default)}`);
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
@@ -679,34 +687,16 @@ export async function executeDirectTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
-  const parsedInput = parseDirectToolInput(tool, input);
   try {
+    const parsedInput = parseDirectToolInput(tool, input);
     await ensureDirectToolRuntimeReady(tool);
-    if (name === STATIC_TOOL_NAMES.GITHUB_CLONE_REPO && !isCloneEnabled()) {
-      const disabledResult: CallToolResult = {
-        content: [
-          {
-            type: 'text',
-            text: 'error: ghCloneRepo is disabled\nmessage: Set ENABLE_CLONE=true (and ENABLE_LOCAL=true) to enable repository cloning.\nhints:\n- To browse without cloning, use ghViewRepoStructure to list files or ghGetFileContent to read specific files.',
-          },
-        ],
-        structuredContent: {
-          status: 'error',
-          tool: name,
-          code: 'TOOL_DISABLED',
-          error: {
-            message:
-              'ghCloneRepo is disabled — set ENABLE_CLONE=true (and ENABLE_LOCAL=true) to enable repository cloning.',
-          },
-          hints: [
-            'To browse without cloning, use ghViewRepoStructure to list files or ghGetFileContent to read specific files.',
-          ],
-        },
-        isError: true,
-      };
-      return sanitizeCallToolResult(disabledResult);
-    }
+    assertDirectToolEnabled(tool);
     return await runDirectTool(tool, parsedInput);
+  } catch (error) {
+    // Input parsing and runtime readiness can throw; convert to the same
+    // structured error envelope as execution failures so non-CLI consumers
+    // get a consistent result shape instead of an exception.
+    return buildToolErrorResult(tool.name, error);
   } finally {
     if (name === LSP_GET_SEMANTIC_CONTENT_TOOL_NAME) {
       await releaseAllPooledClients();
@@ -757,6 +747,29 @@ async function ensureDirectToolRuntimeReady(
       providerRuntimeInitPromise = initializeProviders().then(() => undefined);
     }
     await providerRuntimeInitPromise;
+  }
+}
+
+function assertDirectToolEnabled(tool: DirectToolRuntimeDefinition): void {
+  if (!tool.isLocal && !tool.isClone) {
+    return;
+  }
+
+  const config = getConfigSync();
+  if (tool.isLocal && !config.local.enabled) {
+    const error = new Error(
+      `Tool "${tool.name}" requires local tools. Set ENABLE_LOCAL=true to use it.`
+    );
+    (error as { code?: string }).code = 'localToolsDisabled';
+    throw error;
+  }
+
+  if (tool.isClone && !(config.local.enabled && config.local.enableClone)) {
+    const error = new Error(
+      `Tool "${tool.name}" requires clone support. Set ENABLE_CLONE=true and ENABLE_LOCAL=true to use it.`
+    );
+    (error as { code?: string }).code = 'cloneDisabled';
+    throw error;
   }
 }
 

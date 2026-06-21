@@ -1,6 +1,7 @@
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { getOctokit } from './client.js';
 import { handleGitHubAPIError } from './errors.js';
+import { buildDiffPreview } from '../utils/parsers/diff.js';
 import type {
   GitHubAPIResponse,
   HistoryCommit,
@@ -92,7 +93,7 @@ export async function fetchHistory(
     });
 
     const pagination = {
-      page: params.page,
+      currentPage: params.page,
       perPage: params.perPage,
       hasMore,
       ...(hasMore ? { nextPage: params.page + 1 } : {}),
@@ -129,13 +130,17 @@ export async function fetchHistory(
               f => f.filename === filePath || f.previous_filename === filePath
             );
             if (fileData) {
+              const patch =
+                fileData.patch !== undefined
+                  ? truncatePatch(fileData.patch, params.charLength)
+                  : undefined;
               return {
                 ...commit,
                 additions: fileData.additions,
                 deletions: fileData.deletions,
                 status: fileData.status,
-                ...(fileData.patch !== undefined
-                  ? { patch: truncatePatch(fileData.patch, params.charLength) }
+                ...(patch !== undefined
+                  ? { patch, diff: buildDiffPreview(patch) }
                   : {}),
                 ...(fileData.previous_filename
                   ? { previousFilename: fileData.previous_filename }
@@ -147,18 +152,24 @@ export async function fetchHistory(
             const dirPath = params.path;
             const allFiles: HistoryCommitFile[] = (detail.data.files ?? [])
               .filter(f => !dirPath || f.filename.startsWith(dirPath))
-              .map(f => ({
-                filename: f.filename,
-                status: f.status,
-                additions: f.additions,
-                deletions: f.deletions,
-                ...(f.patch !== undefined
-                  ? { patch: truncatePatch(f.patch, params.charLength) }
-                  : {}),
-                ...(f.previous_filename
-                  ? { previousFilename: f.previous_filename }
-                  : {}),
-              }));
+              .map(f => {
+                const patch =
+                  f.patch !== undefined
+                    ? truncatePatch(f.patch, params.charLength)
+                    : undefined;
+                return {
+                  filename: f.filename,
+                  status: f.status,
+                  additions: f.additions,
+                  deletions: f.deletions,
+                  ...(patch !== undefined
+                    ? { patch, diff: buildDiffPreview(patch) }
+                    : {}),
+                  ...(f.previous_filename
+                    ? { previousFilename: f.previous_filename }
+                    : {}),
+                };
+              });
             return { ...commit, files: allFiles };
           }
         } catch {

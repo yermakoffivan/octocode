@@ -1,4 +1,3 @@
-import { getHints } from '../../hints/index.js';
 import {
   validateToolPath,
   createErrorResult,
@@ -22,27 +21,11 @@ import { attachRawResponseChars } from '../../utils/response/charSavings.js';
 
 type FindFilesQuery = WithOptionalMeta<UpstreamFindFilesQuery>;
 
-const DEFAULT_FIND_EXCLUDE_DIRS = [
-  'node_modules',
-  'dist',
-  '.git',
-  'coverage',
-  'build',
-  '.next',
-  '.nuxt',
-  '.svelte-kit',
-  '.turbo',
-  '.cache',
-  '.parcel-cache',
-  'out',
-  'target',
-  '.octocode',
-  '.cursor',
-  '.vscode',
-  '.idea',
-  '.claude',
-  '.context',
-];
+// No directories are excluded by default: `find` must never silently hide
+// real files (node_modules, build/, dist/, out/, target/, …). Hiding them
+// broke inspecting installed apps and compiled artifacts. Callers that want to
+// trim a search pass `excludeDir` explicitly.
+const DEFAULT_FIND_EXCLUDE_DIRS: string[] = [];
 
 function computeEffectiveExcludeDirs(
   searchPath: string,
@@ -51,98 +34,6 @@ function computeEffectiveExcludeDirs(
   const rawExcludeDirs = excludeDir ?? DEFAULT_FIND_EXCLUDE_DIRS;
   const searchPathParts = new Set(searchPath.split('/').filter(Boolean));
   return rawExcludeDirs.filter(dir => !searchPathParts.has(dir));
-}
-
-function buildFindFilesHints(ctx: {
-  query: FindFilesQuery;
-  currentPage: number;
-  totalPages: number;
-  shownCount: number;
-  totalFiles: number;
-  wasFileCapped: boolean;
-  maxFiles: number;
-  discoveredFileCount: number;
-  hasConfigFiles: boolean;
-  extraHints?: string[];
-}): string[] {
-  const {
-    query,
-    currentPage,
-    totalPages,
-    shownCount,
-    totalFiles,
-    wasFileCapped,
-    maxFiles,
-    discoveredFileCount,
-    hasConfigFiles,
-    extraHints = [],
-  } = ctx;
-
-  const q = query as Record<string, unknown>;
-  const activeFilters: string[] = [];
-  if (Array.isArray(q.names) && q.names.length > 0) {
-    activeFilters.push(`names: ${(q.names as string[]).join(', ')}`);
-  }
-  if (q.entryType)
-    activeFilters.push(
-      `entryType: ${q.entryType === 'f' ? 'files' : q.entryType === 'd' ? 'directories' : String(q.entryType)}`
-    );
-  const timeFilterNote = (value: unknown): string =>
-    typeof value === 'string' && !VALID_TIME_STRING_RE.test(value)
-      ? ' (skipped: invalid format)'
-      : '';
-  if (q.modifiedBefore)
-    activeFilters.push(
-      `modified before: ${q.modifiedBefore}${timeFilterNote(q.modifiedBefore)}`
-    );
-  if (q.modifiedWithin)
-    activeFilters.push(
-      `modified within: ${q.modifiedWithin}${timeFilterNote(q.modifiedWithin)}`
-    );
-  if (q.sizeGreater) activeFilters.push(`size > ${q.sizeGreater}`);
-  if (q.sizeLess) activeFilters.push(`size < ${q.sizeLess}`);
-  if (Array.isArray(q.excludeDir) && q.excludeDir.length > 0) {
-    activeFilters.push(`excluding: ${(q.excludeDir as string[]).join(', ')}`);
-  }
-
-  return [
-    ...extraHints,
-    ...(activeFilters.length > 0
-      ? [`Active filters — ${activeFilters.join(' | ')}`]
-      : []),
-    ...(currentPage < totalPages
-      ? [
-          `Page ${currentPage}/${totalPages} (${shownCount} of ${totalFiles}). Next: page=${currentPage + 1}`,
-        ]
-      : []),
-    ...(totalPages > 0 && currentPage > totalPages
-      ? [
-          `Requested page ${currentPage} is outside available range (1-${totalPages}). Use page=${totalPages} for the last page.`,
-        ]
-      : []),
-    ...(wasFileCapped
-      ? [
-          `Results capped at ${maxFiles} of ${discoveredFileCount} discovered. All ${maxFiles} are reachable via page; to see the rest, narrow with names/entryType/time filters. Note: sorting applies only within the capped set — limit is a pre-sort discovery cap.`,
-        ]
-      : []),
-    ...(totalFiles === 0
-      ? getHints(TOOL_NAMES.LOCAL_FIND_FILES, 'empty', {
-          fileCount: totalFiles,
-          hasConfigFiles,
-          path: query.path,
-          names: query.names,
-          modifiedWithin: query.modifiedWithin,
-          sizeGreater: query.sizeGreater,
-          sizeLess: query.sizeLess,
-        } as Record<string, unknown>)
-      : [
-          q.entryType === 'f'
-            ? `Found ${totalFiles} file${totalFiles === 1 ? '' : 's'}. Use localSearchCode to search or localGetFileContent to read.`
-            : q.entryType === 'd'
-              ? `Found ${totalFiles} director${totalFiles === 1 ? 'y' : 'ies'}. Use localViewStructure to browse or localSearchCode to search.`
-              : `Found ${totalFiles} entr${totalFiles === 1 ? 'y' : 'ies'} — pass entryType="f" for files, entryType="d" for directories. Use localSearchCode or localGetFileContent.`,
-        ]),
-  ];
 }
 
 export async function findFiles(
@@ -207,7 +98,6 @@ export async function findFiles(
     );
     const sortBy = query.sortBy || 'modified';
     sortLocalFindFilesEntrys(files, sortBy, collectModified);
-    const sortHints: string[] = [];
 
     const filesForOutput = formatForOutput(files, details, showLastModified);
     const totalFiles = filesForOutput.length;
@@ -222,11 +112,6 @@ export async function findFiles(
     const paginatedFiles = filesForOutput.slice(startIdx, endIdx);
 
     const finalFiles = paginatedFiles;
-    const configFilePatterns =
-      /\.(config|rc|env|json|ya?ml|toml|ini)$|^(\..*rc|config\.|\.env)/i;
-    const hasConfigFiles = finalFiles.some(f =>
-      configFilePatterns.test(f.path.split('/').pop() || '')
-    );
 
     const nativeWarnings = [
       ...nativeResult.warnings,
@@ -248,21 +133,10 @@ export async function findFiles(
         filesPerPage,
         totalFiles,
         hasMore: currentPage < totalPages,
+        ...(currentPage < totalPages ? { nextPage: currentPage + 1 } : {}),
         ...(wasFileCapped ? { totalFilesFound: discoveredFileCount } : {}),
       },
       ...(allWarnings.length > 0 && { warnings: allWarnings }),
-      hints: buildFindFilesHints({
-        query,
-        currentPage,
-        totalPages,
-        shownCount: finalFiles.length,
-        totalFiles,
-        wasFileCapped,
-        maxFiles,
-        discoveredFileCount,
-        hasConfigFiles,
-        extraHints: sortHints,
-      }),
     };
 
     return attachRawResponseChars(

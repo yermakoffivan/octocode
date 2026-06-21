@@ -1,0 +1,64 @@
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+
+export type NativeLspClientBinding = {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  waitForReady(timeoutMs?: number): Promise<void>;
+  hasCapability?(capability: string): boolean;
+  getRecentStderr?(): string[];
+  openDocument(filePath: string, content: string): Promise<void>;
+  closeDocument?(filePath: string): Promise<void>;
+  getDefinition(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<unknown[]>;
+  getReferences(
+    filePath: string,
+    line: number,
+    character: number,
+    includeDeclaration?: boolean
+  ): Promise<unknown[]>;
+  getHover(filePath: string, line: number, character: number): Promise<unknown>;
+  getTypeDefinition(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<unknown[]>;
+  getImplementation(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<unknown[]>;
+  getDocumentSymbols(filePath: string): Promise<unknown>;
+  prepareCallHierarchy(
+    filePath: string,
+    line: number,
+    character: number
+  ): Promise<unknown>;
+  incomingCalls(item: unknown): Promise<unknown>;
+  outgoingCalls(item: unknown): Promise<unknown>;
+};
+
+type NativeBinding = {
+  NativeLspClient: new (config: unknown) => NativeLspClientBinding;
+  resolvePosition(filePath: string, fuzzy: unknown): unknown;
+  resolvePositionFromContent(content: string, fuzzy: unknown): unknown;
+  toUri(path: string): string;
+  fromUri(uri: string): string;
+  resolveWorkspaceRootForFile(filePath: string): string;
+  detectLanguageId(filePath: string): string | undefined;
+  getLanguageServerForFile(
+    filePath: string,
+    workspaceRoot: string
+  ): unknown | undefined;
+  isCommandAvailable(command: string): boolean;
+  safeReadFile(filePath: string): string;
+  validateLspServerPath(command: string): string;
+  convertSymbolKind(kind?: number): string;
+  toLspSymbolKind(kind: string): number;
+};
+
+export const nativeBinding = require('../../index.cjs') as NativeBinding;

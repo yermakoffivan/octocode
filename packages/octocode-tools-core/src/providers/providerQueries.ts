@@ -57,6 +57,8 @@ export interface FileContentQuery extends BaseProviderQuery {
 
   fullContent?: boolean;
 
+  forceRefresh?: boolean;
+
   minify: 'none' | 'standard' | 'symbols';
 }
 
@@ -158,6 +160,22 @@ export interface PullRequestQuery extends BaseProviderQuery {
   draft?: boolean;
 
   match?: Array<'title' | 'body' | 'comments'>;
+
+  milestone?: string;
+
+  language?: string;
+
+  checks?: 'pending' | 'success' | 'failure';
+
+  review?: 'none' | 'required' | 'approved' | 'changes_requested';
+
+  locked?: boolean;
+
+  visibility?: 'public' | 'private';
+
+  teamMentions?: string;
+
+  project?: string;
 
   archived?: boolean;
 

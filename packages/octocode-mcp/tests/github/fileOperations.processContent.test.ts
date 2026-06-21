@@ -6,11 +6,11 @@ import {
   resolveDefaultBranch,
 } from '../../../octocode-tools-core/src/github/client.js';
 import { RequestError } from 'octokit';
-import * as minifierModule from '@octocodeai/octocode-context-utils';
+import * as minifierModule from '@octocodeai/octocode-engine';
 import {
   extractSignatures,
   applyContentViewMinification,
-} from '@octocodeai/octocode-context-utils';
+} from '@octocodeai/octocode-engine';
 import { SIGNATURE_SOURCE } from '../fixtures/signatureSource.js';
 import { clearAllCache } from '../../../octocode-tools-core/src/utils/http/cache.js';
 
@@ -32,9 +32,9 @@ function createRequestError(message: string, status: number) {
 }
 
 vi.mock('../../../octocode-tools-core/src/github/client.js');
-vi.mock('@octocodeai/octocode-context-utils', async importOriginal => {
+vi.mock('@octocodeai/octocode-engine', async importOriginal => {
   const actual =
-    await importOriginal<typeof import('@octocodeai/octocode-context-utils')>();
+    await importOriginal<typeof import('@octocodeai/octocode-engine')>();
   return { ...actual, minifyContent: vi.fn(), minifyContentSync: vi.fn() };
 });
 

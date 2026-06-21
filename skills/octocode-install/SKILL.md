@@ -1,6 +1,6 @@
 ---
 name: octocode-install
-description: Interactive step-by-step installer for Octocode tools on macOS and Windows. Use when the user asks to "install octocode", "set up octocode", "configure octocode mcp", "get started with octocode", "install octocode-cli", "octocode setup", or needs help with GitHub auth, IDE MCP config, or skills installation.
+description: Interactive step-by-step installer for Octocode tools on macOS and Windows. Use when the user asks to "install octocode", "set up octocode", "configure octocode mcp", "get started with octocode", "install octocode", "octocode setup", or needs help with GitHub auth, IDE MCP config, or skills installation.
 ---
 
 # Octocode Install — Interactive Setup
@@ -53,14 +53,14 @@ Read the IDE's MCP config file (see config paths table below) and check whether 
 
 Also run:
 ```bash
-npx octocode-cli status
+npx octocode status
 ```
 
 **If octocode-mcp is already configured in the IDE AND authenticated:**
 
 > Tell the user: "Octocode is already installed and authenticated in your IDE. You're all set!"
 >
-> Offer: "Would you like to **update** (`npx octocode-cli install --ide <key> --force`), **install skills**, or **change config**?"
+> Offer: "Would you like to **update** (`npx octocode install --ide <key> --force`), **install skills**, or **change config**?"
 
 **STOP here** — do not continue with Steps 2–6 unless the user asks to update, reinstall, or add something.
 
@@ -86,7 +86,7 @@ node --version
 **Ask the user:**
 
 > "How would you like to authenticate with GitHub?"
-> 1. **`npx octocode-cli login`** — Octocode OAuth (opens browser, stores token automatically)
+> 1. **`npx octocode login`** — Octocode OAuth (opens browser, stores token automatically)
 > 2. **`gh auth login`** — GitHub CLI (if `gh` is already installed)
 > 3. **GitHub PAT (token)** — paste a token manually; always works, required on Windows if browser auth fails
 
@@ -95,7 +95,7 @@ node --version
 ### Option 1 — Octocode OAuth (recommended)
 
 ```bash
-npx octocode-cli login
+npx octocode login
 ```
 
 - Opens browser → approve the device code → done
@@ -129,7 +129,7 @@ gh auth login
 
 **After auth, verify:**
 ```bash
-npx octocode-cli status
+npx octocode status
 ```
 
 Expected: `✓ Authenticated as <username>`
@@ -145,7 +145,7 @@ If not authenticated — repeat the chosen option or switch to Option 3.
 
 Run:
 ```bash
-npx octocode-cli install --ide <key>
+npx octocode install --ide <key>
 ```
 
 | IDE | `<key>` | Aliases |
@@ -186,7 +186,7 @@ The CLI writes the config file automatically. Then confirm the result:
 > "Do you want to enable **local codebase tools** (search files, LSP, browse dirs)? **Recommended — Yes.**"
 > → Yes: add `"ENABLE_LOCAL": "true"` to `"env"`
 
-> "Did you use a PAT (Option 3) for auth, or is `npx octocode-cli status` not showing authenticated?"
+> "Did you use a PAT (Option 3) for auth, or is `npx octocode status` not showing authenticated?"
 > → Yes: add `"GITHUB_TOKEN": "ghp_xxx"` to `"env"`
 
 ### Full config with all options:
@@ -237,27 +237,26 @@ The CLI writes the config file automatically. Then confirm the result:
 
 Then run:
 ```bash
-npx octocode-cli skills install --targets <selected-targets> --force
+npx octocode skills install --targets <selected-targets> --force
 ```
 
 This installs 10 bundled skills:
 
 | Skill | What it does |
 |-------|-------------|
-| `octocode-researcher` | Deep code exploration & discovery |
+| `octocode-engineer` | Deep code exploration & discovery |
 | `octocode-research` | Multi-source research orchestration |
 | `octocode-engineer` | System-aware implementation & refactoring |
-| `octocode-plan` | Research-backed planning |
-| `octocode-rfc-generator` | Technical design documents & RFCs |
+| `octocode-rfc-generator` | Technical design documents, RFCs, and research-backed plans |
 | `octocode-documentation-writer` | Codebase documentation generation |
-| `octocode-pull-request-reviewer` | PR review & analysis |
+| `octocode-engineer` | PR review & analysis |
 | `octocode-roast` | Brutally honest code review |
 | `octocode-prompt-optimizer` | Agent prompt & SKILL.md optimization |
 | `octocode-install` | This installer |
 
 After install, verify:
 ```bash
-npx octocode-cli skills list
+npx octocode skills list
 ```
 
 Expected: all skills show `installed` for each target.
@@ -267,12 +266,12 @@ Expected: all skills show `installed` for each target.
 ## Step 6 — Verify
 
 ```bash
-npx octocode-cli status       # auth check
-npx octocode-cli skills list  # skills install check
+npx octocode status       # auth check
+npx octocode skills list  # skills install check
 ```
 
 Then open the IDE and test:
-> "Use octocode-researcher to find the main entry point of this project"
+> "Use octocode-engineer to find the main entry point of this project"
 
 Tools responding = setup complete.
 
@@ -290,8 +289,8 @@ Tools responding = setup complete.
 | Roast | "Roast my code" |
 
 - Local tools require `ENABLE_LOCAL=true` in MCP config
-- Skill not triggering? Name it explicitly: "use octocode-researcher to..."
-- More skills: `npx octocode-cli` → Manage Skills → Browse Marketplace
+- Skill not triggering? Name it explicitly: "use octocode-engineer to..."
+- More skills: `npx octocode` → Manage Skills → Browse Marketplace
 
 ---
 
@@ -301,9 +300,9 @@ Tools responding = setup complete.
 |---------|-----|
 | `npx: command not found` | Install Node.js v18+ |
 | OAuth browser doesn't open (Windows) | Use PAT — set `"GITHUB_TOKEN"` in MCP config `"env"` |
-| `npx octocode-cli status` shows not authenticated | Add `"GITHUB_TOKEN": "ghp_xxx"` to MCP `"env"` |
+| `npx octocode status` shows not authenticated | Add `"GITHUB_TOKEN": "ghp_xxx"` to MCP `"env"` |
 | Local tools return nothing | Add `"ENABLE_LOCAL": "true"` to MCP `"env"`, restart IDE |
 | Skills not loading | Verify `~/<client>/skills/<skill>/SKILL.md` has `name` + `description` |
-| Already installed, want to update | Add `--force`: `npx octocode-cli install --ide cursor --force` |
+| Already installed, want to update | Add `--force`: `npx octocode install --ide cursor --force` |
 
-Docs: [Auth](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md) · [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/CLI_REFERENCE.md) · [Skills](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/SKILLS_GUIDE.md)
+Docs: [Auth](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md) · [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md) · [Skills](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md)

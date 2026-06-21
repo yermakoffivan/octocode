@@ -7,19 +7,24 @@ import {
   statSync,
 } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
-import { getOctocodeDir } from 'octocode-shared';
+import { getOctocodeDir } from '../shared/index.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { getOctokit } from './client.js';
 import type { GitHubDirectoryFileEntry } from '@octocodeai/octocode-core/extra-types';
-import type { DirectoryFetchResult } from '../tools/github_fetch_content/types.js';
+import type {
+  DirectoryFetchResult,
+  FileMaterializationResult,
+} from '../tools/github_fetch_content/types.js';
+import { fetchRawGitHubFileContent } from './fileContentRaw.js';
 import {
-  getCloneDir,
+  getTreeDir,
   isCacheHit,
   writeCacheMeta,
   createCacheMeta,
   ensureCloneParentDir,
-  evictExpiredClones,
+  evictExpiredTrees,
 } from '../tools/github_clone_repo/cache.js';
+import { getExtension } from '../utils/file/filters.js';
 
 export const MAX_DIRECTORY_FILES = 50;
 
@@ -97,45 +102,22 @@ export async function fetchDirectoryContents(
   forceRefresh = false
 ): Promise<DirectoryFetchResult> {
   const octocodeDir = getOctocodeDir();
-  const cloneDir = getCloneDir(octocodeDir, owner, repo, branch);
+  const treeRoot = getTreeDir(octocodeDir, owner, repo, branch);
 
-  const dirPath = resolve(join(cloneDir, path));
-  if (!dirPath.startsWith(cloneDir + sep) && dirPath !== cloneDir) {
+  const dirPath = resolve(join(treeRoot, path));
+  if (!dirPath.startsWith(treeRoot + sep) && dirPath !== treeRoot) {
     throw new Error(
       `Path "${path}" escapes the repository directory. Path traversal is not allowed.`
     );
   }
 
-  const cacheResult = isCacheHit(cloneDir);
+  const cacheResult = isCacheHit(treeRoot);
   if (cacheResult.hit) {
-    const isCloneCache = cacheResult.meta.source === 'clone';
-
-    if (isCloneCache) {
-      if (existsSync(dirPath)) {
-        const cached = scanDirectoryStats(dirPath, cloneDir);
-        return {
-          localPath: dirPath,
-          files: cached.files,
-          fileCount: cached.fileCount,
-          totalSize: cached.totalSize,
-          cached: true,
-          expiresAt: cacheResult.meta.expiresAt,
-          owner,
-          repo,
-          branch,
-          directoryPath: path,
-        };
-      }
-      throw new Error(
-        `Path "${path}" not found in the cloned repository (${owner}/${repo}@${branch}). ` +
-          'To refresh the clone, use ghCloneRepo with forceRefresh: true.'
-      );
-    }
-
     if (!forceRefresh && existsSync(dirPath)) {
-      const cached = scanDirectoryStats(dirPath, cloneDir);
+      const cached = scanDirectoryStats(dirPath, treeRoot);
       return {
         localPath: dirPath,
+        repoRoot: treeRoot,
         files: cached.files,
         fileCount: cached.fileCount,
         totalSize: cached.totalSize,
@@ -168,7 +150,10 @@ export async function fetchDirectoryContents(
       if (item.type !== 'file') return false;
       if (!item.download_url) return false;
       if (item.size > MAX_FILE_SIZE) return false;
-      const ext = getExtension(item.name);
+      const ext = getExtension(item.name, {
+        lowercase: true,
+        leadingDot: true,
+      });
       if (BINARY_EXTENSIONS.has(ext)) return false;
       return true;
     })
@@ -189,8 +174,8 @@ export async function fetchDirectoryContents(
     filesToSave.push({ entry, content });
   }
 
-  evictExpiredClones(octocodeDir);
-  ensureCloneParentDir(cloneDir);
+  evictExpiredTrees(octocodeDir);
+  ensureCloneParentDir(treeRoot);
   if (existsSync(dirPath)) {
     rmSync(dirPath, { recursive: true, force: true });
   }
@@ -198,8 +183,8 @@ export async function fetchDirectoryContents(
 
   const savedFiles: GitHubDirectoryFileEntry[] = [];
   for (const { entry, content } of filesToSave) {
-    const filePath = resolve(join(cloneDir, entry.path));
-    if (!filePath.startsWith(cloneDir + sep)) continue;
+    const filePath = resolve(join(treeRoot, entry.path));
+    if (!filePath.startsWith(treeRoot + sep)) continue;
     const fileDir = dirname(filePath);
     if (!existsSync(fileDir)) {
       mkdirSync(fileDir, { recursive: true, mode: 0o700 });
@@ -212,11 +197,12 @@ export async function fetchDirectoryContents(
     });
   }
 
-  const meta = createCacheMeta(owner, repo, branch, 'directoryFetch');
-  writeCacheMeta(cloneDir, meta);
+  const meta = createCacheMeta(owner, repo, branch, 'treeFetch');
+  writeCacheMeta(treeRoot, meta);
 
   return {
     localPath: dirPath,
+    repoRoot: treeRoot,
     files: savedFiles,
     fileCount: savedFiles.length,
     totalSize,
@@ -226,6 +212,85 @@ export async function fetchDirectoryContents(
     repo,
     branch,
     directoryPath: path,
+  };
+}
+
+export async function fetchFileContentToDisk(
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string,
+  authInfo?: AuthInfo,
+  forceRefresh = false
+): Promise<FileMaterializationResult> {
+  const octocodeDir = getOctocodeDir();
+  const treeRoot = getTreeDir(octocodeDir, owner, repo, branch);
+  const filePath = resolve(join(treeRoot, path));
+  if (!filePath.startsWith(treeRoot + sep) && filePath !== treeRoot) {
+    throw new Error(
+      `Path "${path}" escapes the repository directory. Path traversal is not allowed.`
+    );
+  }
+
+  const cacheResult = isCacheHit(treeRoot);
+  if (!forceRefresh && cacheResult.hit && existsSync(filePath)) {
+    return {
+      localPath: filePath,
+      repoRoot: treeRoot,
+      path,
+      size: safeFileSize(filePath),
+      cached: true,
+      expiresAt: cacheResult.meta.expiresAt,
+      owner,
+      repo,
+      branch,
+    };
+  }
+
+  const rawResult = await fetchRawGitHubFileContent(
+    {
+      owner,
+      repo,
+      path,
+      type: 'file',
+      branch,
+      fullContent: true,
+      contextLines: 0,
+      minify: 'none',
+      mainResearchGoal: 'Materialize GitHub file content for local research',
+      researchGoal: `Save ${owner}/${repo}/${path} locally`,
+      reasoning: 'GitHub file materialization',
+    },
+    authInfo
+  );
+
+  if (!('data' in rawResult) || !rawResult.data) {
+    const error = 'error' in rawResult ? rawResult.error : undefined;
+    throw new Error(error || `Failed to fetch ${owner}/${repo}/${path}`);
+  }
+
+  evictExpiredTrees(octocodeDir);
+  ensureCloneParentDir(treeRoot);
+  const fileDir = dirname(filePath);
+  if (!existsSync(fileDir)) {
+    mkdirSync(fileDir, { recursive: true, mode: 0o700 });
+  }
+  writeFileSync(filePath, rawResult.data.rawContent, 'utf-8');
+
+  const resolvedBranch = rawResult.data.branch || branch;
+  const meta = createCacheMeta(owner, repo, resolvedBranch, 'treeFetch');
+  writeCacheMeta(treeRoot, meta);
+
+  return {
+    localPath: filePath,
+    repoRoot: treeRoot,
+    path,
+    size: rawResult.data.rawContent.length,
+    cached: false,
+    expiresAt: meta.expiresAt,
+    owner,
+    repo,
+    branch: resolvedBranch,
   };
 }
 
@@ -303,7 +368,7 @@ async function fetchDownloadUrl(url: string, token?: string): Promise<string> {
 
 function scanDirectoryStats(
   dirPath: string,
-  cloneDir: string
+  repoRoot: string
 ): { files: GitHubDirectoryFileEntry[]; fileCount: number; totalSize: number } {
   const files: GitHubDirectoryFileEntry[] = [];
   let totalSize = 0;
@@ -323,7 +388,7 @@ function scanDirectoryStats(
         if (st.isDirectory()) {
           walk(full);
         } else if (st.isFile()) {
-          const relativePath = full.substring(cloneDir.length + 1);
+          const relativePath = full.substring(repoRoot.length + 1);
           totalSize += st.size;
           files.push({ path: relativePath, size: st.size, type: 'file' });
         }
@@ -337,8 +402,10 @@ function scanDirectoryStats(
   return { files, fileCount: files.length, totalSize };
 }
 
-function getExtension(filename: string): string {
-  const lastDot = filename.lastIndexOf('.');
-  if (lastDot === -1) return '';
-  return filename.substring(lastDot).toLowerCase();
+function safeFileSize(path: string): number {
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
 }

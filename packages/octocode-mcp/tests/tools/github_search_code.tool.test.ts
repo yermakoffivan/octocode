@@ -454,7 +454,11 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
           items: [
             {
               path: 'src/widget.ts',
-              repository: { id: '1', name: 'wix-private/payments', url: '' },
+              repository: {
+                id: '1',
+                name: 'organization-private/payments',
+                url: '',
+              },
               matches: [{ context: 'refund widget', positions: [] }],
               url: '',
             },
@@ -470,14 +474,14 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
         queries: [
           {
             keywords: ['refund', 'widget'],
-            owner: 'wix-private',
+            owner: 'organization-private',
           },
         ],
       });
 
       expect(mockProvider.searchCode).toHaveBeenCalledTimes(1);
       const providerQuery = mockProvider.searchCode.mock.calls[0]?.[0];
-      expect(providerQuery.owner).toBe('wix-private');
+      expect(providerQuery.owner).toBe('organization-private');
     });
 
     it('should return results when searching by owner only', async () => {
@@ -486,7 +490,11 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
           items: [
             {
               path: 'src/refund.ts',
-              repository: { id: '1', name: 'wix-private/billing', url: '' },
+              repository: {
+                id: '1',
+                name: 'organization-private/billing',
+                url: '',
+              },
               matches: [{ context: 'process refund', positions: [] }],
               url: '',
             },
@@ -502,14 +510,14 @@ describe('GitHub Search Code Tool - Tool Layer Integration', () => {
         queries: [
           {
             keywords: ['refund'],
-            owner: 'wix-private',
+            owner: 'organization-private',
           },
         ],
       });
 
       expect(result.isError).toBe(false);
       const responseText = getTextContent(result.content);
-      expect(responseText).toContain('owner: wix-private');
+      expect(responseText).toContain('owner: organization-private');
       expect(responseText).toContain('src/refund.ts');
     });
   });

@@ -1,5 +1,4 @@
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type { HintContext } from './metadata.js';
 
 export type WithOptionalMeta<T> = Partial<T>;
 
@@ -14,5 +13,5 @@ export interface ToolExecutionArgs<TQuery> {
 
   sessionId?: string;
 
-  hintContext?: HintContext;
+  hintContext?: Record<string, unknown>;
 }

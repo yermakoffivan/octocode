@@ -34,5 +34,5 @@
 
 ## Example call
 ```json
-{ "queries": [ {"keywordsToSearch":["zustand"],"limit":3} ], "responseCharLength": 500 }
+{ "queries": [ {"keywords":["zustand"],"limit":3} ], "responseCharLength": 500 }
 ```

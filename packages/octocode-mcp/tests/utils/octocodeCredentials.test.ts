@@ -1,13 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/credentials', () => ({
   getToken: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@octocodeai/octocode-tools-core/config', () => ({
   getConfigSync: vi.fn(() => ({})),
   getOctocodeDir: vi.fn(() => '/mock/.octocode'),
+}));
+
+vi.mock('@octocodeai/octocode-tools-core/paths', () => ({
   OCTOCODE_DIR: '/mock/.octocode',
 }));
 
-import { getToken as getOctocodeToken } from 'octocode-shared';
+import { getToken as getOctocodeToken } from '@octocodeai/octocode-tools-core/credentials';
 
 describe('octocodeCredentials (via shared package)', () => {
   beforeEach(() => {

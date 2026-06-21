@@ -1,4 +1,4 @@
-import { getConfigSync } from 'octocode-shared';
+import { getConfigSync } from '../../shared/index.js';
 
 type Environment = 'vscode' | 'claude-code-mcp' | 'cursor' | 'standalone';
 

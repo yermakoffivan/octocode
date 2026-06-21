@@ -11,7 +11,7 @@ import {
   _setTokenResolvers,
   _resetTokenResolvers,
 } from '../../octocode-tools-core/src/serverConfig.js';
-import type { FullTokenResolution } from 'octocode-shared';
+import type { FullTokenResolution } from '@octocodeai/octocode-tools-core/credentials';
 
 type ResolveTokenFullMock = Mock<
   (options?: {
@@ -253,8 +253,8 @@ describe('ServerConfig - Simplified Version', () => {
     });
   });
 
-  describe('octocode-cli Credential Fallback', () => {
-    it('should use octocode-cli token when GITHUB_TOKEN and gh CLI are unavailable', async () => {
+  describe('octocode Credential Fallback', () => {
+    it('should use octocode token when GITHUB_TOKEN and gh CLI are unavailable', async () => {
       delete process.env.GITHUB_TOKEN;
 
       mockTokenResolution('octocode-stored-token', 'octocode-storage');
@@ -264,7 +264,7 @@ describe('ServerConfig - Simplified Version', () => {
       expect(token).toBe('octocode-stored-token');
     });
 
-    it('should prioritize GITHUB_TOKEN over octocode-cli token', async () => {
+    it('should prioritize GITHUB_TOKEN over octocode token', async () => {
       process.env.GITHUB_TOKEN = 'env-token';
 
       mockTokenResolution('env-token', 'env:GITHUB_TOKEN');
@@ -274,7 +274,7 @@ describe('ServerConfig - Simplified Version', () => {
       expect(token).toBe('env-token');
     });
 
-    it('should prioritize gh CLI token over octocode-cli token', async () => {
+    it('should prioritize gh CLI token over octocode token', async () => {
       delete process.env.GITHUB_TOKEN;
 
       mockSpawnSuccess('gh-cli-token');
@@ -294,7 +294,7 @@ describe('ServerConfig - Simplified Version', () => {
       expect(token).toBeNull();
     });
 
-    it('should handle octocode-cli token with whitespace', async () => {
+    it('should handle octocode token with whitespace', async () => {
       delete process.env.GITHUB_TOKEN;
 
       mockTokenResolution('octocode-token-with-spaces', 'octocode-storage');
@@ -304,7 +304,7 @@ describe('ServerConfig - Simplified Version', () => {
       expect(token).toBe('octocode-token-with-spaces');
     });
 
-    it('should skip empty octocode-cli token', async () => {
+    it('should skip empty octocode token', async () => {
       delete process.env.GITHUB_TOKEN;
 
       mockTokenResolution(null);
@@ -314,7 +314,7 @@ describe('ServerConfig - Simplified Version', () => {
       expect(token).toBeNull();
     });
 
-    it('should handle octocode-cli errors gracefully', async () => {
+    it('should handle octocode errors gracefully', async () => {
       mockResolveTokenFull.mockRejectedValue(new Error('Read error'));
 
       const token = await getGitHubToken();

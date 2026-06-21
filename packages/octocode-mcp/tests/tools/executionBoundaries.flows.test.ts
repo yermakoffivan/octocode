@@ -28,7 +28,7 @@ vi.mock('@octocodeai/octocode-core', () => ({
     safeParse: vi.fn().mockReturnValue({ success: true }),
   },
   completeMetadata: {
-    instructions: '',
+    systemPrompt: '',
     prompts: {},
     toolNames: {},
     baseSchema: {

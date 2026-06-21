@@ -16,16 +16,11 @@ export interface DirectoryEntry {
 type EntryFilterQuery = Pick<
   {
     pattern?: string;
-    extensions?: string[];
     directoriesOnly?: boolean;
     filesOnly?: boolean;
   },
-  'pattern' | 'extensions' | 'directoriesOnly' | 'filesOnly'
+  'pattern' | 'directoriesOnly' | 'filesOnly'
 >;
-
-function normalizeExtension(extension: string): string {
-  return extension.startsWith('.') ? extension.slice(1) : extension;
-}
 
 export function applyEntryFilters(
   entries: DirectoryEntry[],
@@ -86,18 +81,6 @@ export function applyEntryFilters(
     }
   }
 
-  const extensions =
-    query.extensions && query.extensions.length > 0
-      ? query.extensions.map(normalizeExtension)
-      : [];
-  if (extensions.length > 0) {
-    filtered = filtered.filter(
-      e =>
-        e.type === 'directory' ||
-        (e.extension && extensions.includes(e.extension))
-    );
-  }
-
   if (query.directoriesOnly) {
     filtered = filtered.filter(e => e.type === 'directory');
   }
@@ -107,30 +90,6 @@ export function applyEntryFilters(
   }
 
   return filtered;
-}
-
-export function formatEntryString(
-  entry: DirectoryEntry,
-  indent: number = 0
-): string {
-  const indentation = '  '.repeat(indent);
-  const typeMarker =
-    entry.type === 'directory'
-      ? '[DIR] '
-      : entry.type === 'symlink'
-        ? '[LINK]'
-        : '[FILE]';
-  const nameDisplay =
-    entry.type === 'directory' ? `${entry.name}/` : entry.name;
-  const dateStr = entry.modified ? ` ${entry.modified.split('T')[0]}` : '';
-  const permStr = entry.permissions ? ` ${entry.permissions}` : '';
-
-  if (entry.type === 'file' && entry.size) {
-    const extStr = entry.extension ? ` .${entry.extension}` : '';
-    return `${indentation}${typeMarker}${permStr} ${nameDisplay} (${entry.size})${dateStr}${extStr}`;
-  } else {
-    return `${indentation}${typeMarker}${permStr}${dateStr} ${nameDisplay}`;
-  }
 }
 
 interface EntryOutput {

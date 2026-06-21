@@ -3,7 +3,7 @@ import { type RipgrepQuery, LocalRipgrepQuerySchema } from './scheme.js';
 import { TOOL_NAMES } from '../toolMetadata/proxies.js';
 import { executeBulkOperation } from '../../utils/response/bulk.js';
 import { searchContentRipgrep } from './searchContentRipgrep.js';
-import { createErrorResult } from '../utils.js';
+import { safeParseOrError } from '../utils.js';
 import { executeWithToolBoundary } from '../executionGuard.js';
 import type { ToolExecutionArgs } from '../../types/execution.js';
 export { finalizeRipgrepResult } from './ripgrepResultBuilder.js';
@@ -21,20 +21,19 @@ export async function executeRipgrepSearch(
         query,
         contextMessage: 'localSearchCode execution failed',
         execute: async () => {
-          const validation = LocalRipgrepQuerySchema.safeParse(query);
-          if (!validation.success) {
-            const messages = validation.error.issues
-              .map(i => i.message)
-              .join('; ');
-            return createErrorResult(`Validation error: ${messages}`, query);
+          const parsed = safeParseOrError<RipgrepQuery>(
+            LocalRipgrepQuerySchema,
+            query
+          );
+          if (parsed.ok === false) {
+            return parsed.error;
           }
-          const result = await searchContentRipgrep(validation.data);
+          const result = await searchContentRipgrep(parsed.data);
           return result;
         },
       }),
     {
       toolName: TOOL_NAMES.LOCAL_RIPGREP,
-      peerHints: true,
     },
     args
   );

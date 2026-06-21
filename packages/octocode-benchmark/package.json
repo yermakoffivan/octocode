@@ -1,0 +1,29 @@
+{
+  "name": "@octocodeai/octocode-benchmark",
+  "version": "16.3.0",
+  "private": true,
+  "description": "Private internal benchmark suite for Octocode tools and engine behavior.",
+  "type": "module",
+  "scripts": {
+    "ast:check": "node benchmark/ast/check-ast.mjs",
+    "lsp:check": "node benchmark/lsp/check-lsp.mjs",
+    "lsp:live": "node benchmark/lsp/check-lsp-live.mjs",
+    "minify:check": "node benchmark/minify/check-minify.mjs",
+    "matrix:check": "node benchmark/check-matrix.mjs",
+    "support:gen": "node benchmark/check-matrix.mjs --write",
+    "ast:compare": "node benchmark/ast/compare-ast-grep-cli.mjs",
+    "ast:compare:cli": "node benchmark/ast/compare-ast-grep-cli.mjs",
+    "ast:compare:upstream": "node benchmark/ast-grep/compare-upstream-scenarios.mjs",
+    "ast:compare:layers": "node benchmark/ast-grep/compare-upstream-scenarios.mjs",
+    "benchmark": "node benchmark/run-all.mjs",
+    "build": "echo 'No build step for benchmark package'",
+    "test": "echo 'Benchmark checks are explicit; run yarn benchmark'",
+    "test:quiet": "yarn test",
+    "lint": "echo 'No benchmark source files to lint'",
+    "typecheck": "echo 'No TypeScript source files to typecheck'",
+    "verify": "yarn lint && yarn typecheck && yarn test"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

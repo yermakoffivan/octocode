@@ -23,7 +23,7 @@ vi.mock('../../../octocode-tools-core/src/github/client.js', () => ({
 }));
 
 const mockGetOctocodeDir = vi.hoisted(() => vi.fn());
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/config', () => ({
   getOctocodeDir: mockGetOctocodeDir,
   getConfigSync: vi.fn(() => ({
     local: {

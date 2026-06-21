@@ -7,7 +7,7 @@ import {
 import { filterPatch, trimDiffContext } from '../../../src/utils/parsers/diff.js';
 import { parseRipgrepJson } from '../../../src/utils/parsers/ripgrep.js';
 
-type NativeContextUtilsModule = typeof import('@octocodeai/octocode-context-utils');
+type NativeContextUtilsModule = typeof import('@octocodeai/octocode-engine');
 
 function installNative(partial: Partial<NativeContextUtilsModule>): void {
   setContextUtilsNativeLoaderForTesting(() => partial as NativeContextUtilsModule);

@@ -1,5 +1,5 @@
 import path from 'path';
-import { pathValidator } from 'octocode-security/pathValidator';
+import { pathValidator } from '@octocodeai/octocode-engine/pathValidator';
 import { ToolErrors } from '../../errors/errorFactories.js';
 import type { BaseQueryLocal } from '@octocodeai/octocode-core/extra-types';
 type PartialBaseQueryLocal = Partial<BaseQueryLocal>;
@@ -7,7 +7,7 @@ import {
   createErrorResult,
   type UnifiedErrorResult,
 } from '../response/error.js';
-import { getConfigSync } from 'octocode-shared';
+import { getConfigSync } from '../../shared/index.js';
 
 type LocalErrorResult = UnifiedErrorResult;
 
@@ -16,41 +16,6 @@ export { createErrorResult };
 type ToolPathValidationResult =
   | { isValid: false; errorResult: LocalErrorResult; sanitizedPath?: undefined }
   | { isValid: true; sanitizedPath: string; errorResult?: undefined };
-
-function getPathErrorHints(
-  inputPath: string,
-  errorMessage: string | undefined,
-  cwd: string,
-  resolvedPath: string
-): string[] {
-  const hints: string[] = [];
-
-  const resolvedInfo =
-    inputPath !== resolvedPath ? ` (resolved to: ${resolvedPath})` : '';
-  hints.push(`CWD: ${cwd}`);
-
-  if (errorMessage?.includes('outside allowed')) {
-    hints.push(
-      `Fix: Use absolute path within workspace, e.g. path="${cwd}/..."${resolvedInfo}`
-    );
-  } else if (errorMessage?.includes('Permission denied')) {
-    hints.push('Fix: Check file/directory permissions');
-  } else if (
-    errorMessage?.includes('Symlink') ||
-    errorMessage?.includes('symlink')
-  ) {
-    hints.push('Fix: Symlink target may be outside allowed directories');
-  } else if (
-    errorMessage?.includes('ENOENT') ||
-    errorMessage?.includes('not found')
-  ) {
-    hints.push(
-      `Fix: Path not found. Use absolute path, e.g. path="${cwd}/..."${resolvedInfo}`
-    );
-  }
-
-  return hints;
-}
 
 export function validateToolPath(
   query: PartialBaseQueryLocal & { path?: string },
@@ -80,27 +45,14 @@ export function validateToolPath(
       validation.error
     );
 
-    const pathHints = getPathErrorHints(
-      query.path,
-      validation.error,
-      cwd,
-      resolvedPath
-    );
-
     return {
       isValid: false,
       errorResult: createErrorResult(toolError, query, {
         toolName,
-        hintContext: {
-          errorType: 'permission',
-          path: query.path,
-          originalError: validation.error,
-        },
         extra: {
           cwd,
           resolvedPath,
         },
-        customHints: pathHints,
       }),
     };
   }

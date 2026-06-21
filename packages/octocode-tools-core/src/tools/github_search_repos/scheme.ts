@@ -60,6 +60,7 @@ const RepositoryPaginationSchema = z
     reachableTotalMatches: z.number().optional(),
     totalMatchesKind: z.enum(['exact', 'reported', 'lowerBound']).optional(),
     totalMatchesCapped: z.boolean().optional(),
+    nextPage: z.number().optional(),
   })
   .optional();
 

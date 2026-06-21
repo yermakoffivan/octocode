@@ -154,7 +154,7 @@ const buildMockConfig = () => {
   };
 };
 
-vi.mock('octocode-shared', () => ({
+vi.mock('@octocodeai/octocode-tools-core/config', () => ({
   getConfigSync: vi.fn(() => buildMockConfig()),
   getConfig: vi.fn(async () => buildMockConfig()),
   _resetSessionState: vi.fn(() => {
@@ -225,16 +225,10 @@ vi.mock('octocode-shared', () => ({
 
 export { sessionMockState };
 
-const mockToolHints = {
-  hasResults: ['Test hint for hasResults 1', 'Test hint for hasResults 2'],
-  empty: ['Test hint for empty 1', 'Test hint for empty 2'],
-};
-
 const mockToolSchema = {
   name: 'mockTool',
   description: 'Mock tool for testing',
   schema: {},
-  hints: mockToolHints,
 };
 
 const githubFetchContentSchema = {
@@ -254,30 +248,6 @@ const githubFetchContentSchema = {
     lineRangeMismatch:
       'lineRangeMismatch: startLine and endLine must be used together',
   },
-  hints: mockToolHints,
-};
-
-const mockDynamicHints = {
-  parallelTip: ['Use parallel queries for faster results'],
-  multipleFiles: ['Multiple files found - use localGetFileContent to read'],
-  grepFallback: ['Using grep fallback (ripgrep unavailable)'],
-  grepFallbackEmpty: ['Try with ripgrep for better results'],
-  nodeModulesSearch: [
-    'Consider searching in packages/ instead of node_modules',
-  ],
-  largeResult: ['Large result set - narrow your search'],
-  largeFile: ['Use matchString or charLength for large files'],
-  patternTooBroad: ['Pattern matched too many results - narrow it'],
-  parallelize: ['Parallelize: multiple directories found'],
-  largeDirectory: ['Use entriesPerPage to paginate large directories'],
-  batchParallel: ['Use parallel queries for batch operations'],
-  manyResults: ['Many results found - consider filtering'],
-  configFiles: ['Config files found - check for project settings'],
-  singleRepo: ['Searching single repo: use ghGetFileContent for details'],
-  multiRepo: ['Searching multiple repos: narrow with owner/repo'],
-  pathEmpty: ['Path search empty - try match="file" instead'],
-  crossRepoEmpty: ['Cross-repo search empty - specify owner/repo'],
-  fileTooLarge: ['File too large - use matchString or line range'],
 };
 
 const lspGetSemanticsSchema = {
@@ -292,69 +262,40 @@ const lspGetSemanticsSchema = {
     itemsPerPage: 'Semantic items per page',
     contextLines: 'Lines of context to include',
   },
-  hints: {
-    ...mockToolHints,
-    dynamic: {
-      semanticContent: ['Semantic content returned'],
-      symbolNotFound: ['Symbol not found - verify name and lineHint'],
-      fileNotFound: ['File not found - check path'],
-      timeout: ['LSP timeout - try again or use localSearchCode'],
-    },
-  },
 };
 
 const localRipgrepSchema = {
   name: 'localSearchCode',
   description: 'Search code with ripgrep',
   schema: {},
-  hints: {
-    ...mockToolHints,
-    dynamic: mockDynamicHints,
-  },
 };
 
 const localFetchContentSchema = {
   name: 'localGetFileContent',
   description: 'Read local file content',
   schema: {},
-  hints: {
-    ...mockToolHints,
-    dynamic: mockDynamicHints,
-  },
 };
 
 const localViewStructureSchema = {
   name: 'localViewStructure',
   description: 'Browse local directory structure',
   schema: {},
-  hints: {
-    ...mockToolHints,
-    dynamic: mockDynamicHints,
-  },
 };
 
 const localFindFilesSchema = {
   name: 'localFindFiles',
   description: 'Find files by metadata',
   schema: {},
-  hints: {
-    ...mockToolHints,
-    dynamic: mockDynamicHints,
-  },
 };
 
 const ghSearchCodeSchema = {
   name: 'ghSearchCode',
   description: 'Search code across GitHub',
   schema: {},
-  hints: {
-    ...mockToolHints,
-    dynamic: mockDynamicHints,
-  },
 };
 
 const mockContent = {
-  instructions: 'Test instructions',
+  systemPrompt: 'Test instructions',
   prompts: {},
   toolNames: {
     GITHUB_FETCH_CONTENT: 'ghGetFileContent',
@@ -397,7 +338,6 @@ const mockContent = {
         charOffset: 'Character offset for output pagination',
         charLength: 'Character budget for output pagination',
       },
-      hints: mockToolHints,
     },
     localSearchCode: localRipgrepSchema,
     localGetFileContent: localFetchContentSchema,
@@ -407,17 +347,6 @@ const mockContent = {
     ghHistorySearch: mockToolSchema,
     localBinaryInspect: mockToolSchema,
   },
-  baseHints: {
-    hasResults: ['Base hint for hasResults'],
-    empty: ['Base hint for empty'],
-  },
-  genericErrorHints: [
-    'Generic error hint 1',
-    'Generic error hint 2',
-    'Generic error hint 3',
-    'Generic error hint 4',
-    'Generic error hint 5',
-  ],
   bulkOperations: {
     instructions: {
       base: 'Bulk response with {count} results: {counts}',

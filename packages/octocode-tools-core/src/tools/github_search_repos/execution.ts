@@ -129,7 +129,6 @@ function buildReposSearchOutput(
     repositories: (string | RepositoryDetail)[];
     pagination?: unknown;
   };
-  extraHints: string[];
 } {
   const concise = (query as { concise?: boolean }).concise === true;
   return {
@@ -139,11 +138,6 @@ function buildReposSearchOutput(
         ? data.repositories.map(r => `${r.owner ? `${r.owner}/` : ''}${r.repo}`)
         : data.repositories.map(buildRepositoryDetail),
     },
-    extraHints: concise
-      ? [
-          'Minimal owner/repo list — re-run without concise (or ghViewRepoStructure) to dive into a chosen repo.',
-        ]
-      : [],
   };
 }
 import {
@@ -154,7 +148,6 @@ import {
 } from '../utils.js';
 import type { RepoSearchResult as ProviderRepoSearchResult } from '../../providers/types.js';
 import {
-  buildPaginationHints,
   mapRepoSearchProviderRepositories,
   mapRepoSearchToolQuery,
 } from '../providerMappers.js';
@@ -378,6 +371,7 @@ function buildResultPagination(pagination: {
     perPage: pagination.entriesPerPage || 10,
     totalMatches: pagination.totalMatches || 0,
     hasMore: pagination.hasMore,
+    ...(pagination.hasMore ? { nextPage: pagination.currentPage + 1 } : {}),
   };
 }
 
@@ -420,28 +414,6 @@ function buildMergedPagination(
   };
 }
 
-function buildMergedPaginationHints(pagination: EffectivePagination): string[] {
-  if (!pagination.hasMore) return [];
-  return [
-    `Page ${pagination.currentPage}/${pagination.totalPages} for merged topic+keyword results (~${pagination.totalMatches ?? 0} upper-bound total). Next: page=${pagination.currentPage + 1}.`,
-  ];
-}
-
-function createVariantFailureHints(
-  failures: RepoSearchVariantExecution[]
-): string[] {
-  return failures.flatMap(failure => {
-    const label =
-      failure.label === 'topics'
-        ? 'Topic search'
-        : failure.label === 'keywords'
-          ? 'Keyword search'
-          : 'Search';
-    const error = failure.response.error || 'Provider error';
-    return `${label} failed: ${error}`;
-  });
-}
-
 function sumVariantRawResponseChars(
   variants: RepoSearchVariantExecution[]
 ): number {
@@ -452,59 +424,6 @@ function sumVariantRawResponseChars(
         countSerializedChars(variant.response.data ?? variant.response)),
     0
   );
-}
-
-const LARGE_RESULT_THRESHOLD = 100;
-
-function generateSearchSpecificHints(
-  query: PartialReposSearchQuery,
-  hasResults: boolean,
-  hasMore = false,
-  totalMatches = 0
-): string[] | undefined {
-  if (hasResults) {
-    if (
-      hasMore &&
-      totalMatches > LARGE_RESULT_THRESHOLD &&
-      !query.owner &&
-      !query.language &&
-      !query.stars
-    ) {
-      return [
-        'Large result set with no owner/language/stars filter — add owner="<org>" to scope to a specific org, language="<lang>" to restrict by language, or stars=">100" to surface established repos.',
-      ];
-    }
-    return undefined;
-  }
-  const hasTopics = hasValidTopics(query);
-  const hasKeywords = hasValidKeywords(query);
-  const stars = typeof query.stars === 'string' ? query.stars : undefined;
-  const created = typeof query.created === 'string' ? query.created : undefined;
-  const updated = typeof query.updated === 'string' ? query.updated : undefined;
-  const hints: string[] = [];
-
-  if (hasTopics && hasKeywords) {
-    hints.push('No match for topics AND keywords. Drop topics, then keywords.');
-  } else if (hasTopics) {
-    hints.push('No topic match. Drop one, try synonyms, or use keywords.');
-  } else if (hasKeywords) {
-    hints.push(
-      'No keyword match. Drop the rarest, try synonyms, or use topics.'
-    );
-  }
-
-  const filters: string[] = [];
-  if (stars) filters.push(`stars="${stars}"`);
-  if (created) filters.push(`created="${created}"`);
-  if (updated) filters.push(`updated="${updated}"`);
-  if (filters.length > 0) {
-    hints.push(`Filters (${filters.join(', ')}) — try widening/removing.`);
-  }
-
-  if (hints.length === 0) {
-    return undefined;
-  }
-  return hints;
 }
 
 export async function searchMultipleGitHubRepos(
@@ -556,7 +475,9 @@ export async function searchMultipleGitHubRepos(
           if (!firstFailedVariant) {
             return handleCatchError(
               new Error('Repository search produced no provider results'),
-              query
+              query,
+              undefined,
+              TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES
             );
           }
           return handleProviderError(firstFailedVariant.response, query);
@@ -578,17 +499,6 @@ export async function searchMultipleGitHubRepos(
             ? rankedRepositories.slice(0, mergedLimit)
             : rankedRepositories;
 
-        const nonExistentScope = successfulVariants.some(
-          variant =>
-            (variant.response.data as { nonExistentScope?: boolean })
-              .nonExistentScope
-        );
-        const scopeHints =
-          repositories.length === 0 && nonExistentScope
-            ? [
-                `Owner "${query.owner ?? '?'}" doesn't exist or isn't searchable — verify spelling/access, not filters.`,
-              ]
-            : [];
         const onlySuccessfulVariant =
           successfulVariants.length === 1 ? successfulVariants[0] : undefined;
         const isMergedResult = successfulVariants.length > 1;
@@ -596,79 +506,16 @@ export async function searchMultipleGitHubRepos(
           isMergedResult
             ? buildMergedPagination(successfulVariants)
             : onlySuccessfulVariant?.response.data.pagination;
-        const paginationHints = effectivePagination
-          ? isMergedResult
-            ? buildMergedPaginationHints(effectivePagination)
-            : buildPaginationHints(effectivePagination, 'repos')
-          : [];
         const resultPagination = effectivePagination
           ? buildResultPagination(effectivePagination)
           : undefined;
-        const requestedPage = (query as { page?: number }).page;
-        const lastAvailablePage = effectivePagination?.totalPages ?? 0;
-        const pageExceedsTotal = Boolean(
-          typeof requestedPage === 'number' &&
-          lastAvailablePage > 0 &&
-          requestedPage > lastAvailablePage &&
-          repositories.length === 0
-        );
-        const pageExceededHints = pageExceedsTotal
-          ? [
-              `page ${requestedPage} exceeds totalPages ${lastAvailablePage} — last page is ${lastAvailablePage}.`,
-            ]
-          : [];
 
         const hasContent = repositories.length > 0;
-        const hasMore = Boolean(effectivePagination?.hasMore);
-        const totalMatchesForHint =
-          effectivePagination?.totalMatches ??
-          effectivePagination?.reachableTotalMatches ??
-          0;
-        const searchHints = pageExceedsTotal
-          ? undefined
-          : generateSearchSpecificHints(
-              query,
-              hasContent,
-              hasMore,
-              totalMatchesForHint
-            );
-        const partialFailureHints =
-          variants.length > 1 && successfulVariants.length === 1
-            ? [
-                `Only ${onlySuccessfulVariant?.label ?? 'one'} search succeeded; pagination reflects that subset.`,
-                ...createVariantFailureHints(failedVariants),
-              ]
-            : createVariantFailureHints(failedVariants);
 
         const shape = buildReposSearchOutput(
           { repositories, pagination: resultPagination },
           query
         );
-
-        const escalationHints: string[] = [];
-        if (hasContent) {
-          const top = repositories[0];
-          if (top?.owner && top?.repo) {
-            escalationHints.push(
-              `Top result: ${top.owner}/${top.repo} — use ghViewRepoStructure to browse or ghSearchCode to search within it.`
-            );
-          }
-          if (repositories.length >= 3) {
-            escalationHints.push(
-              'Use multiple ghViewRepoStructure queries in parallel to compare the layouts of top results.'
-            );
-          }
-        }
-        const allExtraHints = [
-          ...pageExceededHints,
-          ...scopeHints,
-          ...shape.extraHints,
-          ...partialFailureHints,
-          ...paginationHints,
-          ...(searchHints || []),
-          ...escalationHints,
-        ];
-        const finalExtraHints = allExtraHints;
 
         return createSuccessResult(
           query,
@@ -676,15 +523,6 @@ export async function searchMultipleGitHubRepos(
           hasContent,
           TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
           {
-            extraHints: finalExtraHints,
-            hintContext: pageExceedsTotal
-              ? {}
-              : {
-                  keywords: query.keywords,
-                  owner: query.owner,
-                  language: query.language,
-                  topic: query.topicsToSearch?.[0],
-                },
             rawResponse: sumVariantRawResponseChars([
               ...successfulVariants,
               ...failedVariants,
@@ -692,13 +530,17 @@ export async function searchMultipleGitHubRepos(
           }
         );
       } catch (error) {
-        return handleCatchError(error, query);
+        return handleCatchError(
+          error,
+          query,
+          undefined,
+          TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES
+        );
       }
     },
     {
       toolName: TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
       keysPriority: ['repositories', 'pagination', 'error'] satisfies string[],
-      peerHints: true,
     },
     args
   );

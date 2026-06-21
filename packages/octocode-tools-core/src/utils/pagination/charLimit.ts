@@ -1,5 +1,5 @@
-import { getConfigSync } from 'octocode-shared';
-import { DEFAULT_OUTPUT_CONFIG } from 'octocode-shared';
+import { getConfigSync } from '../../shared/index.js';
+import { DEFAULT_OUTPUT_CONFIG } from '../../shared/index.js';
 
 export function getOutputCharLimit(): number {
   try {

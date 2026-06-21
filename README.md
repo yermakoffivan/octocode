@@ -1,135 +1,200 @@
-# Octocode: Research Driven Development for AI
+# Agentic Research Platform
 
 <div align="center">
-  <img src="https://github.com/bgauryy/octocode-mcp/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
-  
-  <h3>Research like a Senior Staff Engineer.<br/>In every codebase, in seconds.</h3>
-  <p><strong>Stop guessing.</strong> Octocode gives AI agents and humans one evidence-first research engine for local workspaces, GitHub repositories, pull requests, npm packages, and LSP semantic navigation.</p>
-  <p>It has <strong>two interfaces</strong>: an <strong>MCP server</strong> for AI assistants and a <strong>CLI</strong> for terminals, scripts, and CI.</p>
+  <img src="https://github.com/bgauryy/octocode/raw/main/packages/octocode-mcp/assets/logo_white.png" width="400px" alt="Octocode Logo">
 
-  <p>
-    <a href="https://octocode.ai"><strong>octocode.ai</strong></a>
-    &nbsp;·&nbsp;
-    <a href="#quickstart">Quickstart</a>
-    &nbsp;·&nbsp;
-    <a href="#two-interfaces-one-engine">Interfaces</a>
-    &nbsp;·&nbsp;
-    <a href="#all-12-octocode-tools">Tools</a>
-    &nbsp;·&nbsp;
-    <a href="#cli-commands">CLI</a>
-    &nbsp;·&nbsp;
-    <a href="#develop-locally">Develop</a>
-    &nbsp;·&nbsp;
-    <a href="#packages">Packages</a>
-    &nbsp;·&nbsp;
-    <a href="#skills">Skills</a>
-  </p>
+  [![MCP Community Server](https://img.shields.io/badge/Model_Context_Protocol-Official_Community_Server-blue?style=flat-square)](https://github.com/modelcontextprotocol/servers)
+  [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/bgauryy/octocode)
+  [![Website](https://img.shields.io/badge/Website-007ACC?style=for-the-badge&logo=link&logoColor=white)](https://octocode.ai)
+  [![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/@Octocode-ai)
+
 </div>
 
+**Evidence-first code research for AI agents and developers.**
+
+Octocode gives an agent the full context it needs to change, review, or explain code: real evidence from your **local workspace** and from **external** sources (GitHub repositories, pull requests, and npm packages). One toolset covers all of it: ripgrep and AST structural search, repository tree browsing, precise content fetching, LSP semantic navigation, and binary inspection.
+
+Run it as a **CLI** or an **MCP server**. A **Rust engine** keeps every call fast and token-efficient, minifying and skeletonizing code so an agent reads the shape of a file instead of every byte, from a single file to a mega-repo. It is also the best tool for **cross-repository research and exploration across millions of repositories**.
+
 ---
 
-## Quickstart
+## Table of Contents
 
-Pick the path that matches where you want Octocode to show up.
+- [Why Octocode](#why-octocode)
+- [Tools](#tools)
+- [MCP](#mcp)
+- [CLI](#cli)
+- [Configuration](#configuration)
+- [Authentication Methods](#authentication-methods)
+- [Security](#security)
+- [Language Support](#language-support)
+- [Skills](#skills)
+- [Architecture](#architecture)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
 
-### Add Octocode to an AI Assistant
+---
+
+## Why Octocode
+
+Agents write better code from evidence than from assumptions. Octocode turns *guess-driven* work into **research-driven** work. Before an agent changes, reviews, or explains code, it gathers real evidence from your local workspace **and** from GitHub repositories, pull requests, and npm packages, then hands it back as compact, citable context. *Code is truth; context is the map.*
+
+Most tools cover one slice: searching the web, or grepping your repo. Octocode covers the **whole research flow, end to end**:
+
+- **Built for scale.** In organizations with thousands of repositories and endless code, Octocode is the solution: spot a pattern in one repo, follow it through the pull request that introduced it, then trace the same shape across other repos and your own files without leaving the conversation. Clone any repo and study it locally, on any machine.
+- **Smart GitHub workflows.** Parallel bulk queries and built-in **next-step hints** keep the agent on the cheapest path: search broadly, read narrowly, trace semantically. Each result points to the natural follow-up.
+- **No GitHub required.** Even without GitHub, clone any repository locally and point Octocode's local tools (search, structural AST, LSP, content) at it for the same evidence-first research.
+- **Reads the shape, not the noise.** Code is minified and skeletonized on the fly across 70+ languages, so an agent grasps a 100 KB file in a few hundred tokens instead of spending its context on boilerplate.
+- **Fast and self-contained.** Search, parsing, semantic navigation, and redaction run in one prebuilt **Rust engine**: quick on a laptop or a mega-repo, with no extra toolchain to install.
+- **Safe by default.** Every byte returned to the model is scanned and secrets redacted first (see [Security](#security)).
+
+### Get Started
+
+Add Octocode to an AI assistant with MCP, or run the same tools directly from
+your terminal with the CLI.
+
+**MCP fast install:**
+
+[<img src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Install in Cursor">](https://cursor.com/en/install-mcp?name=octocode&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJvY3RvY29kZS1tY3BAbGF0ZXN0Il19) [<img src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D) [<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D)
 
 ```bash
-# Interactive installer for Cursor, Claude Code, Windsurf, Codex, and more.
-npx octocode-cli install
-
-# Non-interactive install for a specific client.
-npx octocode-cli install --ide cursor
+# Interactive installer for Cursor, Claude Code, Codex, VS Code, and more
+npx octocode install
 ```
 
-Then authenticate GitHub access:
+**CLI fast install:**
 
 ```bash
-npx octocode-cli login
-npx octocode-cli status
+# Run the CLI without installing globally
+npx octocode
+
+# Or install once with Homebrew
+brew tap bgauryy/octocode
+brew install octocode
+octocode
 ```
 
-If you installed the CLI globally or with Homebrew, use `octocode` instead of `npx octocode-cli`.
-
-### Use Octocode From the Terminal
+Authenticate GitHub when you want private repositories or higher API limits:
 
 ```bash
-# macOS / Linux
-brew install bgauryy/octocode/octocode
-
-# npm
-npm install -g octocode-cli
-
-# First useful local loop
-octocode tree .
-octocode search "TODO" .
-octocode get README.md
+npx octocode auth login
 ```
 
-For GitHub research, login once and then point commands at `owner/repo`:
+### Benchmarks
 
-```bash
-octocode login
-octocode tree facebook/react
-octocode search "useState" facebook/react
-octocode pr vercel/next.js#12345
-```
+Latest benchmark output:
+[packages/octocode-benchmark/output](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/output/).
 
-### Common Workflows
+#### ast-grep Structural Comparison
 
-| Goal | Start with | Then |
-|------|------------|------|
-| Understand a local codebase | `octocode tree .` | `octocode search "<symbol>" .` -> `octocode get <file>` -> `octocode lsp <file> --type references` |
-| Research a GitHub repo | `octocode tree owner/repo` | `octocode search "<term>" owner/repo` -> `octocode get owner/repo/path/to/file.ts` |
-| Inspect a pull request | `octocode pr owner/repo#123` | Read changed files with `octocode get` or search nearby code with `octocode search`. |
-| Debug MCP behavior | `octocode tools` | `octocode tools <toolName> --scheme` -> `octocode tools <toolName> --queries '<json>'` |
-| Share an agent setup | `octocode context` | Copy the protocol only when an agent cannot load MCP schemas directly. |
+Bars show relative throughput. Higher is better; lower `ms` is better.
 
-## Two Interfaces, One Engine
+What we tested: ast-grep CLI and Octocode structural grep on the same real
+repository files, using the same broad AST node-kind searches
+(`call_expression`, `call`, `method_invocation`). The goal was to check
+structural AST grep compatibility by match count, then measure where time is
+spent across Octocode's raw matcher, agent tool path, and public CLI.
 
-Octocode is not a chat prompt or a loose wrapper around `grep`. It is a tool runtime with a shared core: the MCP server and the CLI call the same tool catalog, the same security layer, the same response shaping, and the same Rust-backed hot paths.
-
-| Interface | Best for | Install | What you get |
-|-----------|----------|---------|--------------|
-| **MCP server** | Claude Code, Cursor, Claude Desktop, Windsurf, Codex, and other MCP clients | `npx octocode-cli install` | 12 research tools exposed directly to your AI assistant |
-| **CLI** | Terminal research, scripts, CI, quick lookups, debugging tool calls | `brew install bgauryy/octocode/octocode` or `npm install -g octocode-cli` | Friendly smart commands plus raw access to the same 12 tools |
-
-The normal research loop is:
+This benchmark does not test text grep, LSP navigation, rewriting, or the full
+ast-grep rule language. Those are separate capabilities.
 
 ```text
-discover shape -> search narrowly -> read exact slices -> trace semantics -> cite evidence
+Octocode raw native  ████████████████████    5.0 ms median  │  3.0x faster  │  6/6 matched
+ast-grep CLI         ███████░░░░░░░░░░░░░   15.1 ms median  │  baseline     │  6/6 matched
 ```
 
-GitHub-backed tools require authentication. Run `octocode login`, or see [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md).
+`Octocode raw native` means the direct Rust/NAPI `structuralSearchFiles`
+matcher: parse and match only, with no tool validation, sanitizer, pagination,
+JSON shaping, or Node CLI startup. The agent-facing `localSearchCode` and public
+`octocode grep` paths are intentionally slower because they include those safety
+and DX layers.
+
+What was checked: we took ast-grep's benchmark scenario repo list, picked one
+deterministic file from each supported repo, asked both tools to find the same
+AST node kind in that file, verified identical match counts, then timed the
+median run.
+
+Benchmark files:
+[runner](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/benchmark/ast-grep/compare-upstream-scenarios.mjs) ·
+[scenario manifest](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/benchmark/ast-grep/upstream-outline-scenarios.json) ·
+[latest output](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/output/comparison.md)
 
 ---
 
-## MCP Server
+## Tools
 
-The MCP server is the interface for AI assistants. It lets an agent search, read, trace, and compare code without pasting whole repositories into context.
+Octocode ships **13 research tools**; the same implementations run identically over [MCP](#mcp) and the [CLI](#cli). `ghCloneRepo` is opt-in for MCP (`ENABLE_CLONE=true`) and enabled by default for CLI; local tools require `ENABLE_LOCAL` (CLI default: on, MCP default: off). All flags: [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md).
+
+**Token knobs.** `concise:true` returns path/title-only lists. `minify` controls file read density: `symbols` = skeleton with line numbers, `standard` = comments/blanks stripped (default), `none` = exact bytes.
+
+### GitHub Tools
+
+| Tool | What it does | Knob |
+|------|--------------|------|
+| `ghSearchCode` | Code and path search across GitHub by owner, repo, path, filename, extension, and match filters. Accepts 1 to 5 parallel queries. | `concise` |
+| `ghGetFileContent` | Read a GitHub file or region: full file, line range, match slice, or paginated chars. | `minify` |
+| `ghViewRepoStructure` | Browse a GitHub repository's directory tree before reading files. | |
+| `ghSearchRepos` | Discover repositories by keywords, owner, topic, language, stars, forks, size, dates, license, visibility. | `concise` |
+| `ghHistoryResearch` | Search PR history, or deep-read one PR: files, patches, comments, reviews, commits. | `concise` |
+| `ghCloneRepo` | Clone a repo or sparse subtree into the local cache for local/LSP analysis. **Opt-in** (`ENABLE_CLONE=true`). | `sparsePath` |
+
+### Local Tools
+
+| Tool | What it does | Knob |
+|------|--------------|------|
+| `localSearchCode` | Local code/text search returning file and line anchors. `mode:"structural"` runs Octocode AST shape queries (`pattern` or `rule`). | `mode` |
+| `localViewStructure` | Browse a local directory tree: depth, filters, pagination, metadata. | `concise` |
+| `localFindFiles` | Find local files and directories by name, path, regex, extension, size, time, permissions, type. | |
+| `localGetFileContent` | Read a local file or region: exact slice, match string, line range, or paginated chars. | `minify` |
+| `localBinaryInspect` | Inspect archives, compressed streams, and native binaries: inspect (format/symbols/imports/deps), list, extract, decompress, strings. | |
+
+### Package Search
+
+| Tool | What it does | Knob |
+|------|--------------|------|
+| `npmSearch` | npm package lookup and keyword search; returns metadata and the source repository for GitHub handoff. | `concise` |
+
+### LSP
+
+| Tool | What it does |
+|------|--------------|
+| `lspGetSemantics` | Typed semantic navigation. Raw tools support `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `documentSymbols`, `typeDefinition`, and `implementation`. The CLI `lsp` shortcut is for symbol-anchored queries only; use `ls --symbols` for `documentSymbols`. Navigation runs through installed language servers (see the [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)). |
+
+**Per-tool references** (full schemas, fields, and examples) live in **[`docs/mcp`](https://github.com/bgauryy/octocode/tree/main/docs/mcp)**:
+- [GitHub Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
+- [Local Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- [Binary Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/BINARY_TOOLS.md)
+- [LSP Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+- [Tool Behavior Guide](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/TOOL_BEHAVIOR.md)
+
+---
+
+## MCP
+
+The MCP server exposes all 13 tools directly to your AI assistant over stdio. Install once; the assistant calls tools automatically.
+
+### Install
+
+**Fast install:**
+
+[<img src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Install in Cursor">](https://cursor.com/en/install-mcp?name=octocode&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJvY3RvY29kZS1tY3BAbGF0ZXN0Il19) [<img src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D) [<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522octocode%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522octocode-mcp%2540latest%255D%257D)
+
+**Or use the installer (detects your installed clients):**
 
 ```bash
-npx octocode-cli install
-```
+# Interactive: detects your installed clients
+npx octocode install
 
-Pass `--ide <client>` for a non-interactive install:
-
-```bash
+# Non-interactive
 octocode install --ide cursor
 octocode install --ide claude-code
 ```
 
-<details>
-<summary><strong>One-Click Install (Cursor)</strong></summary>
+https://github.com/user-attachments/assets/de8d14c0-2ead-46ed-895e-09144c9b5071
 
-[<img src="https://cursor.com/deeplink/mcp-install-dark.svg" alt="Install in Cursor">](https://cursor.com/en/install-mcp?name=octocode&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJvY3RvY29kZS1tY3BAbGF0ZXN0Il19)
+### Manual Configuration
 
-</details>
-
-<details>
-<summary><strong>Manual MCP Configuration</strong></summary>
-
-Add to your MCP configuration file:
+Add to your MCP client config file:
 
 ```json
 {
@@ -142,293 +207,345 @@ Add to your MCP configuration file:
 }
 ```
 
-</details>
+For GitHub auth, add a token under `env` (see [Authentication Methods](#authentication-methods)).
 
-Supported install targets include Cursor, Claude Code, Claude Desktop, Windsurf, Zed, Trae, Antigravity, Kiro, Codex, Opencode, Gemini CLI, Goose, VS Code Cline, Roo, and Continue.
+### Configuration
 
-https://github.com/user-attachments/assets/de8d14c0-2ead-46ed-895e-09144c9b5071
+Set tokens and options as `env` entries here, or machine-wide in `.octocoderc`. See [Configuration](#configuration) for every setting, the home-folder layout, and precedence.
 
 ---
 
 ## CLI
 
-The CLI is the terminal interface to the same engine. It has two layers:
-
-1. **Smart commands** for common research flows. These route to local or GitHub tools automatically and avoid raw schemas.
-2. **Raw tool runner** for exact MCP-equivalent calls with `octocode tools <name> --queries '<json>'`.
+The CLI exposes the same research engine without an MCP client. Use quick commands for humans, or call raw tools from scripts and CI. It is agent-friendly by design: `npx octocode --help`, `npx octocode context`, and `npx octocode tools <name> --scheme` publish the research protocol, tool descriptions, and exact schemas, while command output returns compact anchors, pagination, and follow-up hints that guide agents through evidence-first research.
 
 ### Install
 
 ```bash
-# Homebrew (macOS / Linux)
-brew install bgauryy/octocode/octocode
+# Run the CLI without installing globally
+npx octocode
 
-# npm
-npm install -g octocode-cli
-
-# or run setup without a global install
-npx octocode-cli install
+# Or install once with Homebrew
+brew tap bgauryy/octocode
+brew install octocode
+octocode
 ```
-
-The Homebrew command installs the binary as `octocode`.
 
 ```bash
-octocode --version
-octocode login
-octocode status
+npx octocode auth login
+npx octocode status
 ```
 
-### CLI Commands
+### All Commands
 
-| Command | What it does | Typical next step |
-|---------|--------------|-------------------|
-| `octocode get <path|github-ref>` | Fetch and minify a local or GitHub file; supports line ranges, match slices, pages, and `--mode none|standard|symbols`. | Use after `tree`, `files`, or `search` identifies a file. |
-| `octocode tree <path|owner/repo>` | View local or GitHub directory structure. | Follow with `files` or `search`. |
-| `octocode files <query> [path|owner/repo]` | Find paths or content matches locally or on GitHub; `--search path|content|both`. | Use `get` for exact evidence. |
-| `octocode search <pattern> <path|owner/repo>` | Search code locally or on GitHub. | Use `get --match-string` or `lsp` from returned anchors. |
-| `octocode pr <owner/repo[#N]|PR-URL>` | Search PRs or inspect one PR, including changed files, comments, commits, and selected patches. | Use `get` or `search` on files touched by the PR. |
-| `octocode repo <keywords...>` | Discover repositories by keyword, topic, owner, language, stars, dates, and quality filters. | Use `tree`, `search`, or `pr` on selected repos. |
-| `octocode pkg <package>` | Resolve npm metadata and source repositories. | Inspect the source repo with GitHub tools. |
-| `octocode symbols <file|path>` | Produce semantic outlines for files or directories. | Use before `lsp` to choose symbol anchors. |
-| `octocode lsp <file> --type <type>` | Run semantic navigation: definitions, references, callers, callees, call hierarchy, hover, document symbols, type definitions, implementations. | Use after `symbols` or `search` gives a symbol and line. |
-| `octocode tools` | List, inspect, or run the raw 12 MCP tools. | Use `octocode tools <name> --scheme` before raw calls. |
-| `octocode context` | Print agent protocol, routing guidance, tool list, and schemas. | Use `--full` only when inline JSON schemas are needed. |
-| `octocode install` | Configure `octocode-mcp` for an IDE or MCP client. | Run `status` to verify. |
-| `octocode auth` / `login` / `logout` | Manage GitHub authentication. | Use `token --source` to inspect resolution. |
-| `octocode token` | Print or validate the resolved token source. | Add `--reveal` only when you intentionally need the token. |
-| `octocode status` | Show auth and MCP-client health; `--sync` adds cross-client sync analysis. | Fix missing auth or client config. |
-| `octocode skills` | Search, read, install, remove, list, and sync Agent Skills. | Install research/review skills into supported agents. |
+Local paths route to local tools; `owner/repo[/path]` targets route to GitHub tools.
 
-Full command reference: [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/CLI_REFERENCE.md).
+| Command | Use it for |
+|---------|------------|
+| `octocode ls <path\|owner/repo>` | Browse local or GitHub structure; a file or `--symbols` shows a symbol outline |
+| `octocode cat <path\|owner/repo/path>` | Read a file, symbol skeleton (`--mode symbols`), line range, or matched slice |
+| `octocode grep <term> <path\|owner/repo>` | Text/regex search, or AST structural search with `--pattern` / `--rule` (local). `--type` accepts extensions and language aliases such as `ts`, `rust`, `typescript`, and `*.rs`. |
+| `octocode find <query> [path\|owner/repo]` | Find files by name, path, metadata, or content |
+| `octocode lsp <file> --type <type> --symbol <name> --line <n>` | Trace `definition`, `references`, `callers`, `callees`, `callHierarchy`, `hover`, `typeDefinition`, and `implementation`; use `ls --symbols` for file outlines |
+| `octocode pr <owner/repo[#N]\|PR-URL>` | Search or deep-read pull requests |
+| `octocode history <owner/repo[/path]>` | Inspect commit history for a repo, directory, or file |
+| `octocode repo <keywords...>` | Discover GitHub repositories |
+| `octocode pkg <package\|keywords>` | Search npm and hand off to source repositories |
+| `octocode binary <file>` | Inspect archives, compressed files, and native binaries |
+| `octocode unzip <archive>` | Unpack an archive to `<octocode-home>/tmp/unzip/<name>-<timestamp>/`, then use local `ls`, `grep`, `cat`, and `lsp` |
+| `octocode clone <owner/repo[/path][@branch]>` | Clone a repo or subtree to `<octocode-home>/tmp/clone/` for local/LSP analysis (`ENABLE_CLONE=true`) |
+| `octocode tools` | List tools, read schemas, or run any MCP tool directly from the terminal |
+| `octocode context` | Print agent-facing protocol, system prompt, tool descriptions, and schemas |
+| `octocode install` | Configure Octocode in MCP clients |
+| `octocode auth` | Manage GitHub authentication with `login`, `logout`, or `refresh` |
+| `octocode login` / `octocode logout` | Sign in or clear stored GitHub credentials |
+| `octocode status` | Check token presence, auth identity, MCP installs, sync state, and cache paths |
 
-### Raw Tool Calls
+Full command syntax, flags, examples, and exit codes live in the [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md).
+
+---
+
+## Configuration
+
+Everything is optional; Octocode runs on sensible defaults. Settings resolve from three sources, in priority order:
+
+```text
+environment variables  >  <octocode-home>/.octocoderc  >  built-in defaults
+```
+
+1. **MCP / environment variables** (highest): per client or per project, set in your MCP config `env` or your shell.
+2. **Global config**: `<octocode-home>/.octocoderc`, machine-wide defaults read by **both the CLI and the MCP server**.
+3. **Built-in defaults**: used when neither is set.
+
+**Octocode home** (`<octocode-home>`) holds the global config, encrypted credentials, sessions, stats, logs, and tmp materialization caches. Its location is fixed per platform (there is no override):
+
+| Platform | Location |
+|----------|----------|
+| macOS | `~/.octocode` |
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/.octocode` |
+| Windows | `%APPDATA%\.octocode` |
+
+**Set in MCP** (env entries; these win over `.octocoderc`):
+
+```json
+{
+  "mcpServers": {
+    "octocode": {
+      "command": "npx",
+      "args": ["octocode-mcp@latest"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxxxxxxx",
+        "ENABLE_LOCAL": "true",
+        "ENABLE_CLONE": "false"
+      }
+    }
+  }
+}
+```
+
+**Set globally** for both the CLI and MCP in `<octocode-home>/.octocoderc` (JSON, comments and trailing commas tolerated; never put tokens here). See the ready-to-copy [example below](#example-octocoderc).
+
+### Common settings
+
+The **Scope** column shows where a setting applies: `Both`, or `MCP` (the CLI ignores it).
+
+| Env var | `.octocoderc` key | Default | Scope | What it does |
+|---------|-------------------|---------|-------|--------------|
+| `OCTOCODE_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` | env only | unset | Both | GitHub token, in priority order. Tokens stay in env, never in `.octocoderc`. |
+| `GITHUB_API_URL` | `github.apiUrl` | `https://api.github.com` | Both | API endpoint; use `/api/v3` for GitHub Enterprise. |
+| `ENABLE_LOCAL` | `local.enabled` | CLI `true`, MCP `false` | Both | Turns local filesystem + LSP tools on/off. |
+| `ENABLE_CLONE` | `local.enableClone` | CLI `true`, MCP `false` | Both | `ghCloneRepo` and directory fetch. Default differs by surface; set `false` to disable in either. |
+| `WORKSPACE_ROOT` | `local.workspaceRoot` | `cwd` | Both | Absolute root for resolving relative local paths. |
+| `ALLOWED_PATHS` | `local.allowedPaths` | `[]` | Both | Extra path allowlist for local access; empty means home directory only after validation. |
+| `TOOLS_TO_RUN` / `ENABLE_TOOLS` / `DISABLE_TOOLS` | `tools.*` | unset | **MCP** | Whitelist, add to, or remove from the registered tool set. The CLI exposes every tool. |
+| `REQUEST_TIMEOUT` | `network.timeout` | `30000` | Both | Request timeout in ms (clamped `5000..300000`). |
+| `MAX_RETRIES` | `network.maxRetries` | `3` | Both | Retry attempts (clamped `0..10`). |
+| `OCTOCODE_OUTPUT_FORMAT` | `output.format` | `yaml` | Both | Response format: `yaml` or `json`. |
+
+> **Local and clone defaults differ by surface.** The **CLI** honors `ENABLE_LOCAL` and defaults local tools on; clone is enabled by default. The **MCP server** honors `ENABLE_LOCAL` and defaults local tools and clone off, so a deployment can control what an assistant may touch. Explicit env or `.octocoderc` values override those defaults.
+
+### Example `.octocoderc`
+
+Drop this at `<octocode-home>/.octocoderc` for machine-wide defaults shared by the CLI and the MCP server. Every field is optional; keep only what you want to change. **Tokens never go here** (use env or `octocode login`).
+
+```jsonc
+{
+  // GitHub Enterprise users: point at your API endpoint.
+  "github": { "apiUrl": "https://api.github.com" },
+
+  "local": {
+    "enabled": true,            // overrides the surface default for CLI and MCP
+    "enableClone": false,       // false disables ghCloneRepo for CLI and MCP
+    "workspaceRoot": "~/code",  // base for relative local paths (absolute or ~)
+    "allowedPaths": []          // extra dirs the local tools may read
+  },
+
+  "network": { "timeout": 30000, "maxRetries": 3 },
+
+  "output": { "format": "yaml" }  // "yaml" or "json"
+}
+```
+
+Per-project overrides and custom LSP servers live in a workspace `.octocode/` folder (for example `.octocode/lsp-servers.json`). For every variable, the full `.octocoderc` schema, clone-cache tuning, GitHub Enterprise setup, local-state paths, and precedence details, see the [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md).
+
+---
+
+## Authentication Methods
+
+GitHub-backed tools require authentication. Pick whichever method fits your setup; any one is enough. Full details: [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md).
+
+### Option 1: Octocode CLI (Recommended)
+
+The simplest setup. Octocode stores OAuth credentials encrypted on disk.
 
 ```bash
-octocode tools
-octocode tools localSearchCode --scheme
-octocode tools localSearchCode --queries '{"path":".","pattern":"TODO"}'
-octocode tools ghSearchCode --queries '{"keywordsToSearch":["useState"],"owner":"facebook","repo":"react"}'
+npx octocode auth login   # or: octocode login
+npx octocode status       # verify the active token source
 ```
 
-Direct CLI tool runs auto-fill `id`, `mainResearchGoal`, `researchGoal`, and `reasoning` when omitted. MCP clients should provide those research fields explicitly.
+### Option 2: GitHub CLI
 
----
-
-## All 12 Octocode Tools
-
-| Tool | Interface | What it is for |
-|------|-----------|----------------|
-| `ghSearchCode` | MCP + CLI | Search code or paths across GitHub with owner, repo, path, filename, extension, and match filters. |
-| `ghGetFileContent` | MCP + CLI | Read exact GitHub file content by full file, line range, match slice, char page, or signature skeleton. |
-| `ghViewRepoStructure` | MCP + CLI | Browse a GitHub repository tree before reading files. |
-| `ghSearchRepos` | MCP + CLI | Discover repositories by keywords, owner, topics, language, stars, size, dates, and archive state. |
-| `ghSearchPRs` | MCP + CLI | Search PR history or inspect one PR's metadata, changed files, patches, comments, reviews, and commits. |
-| `ghCloneRepo` | MCP + CLI | Clone a repository or sparse subtree into Octocode's local cache for local/LSP analysis. |
-| `npmSearch` | MCP + CLI | Resolve npm packages to metadata and source repositories. |
-| `localSearchCode` | MCP + CLI | Search local file contents with ripgrep-style filtering, pagination, snippets, and count modes. |
-| `localViewStructure` | MCP + CLI | Browse local directories with depth, filters, pagination, and metadata. |
-| `localFindFiles` | MCP + CLI | Find local files or directories by name, path, regex, extension, size, time, permissions, and type. |
-| `localGetFileContent` | MCP + CLI | Read targeted local file content by exact slice, match, symbols, line range, or char page. |
-| `lspGetSemantics` | MCP + CLI | Ask local language servers for definitions, references, callers, callees, call hierarchy, hover, document symbols, type definitions, and implementations. |
-
-Tool behavior references:
-
-- [GitHub Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_TOOLS_REFERENCE.md)
-- [Local Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LOCAL_TOOLS_REFERENCE.md)
-- [LSP Tools Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LSP_TOOLS_REFERENCE.md)
-- [Tool Behavior Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/TOOL_BEHAVIOR_GUIDE.md)
-
----
-
-## Security, Token Efficiency, and Rust
-
-Octocode is built for AI-agent workflows where the expensive part is not just execution time - it is irrelevant context, secret leakage, and untrusted inputs.
-
-**Security mechanisms**
-
-- Inputs pass through schema validation and security wrappers before execution.
-- Secrets are detected and redacted in tool inputs, outputs, errors, logs, and returned content.
-- Local paths are canonicalized, checked against workspace/allowed roots, and rejected when they escape allowed directories or hit ignored paths.
-- Local command execution is allowlisted. Tools use controlled builders for commands such as `rg`, `find`, `ls`, and `git`; arguments are not passed through a free-form shell.
-- GitHub token resolution is explicit: `OCTOCODE_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, encrypted Octocode credentials, then `gh auth token`.
-- Clone-backed workflows require local/clone enablement and materialize into managed cache locations.
-
-**Token efficiency**
-
-- `standard` minification removes comments and blank-line noise while preserving readable code shape.
-- `symbols` mode returns structural outlines with line numbers so agents can map a file before reading bodies.
-- Match-based and line-based reads keep the model on the exact evidence instead of whole files.
-- Bulk tools paginate results and large payloads; agents can continue from `page`, `charOffset`, or response pagination fields.
-- Tool responses prefer compact, structured YAML by default because it is easier for agents to scan than raw JSON.
-
-**Rust-backed hot paths**
-
-Octocode uses Rust where it changes the feel of the product, not as a vanity rewrite:
-
-- `octocode-security` runs high-volume secret detection and masking through Rust's linear-time regex engine.
-- `@octocodeai/octocode-context-utils` handles agent-readable minification, semantic signatures, UTF-8/UTF-16 offsets, ripgrep JSON parsing, diff filtering, and YAML serialization.
-- `octocode-lsp` owns native LSP runtime pieces: language detection, server command resolution, stdio JSON-RPC, symbol anchoring, pooled clients, and semantic requests.
-
-That combination keeps flows fast and predictable: search broadly, read narrowly, trace semantically, return compact evidence.
-
----
-
-## Develop Locally
-
-Run these from the repository root unless a package doc says otherwise.
+Use your existing `gh` credentials: automatic token management, works with 2FA and SSO.
 
 ```bash
-yarn install
-yarn build
-yarn test:quiet
-yarn lint
+# Install GitHub CLI
+brew install gh                          # macOS
+winget install --id GitHub.cli           # Windows
+# Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+
+gh auth login
 ```
 
-| Task | Command |
-|------|---------|
-| Install dependencies | `yarn install` |
-| Build every package | `yarn build` |
-| Run the quieter test lane | `yarn test:quiet` |
-| Run full coverage | `yarn test` |
-| Lint all packages | `yarn lint` |
-| Fix lint/format issues where possible | `yarn lint:fix` |
-| Validate MCP package contracts | `yarn mcp:contracts` |
-| Run the MCP package gate | `yarn mcp:package` |
-| Validate CLI registries | `cd packages/octocode-cli && yarn validate:mcp && yarn validate:skills` |
+No `GITHUB_TOKEN` is needed; Octocode reads the `gh` token automatically.
 
-Useful editing rules for this repo:
+### Option 3: Personal Access Token
 
-- Documentation links in `docs/` and package READMEs use absolute GitHub URLs.
-- MCP behavior changes usually need tests under `packages/octocode-mcp/tests/` or the owning package's `tests/` directory.
-- Tool descriptions and schemas come from the shared tool catalog, so update the shared source instead of patching generated output.
-- Generated folders such as `dist/`, `out/`, `coverage/`, and `node_modules/` are not source.
+Best for CI/CD, automation, MCP client configs, or GitHub Enterprise.
 
-For the full workflow, see the [Development Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/DEVELOPMENT_GUIDE.md).
+1. Create a token at [github.com/settings/tokens](https://github.com/settings/tokens)
+2. Select scopes: `repo`, `read:user`, `read:org`
+3. Provide it via `OCTOCODE_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` (in your shell or MCP client `env`):
 
-### Troubleshooting Fast
+```json
+{
+  "mcpServers": {
+    "octocode": {
+      "command": "npx",
+      "args": ["octocode-mcp@latest"],
+      "env": {
+        "GITHUB_TOKEN": "<your-token>"
+      }
+    }
+  }
+}
+```
 
-| Symptom | Try |
-|---------|-----|
-| GitHub queries fail or return less than expected | Run `octocode login`, then `octocode status` to confirm the token source. |
-| An MCP client does not show Octocode tools | Run `octocode status --sync`, then restart the client so it reloads MCP config. |
-| Local tools cannot see the files you expect | Check `WORKSPACE_ROOT` and `ALLOWED_PATHS` in the [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md). |
-| Output is too large | Use `octocode search` first, then `octocode get --match-string` or a line range instead of reading whole files. |
-| LSP results are hard to target | Run `octocode symbols <file>` before `octocode lsp <file> --type <type>`. |
+> **Security tip**: Never commit tokens to version control. Use environment variables or secure secret management.
 
 ---
 
-## Packages
+## Security
 
-This is a yarn-workspaces monorepo. Runtime code is split so the MCP server, CLI, and extension share one tool core instead of each reimplementing research behavior. Setup/reference docs live in [`docs/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs), and AI-agent guidance lives in [`AGENTS.md`](https://github.com/bgauryy/octocode-mcp/blob/main/AGENTS.md).
+**Every byte that reaches the model is scanned and redacted first.** All content (local files, GitHub and npm responses, error messages, and tool outputs) passes through the Rust engine's secret scanner on the way *in* (tool inputs) and on the way *out* (results), so secrets never reach the LLM or logs. The same enforcement runs identically under MCP and the CLI.
 
-| Directory | npm package | Purpose |
-|-----------|-------------|---------|
-| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server that registers the 12 Octocode tools for AI assistants. |
-| [`packages/octocode-cli`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-cli) | `octocode-cli` | Terminal interface: smart research commands, raw tool runner, auth, install, status, token, and skills workflows. |
-| [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Shared tool catalog and implementations for GitHub, local filesystem, package search, and LSP flows. |
-| [`packages/octocode-context-utils`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-context-utils) | `@octocodeai/octocode-context-utils` | Rust-backed context engine for minification, signatures, pagination offsets, ripgrep parsing, diff filtering, and YAML output. |
-| [`packages/octocode-security`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-security) | `octocode-security` | Rust-backed secret detection plus TypeScript path, command, input, and tool security utilities. |
-| [`packages/octocode-lsp`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-lsp) | `octocode-lsp` | Rust-native LSP runtime for language detection, server config, JSON-RPC, symbol anchoring, pooled clients, and semantic navigation. |
-| [`packages/octocode-shared`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-shared) | `octocode-shared` | Shared credentials, token resolution, session persistence, and platform utilities. |
-| [`packages/octocode-vscode`](https://github.com/bgauryy/octocode-mcp/tree/main/packages/octocode-vscode) | `octocode-mcp-vscode` | VS Code extension for GitHub OAuth and multi-editor MCP installation. |
+- **Secret redaction, in and out.** 270+ provider credential patterns (AWS, Azure, GCP, GitHub, OpenAI, Anthropic, Stripe, Slack, 1Password, and more) plus generic JWTs, PEM/private keys, bearer tokens, database connection strings, and high-entropy strings. Masked values surface a `Secrets detected and redacted` warning so the agent knows.
+- **Content sanitized at the source.** Local reads (`localGetFileContent`, ripgrep, structural search, binary, find, structure) and external fetches (GitHub code/files, npm) are scanned as they are read, not only at the boundary.
+- **Path safety.** Local reads are bounded to `WORKSPACE_ROOT` and `ALLOWED_PATHS` (default: your home directory). Symlinks are resolved and the real target is **re-validated** against the same rules, so a link cannot escape into a blocked location. Every local tool runs this check before touching the filesystem.
+- **Sensitive files and directories are blocked by default.** Octocode refuses to read known secret-bearing files and folders wherever they live, returning a redacted error instead of contents. Blocked patterns include:
+  - **Keys and certs:** `*.pem`, `*.key`, `*.crt`/`*.cer`/`*.csr`, `*.p12`/`*.pfx`/`*.jks`/`*.keystore`, and SSH keys (`id_rsa`, `*_ed25519`, `authorized_keys`, `known_hosts`, `.ssh/`).
+  - **Credentials and tokens:** `.env` / `.env.*`, `.netrc`, `.npmrc`, `.pgpass`, `.git-credentials`, `*_token` / `.token`, `client_secret*.json`, `*service-account*.json`, `auth.json`, `.htpasswd`.
+  - **Cloud and infra:** `.aws/`, `.azure/`, `.config/gcloud/`, `.kube/` / `kubeconfig`, `.docker/`, `.terraform/` and `*.tfstate`.
+  - **OS and app secret stores:** `.git/`, `secrets/`, `private/`, browser login data (Chrome/Firefox), OS keychains, password managers (`*.kdbx`), shell history files, and crypto wallets.
+- **Command safety.** Local execution is whitelisted to `rg`, `find`, and `ls` via `spawn` with argument arrays: no shell strings, no injection.
+- **Schema validation** runs before any tool executes; untrusted input size and shape are bounded.
+- **Credentials.** GitHub auth via env tokens, AES-256-GCM-encrypted on-disk OAuth, or the `gh` CLI; tokens are never logged.
+
+**Full security model, pipeline, and threat coverage: [SECURITY.md](https://github.com/bgauryy/octocode/blob/main/docs/SECURITY.md).** Related: [Authentication](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md) · [Configuration](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md) · [Credentials](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md)
+
+---
+
+## Language Support
+
+Four code-intelligence axes; three are native to the Rust engine and need no external tooling:
+
+| Axis | What it does | How to use it |
+|------|--------------|---------------|
+| **Structural AST** | Tree-sitter shape queries (`pattern` or YAML `rule`) across 33 grammars. | `localSearchCode mode:"structural"` · CLI `grep --pattern`/`--rule` |
+| **Signature outline** | Body-free skeleton with line numbers from real tree-sitter parsing, no heuristics. An anti-growth guard returns the real file when a skeleton wouldn't be smaller. | `minify:"symbols"` · CLI `cat --mode symbols` |
+| **Content minification** | Comment/whitespace stripping for 70+ languages and config formats; HTML/Vue/Svelte also minify embedded `<style>`/`<script>`. | `minify:"standard"` (default) |
+| **LSP navigation** | definition, references, callers/callees, callHierarchy, hover, typeDefinition, implementation, documentSymbols, via an installed language server; JS/TS also have a native, no-server path. | `lspGetSemantics` · CLI `lsp` / `ls --symbols` |
+
+📋 **Full support matrix:** every extension with its exact AST, signature, LSP, and minify capability, machine-generated from the shipped binary, lives in **[`benchmark/SUPPORT.md`](https://github.com/bgauryy/octocode/blob/main/packages/octocode-benchmark/benchmark/SUPPORT.md)** (150 extensions: 61 AST, 47 signature, 56 LSP, 89 minify-only). Regenerate or verify with `yarn workspace @octocodeai/octocode-benchmark matrix:check`.
 
 ---
 
 ## Skills
 
 > [Agent Skills](https://agentskills.io/what-are-skills) are a lightweight, open format for extending AI agent capabilities.
-> Skills index: [skills/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/skills/README.md)
+> Browse and install on [**skills.sh/bgauryy/octocode-mcp**](https://www.skills.sh/bgauryy/octocode-mcp) · Skills index: [skills/README.md](https://github.com/bgauryy/octocode/blob/main/skills/README.md)
 
-**Research & Code Analysis**
-
-| Skill | What it does |
-|-------|--------------|
-| [**Researcher**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-researcher) | Code search & exploration: local LSP + external (GitHub, npm) |
-| [**Research**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-research) | Multi-phase research with sessions, checkpoints, state persistence |
-| [**Engineer**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-engineer) | Understand, write, analyze, audit code: AST + LSP + dependency graph |
-| [**Brainstorming**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-brainstorming) | Idea validation grounded in evidence: GitHub, npm, web in parallel |
-| [**News**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-news) | What's new in AI, dev tools, web platform, security, notable repos |
-
-**Planning & Writing**
+These are the skills the Octocode team itself uses to build Octocode. ⭐ **[Engineer](https://www.skills.sh/bgauryy/octocode-mcp/octocode-engineer)** is the recommended starting skill.
 
 | Skill | What it does |
 |-------|--------------|
-| [**Plan**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-plan) | Evidence-based planning: Understand > Research > Plan > Implement |
-| [**RFC Generator**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-rfc-generator) | Formal technical decisions with alternatives, trade-offs, and recommendations |
-| [**Doc Writer**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-documentation-writer) | 6-phase pipeline producing 16+ validated docs |
-| [**Prompt Optimizer**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-prompt-optimizer) | Turn weak prompts into enforceable agent protocols |
-| [**Agentic Flow**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/agentic-flow-best-practices) | Thinking framework for designing/reviewing MCP & multi-agent workflows |
+| ⭐ [**Engineer**](https://www.skills.sh/bgauryy/octocode-mcp/octocode-engineer) | Codebase understanding, implementation, bug investigation, refactors, PR review, and RFC validation with AST + LSP evidence |
+| [**Research**](https://www.skills.sh/bgauryy/octocode-mcp/octocode-research) | Deep code exploration with HTTP-based tool orchestration: trace flow, find usages, understand a codebase |
+| [**Brainstorming**](https://www.skills.sh/bgauryy/octocode-mcp/octocode-brainstorming) | Validate ideas against GitHub, npm, and web evidence; produces a decision-ready brief |
+| [**RFC Generator**](https://www.skills.sh/bgauryy/octocode-mcp/octocode-rfc-generator) | Evidence-backed RFCs, design docs, migration and implementation plans before coding |
+| [**Install**](https://www.skills.sh/bgauryy/octocode-mcp/octocode-install) | Interactive step-by-step Octocode installer for macOS and Windows |
+| [**Search Skill**](https://www.skills.sh/bgauryy/octocode-mcp/octocode-search-skill) | Find, evaluate, install, rate, and refactor Agent Skills (SKILL.md format) |
+| [**Stats**](https://www.skills.sh/bgauryy/octocode-mcp/octocode-stats) | Render an Octocode MCP usage dashboard from stats.json (tokens saved, cache hits, errors) |
 
-**Review & Critique**
+---
 
-| Skill | What it does |
-|-------|--------------|
-| [**PR Reviewer**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-pull-request-reviewer) | PR & local code review across 7 domains with LSP flow tracing |
-| [**Roast**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-roast) | Brutal code critique with file:line citations and severity levels |
+## Architecture
 
-**Build & Output**
+A yarn-workspaces monorepo. The **MCP server** and the **CLI** are thin front-ends over one shared TypeScript tool core, which delegates every CPU-heavy path to a single **Rust engine** (compiled via [napi-rs](https://napi.rs) to prebuilt `.node` binaries). One tool catalog, one security layer, one response shaper, reached two ways.
 
-| Skill | What it does |
-|-------|--------------|
-| [**Slides**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-slides) | Polished multi-file HTML presentations via 6-phase design flow |
-| [**Design**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-design) | Dynamic DESIGN.md generator covering visual language, components, a11y |
-| [**Chrome DevTools**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-chrome-devtools) | CDP-level browser debugging: network, console, perf, DOM, screenshots |
+```mermaid
+graph LR
+    CLI["octocode<br/>CLI"]
+    MCP["octocode-mcp<br/>MCP server, stdio"]
+    VSC["VS Code extension<br/>OAuth + install"]
+    CORE["octocode-tools-core<br/>tools, GitHub client, auth, pagination, security bridge"]
+    ENGINE["octocode-engine (Rust)<br/>secrets, minify, AST, signatures, ripgrep/diff/YAML, LSP"]
+    EXT["GitHub API, local FS + ripgrep, language servers"]
 
-**Tooling & Setup**
+    CLI --> CORE
+    MCP --> CORE
+    VSC -. starts .-> MCP
+    CORE --> ENGINE
+    CORE --> EXT
+    ENGINE --> EXT
 
-| Skill | What it does |
-|-------|--------------|
-| [**Install**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-install) | Interactive step-by-step Octocode installer for macOS and Windows |
-| [**CLI**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-cli) | Run Octocode MCP tools from the terminal without wiring MCP |
-| [**Search Skill**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-search-skill) | Find, evaluate, install, refactor Agent Skills (SKILL.md format) |
-| [**Stats**](https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-stats) | Local HTML dashboard from Octocode MCP usage stats |
+    style ENGINE fill:#1a1a2e,stroke:#e75d2a,color:#fff
+```
 
-https://github.com/user-attachments/assets/5b630763-2dee-4c2d-b5c1-6335396723ec
+**Request flow** is identical whether a call arrives over MCP or the CLI:
+
+```text
+client → sanitize inputs (Rust) → run tool (GitHub / FS / LSP) → sanitize + YAML-serialize + paginate (Rust) → result + next-step hints
+```
+
+**One Rust engine** owns secret detection, sanitization, path/command validation, minification (70+ languages), signature extraction, structural AST search, ripgrep parsing, diff filtering, YAML serialization, and LSP, so the Node event loop stays unblocked and there is no duplicate native loader. It ships prebuilt for darwin (arm64/x64), linux (arm64/x64, gnu + musl), and win32-x64; no Rust toolchain is needed at runtime.
+
+### Packages
+
+| Directory | npm package | Role |
+|-----------|-------------|------|
+| [`packages/octocode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode) | `octocode` | CLI: quick commands, raw tool runner, auth/login/logout, install, status, context. |
+| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server (stdio) that registers the tool catalog for AI assistants. |
+| [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Shared tool core: implementations, GitHub client, credentials and token resolution, session, pagination, security bridge. |
+| [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `@octocodeai/octocode-engine` | Rust/napi native engine: security scanning, minification, signatures, structural AST, ripgrep/diff/YAML, LSP. |
+| [`packages/octocode-vscode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-vscode) | `octocode-mcp-vscode` | VS Code extension: GitHub OAuth + multi-editor MCP install. |
 
 ---
 
 ## Documentation
 
-Full index: **[docs/README.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/README.md)**. All monorepo documentation lives in [`docs/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs) (no per-package `docs/`).
+Website: **[octocode.ai](https://octocode.ai)** · Full docs: **[github.com/bgauryy/octocode/tree/main/docs](https://github.com/bgauryy/octocode/tree/main/docs)** · Index: **[docs/README.md](https://github.com/bgauryy/octocode/blob/main/docs/README.md)**. All monorepo documentation lives in [`docs/`](https://github.com/bgauryy/octocode/tree/main/docs) (no per-package `docs/`).
 
 **Docs map**
-- [`docs/configuration/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs/configuration): install, auth providers, MCP clients, env/config, troubleshooting
-- [`docs/dev/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs/dev): tool/API references, workflows, architecture, contributing, skills
-- [`docs/specs/`](https://github.com/bgauryy/octocode-mcp/tree/main/docs/specs): design specs and RFCs
+- [`docs/mcp/`](https://github.com/bgauryy/octocode/tree/main/docs/mcp): MCP server configuration, authentication, tools, workflows, architecture
+- [`docs/cli/`](https://github.com/bgauryy/octocode/tree/main/docs/cli): CLI commands, flags, benchmarks
+- [`docs/`](https://github.com/bgauryy/octocode/tree/main/docs): guides for development, security, skills, Pi setup
 
 **Setup**
-- [Authentication Setup](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/providers/AUTHENTICATION_SETUP.md)
-- [Configuration Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/CONFIGURATION_REFERENCE.md)
-- [Using octocode-mcp with Pi](https://github.com/bgauryy/octocode-mcp/blob/main/docs/configuration/clients/PI_SETUP_GUIDE.md)
+- [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md)
+- [Configuration Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CONFIGURATION.md)
+- [Using octocode-mcp with Pi](https://github.com/bgauryy/octocode/blob/main/docs/PI/PI_SETUP_GUIDE.md)
 
 **Tool References**
-- [GitHub Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/GITHUB_TOOLS_REFERENCE.md)
-- [Local Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LOCAL_TOOLS_REFERENCE.md)
-- [LSP Tools](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/LSP_TOOLS_REFERENCE.md)
-- [Clone & Local Workflow](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/workflows/CLONE_AND_LOCAL_TOOLS_WORKFLOW.md)
+- [GitHub Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/GITHUB_TOOLS.md)
+- [Local Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
+- [LSP Tools](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)
+- [Clone & Local Workflow](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CLONE_WORKFLOW.md)
 
-**CLI & Skills**
-- [CLI Reference](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/reference/CLI_REFERENCE.md)
-- [Skills Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/SKILLS_GUIDE.md) · [Skills Index](https://github.com/bgauryy/octocode-mcp/blob/main/skills/README.md)
+**Security, CLI & Skills**
+- [Security Model](https://github.com/bgauryy/octocode/blob/main/docs/SECURITY.md)
+- [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md)
+- [Skills Guide](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md) · [Skills Index](https://github.com/bgauryy/octocode/blob/main/skills/README.md)
 
 **Shared Internals**
-- [Credentials Architecture](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/CREDENTIALS_ARCHITECTURE.md) · [Session Persistence](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/architecture/SESSION_PERSISTENCE.md)
+- [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md) · [Session Persistence](https://github.com/bgauryy/octocode/blob/main/docs/mcp/SESSION.md)
 
 **Operations**
-- [Development Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/DEVELOPMENT_GUIDE.md) · [Agent Guidance (AGENTS.md)](https://github.com/bgauryy/octocode-mcp/blob/main/AGENTS.md)
+- [Development Guide](https://github.com/bgauryy/octocode/blob/main/docs/DEVELOPMENT_GUIDE.md) · [Agent Guidance (AGENTS.md)](https://github.com/bgauryy/octocode/blob/main/AGENTS.md)
+
+### Recommended dev mode: Pi + Octocode
+
+[Pi](https://github.com/earendil-works/pi) is a fast, local-first coding agent whose stated philosophy is *"CLI tools with READMEs (Skills) over MCP."* Pairing it with Octocode gives a lean, evidence-driven dev loop — **Pi edits, Octocode researches**. Two routes, pick by how much surface you need:
+
+- **Skill route — recommended, leanest.** Drop the [`octocode-engineer`](https://www.skills.sh/bgauryy/octocode-mcp/octocode-engineer) skill into Pi's global skills dir. It drives the Octocode **CLI** directly — no MCP transport, minimal token overhead — and Pi auto-discovers it:
+
+  ```bash
+  npx -y degit bgauryy/octocode/skills/octocode-engineer ~/.pi/agent/skills/octocode-engineer
+  ```
+
+- **Adapter route — full tool surface.** Install [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) to expose all 13 Octocode MCP tools behind a single ~200-token proxy tool, so servers stay disconnected until a tool is actually called. Enable clone tools with `ENABLE_CLONE=true`.
+
+Tune Pi's behavior with an `APPEND_SYSTEM.md` (a compact starter lives at [`docs/PI/APPEND_SYSTEM.md`](https://github.com/bgauryy/octocode/blob/main/docs/PI/APPEND_SYSTEM.md)). The full walkthrough — adapter install, MCP config scopes, skills, system-prompt tuning, and custom models — is in the [**Pi Setup Guide**](https://github.com/bgauryy/octocode/blob/main/docs/PI/PI_SETUP_GUIDE.md).
 
 ### The Manifest
 
-**"Code is Truth, but Context is the Map."** Read the [Manifest for Research Driven Development](https://github.com/bgauryy/octocode-mcp/blob/main/MANIFEST.md) to understand the philosophy behind Octocode.
-
----
-
-### Contributing
-
-See the [Development Guide](https://github.com/bgauryy/octocode-mcp/blob/main/docs/dev/DEVELOPMENT_GUIDE.md) for monorepo setup, testing, and contribution guidelines.
-
----
-
-<div align="center">
-  <sub>Built with care for the AI Engineering Community</sub>
-</div>
+**"Code is Truth, but Context is the Map."** Read the [Manifest of Octocode for Research Driven Development](https://github.com/bgauryy/octocode/blob/main/MANIFEST.md) to understand the philosophy behind Octocode.

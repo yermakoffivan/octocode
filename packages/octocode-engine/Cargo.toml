@@ -1,0 +1,136 @@
+[package]
+name = "octocode-engine"
+version = "16.5.1"
+edition = "2021"
+description = "Rust native Octocode engine for context compression, structural search, and LSP semantic navigation"
+license = "MIT"
+repository = "https://github.com/bgauryy/octocode-mcp"
+keywords   = ["napi", "llm", "context", "lsp", "nodejs"]
+categories = ["development-tools", "text-processing"]
+
+[lints.clippy]
+all            = { level = "deny", priority = -1 }
+unwrap_used    = "deny"
+needless_pass_by_value = "allow"
+dbg_macro      = "deny"
+print_stdout   = "deny"
+print_stderr   = "deny"
+
+[lints.rust]
+# Dead-code family: warn-by-default → deny, so `cargo check`/`clippy`/`build`
+# all FAIL hard on unused code (codifies the clean state; prevents regressions).
+# `#[allow(...)]` still overrides per-site (e.g. feature-gated `unused_mut`).
+dead_code        = "deny"
+unused_imports   = "deny"
+unused_variables = "deny"
+unused_mut       = "deny"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi        = { version = "3", default-features = false, features = ["napi4", "tokio_rt", "serde-json"] }
+napi-derive = "3"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+serde_yaml_ng = "0.10"  # maintained continuation of serde_yaml (archived upstream)
+regex       = "1"
+tokio       = { version = "1", features = ["fs", "io-util", "process", "rt-multi-thread", "sync", "time"] }
+url         = "2"
+which       = "8"
+
+# ── ripgrep, as a library ─────────────────────────────────────────────────────
+# We run the search in-process instead of shelling out to an `rg` binary, so
+# octocode is its own source of ripgrep. `grep` is ripgrep's own engine
+# (grep-searcher + grep-regex + grep-matcher + grep-printer); the `pcre2`
+# feature pulls grep-pcre2 for `-P` (lookaround/backrefs), with libpcre2
+# vendored & compiled from source (no system dependency). `ignore` provides the
+# gitignore-aware walker plus the `-g` override globs and `-t` type definitions.
+grep   = { version = "0.3", features = ["pcre2"] }
+ignore = "0.4"
+
+# ── binary inspection (format lane) ───────────────────────────────────────────
+# `goblin` parses ELF / Mach-O (incl. fat) / PE / COFF / ar archives and exposes
+# symbols, imports, exports, sections, and dynamic deps with one `Object::parse`
+# dispatch. `no_std`-capable and small (~+0.1MB), it replaces the `file`/`xxd`
+# shell-outs and adds structural inspection the binutils path could never do.
+# NOTE: goblin is explicitly NOT hardened against malicious input — every call
+# from the napi layer is wrapped in `catch_unwind` and fed a size-capped buffer.
+goblin = "0.10"
+
+# ── high-quality CSS minifier ─────────────────────────────────────────────────
+lightningcss = { version = "1.0.0-alpha.71", default-features = false }
+
+# ── OXC — JS/TS AST minifier + native semantic (scopes/bindings/refs) ─────────
+oxc_allocator = "0.137"
+oxc_ast       = "0.137"
+oxc_codegen   = "0.137"
+oxc_minifier  = "0.137"
+oxc_parser    = "0.137"
+oxc_span      = "0.137"
+oxc_semantic  = "0.137"   # real ECMAScript scopes/bindings/in-file refs — native JS/TS symbols
+
+# ── tree-sitter core ─────────────────────────────────────────────────────────
+tree-sitter          = "0.26"
+tree-sitter-language = "0.1"
+
+# ── top-10 grammar crates ─────────────────────────────────────────────────────
+tree-sitter-typescript = "0.23"   # covers .ts / .tsx
+tree-sitter-javascript = "0.25"   # covers .js / .jsx / .mjs / .cjs
+tree-sitter-python     = "0.23"   # covers .py
+tree-sitter-go         = "0.23"   # covers .go
+tree-sitter-rust       = "0.23"   # covers .rs
+tree-sitter-java       = "0.23"   # covers .java
+tree-sitter-c          = "0.23"   # covers .c / .h
+tree-sitter-cpp        = { version = "0.23", optional = true }  # covers .cpp / .hpp / .cc
+tree-sitter-c-sharp    = { version = "0.23", optional = true }  # covers .cs
+tree-sitter-bash       = "0.23"   # covers .sh / .bash / .zsh
+tree-sitter-json       = "0.24"
+tree-sitter-yaml       = "0.7"
+tree-sitter-toml-ng    = "0.7"
+tree-sitter-html       = "0.23"
+tree-sitter-css        = "0.25"
+tree-sitter-scss       = "1"
+tree-sitter-less       = "1"
+tree-sitter-scala      = "0.26"   # covers .scala / .sc / .sbt (structural search only)
+
+# ── Priority-1 language additions ─────────────────────────────────────────────
+tree-sitter-ruby   = "0.23"   # official tree-sitter org — .rb / .rake / .gemspec
+tree-sitter-php    = "0.24"   # official tree-sitter org — .php (dual grammar: php + php_only)
+tree-sitter-kotlin-ng = "1.1"  # modern fork with tree-sitter-language 0.1 bindings — .kt / .kts
+tree-sitter-elixir = "0.3"    # official elixir-lang org — .ex / .exs
+tree-sitter-hcl    = "1.1"    # tree-sitter-grammars org (latest: 1.1.0) — .tf / .hcl / .tfvars
+tree-sitter-lua    = "0.5"    # tree-sitter-grammars org (latest: 0.5.0) — .lua
+
+# ── Priority-2 language additions ─────────────────────────────────────────────
+tree-sitter-sequel = "0.3"    # SQL (crate name is "sequel", not "sql") — .sql
+tree-sitter-proto  = "0.4"    # Protobuf proto2 + proto3 — .proto
+tree-sitter-ocaml  = "0.25"   # official tree-sitter org — .ml / .mli (dual grammar)
+tree-sitter-zig    = "1.1"    # tree-sitter-grammars org (Amaan Qureshi) — .zig
+
+# ── Priority-3 language additions ─────────────────────────────────────────────
+tree-sitter-r      = "1.3"    # r-lib/Posit official — .r
+tree-sitter-julia  = "0.23"   # official tree-sitter org (latest: 0.23.1) — .jl
+tree-sitter-erlang = "0.19"   # WhatsApp/Meta backed — .erl / .hrl
+
+# ── Large/complex grammar — feature-gated ─────────────────────────────────────
+tree-sitter-swift  = { version = "0.7", optional = true }   # .swift
+
+[features]
+default = ["tree-sitter-large-grammars"]
+tree-sitter-cpp     = ["dep:tree-sitter-cpp"]
+tree-sitter-c-sharp = ["dep:tree-sitter-c-sharp"]
+tree-sitter-swift   = ["dep:tree-sitter-swift"]
+tree-sitter-large-grammars = ["tree-sitter-cpp", "tree-sitter-c-sharp", "tree-sitter-swift"]
+
+[dev-dependencies]
+napi = { version = "3", default-features = false, features = ["noop", "napi4", "tokio_rt", "serde-json"] }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto           = true
+codegen-units = 1
+opt-level     = 3
+strip         = "symbols"

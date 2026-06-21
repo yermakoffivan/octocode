@@ -8,11 +8,14 @@ import {
   handleCatchError,
   createSuccessResult,
   createErrorResult,
+  safeParseOrError,
 } from '../utils.js';
 import { FileContentQueryLocalSchema } from './scheme.js';
 import type { MinifyMode } from '../../scheme/fields.js';
-import { isCloneEnabled } from '../../serverConfig.js';
-import { fetchDirectoryContents } from '../../github/directoryFetch.js';
+import {
+  fetchDirectoryContents,
+  fetchFileContentToDisk,
+} from '../../github/directoryFetch.js';
 import { resolveDefaultBranch } from '../../github/client.js';
 import { countSerializedChars } from '../../utils/response/charSavings.js';
 import {
@@ -26,6 +29,7 @@ import {
   providerSupports,
 } from '../providerExecution.js';
 import { buildGithubFetchContentFinalizer } from './finalizer.js';
+import { getConfigSync } from '../../shared/index.js';
 
 type FileContentInputQuery = z.input<typeof FileContentQueryLocalSchema>;
 
@@ -43,15 +47,14 @@ export async function fetchMultipleGitHubFileContents(
     queries,
     async (query: FileContentInputQuery, _index: number) => {
       try {
-        const validated = FileContentQueryLocalSchema.safeParse(query);
-        if (!validated.success) {
-          const messages = validated.error.issues
-            .map(i => i.message)
-            .join('; ');
-          return createErrorResult(messages, query);
+        const parsed = safeParseOrError(FileContentQueryLocalSchema, query, {
+          prefix: false,
+        });
+        if (parsed.ok === false) {
+          return parsed.error;
         }
 
-        const effectiveQuery = validated.data as PartialFileContentQuery;
+        const effectiveQuery = parsed.data as PartialFileContentQuery;
         const providerContext = getProviderContext();
 
         if (effectiveQuery.type === 'directory') {
@@ -62,14 +65,18 @@ export async function fetchMultipleGitHubFileContents(
           );
         }
 
-        return handleFileFetch(effectiveQuery, providerContext);
+        return handleFileFetch(effectiveQuery, authInfo, providerContext);
       } catch (error) {
-        return handleCatchError(error, query);
+        return handleCatchError(
+          error,
+          query,
+          undefined,
+          TOOL_NAMES.GITHUB_FETCH_CONTENT
+        );
       }
     },
     {
       toolName: TOOL_NAMES.GITHUB_FETCH_CONTENT,
-      peerHints: true,
       finalize: buildGithubFetchContentFinalizer<FileContentInputQuery>(),
     },
     args
@@ -81,15 +88,11 @@ async function handleDirectoryFetch(
   authInfo: AuthInfo | undefined,
   providerContext: ReturnType<typeof createProviderExecutionContext>
 ) {
-  if (!isCloneEnabled()) {
-    return handleCatchError(
-      new Error(
-        'Directory fetch requires ENABLE_LOCAL=true and ENABLE_CLONE=true. ' +
-          'Directory mode saves files to disk using the same cache as ghCloneRepo.'
-      ),
-      query,
-      'Clone not enabled',
-      TOOL_NAMES.GITHUB_FETCH_CONTENT
+  const config = getConfigSync();
+  if (!(config.local.enabled && config.local.enableClone)) {
+    return createErrorResult(
+      'Directory fetch requires local clone support. Set ENABLE_LOCAL=true and ENABLE_CLONE=true.',
+      query
     );
   }
 
@@ -130,6 +133,7 @@ async function handleDirectoryFetch(
 
   const resultData: Record<string, unknown> = {
     localPath: result.localPath,
+    repoRoot: result.repoRoot,
     fileCount: result.fileCount,
     totalSize: result.totalSize,
     files: result.files,
@@ -139,6 +143,8 @@ async function handleDirectoryFetch(
       : {}),
   };
 
+  // Always a content result (hasContent=true); per-call next-step hints are
+  // dropped centrally by createSuccessResult, so none are built here.
   return createSuccessResult(
     query,
     resultData,
@@ -152,6 +158,7 @@ async function handleDirectoryFetch(
 
 async function handleFileFetch(
   query: PartialFileContentQuery,
+  authInfo: AuthInfo | undefined,
   providerContext: ReturnType<typeof createProviderExecutionContext>
 ) {
   const providerResult = await executeProviderOperation(query, () =>
@@ -162,10 +169,23 @@ async function handleFileFetch(
     return providerResult.result;
   }
 
-  const providerHints = providerResult.response.hints;
+  const materialized =
+    query.fullContent === true && query.minify === 'none'
+      ? await materializeExactFile(query, authInfo)
+      : undefined;
+
   const resultData = {
     ...mapFileContentProviderResult(providerResult.response.data, query),
-    ...(providerHints?.length ? { hints: providerHints } : {}),
+    ...(materialized
+      ? {
+          localPath: materialized.localPath,
+          repoRoot: materialized.repoRoot,
+          cached: materialized.cached,
+          ...(materialized.branch !== query.branch
+            ? { resolvedBranch: materialized.branch }
+            : {}),
+        }
+      : {}),
   };
 
   const hasContent = Boolean(
@@ -181,12 +201,28 @@ async function handleFileFetch(
     TOOL_NAMES.GITHUB_FETCH_CONTENT,
     {
       rawResponse: providerResult.response.rawResponseChars,
-      hintContext: {
-        path: query.path,
-        branch: query.branch,
-        isPartial: providerResult.response.data.isPartial,
-        endLine: providerResult.response.data.endLine,
-      },
     }
+  );
+}
+
+async function materializeExactFile(
+  query: PartialFileContentQuery,
+  authInfo: AuthInfo | undefined
+) {
+  if (!query.owner || !query.repo || typeof query.path !== 'string') {
+    return undefined;
+  }
+
+  const branch =
+    query.branch ??
+    (await resolveDefaultBranch(query.owner, query.repo, authInfo));
+
+  return fetchFileContentToDisk(
+    query.owner,
+    query.repo,
+    query.path,
+    branch,
+    authInfo,
+    Boolean(query.forceRefresh)
   );
 }

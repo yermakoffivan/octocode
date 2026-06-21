@@ -11,11 +11,11 @@ const ROOT = path.resolve(__dirname, '..');
 
 const PACKAGE_SCRIPT_POLICY = ['build', 'lint', 'test', 'typecheck', 'verify'];
 const SKILL_SCRIPT_POLICY = ['build', 'lint', 'test'];
-const VERIFY_ORDER = ['octocode-shared', 'octocode-mcp', 'octocode-cli', 'octocode-mcp-vscode'];
+const VERIFY_ORDER = ['@octocodeai/octocode-tools-core', 'octocode-mcp', 'octocode', 'octocode-mcp-vscode'];
 const BUILD_OUTPUTS = {
-  'packages/octocode-shared': ['dist/index.js'],
+  'packages/octocode-tools-core': ['dist/index.js'],
   'packages/octocode-mcp': ['dist/index.js'],
-  'packages/octocode-cli': ['out/octocode-cli.js'],
+  'packages/octocode': ['out/octocode.js'],
   'packages/octocode-vscode': ['out/extension.js'],
 };
 

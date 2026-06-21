@@ -12,6 +12,10 @@ const queryOverrides = {
   matchStringContextLines: clampedInt(0, 50).default(3),
   charLength: clampedInt(1, 50_000).optional(),
   page: relaxedPageNumberField.default(1),
+  detailed: z
+    .boolean()
+    .optional()
+    .describe('inspect: include full symbols/imports/exports/sections arrays.'),
 } as const;
 
 // Build the shape as a plain ZodObject (no superRefine) for bulk schema use

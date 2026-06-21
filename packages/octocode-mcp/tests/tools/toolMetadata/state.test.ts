@@ -14,7 +14,7 @@ describe('toolMetadata/state', () => {
       const result = await loadToolContent();
 
       expect(result).toBeDefined();
-      expect(typeof result.instructions).toBe('string');
+      expect(typeof result.systemPrompt).toBe('string');
       expect(result.toolNames).toBeDefined();
     });
 

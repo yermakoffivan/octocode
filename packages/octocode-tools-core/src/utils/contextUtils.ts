@@ -1,8 +1,10 @@
 import { createRequire } from 'node:module';
 
-import type * as NativeContextUtils from '@octocodeai/octocode-context-utils';
+import type * as NativeContextUtils from '@octocodeai/octocode-engine';
 
 export type {
+  BinaryInspectInfo,
+  BinaryStrings,
   ExtractMatchingLinesOptions,
   ExtractMatchingLinesResult,
   FilterPatchOptions,
@@ -13,17 +15,18 @@ export type {
   JsonInput,
   RipgrepParseOptions,
   RipgrepParseResult,
+  RipgrepSearchOptions,
   SliceContentOptions,
   SliceContentResult,
   StructuralMatch,
   YamlConversionConfig,
-} from '@octocodeai/octocode-context-utils';
+} from '@octocodeai/octocode-engine';
 
 type NativeContextUtilsModule = typeof NativeContextUtils;
 type NativeLoader = () => NativeContextUtilsModule;
 
 const require = createRequire(import.meta.url);
-const NATIVE_PACKAGE_NAME = '@octocodeai/octocode-context-utils';
+const NATIVE_PACKAGE_NAME = '@octocodeai/octocode-engine';
 
 let cachedNative: NativeContextUtilsModule | undefined;
 let nativeLoader: NativeLoader = () =>
@@ -94,6 +97,42 @@ export const contextUtils = {
     return loadNative().extractSignatures(content, filePath);
   },
 
+  /**
+   * Native JS/TS document symbols as a JSON `DocumentSymbol[]` string, or null
+   * when oxc declines the input (non-JS/TS, oversized, hard parse failure, or
+   * no symbols). Server-free, syntax-only — no type inference.
+   */
+  extractJsSymbols(content: string, filePath: string): string | null {
+    return loadNative().extractJsSymbols(content, filePath);
+  },
+
+  /**
+   * Native in-file references as a JSON `Range[]` (declaration first), or null
+   * when oxc declines the input or the cursor is not on a resolvable binding.
+   * Same-file only, syntax-only — no type inference, no cross-file resolution.
+   */
+  findInFileReferences(
+    content: string,
+    filePath: string,
+    line: number,
+    character: number
+  ): string | null {
+    return loadNative().findInFileReferences(
+      content,
+      filePath,
+      line,
+      character
+    );
+  },
+
+  /**
+   * Canonical lowercase extensions (no leading dot) the native oxc JS/TS path
+   * handles. Source of truth lives in the engine — gate native dispatch on this.
+   */
+  getSupportedJsTsExtensions(): string[] {
+    return loadNative().getSupportedJsTsExtensions();
+  },
+
   structuralSearch(
     content: string,
     filePath: string,
@@ -101,6 +140,52 @@ export const contextUtils = {
     rule?: string | null
   ): NativeContextUtils.StructuralMatch[] {
     return loadNative().structuralSearch(content, filePath, pattern, rule);
+  },
+
+  structuralSearchFiles(
+    options: NativeContextUtils.StructuralSearchFilesOptions
+  ): NativeContextUtils.StructuralSearchFilesResult {
+    return loadNative().structuralSearchFiles(options);
+  },
+
+  getSupportedStructuralExtensions(): string[] {
+    return loadNative().getSupportedStructuralExtensions();
+  },
+
+  /**
+   * Native binary inspection (format lane). Parses an executable / object /
+   * archive and returns identity + symbols/imports/exports/sections/deps.
+   * Degrades to magic-byte identity on malformed input; only unreadable or
+   * oversized files throw.
+   */
+  inspectBinaryNative(path: string): NativeContextUtils.BinaryInspectInfo {
+    return loadNative().inspectBinaryNative(path);
+  },
+
+  /**
+   * Native strings extraction — printable ASCII + UTF-16 (LE/BE) runs of at
+   * least `minLength`, longest-first, optionally hex offset-prefixed.
+   */
+  extractBinaryStringsNative(
+    path: string,
+    minLength: number,
+    includeOffsets: boolean,
+    scanOffset = 0
+  ): NativeContextUtils.BinaryStrings {
+    return loadNative().extractBinaryStringsNative(
+      path,
+      minLength,
+      includeOffsets,
+      scanOffset
+    );
+  },
+
+  validateRipgrepPattern(
+    pattern: string,
+    fixedString?: boolean | null,
+    perlRegex?: boolean | null
+  ): NativeContextUtils.RipgrepPatternValidationResult {
+    return loadNative().validateRipgrepPattern(pattern, fixedString, perlRegex);
   },
 
   getSemanticBoundaryOffsets(content: string, filePath: string): number[] {
@@ -119,6 +204,12 @@ export const contextUtils = {
     options?: NativeContextUtils.RipgrepParseOptions | null
   ): NativeContextUtils.RipgrepParseResult {
     return loadNative().parseRipgrepJson(stdout, options);
+  },
+
+  searchRipgrep(
+    options: NativeContextUtils.RipgrepSearchOptions
+  ): Promise<NativeContextUtils.RipgrepParseResult> {
+    return loadNative().searchRipgrep(options);
   },
 
   queryFileSystem(

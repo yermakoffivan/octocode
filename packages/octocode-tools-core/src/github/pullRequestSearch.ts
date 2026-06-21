@@ -256,6 +256,7 @@ async function searchGitHubPullRequestsAPIInternal(
         totalMatchesKind: 'reported',
         totalMatchesCapped: reportedTotalMatches > totalMatches,
         hasMore,
+        ...(hasMore ? { nextPage: clampedPage + 1 } : {}),
       },
       rawResponseChars:
         countSerializedChars(searchResult.data) + transformedRawResponseChars,
@@ -336,6 +337,7 @@ async function searchPullRequestsWithREST(
         reachableTotalMatches: seenThroughPage,
         totalMatchesKind: hasMore ? 'lowerBound' : 'exact',
         hasMore,
+        ...(hasMore ? { nextPage: currentPage + 1 } : {}),
       },
       rawResponseChars:
         countSerializedChars(result.data) + transformedRawResponseChars,

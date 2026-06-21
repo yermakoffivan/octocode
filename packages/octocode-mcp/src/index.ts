@@ -168,7 +168,7 @@ async function createServer(): Promise<McpServer> {
 
   return new McpServer(SERVER_CONFIG, {
     capabilities,
-    instructions: completeMetadata.instructions,
+    instructions: completeMetadata.systemPrompt,
   });
 }
 

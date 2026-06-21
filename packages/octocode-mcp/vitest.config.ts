@@ -7,9 +7,83 @@ export default defineConfig({
   build: { sourcemap: false },
   server: { sourcemapIgnoreList: () => true },
   resolve: {
-    alias: {
-      '@octocodeai/octocode-tools-core': resolve(__dirname, '../octocode-tools-core/src/index.ts'),
-    },
+    alias: [
+      {
+        find: /^@octocodeai\/octocode-tools-core$/,
+        replacement: resolve(__dirname, '../octocode-tools-core/src/index.ts'),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/direct$/,
+        replacement: resolve(__dirname, '../octocode-tools-core/src/direct.ts'),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/zod$/,
+        replacement: resolve(__dirname, '../octocode-tools-core/src/zod.ts'),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/config$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-tools-core/src/shared/config/index.ts'
+        ),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/credentials$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-tools-core/src/shared/credentials/index.ts'
+        ),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/platform$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-tools-core/src/shared/platform/index.ts'
+        ),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/session$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-tools-core/src/shared/session/index.ts'
+        ),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/paths$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-tools-core/src/shared/paths.ts'
+        ),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/fs-utils$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-tools-core/src/shared/fs-utils.ts'
+        ),
+      },
+      {
+        find: /^@octocodeai\/octocode-tools-core\/testing$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-tools-core/src/shared/credentials/testing.ts'
+        ),
+      },
+      {
+        find: /^octocode-security$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-engine/dist/security/index.js'
+        ),
+      },
+      {
+        find: /^octocode-security\/(.+)$/,
+        replacement: resolve(
+          __dirname,
+          '../octocode-engine/dist/security/$1.js'
+        ),
+      },
+    ],
   },
   test: {
     environment: 'node',

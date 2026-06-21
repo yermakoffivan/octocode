@@ -104,6 +104,7 @@ export async function getFileContent(
     charOffset: query.charOffset,
     charLength: query.charLength,
     fullContent: query.fullContent,
+    forceRefresh: query.forceRefresh,
     minify: query.minify ?? 'standard',
     mainResearchGoal: query.mainResearchGoal,
     researchGoal: query.researchGoal,

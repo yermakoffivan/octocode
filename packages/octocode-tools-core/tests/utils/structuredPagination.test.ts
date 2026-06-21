@@ -28,7 +28,7 @@ function localSearchResult(id: string, value: string): FlatQueryResult {
 }
 
 describe('structured response pagination', () => {
-  it('applies explicit per-query output pagination with continuation hints', () => {
+  it('applies explicit per-query output pagination without emitting hints', () => {
     const result = applyQueryOutputPagination(
       localSearchResult('q1', 'x'.repeat(240)),
       { charOffset: 0, charLength: 90 },
@@ -40,11 +40,7 @@ describe('structured response pagination', () => {
       hasMore: true,
       charOffset: 0,
     });
-    expect(result.data.hints).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Use charOffset='),
-      ])
-    );
+    expect(result.data).not.toHaveProperty('hints');
     expect(result.data.files).toHaveLength(1);
   });
 

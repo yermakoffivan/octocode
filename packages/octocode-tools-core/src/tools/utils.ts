@@ -4,15 +4,16 @@ import type {
   ToolSuccessResult,
   ToolInvocationCallback,
 } from '../types/toolResults.js';
-import type { HintContext } from '../types/metadata.js';
 import type { ProviderResponse } from '../providers/types.js';
-import { getHints } from '../hints/index.js';
 import { logSessionError } from '../session.js';
 import { TOOL_ERRORS } from '../errors/domainErrors.js';
-import { createErrorResult } from '../utils/response/error.js';
+import {
+  createErrorResult,
+  safeParseOrError,
+} from '../utils/response/error.js';
 import { attachRawResponseChars } from '../utils/response/charSavings.js';
 
-export { createErrorResult };
+export { createErrorResult, safeParseOrError };
 
 export async function invokeCallbackSafely(
   callback: ToolInvocationCallback | undefined,
@@ -30,12 +31,6 @@ export async function invokeCallbackSafely(
 }
 
 interface SuccessResultOptions {
-  hintContext?: HintContext;
-
-  prefixHints?: string[];
-
-  extraHints?: string[];
-
   rawResponse?: unknown;
 }
 
@@ -47,7 +42,7 @@ export function createSuccessResult<T extends object>(
   },
   data: T,
   hasContent: boolean,
-  toolName: string,
+  _toolName: string,
   options?: SuccessResultOptions
 ): ToolSuccessResult & T {
   const status = hasContent ? undefined : ('empty' as const);
@@ -56,19 +51,6 @@ export function createSuccessResult<T extends object>(
     ...(status !== undefined ? { status } : {}),
     ...data,
   } as ToolSuccessResult & T;
-
-  const hints =
-    status === 'empty' ? getHints(toolName, 'empty', options?.hintContext) : [];
-  const prefixHints = options?.prefixHints || [];
-  const extraHints = options?.extraHints || [];
-
-  const allHints = [
-    ...new Set([...prefixHints, ...hints, ...extraHints]),
-  ].filter((h): h is string => typeof h === 'string' && h.trim().length > 0);
-
-  if (allHints.length > 0) {
-    result.hints = allHints;
-  }
 
   return options?.rawResponse === undefined
     ? result
@@ -94,11 +76,7 @@ export function handleProviderError(
     retryAfter: apiResult.rateLimit?.retryAfter,
   };
 
-  const externalHints = Array.isArray(apiResult.hints) ? apiResult.hints : [];
-
   const errorResult = createErrorResult(apiError, query, {
-    hintSourceError: apiError,
-    customHints: externalHints,
     rawResponse:
       apiResult.rawResponseChars ??
       apiResult.data ??

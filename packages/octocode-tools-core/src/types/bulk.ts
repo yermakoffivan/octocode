@@ -56,8 +56,6 @@ export interface BulkResponseConfig<
   toolName: string;
   keysPriority?: string[];
 
-  peerHints?: boolean;
-
   concurrency?: number;
 
   minQueryTimeoutMs?: number;
@@ -69,8 +67,6 @@ export interface BulkResponseConfig<
 
 export interface BulkToolResponse {
   results: FlatQueryResult[];
-
-  hints?: string[];
 
   base?: string;
 

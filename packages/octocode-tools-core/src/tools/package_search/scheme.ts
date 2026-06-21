@@ -12,6 +12,10 @@ import { responseEnvelopeFields } from '../../scheme/responseEnvelope.js';
 
 const queryOverrides = {
   page: relaxedPageNumberField,
+  // Accepted because the CLI `pkg --mode lean|full` flag sends it (see
+  // packages/octocode/src/cli/commands/pkg.ts). The strict npm bulk schema
+  // would otherwise reject it as an unrecognized key. Execution currently
+  // no-ops it, but the field must stay part of the contract.
   mode: z.enum(['lean', 'full']).optional(),
 } as const;
 
@@ -43,9 +47,10 @@ export const NpmSearchOutputLocalSchema = z
                       version: z.string().optional(),
                       description: z.string().optional(),
                       license: z.string().optional(),
-                      weeklyDownloads: z.number().optional(),
+                      downloads: z.number().optional(),
                       repository: z.string().optional(),
                       repositoryDirectory: z.string().optional(),
+                      next: z.record(z.string(), z.unknown()).optional(),
                     })
                     .passthrough()
                 )
@@ -58,6 +63,7 @@ export const NpmSearchOutputLocalSchema = z
                   totalFound: z.number(),
                   returned: z.number(),
                   hasMore: z.boolean(),
+                  nextPage: z.number().optional(),
                 })
                 .optional(),
             })

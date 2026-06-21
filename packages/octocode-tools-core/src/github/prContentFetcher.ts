@@ -13,7 +13,7 @@ import {
 } from './githubAPI.js';
 import { TOOL_NAMES } from '../tools/toolMetadata/proxies.js';
 import { logSessionError } from '../session.js';
-import { ContentSanitizer } from 'octocode-security/contentSanitizer';
+import { ContentSanitizer } from '@octocodeai/octocode-engine/contentSanitizer';
 import { contextUtils } from '../utils/contextUtils.js';
 import { getOctokit, OctokitWithThrottling } from './client.js';
 import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types';

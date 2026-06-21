@@ -1,5 +1,6 @@
 import { PR_CONTENT_DEFAULT_ITEMS_PER_PAGE } from '../../config.js';
 import type { NormalizedPrContentRequest } from './contentRequest.js';
+import { buildDiffPreview } from '../../utils/parsers/diff.js';
 
 type QueryLike = {
   owner?: string;
@@ -430,6 +431,7 @@ function shapeFileSurfaces(
     return {
       ...base,
       patch: patch?.content ?? '',
+      diff: buildDiffPreview(patch?.content),
       ...(patch ? { patchPagination: patch.pagination } : {}),
     };
   });
@@ -745,50 +747,4 @@ export function shapePullRequestForContent(
   removeLegacyPaginationFields(shaped);
   if (contentPagination) shaped.contentPagination = contentPagination;
   return shaped;
-}
-
-export function buildContentHints(
-  pullRequests: Array<Record<string, unknown>>,
-  request: NormalizedPrContentRequest
-): string[] {
-  const first = pullRequests[0];
-  if (!first) return [];
-  const hints: string[] = [
-    'PR response includes a `next` map — re-call with next.target + one content key (e.g. next.getBody, next.getAllPatches, next.getComments) to fetch a surface.',
-  ];
-  const contentPagination = isRecord(first.contentPagination)
-    ? first.contentPagination
-    : {};
-  const continuationHints: Record<string, { label: string; field: string }> = {
-    body: { label: 'body charOffset', field: 'charOffset' },
-    changedFiles: { label: 'changedFiles filePage', field: 'filePage' },
-    comments: { label: 'comments commentPage', field: 'commentPage' },
-    commentBody: {
-      label: 'comment body commentBodyOffset',
-      field: 'commentBodyOffset',
-    },
-    commits: { label: 'commits commitPage', field: 'commitPage' },
-    patches: { label: 'patches charOffset', field: 'charOffset' },
-    filePaths: { label: 'file paths filePage', field: 'filePage' },
-  };
-  for (const [surface, { label, field }] of Object.entries(continuationHints)) {
-    const entry = contentPagination[surface];
-    if (!isRecord(entry) || entry.hasMore !== true) continue;
-    const nextQuery = isRecord(entry.nextQuery) ? entry.nextQuery : {};
-    const nextValue = nextQuery[field];
-    if (typeof nextValue === 'number') {
-      hints.push(`More PR ${label}=${nextValue}.`);
-    }
-  }
-  if (request.patches.mode === 'none') {
-    hints.push(
-      'Patches not included — request content.patches={mode:"all"} or {mode:"selected",files:[...]}.'
-    );
-  }
-  if (!request.comments) {
-    hints.push(
-      'Comments not included — request content.comments={discussion:true,reviewInline:true}.'
-    );
-  }
-  return hints;
 }

@@ -56,7 +56,7 @@ describe('contextUtils native boundary', () => {
       () =>
         ({
           queryFileSystem,
-        }) as unknown as typeof import('@octocodeai/octocode-context-utils')
+        }) as unknown as typeof import('@octocodeai/octocode-engine')
     );
 
     const result = contextUtils.queryFileSystem({

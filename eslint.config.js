@@ -62,7 +62,7 @@ export default tseslint.config(
   },
 
   {
-    files: ['packages/octocode-cli/src/**/*.ts', 'packages/octocode-cli/tests/**/*.ts'],
+    files: ['packages/octocode/src/**/*.ts', 'packages/octocode/tests/**/*.ts'],
     rules: {
       'no-console': 'off',
       'no-control-regex': 'off',
@@ -70,7 +70,7 @@ export default tseslint.config(
   },
 
   {
-    files: ['packages/octocode-cli/tests/**/*.ts'],
+    files: ['packages/octocode/tests/**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },
@@ -86,7 +86,7 @@ export default tseslint.config(
   },
 
   {
-    files: ['packages/octocode-shared/src/**/*.ts', 'packages/octocode-shared/tests/**/*.ts'],
+    files: ['packages/octocode-tools-core/src/shared/**/*.ts', 'packages/octocode-tools-core/tests/shared/**/*.ts'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
       'no-console': 'off',

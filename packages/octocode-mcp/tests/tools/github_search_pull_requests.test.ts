@@ -563,7 +563,7 @@ describe('GitHub Search Pull Requests Tool', () => {
       await mockServer.callTool(TOOL_NAMES.GITHUB_SEARCH_PULL_REQUESTS, {
         queries: [
           {
-            owner: 'wix-private',
+            owner: 'organization-private',
             state: 'open',
           },
         ],
@@ -571,7 +571,7 @@ describe('GitHub Search Pull Requests Tool', () => {
 
       expect(mockProvider.searchPullRequests).toHaveBeenCalledTimes(1);
       const providerQuery = mockProvider.searchPullRequests.mock.calls[0]?.[0];
-      expect(providerQuery.owner).toBe('wix-private');
+      expect(providerQuery.owner).toBe('organization-private');
     });
 
     it('should return results when searching by owner only', async () => {
@@ -584,7 +584,7 @@ describe('GitHub Search Pull Requests Tool', () => {
         {
           queries: [
             {
-              owner: 'wix-private',
+              owner: 'organization-private',
               author: 'developer',
             },
           ],

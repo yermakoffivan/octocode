@@ -1,4 +1,4 @@
-export type CacheSource = 'clone' | 'directoryFetch';
+export type CacheSource = 'clone' | 'directoryFetch' | 'treeFetch';
 
 export interface CloneCacheMeta {
   clonedAt: string;

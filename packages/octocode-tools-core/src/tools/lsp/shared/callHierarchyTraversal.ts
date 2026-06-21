@@ -1,11 +1,12 @@
-import type { LSPClient } from 'octocode-lsp/client';
+import type { LSPClient } from '@octocodeai/octocode-engine/lsp/client';
 import type {
   CallHierarchyItem,
   IncomingCall,
   LSPRange,
   OutgoingCall,
-} from 'octocode-lsp/types';
-import { safeReadFile } from 'octocode-lsp/validation';
+} from '@octocodeai/octocode-engine/lsp/types';
+import { safeReadFile } from '@octocodeai/octocode-engine/lsp/validation';
+import { splitLines } from '../../../utils/core/lines.js';
 
 export type TraversalResult<T> = {
   calls: T[];
@@ -34,7 +35,7 @@ async function enhanceCallItem(
   const content = await safeReadFile(item.uri);
   if (!content) return item;
 
-  const lines = content.split(/\r?\n/);
+  const lines = splitLines(content);
 
   const anchorLine = callSiteRanges?.[0]?.start.line ?? item.range.start.line;
   const startLine = Math.max(0, anchorLine - contextLines);

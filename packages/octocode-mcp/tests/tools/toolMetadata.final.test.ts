@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const emptyCompleteMetadata = {
-  instructions: '',
+  systemPrompt: '',
   prompts: {},
   toolNames: {
     GITHUB_FETCH_CONTENT: 'ghGetFileContent',

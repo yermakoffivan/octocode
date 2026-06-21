@@ -22,6 +22,8 @@ const PaginationInfoSchema = z.object({
   currentPage: z.number(),
   totalPages: z.number(),
   hasMore: z.boolean(),
+  nextPage: z.number().optional(),
+  nextMatchPage: z.number().optional(),
   charOffset: z.number().optional(),
   charLength: z.number().optional(),
   totalChars: z.number().optional(),
@@ -37,6 +39,8 @@ const PaginationInfoSchema = z.object({
 const GitHubFetchFileEntrySchema = z.object({
   path: z.string(),
   content: z.string(),
+  localPath: z.string().optional(),
+  repoRoot: z.string().optional(),
   contentView: z.enum(['none', 'standard', 'symbols']).optional(),
   isSkeleton: z.boolean().optional(),
   totalLines: z.number().optional(),
@@ -55,11 +59,13 @@ const GitHubFetchFileEntrySchema = z.object({
   warnings: z.array(z.string()).optional(),
   matchNotFound: z.boolean().optional(),
   searchedFor: z.string().optional(),
+  cached: z.boolean().optional(),
 });
 
 const GitHubFetchDirectoryEntrySchema = z.object({
   path: z.string(),
   localPath: z.string(),
+  repoRoot: z.string().optional(),
   fileCount: z.number(),
   totalSize: z.number(),
   files: z
@@ -107,7 +113,6 @@ export const GitHubFetchContentOutputLocalSchema = z.object({
       directories: z.array(GitHubFetchDirectoryEntrySchema).optional(),
     })
   ),
-  hints: z.array(z.string()).optional(),
   errors: z
     .array(
       z.object({
@@ -116,7 +121,6 @@ export const GitHubFetchContentOutputLocalSchema = z.object({
         repo: z.string().optional(),
         path: z.string().optional(),
         error: z.string(),
-        hints: z.array(z.string()).optional(),
       })
     )
     .optional(),
