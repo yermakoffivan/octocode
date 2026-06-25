@@ -1,14 +1,14 @@
 /**
- * Octocode Query Language (OQL) V1 — public surface.
+ * Octocode Query Language (OQL) public surface.
  *
  * `octocode search` (CLI) and the OQL MCP tool both consume this module:
  *   - `runOqlSearch` executes a query/batch and returns a typed envelope.
  *   - `normalizeInput` / `planQuery` expose the normalize + explain stages.
  *   - `oqlSchemaText()` / `OQL_SCHEMA_JSON` back `octocode search --scheme`.
  *
- * Schemas/types co-locate here for V1 (tools-core). Per the implementation
- * plan's Phase 8, they may migrate to `@octocodeai/octocode-core/oql` once a
- * second consumer needs OQL validation without the rest of tools-core.
+ * Schemas/types co-locate here for now (tools-core). They may migrate to
+ * `@octocodeai/octocode-core/oql` once a second consumer needs OQL validation
+ * without the rest of tools-core.
  */
 export * from './types.js';
 export {
@@ -17,6 +17,7 @@ export {
   OqlCanonicalInputSchema,
   OqlInputQuerySchema,
   OqlInputBatchSchema,
+  OqlSearchInputSchema,
   PredicateSchema,
   QuerySourceSchema,
   StructuralRuleSchema,
@@ -42,6 +43,16 @@ export {
   type ShorthandCorpus,
   type ShorthandResult,
 } from './shorthand.js';
+export {
+  listTransformerEntries,
+  findTransformerById,
+  findTransformerEntry,
+  backendCallsForTransformer,
+} from './transformers/registry.js';
+export type {
+  TransformerRegistryEntry,
+  TransformerStatus,
+} from './transformers/contract.js';
 export { oqlSchemaText, OQL_SCHEMA_DOC } from './schemeText.js';
 export {
   analyzeResearchFlow,
@@ -56,3 +67,22 @@ export {
   type ResearchSymbolRow,
   type ResearchSymbolVerdict,
 } from './research/analyze.js';
+export {
+  buildResearchPackets,
+  type EvidenceClaim,
+  type EvidenceConfidence,
+  type EvidenceEdge,
+  type EvidenceFact,
+  type EvidenceFlag,
+  type EvidenceLocation,
+  type EvidenceRelation,
+  type EvidenceSource,
+  type EvidenceSubject,
+  type MissingProof,
+  type MissingProofKind,
+  type PacketProofStatus,
+  type PacketVerdict,
+  type ResearchEvidencePacket,
+  type ResearchGraphSummary,
+  type ResearchPacketBundle,
+} from './research/packets.js';

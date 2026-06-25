@@ -11,10 +11,19 @@
  *    emits `planTruncated` only).
  */
 import { routeLeafPredicate, type CapabilityContext } from './capabilities.js';
-import { classifyDiffLane, diffLaneBackend } from './diffLanes.js';
+import { classifyDiffLane } from './diffLanes.js';
 import { checkOutputFeatures } from './features.js';
 import { diagnostic } from './diagnostics.js';
 import { DEFAULTS, appliedDefaults } from './defaults.js';
+import { toGithubCodeSearchToolQuery } from './transformers/github/code.js';
+import {
+  backendCallsForTransformer,
+  findTransformerById,
+  findTransformerEntry,
+  findTransformerForQuery,
+  transformerTrace,
+} from './transformers/registry.js';
+import type { TransformerRegistryEntry } from './transformers/contract.js';
 import type {
   LeafPredicate,
   MaterializePolicy,
@@ -22,7 +31,7 @@ import type {
   OqlDiagnostic,
   OqlExplainPlan,
   OqlPlanNode,
-  OqlQueryV1,
+  OqlQuery,
   PlanRoute,
   Predicate,
   QuerySource,
@@ -32,6 +41,7 @@ interface WalkResult {
   nodes: OqlPlanNode[];
   diagnostics: OqlDiagnostic[];
   backendCalls: OqlBackendCall[];
+  transformers: OqlExplainPlan['transformers'];
 }
 
 function predicateId(p: Predicate, path: string): string {
@@ -44,7 +54,7 @@ function predicateId(p: Predicate, path: string): string {
  * child routes.
  */
 function walkPredicate(
-  query: OqlQueryV1,
+  query: OqlQuery,
   predicate: Predicate,
   path: string,
   ctx: CapabilityContext,
@@ -57,13 +67,46 @@ function walkPredicate(
     const childRoutes = predicate.of.map((c, i) =>
       walkPredicate(query, c, `${path}.of[${i}]`, ctx, out, inNegation)
     );
-    const route = combineBooleanRoute(predicate.kind, childRoutes);
-    out.nodes.push({
-      predicateId: id,
-      path,
-      route,
-      reason: `${predicate.kind} over ${childRoutes.length} children`,
-    });
+    let route = combineBooleanRoute(predicate.kind, childRoutes);
+    let reason = `${predicate.kind} over ${childRoutes.length} children`;
+
+    // A multi-leaf boolean is not a single provider call. Over a GitHub
+    // `code`/`files` source it must materialize (clone -> local set-algebra) or
+    // it is unsupported — so the plan matches execution (the boolean evaluators
+    // run only on a local/materialized corpus).
+    if (
+      ctx.sourceKind === 'github' &&
+      (ctx.target === 'code' || ctx.target === 'files') &&
+      route !== 'UNSUPPORTED'
+    ) {
+      const canMat =
+        ctx.materialize?.mode === 'auto' ||
+        ctx.materialize?.mode === 'required';
+      if (canMat) {
+        route = 'ROUTE';
+        reason +=
+          ' (routed to materialization: GitHub cannot evaluate a multi-leaf boolean in one call)';
+      } else {
+        route = 'UNSUPPORTED';
+        reason +=
+          ' (GitHub cannot evaluate a multi-leaf boolean; materialize for local proof)';
+        out.diagnostics.push(
+          diagnostic(
+            'requiresMaterialization',
+            'A multi-leaf boolean over a GitHub code source needs bounded materialization (clone then local set-algebra).',
+            {
+              queryPath: path,
+              repair: {
+                message:
+                  'Add materialize:{mode:"auto"} with scope.path, or run one query per branch.',
+              },
+            }
+          )
+        );
+      }
+    }
+
+    out.nodes.push({ predicateId: id, path, route, reason });
     return route;
   }
 
@@ -115,7 +158,7 @@ function walkPredicate(
   if (decision.route !== 'UNSUPPORTED') {
     addBackendCall(out.backendCalls, {
       backend: decision.backend,
-      source: query.from,
+      source: decision.route === 'ROUTE' ? undefined : query.from,
       operation: operationFor(query.target),
       exact: decision.exact,
     });
@@ -138,7 +181,7 @@ function combineBooleanRoute(
   return children[0] ?? 'PUSHDOWN';
 }
 
-function operationFor(target: OqlQueryV1['target']): string {
+function operationFor(target: OqlQuery['target']): string {
   switch (target) {
     case 'code':
       return 'searchCode';
@@ -164,6 +207,8 @@ function operationFor(target: OqlQueryV1['target']): string {
       return 'diff';
     case 'research':
       return 'runResearchFlow';
+    case 'graph':
+      return 'queryRelationshipGraph';
     case 'materialize':
       return 'materialize';
   }
@@ -177,6 +222,132 @@ function addBackendCall(calls: OqlBackendCall[], call: OqlBackendCall): void {
       c.exact === call.exact
   );
   if (!exists) calls.push(call);
+}
+
+function addTransformerTrace(
+  out: WalkResult,
+  transformer: TransformerRegistryEntry | undefined
+): void {
+  if (!transformer) return;
+  const trace = transformerTrace(transformer);
+  const exists = out.transformers?.some(t => t.id === trace.id);
+  if (!exists) {
+    out.transformers = [...(out.transformers ?? []), trace];
+  }
+}
+
+function addTransformerBackendCalls(
+  out: WalkResult,
+  transformer: TransformerRegistryEntry | undefined,
+  source?: QuerySource
+): boolean {
+  if (!transformer) return false;
+  for (const call of backendCallsForTransformer(transformer, source)) {
+    addBackendCall(out.backendCalls, call);
+  }
+  return true;
+}
+
+function addGithubFilesMaterializationCalls(
+  out: WalkResult,
+  source: QuerySource
+): boolean {
+  return addGithubMaterializationCalls(out, source, 'files');
+}
+
+function addGithubMaterializationCalls(
+  out: WalkResult,
+  source: QuerySource,
+  target: OqlQuery['target'],
+  localTransformer: TransformerRegistryEntry | undefined = findTransformerEntry(
+    {
+      sourceKind: 'materialized',
+      target,
+    }
+  )
+): boolean {
+  const materializeTransformer = findTransformerEntry({
+    sourceKind: 'github',
+    target: 'materialize',
+  });
+  if (!materializeTransformer || !localTransformer) return false;
+
+  out.transformers = (out.transformers ?? []).filter(
+    trace => trace.id !== `github.${target}`
+  );
+  addTransformerTrace(out, materializeTransformer);
+  addTransformerTrace(out, localTransformer);
+
+  const localBackendKeys = new Set(
+    localTransformer.backends.map(
+      backend => `${backend.backend}:${backend.operation}`
+    )
+  );
+  out.backendCalls = out.backendCalls.filter(
+    call => !localBackendKeys.has(`${call.backend}:${call.operation}`)
+  );
+
+  addTransformerBackendCalls(out, materializeTransformer, source);
+  addTransformerBackendCalls(out, localTransformer, undefined);
+  return true;
+}
+
+function containsStructuralPredicate(
+  predicate: Predicate | undefined
+): boolean {
+  if (!predicate) return false;
+  if (predicate.kind === 'structural') return true;
+  if (predicate.kind === 'all' || predicate.kind === 'any') {
+    return predicate.of.some(containsStructuralPredicate);
+  }
+  if (predicate.kind === 'not') {
+    return containsStructuralPredicate(predicate.predicate);
+  }
+  return false;
+}
+
+function localTransformerForRoutedQuery(
+  query: OqlQuery
+): TransformerRegistryEntry | undefined {
+  if (query.target === 'code') {
+    return findTransformerById(
+      containsStructuralPredicate(query.where)
+        ? 'local.code.structural'
+        : 'local.code.textRegex'
+    );
+  }
+  return findTransformerEntry({
+    sourceKind: 'materialized',
+    target: query.target,
+  });
+}
+
+function transformerForQuery(
+  query: OqlQuery,
+  source: QuerySource
+): TransformerRegistryEntry | undefined {
+  if (
+    query.target === 'code' &&
+    (source.kind === 'local' || source.kind === 'materialized')
+  ) {
+    return (
+      findTransformerById(
+        containsStructuralPredicate(query.where)
+          ? 'local.code.structural'
+          : 'local.code.textRegex'
+      ) ??
+      findTransformerForQuery({
+        source,
+        target: query.target,
+        params: query.params,
+      })
+    );
+  }
+  return findTransformerForQuery({
+    source,
+    target: query.target,
+    params: query.params,
+  });
 }
 
 function countPredicateNodes(p: Predicate | undefined): number {
@@ -196,11 +367,13 @@ export interface PlanQueryResult {
   executable: boolean;
 }
 
-export function planQuery(
-  query: OqlQueryV1,
-  rawInput: unknown
-): PlanQueryResult {
-  const out: WalkResult = { nodes: [], diagnostics: [], backendCalls: [] };
+export function planQuery(query: OqlQuery, rawInput: unknown): PlanQueryResult {
+  const out: WalkResult = {
+    nodes: [],
+    diagnostics: [],
+    backendCalls: [],
+    transformers: [],
+  };
   const materialize = query.materialize;
   const source: QuerySource = query.from ?? { kind: 'github' };
   const ctx: CapabilityContext = {
@@ -208,23 +381,42 @@ export function planQuery(
     target: query.target,
     materialize,
   };
+  const transformer = transformerForQuery(query, source);
+  addTransformerTrace(out, transformer);
 
   // Predicate routing
   if (query.where) {
     walkPredicate(query, query.where, 'where', ctx, out);
+    if (
+      source.kind === 'github' &&
+      out.nodes.some(node => node.route === 'ROUTE')
+    ) {
+      addGithubMaterializationCalls(
+        out,
+        source,
+        query.target,
+        localTransformerForRoutedQuery(query)
+      );
+    }
   } else if (query.target === 'diff') {
     // target:"diff" routes by params shape, not target alone. The lane
     // discriminant is shared with the adapter (diffLanes.ts) so the dry-run
     // plan can never contradict execution on backend name or executability.
     const lane = classifyDiffLane(query.params);
-    const backend = diffLaneBackend(lane);
-    if (backend) {
-      out.backendCalls.push({
-        backend,
-        source,
-        operation: operationFor('diff'),
-        exact: true,
-      });
+    if (lane.kind === 'prPatch' || lane.kind === 'directFile') {
+      if (!addTransformerBackendCalls(out, transformer, source)) {
+        out.diagnostics.push(
+          diagnostic(
+            'unsupportedTarget',
+            `No transformer registered for target:"diff" lane "${lane.kind}".`,
+            {
+              queryPath: 'target',
+              backend: 'ghHistoryResearch',
+              severity: 'error',
+            }
+          )
+        );
+      }
     } else {
       out.diagnostics.push(
         diagnostic(
@@ -242,15 +434,60 @@ export function planQuery(
       );
     }
   } else {
-    // targetless families (content/structure/files + V2 research targets):
-    // a single fetch/list/inspect backend call.
-    out.backendCalls.push({
-      backend: backendForTargetless(query),
-      source,
-      operation: operationFor(query.target),
-      exact: query.target !== 'research',
-    });
+    // Targetless families use the transformer registry as the single backend
+    // contract, keeping explain/dry-run aligned with adapter provenance.
+    const githubFilesNeedsMaterialization =
+      source.kind === 'github' && query.target === 'files' && !query.where;
+    const canMaterialize =
+      materialize?.mode === 'auto' || materialize?.mode === 'required';
+    const added = githubFilesNeedsMaterialization
+      ? canMaterialize && addGithubFilesMaterializationCalls(out, source)
+      : addTransformerBackendCalls(out, transformer, source);
+    if (!added && (!githubFilesNeedsMaterialization || canMaterialize)) {
+      out.diagnostics.push(
+        diagnostic(
+          'unsupportedTarget',
+          githubFilesNeedsMaterialization
+            ? 'No transformer chain registered for target:"files" GitHub materialization.'
+            : `No transformer registered for target:"${query.target}" from ${source.kind}.`,
+          {
+            queryPath: 'target',
+            severity: 'error',
+          }
+        )
+      );
+    }
   }
+
+  // `files` over a GitHub source with no `where` has no leaf to route through
+  // the capability layer, but still cannot enumerate the file universe from the
+  // provider. Enforce the same materialization requirement so the plan matches
+  // executeGithub's files lane.
+  if (source.kind === 'github' && query.target === 'files' && !query.where) {
+    const canMat =
+      materialize?.mode === 'auto' || materialize?.mode === 'required';
+    if (!canMat) {
+      out.diagnostics.push(
+        diagnostic(
+          'requiresMaterialization',
+          'target:"files" over a GitHub source needs bounded materialization to enumerate files (set materialize.mode "auto"/"required" with scope.path), or use a local source.',
+          {
+            queryPath: 'target',
+            backend: 'localFindFiles',
+            // error: there is no provider lane to list the whole file set, and
+            // no predicate node to carry an UNSUPPORTED route — block execution.
+            severity: 'error',
+            repair: {
+              message:
+                'Add materialize:{mode:"auto"} with scope.path, or use a local `from`.',
+            },
+          }
+        )
+      );
+    }
+  }
+
+  out.diagnostics.push(...adapterValidationDiagnostics(query, out.nodes));
 
   // Output-feature capability check (content view / select projections). Emits
   // non-blocking diagnostics so a requested-but-unbackable feature is explicit,
@@ -294,6 +531,7 @@ export function planQuery(
     defaults: appliedDefaults(query),
     nodes,
     backendCalls: out.backendCalls,
+    ...(out.transformers?.length ? { transformers: out.transformers } : {}),
     ...(materializeDecision ? { materialization: materializeDecision } : {}),
     budgets: query.controls?.budget,
     ...(truncated ? { truncated } : {}),
@@ -309,39 +547,40 @@ export function planQuery(
   return { plan, executable };
 }
 
-function backendForTargetless(query: OqlQueryV1): string {
-  const local = query.from?.kind !== 'github';
-  switch (query.target) {
-    case 'content':
-      return local ? 'localGetFileContent' : 'ghGetFileContent';
-    case 'structure':
-      return local ? 'localViewStructure' : 'ghViewRepoStructure';
-    case 'files':
-      return 'localFindFiles';
-    case 'semantics':
-      return 'lspGetSemantics';
-    case 'repositories':
-      return 'ghSearchRepos';
-    case 'packages':
-      return 'npmSearch';
-    case 'pullRequests':
-    case 'commits':
-      return 'ghHistoryResearch';
-    case 'artifacts':
-      return 'localBinaryInspect';
-    case 'research':
-      return 'smartOqlResearch';
-    // 'diff' is owned by the lane-aware branch in planQuery (diffLanes.ts) and
-    // never reaches here.
-    case 'materialize':
-      return 'ghCloneRepo';
-    default:
-      return local ? 'localSearchCode' : 'ghSearchCode';
+/** Collapse not(not(p)) → p recursively so double-negation never blocks validation. */
+function collapseDoubleNegation(where: Predicate): Predicate {
+  if (where.kind === 'not' && where.predicate.kind === 'not') {
+    return collapseDoubleNegation(where.predicate.predicate);
   }
+  return where;
+}
+
+function adapterValidationDiagnostics(
+  query: OqlQuery,
+  nodes: OqlPlanNode[]
+): OqlDiagnostic[] {
+  if (
+    query.from?.kind !== 'github' ||
+    (query.target !== 'code' && query.target !== 'files') ||
+    !query.where ||
+    query.materialize?.mode === 'required' ||
+    nodes.some(node => node.route === 'ROUTE')
+  ) {
+    return [];
+  }
+
+  const normalizedWhere = collapseDoubleNegation(query.where);
+  const transformed = toGithubCodeSearchToolQuery(
+    { ...query, where: normalizedWhere },
+    {
+      ...(query.target === 'files' ? { defaultMatch: 'file' as const } : {}),
+    }
+  );
+  return transformed.ok ? [] : transformed.diagnostics;
 }
 
 function decideMaterialization(
-  query: OqlQueryV1,
+  query: OqlQuery,
   diagnostics: OqlDiagnostic[]
 ): (MaterializePolicy & { required: boolean; reason: string }) | undefined {
   const m = query.materialize;

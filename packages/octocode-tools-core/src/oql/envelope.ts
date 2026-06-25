@@ -16,16 +16,16 @@ import type {
   OqlBackendCall,
   OqlDiagnostic,
   OqlExplainPlan,
+  OqlProofGradedResultRow,
   OqlProvenance,
   OqlResultEnvelope,
-  OqlResultRow,
   Pagination,
 } from './types.js';
 
 export interface BuildEnvelopeArgs {
   queryId?: string;
   queryIndex?: number;
-  results: OqlResultRow[];
+  results: OqlProofGradedResultRow[];
   pagination?: Pagination;
   next?: OqlResultEnvelope['next'];
   diagnostics: OqlDiagnostic[];
@@ -57,10 +57,16 @@ export function buildEnvelope(args: BuildEnvelopeArgs): OqlResultEnvelope {
 
 /** Diagnostic codes that mean the requested semantics could not be executed. */
 const UNSUPPORTED_CODES = new Set([
+  'invalidQuery',
+  'ambiguousSugar',
+  'unknownField',
   'unsupportedTarget',
   'unsupportedPredicate',
   'unsupportedBoolean',
   'unsupportedScope',
+  'unsupportedVendorPredicate',
+  'vendorNoEquivalent',
+  'responseShapeMismatch',
 ]);
 
 function proofKind(args: BuildEnvelopeArgs): EvidenceKind {
@@ -70,15 +76,29 @@ function proofKind(args: BuildEnvelopeArgs): EvidenceKind {
   if (args.diagnostics.some(d => UNSUPPORTED_CODES.has(d.code))) {
     return 'unsupported';
   }
-  if (args.approximate) return 'candidate';
+  if (args.approximate || diagnosticsApproximate(args.diagnostics)) {
+    return 'candidate';
+  }
   if (blocksAnswer(args.diagnostics)) return 'partial';
   if (hasOpenPages(args)) return 'partial';
   return 'proof';
 }
 
+function diagnosticsApproximate(diagnostics: OqlDiagnostic[]): boolean {
+  return diagnostics.some(d => d.code === 'providerSemanticsApproximate');
+}
+
 function hasOpenPages(args: BuildEnvelopeArgs): boolean {
   if (args.pagination?.hasMore) return true;
-  if (args.next && Object.keys(args.next).some(k => k.startsWith('next.page')))
+  // next.page (more result pages) and next.matchPage (more matches within a
+  // capped file) both mean the agent has not seen everything → not complete,
+  // not proof. They are lossless pagination cursors, not failures.
+  if (
+    args.next &&
+    Object.keys(args.next).some(
+      k => k.startsWith('next.page') || k === 'next.matchPage'
+    )
+  )
     return true;
   return false;
 }
@@ -101,7 +121,8 @@ export function unsupportedEnvelope(
   diagnostics: OqlDiagnostic[],
   plan?: OqlExplainPlan,
   queryId?: string,
-  queryIndex?: number
+  queryIndex?: number,
+  next?: OqlResultEnvelope['next']
 ): OqlResultEnvelope {
   return buildEnvelope({
     queryId,
@@ -111,5 +132,6 @@ export function unsupportedEnvelope(
     provenance: [],
     executable: false,
     plan,
+    ...(next && Object.keys(next).length ? { next } : {}),
   });
 }

@@ -24,7 +24,7 @@ const MCPCategorySchema = z.enum([
 
 export type MCPCategory = z.infer<typeof MCPCategorySchema>;
 
-const MCPRegistryEntrySchema = z.object({
+const _MCPRegistryEntrySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().min(1),
@@ -54,7 +54,7 @@ const MCPRegistryEntrySchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
-export type MCPRegistryEntry = z.infer<typeof MCPRegistryEntrySchema>;
+export type MCPRegistryEntry = z.infer<typeof _MCPRegistryEntrySchema>;
 
 export const MCP_REGISTRY: MCPRegistryEntry[] = [
   {
@@ -1385,7 +1385,7 @@ export const MCP_REGISTRY: MCPRegistryEntry[] = [
     id: 'browser-tools-mcp',
     name: 'BrowserTools MCP',
     description:
-      'Monitor browser logs and capture browser data from Cursor and MCP-compatible IDEs via Chrome extension',
+      'Monitor browser diagnostics and capture browser data from Cursor and MCP-compatible IDEs via Chrome extension',
     category: 'browser-automation',
     repository: 'https://github.com/AgentDeskAI/browser-tools-mcp',
     website: 'https://browsertools.agentdesk.ai',
@@ -1396,7 +1396,7 @@ export const MCP_REGISTRY: MCPRegistryEntry[] = [
       command: 'npx',
       args: ['-y', '@agentdeskai/browser-tools-mcp@latest'],
     },
-    tags: ['browser', 'devtools', 'chrome', 'logs', 'debugging'],
+    tags: ['browser', 'devtools', 'chrome', 'diagnostics', 'debugging'],
   },
   {
     id: 'hexstrike-ai',
@@ -2148,14 +2148,4 @@ export function getMCPsByTag(tag: string): MCPRegistryEntry[] {
 
 export function getTagCount(tag: string): number {
   return MCP_REGISTRY.filter(mcp => mcp.tags?.includes(tag)).length;
-}
-
-if (process.env.OCTOCODE_DEBUG === '1') {
-  const result = z.array(MCPRegistryEntrySchema).safeParse(MCP_REGISTRY);
-  if (!result.success) {
-    console.error(
-      '[mcp-registry] Schema validation failed:',
-      result.error.message
-    );
-  }
 }

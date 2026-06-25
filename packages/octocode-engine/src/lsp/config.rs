@@ -418,7 +418,29 @@ fn resolve_server_invocation(
     args: Vec<String>,
     workspace_root: &str,
 ) -> (String, Vec<String>) {
-    if let Some(cli_path) = resolve_typescript_server_cli(command, workspace_root) {
+    let current_dir = std::env::current_dir().ok();
+    resolve_server_invocation_with_environment(
+        command,
+        args,
+        workspace_root,
+        current_dir.as_deref(),
+        command_resolves_to_executable(command),
+    )
+}
+
+fn resolve_server_invocation_with_environment(
+    command: &str,
+    args: Vec<String>,
+    workspace_root: &str,
+    current_dir: Option<&Path>,
+    command_available_on_path: bool,
+) -> (String, Vec<String>) {
+    if let Some(cli_path) = resolve_typescript_server_cli(
+        command,
+        workspace_root,
+        current_dir,
+        command_available_on_path,
+    ) {
         if let Some(node_command) = current_node_command() {
             let mut resolved_args = Vec::with_capacity(args.len() + 1);
             resolved_args.push(cli_path.to_string_lossy().into_owned());
@@ -440,15 +462,25 @@ fn resolve_known_server_command(command: &str) -> String {
     }
 }
 
-fn resolve_typescript_server_cli(command: &str, workspace_root: &str) -> Option<PathBuf> {
+fn resolve_typescript_server_cli(
+    command: &str,
+    workspace_root: &str,
+    current_dir: Option<&Path>,
+    command_available_on_path: bool,
+) -> Option<PathBuf> {
     if !is_typescript_server_command(command) {
         return None;
     }
-    if command_resolves_to_executable(command) || is_executable_path(Path::new(command)) {
+    if command_available_on_path || is_executable_path(Path::new(command)) {
         return None;
     }
-    typescript_cli_from_command(command)
-        .or_else(|| find_node_module_file(workspace_root, "typescript-language-server/lib/cli.mjs"))
+    typescript_cli_from_command(command).or_else(|| {
+        find_node_module_file(
+            workspace_root,
+            current_dir,
+            "typescript-language-server/lib/cli.mjs",
+        )
+    })
 }
 
 fn is_typescript_server_command(command: &str) -> bool {
@@ -474,12 +506,23 @@ fn typescript_cli_from_command(command: &str) -> Option<PathBuf> {
     None
 }
 
-fn find_node_module_file(workspace_root: &str, package_relative_path: &str) -> Option<PathBuf> {
+fn find_node_module_file(
+    workspace_root: &str,
+    current_dir: Option<&Path>,
+    package_relative_path: &str,
+) -> Option<PathBuf> {
     let start = Path::new(workspace_root);
+    if let Some(path) = find_node_module_file_from(start, package_relative_path) {
+        return Some(path);
+    }
+    current_dir.and_then(|cwd| find_node_module_file_from(cwd, package_relative_path))
+}
+
+fn find_node_module_file_from(start: &Path, package_relative_path: &str) -> Option<PathBuf> {
     for ancestor in start.ancestors() {
         let candidate = ancestor.join("node_modules").join(package_relative_path);
         if candidate.exists() {
-            return Some(candidate);
+            return Some(std::fs::canonicalize(&candidate).unwrap_or(candidate));
         }
     }
     None
@@ -520,6 +563,7 @@ mod tests {
         command_is_tsgo, command_resolves_to_executable, current_node_command,
         default_server_for_file, detect_language_id, is_command_available,
         is_rust_analyzer_command, resolve_known_server_command, resolve_server_invocation,
+        resolve_server_invocation_with_environment,
     };
     use std::path::PathBuf;
 
@@ -630,6 +674,43 @@ mod tests {
         assert_eq!(args[1], "--stdio");
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolves_bundled_typescript_server_from_current_dir_for_external_workspace() {
+        let workspace_root = temp_test_root("octocode-engine-external-workspace");
+        let package_root = temp_test_root("octocode-engine-package-root");
+        let cli = package_root
+            .join("node_modules")
+            .join("typescript-language-server")
+            .join("lib")
+            .join("cli.mjs");
+        std::fs::create_dir_all(&workspace_root).expect("create external workspace");
+        std::fs::create_dir_all(cli.parent().unwrap_or(&package_root))
+            .expect("create bundled typescript-language-server dir");
+        std::fs::write(&cli, "#!/usr/bin/env node\n").expect("write temporary cli");
+
+        let Some(workspace_str) = workspace_root.to_str() else {
+            panic!("temporary workspace path is not utf-8");
+        };
+        let (command, args) = resolve_server_invocation_with_environment(
+            "typescript-language-server",
+            vec!["--stdio".to_owned()],
+            workspace_str,
+            Some(&package_root),
+            false,
+        );
+
+        assert_eq!(Some(command), current_node_command());
+        assert_eq!(
+            PathBuf::from(&args[0]),
+            std::fs::canonicalize(&cli).expect("canonicalize temporary cli")
+        );
+        assert_eq!(args[1], "--stdio");
+
+        let _ = std::fs::remove_dir_all(workspace_root);
+        let _ = std::fs::remove_dir_all(package_root);
     }
 
     #[cfg(unix)]

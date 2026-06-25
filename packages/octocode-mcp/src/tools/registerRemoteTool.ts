@@ -8,7 +8,6 @@ import { withSecurityValidation } from '@octocodeai/octocode-tools-core';
 import {
   DESCRIPTIONS,
   invokeCallbackSafely,
-  logSessionError,
 } from '@octocodeai/octocode-tools-core';
 import type {
   ToolInvocationCallback,
@@ -21,6 +20,8 @@ interface RemoteToolConfig<TQuery> {
   title: string;
 
   inputSchema: object;
+
+  outputSchema?: object;
 
   executionFn: (args: ToolExecutionArgs<TQuery>) => Promise<CallToolResult>;
 
@@ -46,6 +47,7 @@ export function createRemoteToolRegistration<TQuery>(
     name,
     title,
     inputSchema,
+    outputSchema,
     executionFn,
     describe,
     annotations,
@@ -63,6 +65,7 @@ export function createRemoteToolRegistration<TQuery>(
         {
           description,
           inputSchema: toMCPSchema(inputSchema),
+          ...(outputSchema ? { outputSchema: toMCPSchema(outputSchema) } : {}),
           annotations: {
             title,
             readOnlyHint: annotations?.readOnlyHint ?? true,
@@ -101,10 +104,6 @@ export function createRemoteToolRegistration<TQuery>(
     if (registrationGuard) {
       return registrationGuard().then(ok => {
         if (ok) return doRegister();
-        void logSessionError(
-          name,
-          'registration-skipped: registrationGuard returned false (precondition unmet)'
-        );
         return null;
       });
     }

@@ -4,7 +4,6 @@ import type {
   RequiredLocalConfig,
   RequiredToolsConfig,
   RequiredNetworkConfig,
-  RequiredTelemetryConfig,
   RequiredLspConfig,
   RequiredOutputConfig,
 } from './types.js';
@@ -13,7 +12,6 @@ import {
   DEFAULT_LOCAL_CONFIG,
   DEFAULT_TOOLS_CONFIG,
   DEFAULT_NETWORK_CONFIG,
-  DEFAULT_TELEMETRY_CONFIG,
   DEFAULT_LSP_CONFIG,
   DEFAULT_OUTPUT_CONFIG,
   MIN_TIMEOUT,
@@ -57,16 +55,6 @@ export function parseStringArrayEnv(
     .filter(s => s.length > 0);
 }
 
-export function parseLoggingEnv(
-  value: string | undefined
-): boolean | undefined {
-  if (value === undefined || value === null) return undefined;
-  const trimmed = value.trim().toLowerCase();
-  if (trimmed === '') return undefined;
-  if (trimmed === 'false' || trimmed === '0') return false;
-  return true;
-}
-
 export function resolveGitHub(
   fileConfig?: OctocodeConfig['github']
 ): RequiredGitHubConfig {
@@ -87,12 +75,14 @@ export function resolveLocal(
   const envWorkspaceRoot = process.env.WORKSPACE_ROOT?.trim() || undefined;
 
   return {
-    // Local tools: both surfaces honor ENABLE_LOCAL and file config. Only the
-    // fallback differs: CLI defaults on for terminal use; MCP defaults off.
-    enabled:
-      envEnableLocal ??
-      fileConfig?.enabled ??
-      (isCli ? true : DEFAULT_LOCAL_CONFIG.enabled),
+    // Local tools: the CLI is a local-first interface, so it IGNORES
+    // ENABLE_LOCAL entirely and is always enabled — that flag only gates the MCP
+    // server surface (which still honors ENABLE_LOCAL and file config, defaulting
+    // off). This keeps `octocode <local command>` working in a terminal without
+    // any env setup while leaving MCP gating intact.
+    enabled: isCli
+      ? true
+      : (envEnableLocal ?? fileConfig?.enabled ?? DEFAULT_LOCAL_CONFIG.enabled),
     // Clone: an explicit ENABLE_CLONE (env) or .octocoderc value wins for both
     // surfaces, so `false` disables everywhere. Otherwise the default is
     // surface-specific: ENABLED for the CLI, DISABLED for the MCP server.
@@ -147,17 +137,6 @@ export function resolveNetwork(
   maxRetries = Math.max(MIN_RETRIES, Math.min(MAX_RETRIES, maxRetries));
 
   return { timeout, maxRetries };
-}
-
-export function resolveTelemetry(
-  fileConfig?: OctocodeConfig['telemetry']
-): RequiredTelemetryConfig {
-  const envLogging = parseLoggingEnv(process.env.LOG);
-
-  return {
-    logging:
-      envLogging ?? fileConfig?.logging ?? DEFAULT_TELEMETRY_CONFIG.logging,
-  };
 }
 
 export function resolveLsp(

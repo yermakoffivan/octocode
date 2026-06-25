@@ -57,6 +57,30 @@ type DirectoryEntry = {
   repoRoot?: string;
   fileCount: number;
   totalSize: number;
+  complete?: boolean;
+  verified?: boolean;
+  commitSha?: string;
+  hasSubdirectories?: boolean;
+  skippedSummary?: Record<string, number>;
+  directoryEntryCount?: number;
+  eligibleFileCount?: number;
+  savedFileCount?: number;
+  skipped?: {
+    nonFile: number;
+    missingDownloadUrl: number;
+    oversized: number;
+    binary: number;
+    fileLimit: number;
+    fetchFailed: number;
+    totalSizeLimit: number;
+    pathTraversal: number;
+  };
+  limits?: {
+    maxDirectoryFiles: number;
+    maxTotalSize: number;
+    maxFileSize: number;
+  };
+  warnings?: string[];
   files?: Array<{ path: string; size: number; type: string }>;
   cached?: boolean;
   resolvedBranch?: string;
@@ -64,6 +88,14 @@ type DirectoryEntry = {
 
 type RepoGroup = {
   id: string;
+  owner: string;
+  repo: string;
+  files?: FileEntry[];
+  directories?: DirectoryEntry[];
+  data?: RepoGroupData;
+};
+
+type RepoGroupData = {
   owner: string;
   repo: string;
   files?: FileEntry[];
@@ -92,6 +124,40 @@ function readStringArray(value: unknown): string[] | undefined {
     (item): item is string => typeof item === 'string'
   );
   return strings.length > 0 ? strings : undefined;
+}
+
+function readRequiredNumber(
+  record: Record<string, unknown>,
+  key: string
+): number {
+  return readNumber(record[key]) ?? 0;
+}
+
+function readDirectorySkipped(
+  value: unknown
+): DirectoryEntry['skipped'] | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    nonFile: readRequiredNumber(value, 'nonFile'),
+    missingDownloadUrl: readRequiredNumber(value, 'missingDownloadUrl'),
+    oversized: readRequiredNumber(value, 'oversized'),
+    binary: readRequiredNumber(value, 'binary'),
+    fileLimit: readRequiredNumber(value, 'fileLimit'),
+    fetchFailed: readRequiredNumber(value, 'fetchFailed'),
+    totalSizeLimit: readRequiredNumber(value, 'totalSizeLimit'),
+    pathTraversal: readRequiredNumber(value, 'pathTraversal'),
+  };
+}
+
+function readDirectoryLimits(
+  value: unknown
+): DirectoryEntry['limits'] | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    maxDirectoryFiles: readRequiredNumber(value, 'maxDirectoryFiles'),
+    maxTotalSize: readRequiredNumber(value, 'maxTotalSize'),
+    maxFileSize: readRequiredNumber(value, 'maxFileSize'),
+  };
 }
 
 const OPTIONAL_PAGINATION_NUMERIC_FIELDS = [
@@ -236,12 +302,36 @@ function readDirectoryEntry(
     type: readString(file.type) ?? 'file',
   }));
 
+  const skipped = readDirectorySkipped(data.skipped);
+  const hasSubdirectories =
+    data.hasSubdirectories === true || (skipped ? skipped.nonFile > 0 : false);
+  const skippedSummaryEntries = skipped
+    ? Object.entries(skipped).filter(([, v]) => v > 0)
+    : [];
+  const skippedSummary =
+    skippedSummaryEntries.length > 0
+      ? Object.fromEntries(skippedSummaryEntries)
+      : undefined;
+
   return {
     path: String(query.path ?? ''),
     localPath: readString(data.localPath) ?? '',
     repoRoot: readString(data.repoRoot),
     fileCount: readNumber(data.fileCount) ?? files.length,
     totalSize: readNumber(data.totalSize) ?? 0,
+    complete: data.complete === true,
+    verified: data.verified === true,
+    ...(typeof data.commitSha === 'string' && data.commitSha.length === 40
+      ? { commitSha: data.commitSha }
+      : {}),
+    ...(hasSubdirectories ? { hasSubdirectories: true } : {}),
+    ...(skippedSummary ? { skippedSummary } : {}),
+    directoryEntryCount: readNumber(data.directoryEntryCount),
+    eligibleFileCount: readNumber(data.eligibleFileCount),
+    savedFileCount: readNumber(data.savedFileCount),
+    skipped: skipped,
+    limits: readDirectoryLimits(data.limits),
+    warnings: readStringArray(data.warnings),
     ...(files.length > 0 ? { files } : {}),
     ...(data.cached === true ? { cached: true } : {}),
     resolvedBranch: readString(data.resolvedBranch),
@@ -277,7 +367,15 @@ function buildGroups(
     group.files = files;
   });
 
-  return Array.from(groups.values());
+  return Array.from(groups.values()).map(group => {
+    const data: RepoGroupData = {
+      owner: group.owner,
+      repo: group.repo,
+      ...(group.files ? { files: group.files } : {}),
+      ...(group.directories ? { directories: group.directories } : {}),
+    };
+    return { ...group, data };
+  });
 }
 
 function collectFileErrors(

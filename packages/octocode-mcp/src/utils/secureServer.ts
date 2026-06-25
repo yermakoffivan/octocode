@@ -7,13 +7,9 @@ import {
 import {
   ContentSanitizer,
   maskSensitiveData,
-  logSessionError,
-  ignoreBestEffortFailure,
   sanitizeCallToolResult,
   buildToolErrorResult,
 } from '@octocodeai/octocode-tools-core';
-
-const TOOL_CALLBACK_EXCEPTION = 'TOOL_CALLBACK_EXCEPTION';
 
 interface NormalizedError {
   name: string;
@@ -84,9 +80,6 @@ function wrapToolCallback(
         return result;
       }
     } catch (error) {
-      void Promise.resolve(
-        logSessionError(name, TOOL_CALLBACK_EXCEPTION)
-      ).catch(ignoreBestEffortFailure('tool callback exception logging'));
       return buildToolErrorResult(name, error);
     }
   };
@@ -105,9 +98,6 @@ function wrapNonToolCallback<T>(
     } catch (error) {
       const normalized = normalizeError(error);
       const safeMessage = sanitizeErrorMessage(normalized.message);
-      void Promise.resolve(
-        logSessionError(name, `${kind.toUpperCase()}_CALLBACK_EXCEPTION`)
-      ).catch(ignoreBestEffortFailure(`${kind} callback exception logging`));
       throw new McpError(
         ErrorCode.InternalError,
         `${kind} "${name}" failed: ${safeMessage}`

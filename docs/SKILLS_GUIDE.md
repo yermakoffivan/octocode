@@ -1,166 +1,105 @@
 # Skills Guide
 
-Skills are markdown instruction sets that teach AI coding clients how to perform specific tasks — code exploration, PR review, architecture audits, documentation, and more.
+Octocode can install any GitHub folder that contains a `SKILL.md` file into the skill directories used by common AI coding clients.
 
----
+Use this guide when you want a deterministic, scriptable install. The command is intentionally non-interactive: agents must pass every destination with `--platform`, and the CLI never prompts.
 
-## Available Skills
-
-| Skill | When to use |
-|-------|-------------|
-| `octocode-install` | Guided Octocode setup: CLI/MCP, auth, IDE config, skills |
-| `octocode` | Run Octocode tools directly from the shell |
-| `octocode-engineer` | Everyday direct MCP code exploration — find, trace, definitions |
-| `octocode-research` | Deep research via HTTP research server (sessions, checkpoints) |
-| `octocode-brainstorming` | Validate ideas with prior art and market evidence |
-| `octocode-rfc-generator` | RFCs, design docs, options comparison, implementation plans |
-| `octocode-engineer` | Architecture-aware implementation, refactors, audits |
-| `octocode-engineer` | PR review (remote) or local/staged change review |
-| `octocode-roast` | Brutally honest code critique |
-| `octocode-prompt-optimizer` | Harden prompts, SKILL.md, and agent instructions |
-| `octocode-design` | Design-system and UI architecture guidance |
-| `octocode-documentation-writer` | Generate or refresh project documentation |
-| `octocode-news` | Recent AI/devtools/web/security update research |
-| `octocode-search-skill` | Find, preview, install, or review Agent Skills |
-| `octocode-chrome-devtools` | Browser debugging through Chrome DevTools Protocol |
-| `agentic-flow-best-practices` | Design/review agentic workflows and MCP/tool boundaries |
-| `octocode-slides` | Generate polished HTML slide decks |
-| `octocode-stats` | Render Octocode usage/statistics dashboards |
-
-**researcher vs research:** use `octocode-engineer` for direct MCP tool exploration. Use `octocode-research` for the HTTP research-server workflow with sessions and checkpoints.
-
----
-
-## Installation
-
-Skills install into one or more client skill directories and are picked up automatically.
+## Quick Start
 
 ```bash
-npx octocode skills list                                         # check install status
-npx octocode skills install --skill octocode-engineer          # install one
-npx octocode skills install -k octocode-rfc-generator                     # short flag
-npx octocode skills install --skill octocode-engineer --force  # update
-npx octocode skills install                                      # prompt for targets/mode, then install all
-npx octocode skills install --targets claude-code,cursor,codex   # multi-target install
-npx octocode skills install --targets claude-code,cursor --mode symlink # symlink mode
-npx octocode skills remove --skill octocode-engineer --targets claude-code,cursor # remove from targets
+# Shared cross-agent location
+npx octocode skill --add bgauryy/octocode-mcp/skills/octocode-engineer --platform common
+
+# Multiple clients, structured output for automation
+npx octocode skill --add bgauryy/octocode-mcp/skills/octocode-engineer --platform cursor,codex --mode copy --json
+
+# Keep one fetched source and link every supported client to it
+npx octocode skill --add https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-engineer --platform all --mode symlink --force
 ```
 
-`skills install` without `--targets`/`--mode` opens prompts to choose platforms and install strategy. Non-interactive runs default to `claude-code` with `copy` mode.
+## Command Shape
 
-### Install destinations
+```bash
+octocode skill --add <github-folder> --platform common|cursor|claude|codex|all [--branch <ref>] [--mode copy|symlink] [--force] [--json]
+```
 
-| Target | Path (macOS/Linux) | Path (Windows) |
-|-------|-------------------|----------------|
-| `claude-code` (default) | `~/.claude/skills/` | `%APPDATA%\Claude\skills\` |
-| `claude-desktop` | `~/.claude-desktop/skills/` | `%APPDATA%\Claude Desktop\skills\` |
-| `cursor` | `~/.cursor/skills/` | `%USERPROFILE%\.cursor\skills\` |
-| `codex` | `~/.codex/skills/` | `%USERPROFILE%\.codex\skills\` |
-| `opencode` | `~/.opencode/skills/` | `%USERPROFILE%\.opencode\skills\` |
+| Option | Required | Use |
+|--------|----------|-----|
+| `--add <github-folder>` | Yes | GitHub folder URL or `owner/repo/path` shorthand. The folder must contain `SKILL.md`. |
+| `--platform <list>` | Yes | Comma-separated `common`, `cursor`, `claude`, `codex`, or `all`. Alias: `--target`. |
+| `--branch <ref>` | No | Branch, tag, or SHA when the input does not include one. |
+| `--mode copy|symlink` | No | `copy` duplicates the fetched folder; `symlink` links clients to Octocode's source cache. Default: `copy`. |
+| `--force` | No | Replace an existing installed skill folder/link. |
+| `--json` | No | Print machine-readable result data and errors. |
 
-**Project-scoped install** — set `"skillsDestDir"` in `<octocode-home>/config.json` before running `skills install`:
+## GitHub Folder Inputs
+
+Accepted forms:
+
+```bash
+octocode skill --add owner/repo/skills/my-skill --platform common
+octocode skill --add owner/repo@main/skills/my-skill --platform cursor
+octocode skill --add https://github.com/owner/repo/tree/main/skills/my-skill --platform claude
+octocode skill --add https://github.com/owner/repo/blob/main/skills/my-skill/SKILL.md --platform codex
+```
+
+If the URL points at `SKILL.md`, Octocode installs the containing folder. Before installing, it fetches and validates that `SKILL.md` exists.
+
+## Platforms
+
+| Platform | Installs to |
+|----------|-------------|
+| `common` | `~/.agents/skills` |
+| `cursor` | Cursor's skills directory |
+| `claude` | Claude Code and Claude Desktop skill directories |
+| `codex` | Codex's skills directory |
+| `all` | Common, Cursor, Claude, and Codex |
+
+Platform-specific paths use the right home/AppData location on macOS, Linux, and Windows. Use `common` when you want one shared skill location that multiple agents can read.
+
+## Copy vs Symlink
+
+| Mode | Best for | Notes |
+|------|----------|-------|
+| `copy` | Durable installs per client | Each destination receives its own folder. |
+| `symlink` | Keeping all clients on one fetched source | Octocode keeps the source under `<octocode-home>/skill-sources/` and links each selected client directory to it. |
+
+Use `--force` when replacing an existing destination. Without `--force`, existing skills are skipped instead of overwritten.
+
+## Agent-Safe Contract
+
+`skill --add` is safe for automation because it does not ask follow-up questions. Missing or ambiguous input fails early.
+
+| Case | Exit code |
+|------|-----------|
+| Missing `--add`, missing `--platform`, invalid platform, invalid mode, or invalid GitHub folder | `2` |
+| GitHub folder cannot be fetched or does not contain `SKILL.md` | `3` |
+| One or more destination installs fail | `1` |
+
+JSON output includes:
 
 ```json
-{ "skillsDestDir": "/your/project/.claude/skills" }
+{
+  "success": true,
+  "skill": "octocode-engineer",
+  "source": "https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-engineer",
+  "cachePath": "<octocode-home>/skill-sources/github-bgauryy-octocode-mcp-main-skills-octocode-engineer/octocode-engineer",
+  "platforms": ["common"],
+  "targets": [
+    {
+      "target": "agents",
+      "path": "<home>/.agents/skills/octocode-engineer"
+    }
+  ],
+  "mode": "copy",
+  "installed": 1,
+  "skipped": 0,
+  "failed": 0
+}
 ```
 
-`skillsDestDir` customizes the `claude-code` destination only.
+## Related Docs
 
-Commit `.claude/skills/` (or your chosen target directory) to share skills with your team.
-
----
-
-## Skills Marketplace
-
-Access via the interactive menu: `npx octocode install` → Manage System Skills → Browse Marketplace.
-
-| Source | Description |
-|--------|-------------|
-| Octocode Official | Research, planning, review, code quality, docs, roast |
-| Build With Claude | Largest collection — 170+ commands |
-| Claude Code Plugins + Skills | Organized categories with tutorials |
-| Claude Skills Marketplace | Git automation, testing, code review |
-| Daymade Claude Skills | Production-ready development |
-| Superpowers | TDD, debugging, git worktrees |
-| Claude Scientific Skills | Scientific computing |
-| Dev Browser | Browser automation with Playwright |
-| Agent Skills | Web APIs and agent workflow skills |
-| Everything Claude Code | Large cross-domain skill library |
-| Antigravity Awesome Skills | Massive community skills collection |
-| Obsidian Skills | Obsidian and Markdown agent skills |
-
----
-
-## Skill Structure
-
-```
-{skill-name}/
-├── SKILL.md          # Main reference (<500 lines)
-└── references/       # Supporting docs (optional)
-```
-
-### SKILL.md format
-
-```yaml
----
-name: skill-name
-description: Use when [specific triggers]...
----
-
-# Skill Title
-
-## Flow Overview
-`PHASE1` → `PHASE2` → `PHASE3`
-
-## 1. Agent Identity
-<agent_identity>
-Role: **Agent Type**.
-**Objective**: What the agent does.
-**Principles**: Core behaviors.
-</agent_identity>
-
-## 2. Scope & Tooling
-<tools>
-| Tool | Purpose |
-|------|---------|
-| `toolName` | When to use |
-</tools>
-
-## 3. Execution Flow
-<key_principles>
-Step-by-step lifecycle.
-</key_principles>
-
-## 4. Error Recovery
-<error_recovery>
-How to handle failures.
-</error_recovery>
-```
-
-### Creating custom skills
-
-| Do | Don't |
-|----|-------|
-| List trigger phrases in `description` | Describe the workflow in `description` |
-| Use XML tags for sections | Use plain markdown headers only |
-| Include confidence levels | Assume all findings are certain |
-| Add user checkpoints | Execute major actions without confirmation |
-| Cite `file:line` precisely | Give vague file references |
-
-Keep SKILL.md under 500 lines. Use `references/` for extended content.
-
----
-
-## Troubleshooting
-
-**Skills not loading:**
-1. `ls ~/.claude/skills/` (or target path) — verify the skill folder exists.
-2. Check `SKILL.md` has valid frontmatter (`name` and `description` fields).
-
-**Skill not triggering:** mention the skill name explicitly, or check that the `description` field matches your use case.
-
-**Marketplace fetch errors:** GitHub API rate limits may apply — retry later or install from the bundled skills instead.
-
----
-
-[CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md) | [Claude Skills Documentation](https://support.anthropic.com/en/articles/10176498-how-to-use-custom-instructions-for-your-projects)
+- [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md)
+- [Skills Index](https://github.com/bgauryy/octocode/blob/main/skills/README.md)
+- [Pi Setup Guide](https://github.com/bgauryy/octocode/blob/main/docs/PI/PI_SETUP_GUIDE.md)

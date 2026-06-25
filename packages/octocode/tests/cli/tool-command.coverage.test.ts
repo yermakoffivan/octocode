@@ -56,6 +56,18 @@ const mocks = vi.hoisted(() => ({
   }),
 }));
 
+// Schema/help path imports the engine-free `/schema` subpath (P3).
+vi.mock('@octocodeai/octocode-tools-core/schema', async importOriginal => {
+  const actual =
+    await importOriginal<
+      typeof import('@octocodeai/octocode-tools-core/schema')
+    >();
+  return {
+    ...actual,
+    loadToolContent: mocks.loadToolContent,
+  };
+});
+
 vi.mock('@octocodeai/octocode-tools-core/direct', async importOriginal => {
   const actual =
     await importOriginal<
@@ -109,10 +121,12 @@ describe('tool-command coverage', () => {
 
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('GitHub');
-    expect(output).toContain('Local');
-    expect(output).toContain('LSP');
+    expect(output).toContain('Local Code');
+    expect(output).not.toContain('\n  LSP\n');
     expect(output).toContain('localSearchCode');
     expect(output).toContain('ghSearchCode');
+    expect(output).toContain('workspaceSymbol');
+    expect(output).toContain('diagnostic');
     expect(output).toContain('tools <name>');
     expect(process.exitCode).toBeUndefined();
   });
@@ -157,7 +171,7 @@ describe('tool-command coverage', () => {
     expect(output).toContain('TOOL CALLS');
     expect(output).toContain('Server instructions.');
     expect(output).toContain('Exit codes:');
-    expect(output).toContain('evidence.answerReady');
+    expect(output).toContain('structuredContent.results[]');
     expect(output).toContain('Output contract');
   });
 
@@ -716,7 +730,7 @@ describe('tool-command coverage', () => {
     expect(output).toContain('sort');
   });
 
-  it('buildExampleValue: ghCloneRepo example includes owner=bgauryy', async () => {
+  it('buildExampleValue: ghCloneRepo example includes a concrete repo', async () => {
     const { toolCommand } = await import('../../src/cli/tool-command.js');
 
     await toolCommand.handler!({
@@ -726,8 +740,8 @@ describe('tool-command coverage', () => {
     });
 
     const output = consoleSpy.mock.calls.flat().join('\n');
-    expect(output).toContain('bgauryy');
-    expect(output).toContain('"repo":"octocode"');
+    expect(output).toContain('"owner":"facebook"');
+    expect(output).toContain('"repo":"react"');
   });
 
   it('reports first failing query in a multi-query array', async () => {
@@ -911,6 +925,36 @@ describe('tool-command coverage', () => {
     expect(out).toContain('lspGetSemantics');
     expect(out).toContain('Input Schema');
     expect(out).toContain('definition');
+  });
+
+  it('buildDirectToolExampleQuery: emits concrete OQL and top-level tool examples', async () => {
+    const { buildDirectToolExampleQuery, getDirectToolDisplayFields } =
+      await import('@octocodeai/octocode-tools-core/schema');
+
+    expect(buildDirectToolExampleQuery('oqlSearch')).toEqual({
+      schema: 'oql',
+      target: 'code',
+      from: { kind: 'local', path: '.' },
+      where: { kind: 'text', value: 'executeDirectTool' },
+      view: 'discovery',
+      limit: 5,
+    });
+    expect(buildDirectToolExampleQuery('ghHistoryResearch')).toMatchObject({
+      type: 'prs',
+      owner: 'facebook',
+      repo: 'react',
+      keywordsToSearch: ['useState'],
+    });
+    expect(buildDirectToolExampleQuery('ghHistoryResearch')).not.toHaveProperty(
+      'content.patches.ranges.file'
+    );
+
+    const oqlTarget = getDirectToolDisplayFields('oqlSearch').find(
+      field => field.name === 'target'
+    );
+    expect(oqlTarget?.type).toContain('materialize');
+    expect(oqlTarget?.type).not.toContain('fixes');
+    expect(oqlTarget?.type).not.toContain('dataflow');
   });
 
   it('shows the tool list when no positional tool name is given', async () => {

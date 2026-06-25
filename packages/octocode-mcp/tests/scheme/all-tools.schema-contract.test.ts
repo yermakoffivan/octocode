@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { ALL_TOOLS } from '../../src/tools/toolConfig.js';
-import { STATIC_TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolNames.js';
+import {
+  OQL_SEARCH_TOOL_NAME,
+  STATIC_TOOL_NAMES,
+} from '../../../octocode-tools-core/src/tools/toolNames.js';
 import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from '../../../octocode-tools-core/src/tools/lsp/shared/semanticTypes.js';
 const SHARED_FIELDS = [
   'id',
@@ -51,15 +54,28 @@ const MINIMAL_QUERY: Record<string, Record<string, unknown>> = {
     path: '/tmp/test.bin',
     mode: 'inspect',
   },
+  [OQL_SEARCH_TOOL_NAME]: {
+    target: 'code',
+    from: { kind: 'local', path: '.' },
+    where: { kind: 'text', value: 'foo' },
+  },
 };
 
 function getQueryShape(bulkSchema: z.ZodTypeAny): z.ZodRawShape | null {
   if (!(bulkSchema instanceof z.ZodObject)) return null;
-  const queriesField = bulkSchema.shape['queries'];
+  const queriesField = unwrapOptionalSchema(bulkSchema.shape['queries']);
   if (!(queriesField instanceof z.ZodArray)) return null;
   const element = queriesField.element;
   if (element instanceof z.ZodObject) return element.shape;
   return null;
+}
+
+function unwrapOptionalSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
+  let current = schema;
+  while (current instanceof z.ZodOptional || current instanceof z.ZodDefault) {
+    current = current.unwrap();
+  }
+  return current;
 }
 
 describe('all-tools schema contract', () => {
@@ -102,7 +118,7 @@ describe('all-tools schema contract', () => {
 
       it('queries is a ZodArray with min=1', () => {
         if (!(bulkSchema instanceof z.ZodObject)) return;
-        const queriesField = bulkSchema.shape['queries'];
+        const queriesField = unwrapOptionalSchema(bulkSchema.shape['queries']);
         expect(
           queriesField instanceof z.ZodArray,
           `${toolName}: queries must be ZodArray`
@@ -205,6 +221,12 @@ describe('all-tools schema contract', () => {
       });
 
       it('rejects missing queries entirely', () => {
+        if (toolName === OQL_SEARCH_TOOL_NAME) {
+          expect(bulkSchema.safeParse(MINIMAL_QUERY[toolName]).success).toBe(
+            true
+          );
+          return;
+        }
         const r = bulkSchema.safeParse({});
         expect(r.success).toBe(false);
       });
@@ -215,6 +237,9 @@ describe('all-tools schema contract', () => {
       });
 
       it('rejects duplicate query ids with a structured Zod error', () => {
+        if (toolName === OQL_SEARCH_TOOL_NAME) {
+          return;
+        }
         const minQuery = MINIMAL_QUERY[toolName];
         if (!minQuery) return;
         const r = bulkSchema.safeParse({
@@ -239,7 +264,10 @@ describe('all-tools schema contract', () => {
       it('parses with extra unknown envelope fields ignored (does not reject)', () => {
         const minQuery = MINIMAL_QUERY[toolName];
         if (!minQuery) return;
-        const r = bulkSchema.safeParse({ queries: [minQuery] });
+        const r = bulkSchema.safeParse({
+          queries: [minQuery],
+          unknownEnvelopeField: 'ignored',
+        });
         expect(
           r.success,
           `${toolName}: minimal parse should succeed.\n` +
@@ -250,8 +278,8 @@ describe('all-tools schema contract', () => {
   );
 
   describe('global invariants', () => {
-    it('ALL_TOOLS contains exactly 13 tools', () => {
-      expect(ALL_TOOLS).toHaveLength(13);
+    it('ALL_TOOLS contains exactly 14 tools', () => {
+      expect(ALL_TOOLS).toHaveLength(14);
     });
 
     it('every tool has a MINIMAL_QUERY entry in this test', () => {
@@ -319,7 +347,17 @@ describe('all-tools schema contract', () => {
           !file.startsWith('toolMetadata/')
       );
 
-      expect(schemeFiles).toHaveLength(13);
+      expect(schemeFiles).toHaveLength(
+        ALL_TOOLS.filter(tool => tool.name !== OQL_SEARCH_TOOL_NAME).length
+      );
+      expect(
+        existsSync(
+          new URL(
+            '../../../octocode-tools-core/src/oql/schema.ts',
+            import.meta.url
+          )
+        )
+      ).toBe(true);
       expect(splitSchemaFiles).toEqual([]);
     });
   });

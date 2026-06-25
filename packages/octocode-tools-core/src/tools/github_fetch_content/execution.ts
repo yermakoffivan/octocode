@@ -131,20 +131,81 @@ async function handleDirectoryFetch(
     Boolean(query.forceRefresh)
   );
 
+  const hasSubdirectories = (result.skipped?.nonFile ?? 0) > 0;
+  const skippedSummary = result.skipped
+    ? Object.fromEntries(
+        Object.entries(result.skipped).filter(([, v]) => v > 0)
+      )
+    : undefined;
+
+  const location: Record<string, unknown> = {
+    kind: 'directory',
+    localPath: result.localPath,
+    repoRoot: result.repoRoot,
+    source: 'treeFetch',
+    cached: result.cached,
+    complete: result.complete,
+    verified: result.verified,
+    ...(result.commitSha ? { commitSha: result.commitSha } : {}),
+    ...(hasSubdirectories ? { hasSubdirectories: true } : {}),
+    ...(skippedSummary && Object.keys(skippedSummary).length > 0
+      ? { skippedSummary }
+      : {}),
+    owner: query.owner,
+    repo: query.repo,
+  };
+
+  const next: Record<string, unknown> = {
+    localSearch: {
+      tool: 'localSearchCode',
+      query: { path: result.localPath, mode: 'discovery' },
+    },
+    viewStructure: {
+      tool: 'localViewStructure',
+      query: { path: result.localPath },
+    },
+    // When subdirectories were skipped, provide a pre-filled clone hint so
+    // agents can escalate to a complete local copy without constructing the
+    // call manually.
+    ...(hasSubdirectories
+      ? {
+          escalateToClone: {
+            tool: 'ghCloneRepo',
+            why: 'nonFile skips indicate subdirectories were not fetched; clone for full coverage',
+            query: {
+              owner: query.owner,
+              repo: query.repo,
+              ...(query.branch ? { branch: query.branch } : {}),
+              ...(query.path ? { sparsePath: String(query.path) } : {}),
+            },
+          },
+        }
+      : {}),
+  };
+
   const resultData: Record<string, unknown> = {
     localPath: result.localPath,
     repoRoot: result.repoRoot,
     fileCount: result.fileCount,
     totalSize: result.totalSize,
+    complete: result.complete,
+    verified: result.verified,
+    ...(result.commitSha ? { commitSha: result.commitSha } : {}),
+    directoryEntryCount: result.directoryEntryCount,
+    eligibleFileCount: result.eligibleFileCount,
+    savedFileCount: result.savedFileCount,
+    skipped: result.skipped,
+    limits: result.limits,
+    ...(result.warnings ? { warnings: result.warnings } : {}),
     files: result.files,
     ...(result.cached ? { cached: true } : {}),
     ...(query.branch !== result.branch
       ? { resolvedBranch: result.branch }
       : {}),
+    location,
+    next,
   };
 
-  // Always a content result (hasContent=true); per-call next-step hints are
-  // dropped centrally by createSuccessResult, so none are built here.
   return createSuccessResult(
     query,
     resultData,

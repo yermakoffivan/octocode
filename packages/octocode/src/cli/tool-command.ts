@@ -2,14 +2,17 @@ import type { CLICommand, ParsedArgs } from './types.js';
 import './cjs-shim.js';
 import { EXIT, classifyToolErrorText } from './exit-codes.js';
 import { c, bold, dim } from '../utils/colors.js';
+// Schema/help/`--scheme`/`context` use the engine-FREE `/schema` subpath so the
+// CLI can read schemas on runtimes that cannot load the native engine (e.g.
+// Codex.app Node). `executeDirectTool` + result formatting (which pull the
+// engine) are dynamically imported from `/direct` only inside the execute path.
 import {
+  buildDirectToolCommandPatterns,
   buildDirectToolExampleQuery,
   DIRECT_TOOL_CATEGORIES,
   DIRECT_TOOL_DEFINITIONS,
   DirectToolInputError,
-  executeDirectTool,
   findDirectToolDefinition,
-  formatCallToolResultForOutput,
   formatDirectToolSchemaText,
   getDirectToolAutoFilledFields,
   getDirectToolCategory,
@@ -20,7 +23,8 @@ import {
   sortDirectToolNames,
   type DirectToolDefinition,
   type DirectToolDisplayField,
-} from '@octocodeai/octocode-tools-core/direct';
+} from '@octocodeai/octocode-tools-core/schema';
+import type { formatCallToolResultForOutput } from '@octocodeai/octocode-tools-core/direct';
 
 type ToolResult = Parameters<typeof formatCallToolResultForOutput>[0];
 
@@ -82,6 +86,11 @@ async function getOptionalToolMetadata(): Promise<Awaited<
 }
 
 function formatToolExampleCommand(toolName: string): string {
+  const pattern = buildDirectToolCommandPatterns(toolName)[0];
+  if (pattern) {
+    return pattern.command;
+  }
+
   const exampleInput = JSON.stringify(buildDirectToolExampleQuery(toolName));
   return `tools ${toolName} --queries '${exampleInput}'`;
 }
@@ -169,7 +178,11 @@ export function truncateDescription(desc: string, maxLen: number): string {
 
 export function formatRequiredFields(toolName: string): string {
   if (toolName === LSP_TOOL_NAME) {
-    return '[uri*, type, symbolName?, lineHint?]';
+    // `type` is the only always-required field. `uri` is required for every
+    // type EXCEPT workspaceSymbol (which can start from workspaceRoot +
+    // symbolName), so it is marked optional here to avoid a false `uri*` —
+    // the per-field schema view carries the conditional requirement.
+    return '[type, uri?, symbolName?, lineHint?]';
   }
 
   const tool = findToolDefinition(toolName);
@@ -210,6 +223,7 @@ function formatFullDescription(fullDescription: string): string {
 }
 
 const LSP_TOOL_NAME = 'lspGetSemantics';
+const OQL_TOOL_NAME = 'oqlSearch';
 
 const LSP_TYPE_EXAMPLES: Array<[string, Record<string, unknown>]> = [
   [
@@ -281,6 +295,85 @@ const LSP_TYPE_EXAMPLES: Array<[string, Record<string, unknown>]> = [
   ],
 ];
 
+function getEnumValues(type: string): string[] {
+  const match = /^enum\((.*)\)$/.exec(type);
+  if (!match) return [];
+
+  return match[1]
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
+function wrapPipeValues(
+  values: readonly string[],
+  firstPrefix: string,
+  nextPrefix: string,
+  maxLength = 68
+): string[] {
+  const lines: string[] = [];
+  let current = firstPrefix;
+
+  for (const value of values) {
+    const separator =
+      current === firstPrefix || current === nextPrefix ? '' : '|';
+    const candidate = `${current}${separator}${value}`;
+    if (candidate.length > maxLength && current !== firstPrefix) {
+      lines.push(current);
+      current = `${nextPrefix}${value}`;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current !== firstPrefix && current !== nextPrefix) {
+    lines.push(current);
+  }
+
+  return lines;
+}
+
+function getFieldPreviewLines(
+  toolName: string,
+  fieldName: string,
+  label = `${fieldName}: `
+): string[] {
+  const field = getDirectToolDisplayFields(toolName).find(
+    item => item.name === fieldName
+  );
+  const values = field ? getEnumValues(field.type) : [];
+
+  if (values.length === 0) {
+    return [];
+  }
+
+  return wrapPipeValues(values, label, ''.padEnd(label.length));
+}
+
+function getToolPreviewLines(toolName: string): string[] {
+  if (toolName === LSP_TOOL_NAME) {
+    return getFieldPreviewLines(toolName, 'type');
+  }
+
+  if (toolName === 'ghHistoryResearch') {
+    return getFieldPreviewLines(toolName, 'type');
+  }
+
+  if (toolName === 'localBinaryInspect') {
+    return getFieldPreviewLines(toolName, 'mode');
+  }
+
+  if (toolName === 'ghSearchCode') {
+    return ['keywords: array<string> (AND terms)'];
+  }
+
+  if (toolName === 'localSearchCode') {
+    return ['keywords: string'];
+  }
+
+  return [];
+}
+
 export async function showAvailableTools(): Promise<void> {
   const metadata = await getOptionalToolMetadata();
 
@@ -329,14 +422,12 @@ export async function showAvailableTools(): Promise<void> {
       console.log(
         `    ${c('cyan', namePadded)} ${dim(fieldsPadded)} ${dim(shortDesc)}`
       );
-      if (toolName === LSP_TOOL_NAME) {
+      const previewLines = getToolPreviewLines(toolName);
+      if (previewLines.length > 0) {
         const indent = ''.padEnd(30);
-        console.log(
-          `    ${dim(indent)} ${dim('type: definition|references|callers|callees|callHierarchy')}`
-        );
-        console.log(
-          `    ${dim(indent)} ${dim('      hover|documentSymbols|typeDefinition|implementation')}`
-        );
+        for (const line of previewLines) {
+          console.log(`    ${dim(indent)} ${dim(line)}`);
+        }
       }
     }
     console.log();
@@ -346,15 +437,39 @@ export async function showAvailableTools(): Promise<void> {
     `  ${bold('TO CALL')}  tools <name> --queries '<json>'  ${dim('# YAML (default)')}`
   );
   console.log(
-    `           tools <name> --queries '<json>' --json  ${dim('# raw envelope')}`
+    `           tools <name> --queries '<json>' --json  ${dim('# full CallToolResult')}`
   );
   console.log(
-    `           tools <name> --queries '<json>' --compact  ${dim('# leanest')}`
+    `           tools <name> --queries '<json>' --compact  ${dim('# lean structuredContent')}`
   );
   console.log();
   // Smart commands temporarily unhooked — will be re-added in a future release.
   console.log(`  ${dim('Full protocol: context  |  All commands: --help')}`);
   console.log();
+}
+
+export async function printToolCatalogJson(): Promise<void> {
+  const metadata = await getOptionalToolMetadata();
+  const toolNames = sortDirectToolNames(
+    TOOL_DEFINITIONS.map(tool => tool.name)
+  );
+
+  const catalog = toolNames.map(toolName => ({
+    name: toolName,
+    category: getDirectToolCategory(toolName),
+    description: extractShortDescription(
+      getDirectToolDescription(toolName, metadata)
+    ),
+    fields: getDirectToolDisplayFields(toolName).map(field => ({
+      name: field.name,
+      type: field.type,
+      required: field.required,
+      ...(field.constraints ? { constraints: field.constraints } : {}),
+      ...(field.description ? { description: field.description } : {}),
+    })),
+  }));
+
+  console.log(JSON.stringify(catalog, null, 2));
 }
 
 export async function showToolHelp(toolName: string): Promise<boolean> {
@@ -366,6 +481,7 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
   const metadata = await getOptionalToolMetadata();
   const fields = getDirectToolDisplayFields(tool.name);
   const autoFilledFields = getDirectToolAutoFilledFields(tool.name);
+  const commandPatterns = buildDirectToolCommandPatterns(tool.name);
   const fullDescription = getDirectToolDescription(tool.name, metadata);
   const shortDesc = extractShortDescription(fullDescription);
   const extendedDesc = formatFullDescription(fullDescription);
@@ -381,6 +497,17 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
     console.log(`  ${bold('Description')}`);
     for (const line of extendedDesc.split('\n')) {
       console.log(`  ${dim(line)}`);
+    }
+    console.log();
+  }
+
+  if (commandPatterns.length > 0 && tool.name !== LSP_TOOL_NAME) {
+    console.log(
+      `  ${bold(commandPatterns.length === 1 ? 'Command Pattern' : 'Command Patterns')}`
+    );
+    for (const pattern of commandPatterns) {
+      console.log(`    ${dim('#')} ${pattern.label}`);
+      console.log(`    ${c('yellow', pattern.command)}`);
     }
     console.log();
   }
@@ -411,8 +538,18 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
     `      ${c('cyan', 'content[].text')}                   ${dim('YAML string (same as default output)')}`
   );
   console.log(
-    `      ${c('cyan', 'structuredContent.results[]')}      ${dim('tool result objects  (id + data)')}`
+    `      ${c('cyan', 'structuredContent.results[]')}      ${dim('tool result objects; most tools use id + data')}`
   );
+  if (tool.name === 'ghGetFileContent') {
+    console.log(
+      `      ${c('cyan', 'results[].files/directories')}      ${dim('grouped GitHub fetch entries; data aliases the same group for generic parsers')}`
+    );
+  }
+  if (tool.name === OQL_TOOL_NAME) {
+    console.log(
+      `      ${c('cyan', 'structuredContent.oql')}            ${dim('native OQL run root (same rich shape as search --query --json)')}`
+    );
+  }
   console.log(
     `      ${c('cyan', 'structuredContent.base')}           ${dim('cwd / workspace root used for the query')}`
   );
@@ -438,7 +575,7 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
     `    ${c('cyan', '--json')}     ${dim('raw JSON envelope (structuredContent + content + isError)')}`
   );
   console.log(
-    `    ${c('cyan', '--compact')}  ${dim('leanest output — fewer tokens')}`
+    `    ${c('cyan', '--compact')}  ${dim('lean structuredContent JSON')}`
   );
 
   console.log();
@@ -458,10 +595,9 @@ export async function showToolHelp(toolName: string): Promise<boolean> {
     }
   } else {
     console.log(`  ${bold('Example')}`);
-    console.log(`    ${c('yellow', formatToolExampleCommand(tool.name))}`);
-    console.log(
-      `    ${c('yellow', formatToolExampleCommand(tool.name) + ' --json')}`
-    );
+    const exampleCommand = formatToolExampleCommand(tool.name);
+    console.log(`    ${c('yellow', exampleCommand)}`);
+    console.log(`    ${c('yellow', exampleCommand + ' --json')}`);
     console.log();
   }
 
@@ -486,6 +622,7 @@ export async function showMultipleToolSchemas(
     );
     const fields = getDirectToolDisplayFields(tool.name);
     const autoFilledFields = getDirectToolAutoFilledFields(tool.name);
+    const commandPatterns = buildDirectToolCommandPatterns(tool.name);
 
     console.log();
     console.log(`  ${c('magenta', bold(tool.name))}  ${dim(shortDesc)}`);
@@ -498,9 +635,9 @@ export async function showMultipleToolSchemas(
       );
     }
     console.log(`  ${dim('Auto-filled')}: ${autoFilledFields.join(', ')}`);
-    console.log(
-      `  ${bold('Example')}  ${c('yellow', formatToolExampleCommand(tool.name))}`
-    );
+    const exampleCommand =
+      commandPatterns[0]?.command ?? formatToolExampleCommand(tool.name);
+    console.log(`  ${bold('Example')}  ${c('yellow', exampleCommand)}`);
   }
 
   console.log();
@@ -530,9 +667,9 @@ export async function getToolsContextString(
       '',
       '  *** RESEARCH LOOP ***',
       '  1. Orient: localViewStructure / ghViewRepoStructure / npmSearch.',
-      '  2. Search: localSearchCode / ghSearchCode.',
+      '  2. Search: localSearchCode / ghSearchCode. Use localSearchCode mode:"structural" for AST/code-shape anchors.',
       '  3. Read: localGetFileContent / ghGetFileContent — smallest slice, choose minify standard|symbols|none.',
-      '  4. Prove: lspGetSemantics or ghHistoryResearch; stop when evidence.answerReady is true.',
+      '  4. Prove: lspGetSemantics or ghHistoryResearch; LSP consumes the file/line anchors from text or structural search.',
       '',
       '  *** ORIENT CHEAP — BEFORE READING ***',
       '  concise:true         flat string lists — ghSearchRepos→"owner/repo", ghSearchCode→"owner/repo:path", ghHistoryResearch list→"#number title"',
@@ -548,17 +685,18 @@ export async function getToolsContextString(
       '',
       '  *** TOOL CALLS ***',
       "  tools <name> --queries '<json>'           # run tool, YAML output",
-      "  tools <name> --queries '<json>' --json    # run tool, raw JSON envelope",
-      "  tools <name> --queries '<json>' --compact # run tool, leanest output",
+      "  tools <name> --queries '<json>' --json    # run tool, full CallToolResult JSON",
+      "  tools <name> --queries '<json>' --compact # run tool, lean structuredContent JSON",
+      "  search --query '<oql-json>' --json        # native OQL envelope JSON (results are OQL rows, not CallToolResult)",
       '',
-      '  Output: clean YAML by default; use --compact for leanest text, --json for the raw envelope.',
+      '  Output: clean YAML by default; use --compact for lean structuredContent JSON, --json for the full CallToolResult envelope.',
       '',
       '  Exit codes: 0=ok  2=bad-input  3=not-found  4=auth  5=tool-error  7=rate-limited',
       '',
       '  *** REFERENCES ***',
       '  Docs:  https://github.com/bgauryy/octocode/tree/main/docs',
       '  Research playbook: https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer',
-      '  Quick commands (ls/cat/grep/find/repo/pr/pkg/…) are the fastest path; raw `tools` need a schema read first.',
+      '  Quick commands (search/unzip/clone/cache fetch) are the fastest path; use search for files, trees, content, repos, packages, PRs, history, artifacts, and diffs. Raw `tools` need a schema read first.',
       '  Do not hallucinate paths, lines, or fields — verify with the tools; snippets are discovery, not proof.',
       '',
     ].join('\n'),
@@ -569,12 +707,14 @@ export async function getToolsContextString(
     'Output contract (all tools):',
     [
       '  Default output: clean YAML — read it directly. No parsing needed.',
-      '  Add --compact for leanest output. Add --json for the full envelope below.',
+      '  Add --compact for lean structuredContent JSON. Add --json for the full CallToolResult envelope below.',
       '',
       '  --json envelope:',
       '    isError: boolean                       true = tool failed',
       '    content[].text: string                 YAML string (same as default output)',
-      '    structuredContent.results[]: array     tool result objects (id + data)',
+      '    structuredContent.results[]: array     tool result objects; most tools use id + data',
+      '    structuredContent.results[].files[]     ghGetFileContent grouped fetch entries; data aliases the same group',
+      '    structuredContent.oql: object           tools oqlSearch only: native OQL run root',
       '    structuredContent.base: string         cwd / workspace root used for the query',
       '    structuredContent.pagination: object   nextPage / nextCharOffset — page only when present',
       '    structuredContent.next: object         typed follow-up params for the next call',
@@ -591,8 +731,7 @@ export async function getToolsContextString(
     label: string;
   }> = [
     { cat: 'GitHub', label: 'GitHub' },
-    { cat: 'Local', label: 'Local' },
-    { cat: 'LSP', label: 'LSP' },
+    { cat: 'Local Code', label: 'Local Code' },
     { cat: 'Package', label: 'npm' },
     { cat: 'Other', label: 'Other' },
   ];
@@ -650,19 +789,18 @@ function getOutputMode(args: ParsedArgs): OutputMode {
   return 'text';
 }
 
-function printToolResult(result: ToolResult, outputMode: OutputMode): void {
+function printToolResult(
+  result: ToolResult,
+  outputMode: OutputMode,
+  formatResult: typeof formatCallToolResultForOutput
+): void {
   if (outputMode === 'compact') {
     const structured = (result as { structuredContent?: unknown })
       .structuredContent;
     console.log(JSON.stringify(structured ?? result));
     return;
   }
-  console.log(
-    formatCallToolResultForOutput(
-      result,
-      outputMode === 'json' ? 'json' : 'text'
-    )
-  );
+  console.log(formatResult(result, outputMode === 'json' ? 'json' : 'text'));
 }
 
 function printToolError(message: string, details: string[] = []): void {
@@ -684,6 +822,10 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
     typeof maybeToolName === 'string' ? maybeToolName : undefined;
 
   if (!toolName || toolName === 'list' || args.options.list === true) {
+    if (args.options.json === true) {
+      await printToolCatalogJson();
+      return true;
+    }
     await showAvailableTools();
     return true;
   }
@@ -760,8 +902,12 @@ export async function executeToolCommand(args: ParsedArgs): Promise<boolean> {
       return true;
     }
 
+    // Engine-bearing modules are loaded only now, when a tool actually runs —
+    // keeping the schema/help paths above engine-free (P3).
+    const { executeDirectTool, formatCallToolResultForOutput } =
+      await import('@octocodeai/octocode-tools-core/direct');
     const result = await executeDirectTool(tool.name, input);
-    printToolResult(result, getOutputMode(args));
+    printToolResult(result, getOutputMode(args), formatCallToolResultForOutput);
     if (result.isError) {
       process.exitCode = classifyToolErrorText(JSON.stringify(result));
       return false;

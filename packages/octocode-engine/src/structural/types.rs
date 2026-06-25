@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use napi_derive::napi;
 
 /// Precise position of one captured metavariable node. Line is 1-based (usable
-/// as an `lspGetSemantics` `lineHint`); columns are 0-based char offsets — the
-/// same convention as `StructuralMatch.start_col`.
+/// as an `lspGetSemantics` `lineHint`); columns are 0-based UTF-16 code-unit
+/// offsets — the same convention as `StructuralMatch.start_col` and LSP.
 #[napi(object)]
 pub struct MetavarRange {
     pub text: String,
@@ -15,8 +15,9 @@ pub struct MetavarRange {
 }
 
 /// One structural match. Line numbers are 1-based so `start_line` can be fed
-/// directly as an `lspGetSemantics` `lineHint`; columns are 0-based char
-/// offsets (tree-sitter native).
+/// directly as an `lspGetSemantics` `lineHint`; columns are 0-based UTF-16
+/// code-unit offsets (converted from tree-sitter's native byte columns to match
+/// the resolver, signatures, and LSP layers).
 #[napi(object)]
 pub struct StructuralMatch {
     pub start_line: u32,
@@ -76,7 +77,19 @@ pub struct StructuralSearchFilesOptions {
     pub pattern: Option<String>,
     pub rule: Option<String>,
     pub include: Option<Vec<String>>,
+    /// File-path globs to skip (gitignore-style, e.g. `"*.min.js"`, `"src/gen/**"`).
+    /// Mirrors `localSearchCode.exclude` so OQL `scope.exclude` is honored on the
+    /// structural lane — previously silently dropped (typed-contract violation).
+    pub exclude: Option<Vec<String>>,
     pub exclude_dir: Option<Vec<String>>,
+    /// Include hidden (dot) files. `None` preserves the default walker behavior
+    /// (hidden ignored); `Some(true)` forces them in.
+    pub hidden: Option<bool>,
+    /// Bypass `.gitignore`/`.ignore` rules. `None` preserves defaults; `Some(true)`
+    /// searches files normally hidden by ignore files (mirrors `localSearchCode.noIgnore`).
+    pub no_ignore: Option<bool>,
+    /// Maximum directory descent depth (0 = just the root). `None` = unbounded.
+    pub max_depth: Option<u32>,
     pub max_files: Option<u32>,
     pub max_file_bytes: Option<u32>,
 }
@@ -93,6 +106,11 @@ pub struct StructuralSearchFilesResult {
     pub total_matches: u32,
     pub parsed_files: u32,
     pub skipped_by_pre_filter: u32,
+    /// Candidate files whose extension has no grammar — not evaluated, hence
+    /// not proof of absence. Mirrors the detailed result's counter so the two
+    /// shapes agree and the warning text can't collapse unevaluated into
+    /// anchor-absent.
+    pub skipped_unsupported: u32,
     pub skipped_unreadable: u32,
     pub skipped_large: u32,
     pub warnings: Vec<String>,

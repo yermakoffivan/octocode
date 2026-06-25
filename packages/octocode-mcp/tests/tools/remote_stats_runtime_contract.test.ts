@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { incrementToolCharSavings } from '@octocodeai/octocode-tools-core/session';
 import { TOOL_NAMES } from '../../../octocode-tools-core/src/tools/toolMetadata/proxies.js';
 import { createMockMcpServer } from '../fixtures/mcp-fixtures.js';
 
+const mockIncrementToolCharSavings = vi.hoisted(() => vi.fn());
 const mockGetProvider = vi.hoisted(() => vi.fn());
 const mockCheckNpmAvailability = vi.hoisted(() => vi.fn());
 const mockCheckNpmRegistryReachable = vi.hoisted(() => vi.fn());
@@ -12,13 +12,22 @@ const mockCreateLazyProviderContext = vi.hoisted(() => vi.fn());
 const mockProviderSupports = vi.hoisted(() => vi.fn());
 const mockCloneRepo = vi.hoisted(() => vi.fn());
 
+vi.mock('../../../octocode-tools-core/src/shared/index.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../../octocode-tools-core/src/shared/index.js')
+  >('../../../octocode-tools-core/src/shared/index.js');
+  return {
+    ...actual,
+    incrementToolCharSavings: mockIncrementToolCharSavings,
+  };
+});
+
 vi.mock('../../../octocode-tools-core/src/providers/factory.js', () => ({
   getProvider: mockGetProvider,
 }));
 
 vi.mock('../../../octocode-tools-core/src/serverConfig.js', () => ({
   getGitHubToken: vi.fn(async () => 'test-token'),
-  isLoggingEnabled: vi.fn(() => false),
   getActiveProviderConfig: vi.fn(() => ({
     provider: 'github',
     baseUrl: undefined,
@@ -220,7 +229,7 @@ describe('remote tool stats runtime contract', () => {
       queries: [
         {
           id: 'code',
-          mainResearchGoal: 'stats telemetry',
+          mainResearchGoal: 'stats runtime',
           researchGoal: 'exercise ghSearchCode stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
@@ -233,7 +242,7 @@ describe('remote tool stats runtime contract', () => {
       queries: [
         {
           id: 'content',
-          mainResearchGoal: 'stats telemetry',
+          mainResearchGoal: 'stats runtime',
           researchGoal: 'exercise ghGetFileContent stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
@@ -246,7 +255,7 @@ describe('remote tool stats runtime contract', () => {
       queries: [
         {
           id: 'structure',
-          mainResearchGoal: 'stats telemetry',
+          mainResearchGoal: 'stats runtime',
           researchGoal: 'exercise ghViewRepoStructure stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
@@ -259,7 +268,7 @@ describe('remote tool stats runtime contract', () => {
       queries: [
         {
           id: 'repos',
-          mainResearchGoal: 'stats telemetry',
+          mainResearchGoal: 'stats runtime',
           researchGoal: 'exercise ghSearchRepos stats',
           reasoning: 'prove runtime char savings emission',
           keywords: ['repo'],
@@ -271,7 +280,7 @@ describe('remote tool stats runtime contract', () => {
       queries: [
         {
           id: 'prs',
-          mainResearchGoal: 'stats telemetry',
+          mainResearchGoal: 'stats runtime',
           researchGoal: 'exercise ghHistoryResearch stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
@@ -284,7 +293,7 @@ describe('remote tool stats runtime contract', () => {
       queries: [
         {
           id: 'clone',
-          mainResearchGoal: 'stats telemetry',
+          mainResearchGoal: 'stats runtime',
           researchGoal: 'exercise ghCloneRepo stats',
           reasoning: 'prove runtime char savings emission',
           owner: 'owner',
@@ -297,7 +306,7 @@ describe('remote tool stats runtime contract', () => {
       queries: [
         {
           id: 'pkg',
-          mainResearchGoal: 'stats telemetry',
+          mainResearchGoal: 'stats runtime',
           researchGoal: 'exercise npmSearch stats',
           reasoning: 'prove runtime char savings emission',
           packageName: 'lodash',
@@ -315,7 +324,7 @@ describe('remote tool stats runtime contract', () => {
       [TOOL_NAMES.PACKAGE_SEARCH, 5_000],
     ]);
     const expectedToolNames = [...expectedRawCharsByTool.keys()];
-    const statsCalls = vi.mocked(incrementToolCharSavings).mock.calls;
+    const statsCalls = mockIncrementToolCharSavings.mock.calls;
     const recordedToolNames = statsCalls.map(([toolName]) => toolName);
 
     expect(recordedToolNames).toEqual(expectedToolNames);

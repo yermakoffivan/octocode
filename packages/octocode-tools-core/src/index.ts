@@ -1,5 +1,4 @@
 export * from './security/bridge.js';
-export * from './commands/BaseCommandBuilder.js';
 export * from './config.js';
 export * from './errors/domainErrors.js';
 export * from './errors/errorFactories.js';
@@ -82,6 +81,7 @@ export * from './tools/local_view_structure/execution.js';
 export * from './tools/local_view_structure/local_view_structure.js';
 export * from './tools/local_view_structure/scheme.js';
 export * from './tools/local_view_structure/structureFilters.js';
+export * from './tools/oql_search/execution.js';
 export * from './tools/lsp/semantic_content/execution.js';
 export * from './tools/lsp/semantic_content/index.js';
 export * from './tools/lsp/semantic_content/scheme.js';
@@ -104,6 +104,8 @@ export * from './tools/toolMetadata/types.js';
 export * from './tools/directToolCatalog.js';
 export * from './tools/toolNames.js';
 export * from './tools/utils.js';
+export { OqlSearchInputSchema } from './oql/schema.js';
+export type { OqlSearchInput } from './oql/types.js';
 export * from './types/bulk.js';
 export * from './types/execution.js';
 export * from './types/promise.js';
@@ -136,7 +138,6 @@ export * from './utils/pagination/boundary.js';
 export * from './utils/pagination/charLimit.js';
 export * from './utils/pagination/core.js';
 export * from './utils/pagination/hints.js';
-export * from './utils/pagination/outputSizeLimit.js';
 export * from './utils/pagination/types.js';
 export * from './utils/parsers/diff.js';
 export * from './utils/parsers/ripgrep.js';
@@ -147,7 +148,6 @@ export * from './utils/response/charSavings.js';
 export * from './utils/response/error.js';
 export * from './utils/response/groupedFinalizer.js';
 export * from './utils/response/pathRelativize.js';
-export * from './utils/response/structuredPagination.js';
 
 export type { GitHubPullRequestItem, Repository } from './github/githubAPI.js';
 export {
@@ -320,7 +320,6 @@ export type {
   LocalConfigOptions,
   ToolsConfigOptions,
   NetworkConfigOptions,
-  TelemetryConfigOptions,
   LspConfigOptions,
   OutputConfigOptions,
   OutputPaginationConfigOptions,
@@ -328,7 +327,6 @@ export type {
   RequiredLocalConfig,
   RequiredToolsConfig,
   RequiredNetworkConfig,
-  RequiredTelemetryConfig,
   RequiredLspConfig,
   RequiredOutputConfig,
   RequiredOutputPaginationConfig,
@@ -341,7 +339,6 @@ export {
   DEFAULT_LOCAL_CONFIG,
   DEFAULT_TOOLS_CONFIG,
   DEFAULT_NETWORK_CONFIG,
-  DEFAULT_TELEMETRY_CONFIG,
   DEFAULT_LSP_CONFIG,
   DEFAULT_OUTPUT_CONFIG,
   MIN_TIMEOUT,
@@ -366,15 +363,8 @@ export {
   getConfigValue,
   _resetConfigCache,
   _getCacheState,
-  parseLoggingEnv,
   OctocodeConfigSchema,
 } from './shared/config/index.js';
-export {
-  createLogger,
-  setLogHandler,
-  _getLogHandler,
-} from './shared/logger/index.js';
-export type { LogLevel, LogEntry } from './shared/logger/index.js';
 export {
   OCTOCODE_HOME,
   getDefaultOctocodeHome,
@@ -383,7 +373,6 @@ export {
   ensureTmp,
   ensureClone,
   ensureRepos,
-  ensureLogs,
   ensureTree,
   ensureBinary,
   ensureUnzip,

@@ -15,14 +15,14 @@ import type {
   DiagnosticCode,
   LeafPredicate,
   MaterializePolicy,
-  OqlActiveTargetV1,
+  OqlActiveTarget,
   PlanRoute,
   QuerySource,
 } from './types.js';
 
 export interface CapabilityContext {
   sourceKind: QuerySource['kind'];
-  target: OqlActiveTargetV1;
+  target: OqlActiveTarget;
   materialize: MaterializePolicy | undefined;
 }
 
@@ -43,7 +43,7 @@ function materializeAllowed(m: MaterializePolicy | undefined): boolean {
   return m?.mode === 'auto' || m?.mode === 'required';
 }
 
-/** Local/materialized sources: every V1 predicate is evaluated locally. */
+/** Local/materialized sources: every supported predicate is evaluated locally. */
 function routeLocal(
   ctx: CapabilityContext,
   predicate: LeafPredicate
@@ -80,19 +80,142 @@ function routeGithub(
   // Under negation, the provider can never prove *absence*: provider zero-
   // results are not proof unless the candidate universe is complete. Any
   // predicate evaluated inside a `not` must therefore be proven locally
-  // (materialize) or reported as needing a complete universe.
+  // (materialize) or reported as needing a complete universe. (Handled before
+  // the files lane so a negated files predicate keeps `negativeUniverseRequired`
+  // semantics rather than a generic materialization message.)
   if (inNegation) {
     return negatedOverProvider(ctx, predicate, canMaterialize);
   }
 
+  // `files` target: the GitHub provider can list files *containing a term*
+  // (path-level, approximate, via code search), but cannot enumerate files by
+  // attribute (field) or run structural/PCRE2. The latter need the local
+  // universe. This mirrors executeGithub's files lane so plan and execution
+  // agree. Negation already returned above (negativeUniverseRequired/ROUTE).
+  if (ctx.target === 'files') {
+    const positiveContent =
+      predicate.kind === 'text' ||
+      (predicate.kind === 'regex' && predicate.dialect !== 'pcre2');
+    if (positiveContent) {
+      if (canMaterialize) {
+        return {
+          route: 'ROUTE',
+          backend: LOCAL_FIND,
+          exact: true,
+          reason:
+            'files-containing-term routed to materialization for an exact file set',
+        };
+      }
+      return {
+        route: 'PUSHDOWN',
+        backend: GH_SEARCH,
+        exact: false,
+        reason:
+          'files containing the term listed via provider code search (approximate)',
+        diagnostic: {
+          code: 'providerSemanticsApproximate',
+          message:
+            'GitHub lists files containing a term via provider code search; materialize for an exact file set.',
+        },
+      };
+    }
+    // Path-like field equality (basename/extension/path "=") maps to provider
+    // path qualifiers — the same route the files target and the code field
+    // branch use — instead of forcing materialization.
+    // When materialization is allowed, prefer it (exact, complete universe),
+    // mirroring the positive-content branch above.
+    if (
+      predicate.kind === 'field' &&
+      predicate.op === '=' &&
+      (predicate.field === 'path' ||
+        predicate.field === 'basename' ||
+        predicate.field === 'extension')
+    ) {
+      if (canMaterialize) {
+        return {
+          route: 'ROUTE',
+          backend: LOCAL_FIND,
+          exact: true,
+          reason:
+            'path/name field equality routed to materialization for an exact file set',
+        };
+      }
+      return {
+        route: 'PUSHDOWN',
+        backend: GH_SEARCH,
+        exact: true,
+        reason: 'path/name field equality listed via provider path search',
+      };
+    }
+    if (canMaterialize) {
+      return {
+        route: 'ROUTE',
+        backend: LOCAL_FIND,
+        exact: true,
+        reason: `${describeLeaf(predicate)} over a file listing routed to materialization`,
+      };
+    }
+    return {
+      route: 'UNSUPPORTED',
+      backend: LOCAL_FIND,
+      exact: false,
+      reason: `GitHub cannot enumerate files by ${describeLeaf(predicate)} without materialization`,
+      diagnostic: {
+        code: 'requiresMaterialization',
+        message: `target:"files" over GitHub cannot enumerate by ${describeLeaf(predicate)} without materialization (set materialize.mode "auto"/"required" with scope.path).`,
+      },
+    };
+  }
+
   switch (predicate.kind) {
-    case 'text':
+    case 'text': {
+      if (ctx.materialize?.mode === 'required') {
+        return {
+          route: 'ROUTE',
+          backend: LOCAL_SEARCH,
+          exact: true,
+          reason:
+            'literal text routed to materialization because materialize.mode is required',
+        };
+      }
+      // GitHub code search is a case-insensitive substring match: it cannot
+      // honor case:sensitive or wholeWord (the compiled flags are dropped by
+      // transformers/github/code.ts because ghSearchCode has no equivalent).
+      // So such a predicate is approximate, never proof — route to bounded
+      // materialization when allowed, otherwise push down but mark the decision
+      // non-exact so the plan does not claim proof.
+      const providerCannotHonor =
+        predicate.case === 'sensitive' || predicate.wholeWord === true;
+      if (providerCannotHonor) {
+        if (canMaterialize) {
+          return {
+            route: 'ROUTE',
+            backend: LOCAL_SEARCH,
+            exact: true,
+            reason:
+              'case-sensitive / whole-word text routed to materialization for exact proof',
+          };
+        }
+        return {
+          route: 'PUSHDOWN',
+          backend: GH_SEARCH,
+          exact: false,
+          reason:
+            'GitHub code search cannot honor case:sensitive / wholeWord (case-insensitive substring); approximate',
+          diagnostic: {
+            code: 'providerSemanticsApproximate',
+            message:
+              'GitHub code search is a case-insensitive substring match and cannot honor case:sensitive or wholeWord; materialize for exact proof.',
+          },
+        };
+      }
       return {
         route: 'PUSHDOWN',
         backend: GH_SEARCH,
         exact: true,
         reason: 'literal text pushed to GitHub code search',
       };
+    }
     case 'regex': {
       if (predicate.dialect === 'pcre2') {
         return localOnlyOverProvider(ctx, 'PCRE2 regex', canMaterialize);

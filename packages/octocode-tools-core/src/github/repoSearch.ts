@@ -17,8 +17,6 @@ import { buildRepoSearchQuery } from './queryBuilders.js';
 import { generateCacheKey, withDataCache } from '../utils/http/cache.js';
 import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types';
 import { SEARCH_ERRORS } from '../errors/domainErrors.js';
-import { logSessionError } from '../session.js';
-import { TOOL_NAMES } from '../tools/toolMetadata/proxies.js';
 import { countSerializedChars } from '../utils/response/charSavings.js';
 import { normalizeResponseHeaders } from './responseHeaders.js';
 
@@ -130,7 +128,14 @@ async function listGitHubOrgReposAPIInternal(
     });
     repoItems = orgResult.data as RepoSearchResultItem[];
     totalCount = undefined;
-  } catch {
+  } catch (orgErr: unknown) {
+    // Only a 404 means "this owner is not an org" — fall back to user listing.
+    // Auth (401/403) and rate-limit (429) errors (and network errors with no
+    // status) must propagate, not be masked as a user-listing miss.
+    const status = (orgErr as { status?: number } | null)?.status;
+    if (status !== 404) {
+      return handleGitHubAPIError(orgErr);
+    }
     try {
       const userResult = await octokit.rest.repos.listForUser({
         username: params.owner,
@@ -155,11 +160,10 @@ async function listGitHubOrgReposAPIInternal(
       repo: repoName,
       defaultBranch: repo.default_branch,
       stars: repo.stargazers_count || 0,
-      description: repo.description
-        ? repo.description.length > 150
-          ? repo.description.substring(0, 150) + '...'
-          : repo.description
-        : 'No description',
+      // P6: return the full description (no silent 150-char '...' cut). Oversized
+      // output is governed losslessly by the unified response char-pagination,
+      // so a slice is never silently presented as the whole value.
+      description: repo.description ? repo.description : 'No description',
       url: repo.html_url,
       createdAt: repo.created_at,
       updatedAt: repo.updated_at,
@@ -236,10 +240,6 @@ async function searchGitHubReposAPIInternal(
     const query = buildRepoSearchQuery(params);
 
     if (!query.trim()) {
-      await logSessionError(
-        TOOL_NAMES.GITHUB_SEARCH_REPOSITORIES,
-        SEARCH_ERRORS.QUERY_EMPTY.code
-      );
       return {
         error: SEARCH_ERRORS.QUERY_EMPTY.message,
         type: 'http',
@@ -282,11 +282,9 @@ async function searchGitHubReposAPIInternal(
         repo: repoName,
         defaultBranch: repo.default_branch,
         stars: repo.stargazers_count || 0,
-        description: repo.description
-          ? repo.description.length > 150
-            ? repo.description.substring(0, 150) + '...'
-            : repo.description
-          : 'No description',
+        // P6: full description (no silent 150-char '...' cut); the unified
+        // response char-pagination losslessly windows oversized output.
+        description: repo.description ? repo.description : 'No description',
         url: repo.html_url,
         createdAt: repo.created_at,
         updatedAt: repo.updated_at,

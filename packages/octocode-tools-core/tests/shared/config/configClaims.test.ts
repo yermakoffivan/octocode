@@ -13,7 +13,6 @@ import {
   resolveLocal,
   resolveTools,
   resolveNetwork,
-  resolveTelemetry,
   resolveLsp,
   resolveOutput,
 } from '../../../src/shared/config/resolverSections.js';
@@ -33,7 +32,6 @@ const CONFIG_ENV_KEYS = [
   'DISABLE_TOOLS',
   'REQUEST_TIMEOUT',
   'MAX_RETRIES',
-  'LOG',
   'OCTOCODE_LSP_CONFIG',
   'OCTOCODE_OUTPUT_FORMAT',
   'OCTOCODE_OUTPUT_DEFAULT_CHAR_LENGTH',
@@ -184,20 +182,6 @@ describe('README/CONFIGURATION config claims', () => {
     });
   });
 
-  describe('LOG -> telemetry.logging (default true; false/0 disables)', () => {
-    it('defaults to true', () => {
-      expect(resolveTelemetry(undefined).logging).toBe(true);
-    });
-    it('LOG=false disables', () => {
-      process.env.LOG = 'false';
-      expect(resolveTelemetry(undefined).logging).toBe(false);
-    });
-    it('LOG=0 disables', () => {
-      process.env.LOG = '0';
-      expect(resolveTelemetry(undefined).logging).toBe(false);
-    });
-  });
-
   describe('OCTOCODE_LSP_CONFIG -> lsp.configPath (default unset)', () => {
     it('defaults to undefined (unset)', () => {
       expect(resolveLsp(undefined).configPath).toBeUndefined();
@@ -242,17 +226,17 @@ describe('README/CONFIGURATION config claims', () => {
     describe('CLI surface', () => {
       beforeEach(() => setRuntimeSurface('cli'));
 
-      it('local defaults to ENABLED', () => {
+      it('local is always ENABLED', () => {
         expect(resolveLocal(undefined).enabled).toBe(true);
       });
 
-      it('local honors ENABLE_LOCAL=false', () => {
+      it('IGNORES ENABLE_LOCAL=false (CLI is local-first)', () => {
         process.env.ENABLE_LOCAL = 'false';
-        expect(resolveLocal(undefined).enabled).toBe(false);
+        expect(resolveLocal(undefined).enabled).toBe(true);
       });
 
-      it('.octocoderc local.enabled=false still disables local tools', () => {
-        expect(resolveLocal({ enabled: false }).enabled).toBe(false);
+      it('IGNORES .octocoderc local.enabled=false (local always on in CLI)', () => {
+        expect(resolveLocal({ enabled: false }).enabled).toBe(true);
       });
 
       it('clone defaults to ENABLED', () => {

@@ -1,6 +1,6 @@
-# Local Tools Reference
+# Local Code Tools Reference
 
-> Complete reference for Octocode MCP local tools: file system exploration, metadata search, code search, and targeted file reading.
+> Complete reference for Octocode MCP local code tools: file system exploration, metadata search, text/regex search, structural AST search, semantic follow-up anchors, and targeted file reading.
 
 ---
 
@@ -8,7 +8,7 @@
 
 | Tool | Purpose |
 |------|---------|
-| `localSearchCode` | Ripgrep content search + AST/structural search (`mode:"structural"`). |
+| `localSearchCode` | Text/regex search + structural AST/code-shape search (`mode:"structural"`). Matches provide file/line anchors for `lspGetSemantics`. |
 | `localViewStructure` | Browse directory structure and metadata. |
 | `localFindFiles` | Find files/directories by name, path, time, size, type, and permissions. |
 | `localGetFileContent` | Read targeted file content by line range, match, signature skeleton, or char page. |
@@ -109,7 +109,7 @@ Fast content search powered by ripgrep.
 
 | Parameter | Description |
 |-----------|-------------|
-| `path` | File or directory to search. Relative paths resolve from the workspace root. |
+| `path` | File or directory to search. Relative paths resolve from the workspace root. For remote repos: pass `localPath` from a `ghCloneRepo` or `ghGetFileContent(type:"directory")` result — it is already absolute and immediately valid. |
 | `keywords` | Text or regex pattern for non-structural search. Use `fixedString=true` for literal search. Required unless `mode:"structural"`. |
 | `mode` | `paginated` (default), `discovery` (file paths only), `detailed` (expanded context), `structural` (AST/shape — use `pattern` or `rule`). |
 | `pattern` | Octocode code-shaped AST pattern. `$X` = single node, `$$$ARGS` = list. **Only with `mode:"structural"`**. |
@@ -183,7 +183,7 @@ Use `mode:"structural"` for code-shape queries regex cannot express (find all `a
 **Supported languages:** ts, tsx, js, jsx, mjs, cjs, py, go, rs, java, c/h, cpp/cc/cxx, cs, sh/bash/zsh.
 
 ```bash
-localSearchCode(path="src", mode="structural", pattern="console.log($$$ARGS)")
+localSearchCode(path="src", mode="structural", pattern="track($$$ARGS)")
 # `rule` is a YAML string: \n below are real newline escapes in the JSON tool
 # arg (not literal backslash-n). On the CLI, use $'...' or a real multiline string.
 localSearchCode(path="src", mode="structural", rule="rule:\n  pattern: await $C\n  inside:\n    kind: for_statement\n    stopBy: end")

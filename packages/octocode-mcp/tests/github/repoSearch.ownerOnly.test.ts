@@ -3,9 +3,6 @@ import { searchGitHubReposAPI } from '../../../octocode-tools-core/src/github/re
 import { getOctokit } from '../../../octocode-tools-core/src/github/client.js';
 
 vi.mock('../../../octocode-tools-core/src/github/client.js');
-vi.mock('../../../octocode-tools-core/src/session.js', () => ({
-  logSessionError: vi.fn(() => Promise.resolve()),
-}));
 vi.mock('../../../octocode-tools-core/src/utils/http/cache.js', () => ({
   generateCacheKey: vi.fn(() => 'cache-key'),
   withDataCache: vi.fn((_, op) => op()),
@@ -44,8 +41,12 @@ describe('repoSearch — owner-only mode (listForOrg / listForUser path, lines 9
     expect('data' in result && result.data.repositories).toHaveLength(1);
   });
 
-  it('falls back to listForUser when listForOrg throws (line 119-130)', async () => {
-    const listForOrg = vi.fn().mockRejectedValue(new Error('Not an org'));
+  it('falls back to listForUser when listForOrg 404s (owner is a user, not an org)', async () => {
+    // A 404 is the legitimate "this owner is not an org" signal; only a 404
+    // triggers the user-listing fallback (auth/rate-limit errors propagate).
+    const listForOrg = vi
+      .fn()
+      .mockRejectedValue({ status: 404, error: 'Not Found' });
     const listForUser = vi.fn().mockResolvedValue({ data: [makeRepo()] });
     vi.mocked(getOctokit).mockResolvedValue({
       rest: { repos: { listForOrg, listForUser } },
@@ -60,7 +61,9 @@ describe('repoSearch — owner-only mode (listForOrg / listForUser path, lines 9
   });
 
   it('returns error when both listForOrg and listForUser fail (line 128-130)', async () => {
-    const listForOrg = vi.fn().mockRejectedValue(new Error('Not an org'));
+    const listForOrg = vi
+      .fn()
+      .mockRejectedValue({ status: 404, error: 'Not Found' });
     const listForUser = vi
       .fn()
       .mockRejectedValue({ status: 404, error: 'Not Found' });

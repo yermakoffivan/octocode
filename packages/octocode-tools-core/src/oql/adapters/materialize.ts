@@ -6,17 +6,20 @@
  * scope or unbounded full-repo clone is refused at planning time; this adapter
  * additionally maps `scope.path` to a sparse checkout.
  */
+import path from 'node:path';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { runDirect } from './runner.js';
 import { executeLocal, type AdapterResult } from './local.js';
 import { diagnostic } from '../diagnostics.js';
-import type {
-  OqlQueryV1,
-  OqlRecordResultRow,
-  QueryScope,
-  QuerySource,
-} from '../types.js';
+import { firstScopePath } from '../transformers/github/common.js';
+import type { OqlQuery, OqlRecordResultRow, QuerySource } from '../types.js';
 
+function dedupe(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+// See adapters/github.ts: splitRepo intentionally differs from
+// common.splitGithubSource on the slash-less repo case.
 function splitRepo(source: QuerySource): { owner?: string; repo?: string } {
   if (source.kind !== 'github') return {};
   if (source.repo && source.repo.includes('/')) {
@@ -26,11 +29,6 @@ function splitRepo(source: QuerySource): { owner?: string; repo?: string } {
   return { owner: source.owner };
 }
 
-function firstScopePath(scope: QueryScope | undefined): string | undefined {
-  if (!scope?.path) return undefined;
-  return Array.isArray(scope.path) ? scope.path[0] : scope.path;
-}
-
 function extractClone(result: CallToolResult): {
   localPath?: string;
   cached?: boolean;
@@ -38,14 +36,21 @@ function extractClone(result: CallToolResult): {
   status?: string;
 } {
   const sc = result.structuredContent as
-    | { results?: Array<{ status?: string; data?: Record<string, unknown> }> }
+    | {
+        base?: string;
+        results?: Array<{ status?: string; data?: Record<string, unknown> }>;
+      }
     | undefined;
   const first = sc?.results?.[0];
   const data = first?.data as
     | { localPath?: string; cached?: boolean; error?: string }
     | undefined;
+  const localPath =
+    data?.localPath && sc?.base && !path.isAbsolute(data.localPath)
+      ? path.join(sc.base, data.localPath)
+      : data?.localPath;
   return {
-    localPath: data?.localPath,
+    localPath,
     cached: data?.cached,
     error: data?.error,
     status: first?.status,
@@ -53,7 +58,7 @@ function extractClone(result: CallToolResult): {
 }
 
 export async function executeMaterialize(
-  query: OqlQueryV1
+  query: OqlQuery
 ): Promise<AdapterResult> {
   if (query.from?.kind !== 'github') {
     // already local/materialized — no clone needed
@@ -106,10 +111,23 @@ export async function executeMaterialize(
 
   // Re-root the query at the materialized path. scope.path already became the
   // sparse checkout root, so drop it from the local scope to avoid double-join.
-  const localQuery: OqlQueryV1 = {
+  // Clone byproducts (.git internals, the .octocode-clone-meta.json marker) are
+  // not part of the repo's file set — exclude them so materialized listings and
+  // totals match a real checkout (audit #11).
+  const baseScope = query.scope ?? {};
+  const localQuery: OqlQuery = {
     ...query,
     from: { kind: 'materialized', localPath, source: from },
-    ...(query.scope ? { scope: { ...query.scope, path: undefined } } : {}),
+    scope: {
+      ...baseScope,
+      path: undefined,
+      excludeDir: dedupe([...(baseScope.excludeDir ?? []), '.git']),
+      exclude: dedupe([
+        ...(baseScope.exclude ?? []),
+        '.octocode-clone-meta.json',
+        '**/.octocode-clone-meta.json',
+      ]),
+    },
   };
 
   const localResult = await executeLocal(localQuery);
@@ -144,11 +162,10 @@ export async function executeMaterialize(
  * corpus once and return a stable local checkpoint row (localPath, repoRoot,
  * source, ref, cache, complete) that downstream queries can root at via the
  * `next.search` / `next.structure` / `next.fetch` continuations (attached in
- * run.ts). This makes materialization a first-class step, not a search
- * side-effect (see OCTOCODE_SEARCH_PARITY_CHECKLIST.md gap log #7).
+ * run.ts). This makes materialization a first-class step, not a search side-effect.
  */
 export async function executeMaterializeCheckpoint(
-  query: OqlQueryV1
+  query: OqlQuery
 ): Promise<AdapterResult> {
   // Already materialized: echo the existing checkpoint (no re-clone).
   if (query.from?.kind === 'materialized') {

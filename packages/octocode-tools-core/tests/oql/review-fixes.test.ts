@@ -6,7 +6,7 @@ import { normalizeQuery, normalizeInput } from '../../src/oql/normalize.js';
 import { planQuery } from '../../src/oql/planner.js';
 import { runOqlSearch } from '../../src/oql/run.js';
 import { OqlValidationError } from '../../src/oql/diagnostics.js';
-import { isBatchEnvelope, type OqlQueryV1 } from '../../src/oql/types.js';
+import { isBatchEnvelope, type OqlQuery } from '../../src/oql/types.js';
 
 const OQL_SRC = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -27,7 +27,7 @@ describe('review fix #1: executable next.* continuations', () => {
       })
     );
     const code = env.results.find(r => r.kind === 'code') as {
-      next?: Record<string, { query: OqlQueryV1 }>;
+      next?: Record<string, { query: OqlQuery }>;
     };
     const fetch = code.next?.['next.fetch'];
     expect(fetch).toBeDefined();
@@ -45,10 +45,31 @@ describe('review fix #1: executable next.* continuations', () => {
     );
     expect(env.next?.['next.matchPage']).toBeDefined();
   });
+
+  it('local code pagination never emits stale row pages for file-paged search', async () => {
+    const env = single(
+      await runOqlSearch({
+        target: 'code',
+        from: { kind: 'local', path: OQL_SRC },
+        where: { kind: 'text', value: 'normalizeQuery' },
+        itemsPerPage: 3,
+      })
+    );
+    expect(env.results.length).toBe(4);
+    expect(env.pagination?.itemUnit).toBe('files');
+    expect(env.pagination?.rowCount).toBe(4);
+    expect(env.pagination?.totalItemsKind).toBe('files');
+    expect(env.pagination?.totalItems).toBe(2);
+    expect(env.pagination?.reportedTotalItems).toBe(4);
+    expect(env.pagination?.reportedRowCount).toBe(4);
+    expect(env.pagination?.hasMore).toBe(false);
+    expect(env.next?.['next.page']).toBeUndefined();
+  });
+
 });
 
-describe('review fix #3: unsupported evidence (not partial)', () => {
-  it('boolean predicate over target:"code" -> unsupported', async () => {
+describe('boolean predicate over target:"code" executes (set algebra)', () => {
+  it('all(text,text) -> match rows from files matching both, not unsupported', async () => {
     const env = single(
       await runOqlSearch({
         target: 'code',
@@ -56,16 +77,39 @@ describe('review fix #3: unsupported evidence (not partial)', () => {
         where: {
           kind: 'all',
           of: [
-            { kind: 'text', value: 'a' },
-            { kind: 'text', value: 'b' },
+            { kind: 'text', value: 'diagnostic' },
+            { kind: 'text', value: 'export' },
           ],
         },
       })
     );
-    expect(env.evidence.kind).toBe('unsupported');
+    // Boolean over code is now implemented via file-set algebra; it must NOT
+    // report unsupported, and rows are code occurrences.
+    expect(env.evidence.kind).not.toBe('unsupported');
     expect(env.diagnostics.some(d => d.code === 'unsupportedBoolean')).toBe(
-      true
+      false
     );
+    expect(env.results.every(r => r.kind === 'code')).toBe(true);
+    expect(env.results.length).toBeGreaterThan(0);
+  });
+
+  it('any(text,text) -> union of occurrences', async () => {
+    const env = single(
+      await runOqlSearch({
+        target: 'code',
+        from: { kind: 'local', path: OQL_SRC },
+        where: {
+          kind: 'any',
+          of: [
+            { kind: 'text', value: 'requiresMaterialization' },
+            { kind: 'text', value: 'negativeUniverseRequired' },
+          ],
+        },
+      })
+    );
+    expect(env.evidence.kind).not.toBe('unsupported');
+    expect(env.results.length).toBeGreaterThan(0);
+    expect(env.results.every(r => r.kind === 'code')).toBe(true);
   });
 });
 
@@ -96,7 +140,7 @@ describe('review fix #5: unbounded materialization blocks', () => {
       from: { kind: 'github', repo: 'facebook/react' },
       where: { kind: 'structural', lang: 'js', pattern: 'x($A)' },
       materialize: { mode: 'required', strategy: 'subtree' },
-    } as never) as OqlQueryV1;
+    } as never) as OqlQuery;
     const { executable, plan } = planQuery(q, {});
     expect(executable).toBe(false);
     expect(
@@ -119,12 +163,12 @@ describe('review fix #7: where rejected on content/structure', () => {
   }
 });
 
-describe('review fix #12: langType satisfies structural lang', () => {
-  it('--type as langType works for a structural pattern', () => {
+describe('review fix #12: structural sugar requires canonical lang', () => {
+  it('lang works for a structural pattern', () => {
     const n = normalizeQuery({
       path: './src',
       pattern: 'eval($X)',
-      langType: 'ts',
+      lang: 'ts',
     } as never);
     expect(n.where).toMatchObject({
       kind: 'structural',
@@ -153,11 +197,14 @@ describe('review fix #16: batch-level unknown fields rejected', () => {
 
 describe('review fix #9: github files -> requiresMaterialization', () => {
   it('files over github (no materialize) reports requiresMaterialization', async () => {
+    // A non-path field op (size comparison) genuinely cannot be enumerated by
+    // the provider — path-like field equality (basename/extension/path "=") now
+    // pushes down to provider path search instead, like target:"files".
     const env = single(
       await runOqlSearch({
         target: 'files',
         from: { kind: 'github', repo: 'facebook/react' },
-        where: { kind: 'field', field: 'extension', op: '=', value: 'ts' },
+        where: { kind: 'field', field: 'size', op: '>', value: 100 },
         materialize: { mode: 'never' },
       })
     );

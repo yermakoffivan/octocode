@@ -1,9 +1,11 @@
 import { readFile } from 'fs/promises';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 import { ALL_TOOLS } from '../../src/tools/toolConfig.js';
+import { OQL_SEARCH_TOOL_NAME } from '../../../octocode-tools-core/src/tools/toolNames.js';
 
-import { resolve } from 'path';
-const ROOT = process.cwd();
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const CORE_ROOT = resolve(ROOT, '../octocode-tools-core');
 
 const registeredTools = [
@@ -43,7 +45,10 @@ const registeredTools = [
   {
     name: 'ghCloneRepo',
     executionFiles: ['src/tools/github_clone_repo/execution.ts'],
-    rawEvidence: [/rawResponse:\s*getDirectorySizeBytes\(result\.localPath\)/],
+    rawEvidence: [
+      /const totalSize = getDirectorySizeBytes\(result\.localPath\)/,
+      /rawResponse:\s*totalSize/,
+    ],
   },
   {
     name: 'localSearchCode',
@@ -52,8 +57,8 @@ const registeredTools = [
       'src/tools/local_ripgrep/ripgrepExecutor.ts',
     ],
     rawEvidence: [
-      /rawResponse:\s*result\.stdout\.length\s*\+\s*result\.stderr\.length/,
-      /attachRawResponseChars\(searchResult,\s*result\.stdout\.length\)/,
+      /const responseChars = estimateResponseChars\(files\)/,
+      /attachRawResponseChars\(searchResult,\s*responseChars\)/,
     ],
   },
   {
@@ -108,15 +113,16 @@ async function readProjectFile(relativePath: string): Promise<string> {
     relativePath.startsWith('src/tools/toolsManager') ||
     relativePath.startsWith('src/tools/toolConfig') ||
     relativePath.startsWith('src/tools/toolFilters') ||
-    relativePath.startsWith('src/utils/core/logger') ||
     relativePath.startsWith('src/utils/secureServer');
   const root = isMcpOnly ? ROOT : CORE_ROOT;
   return readFile(`${root}/${relativePath}`, 'utf-8');
 }
 
 describe('tool stats emission contract', () => {
-  it('covers every registered tool from the catalog', async () => {
-    const catalogNames = ALL_TOOLS.map(tool => tool.name).sort();
+  it('covers every legacy bulk tool from the catalog', async () => {
+    const catalogNames = ALL_TOOLS.map(tool => tool.name)
+      .filter(name => name !== OQL_SEARCH_TOOL_NAME)
+      .sort();
     const coveredNames = registeredTools.map(tool => tool.name).sort();
 
     expect(catalogNames).toHaveLength(13);
@@ -136,7 +142,7 @@ describe('tool stats emission contract', () => {
   });
 
   for (const tool of registeredTools) {
-    it(`${tool.name} routes through bulk telemetry and attaches raw source metrics`, async () => {
+    it(`${tool.name} routes through bulk accounting and attaches raw source metrics`, async () => {
       const sources = await Promise.all(
         tool.executionFiles.map(readProjectFile)
       );
@@ -156,17 +162,11 @@ describe('tool stats emission contract', () => {
     });
   }
 
-  it('security wrappers emit tool-call state for both remote and local tools', async () => {
-    const indexSource = await readProjectFile('src/index.ts');
+  it('security wrappers keep remote and local tools on the shared secure path', async () => {
     const securitySource = await readProjectFile(
-      '../octocode-security/src/withSecurityValidation.ts'
+      '../octocode-engine/src/security/withSecurityValidation.ts'
     );
 
-    expect(indexSource).toMatch(/configureSecurity\(\{[\s\S]*logToolCall/);
-    expect(indexSource).not.toMatch(/configureSecurity\(\{[\s\S]*isLocalTool/);
-    expect(securitySource).toMatch(
-      /runSecure[\s\S]*handleBulk\(toolName, sanitizedParams\)/
-    );
     expect(securitySource).toMatch(/withSecurityValidation[\s\S]*runSecure\(/);
     expect(securitySource).toMatch(
       /withBasicSecurityValidation[\s\S]*runSecure\(/

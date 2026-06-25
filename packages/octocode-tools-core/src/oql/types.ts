@@ -1,15 +1,16 @@
 /**
- * Octocode Query Language (OQL) V1 — canonical type definitions.
+ * Octocode Query Language (OQL) — canonical type definitions.
  *
  * These mirror the contract in
  * docs/octocode-language/OCTOCODE_QUERY_LANGUAGE.md. OQL is a typed research
  * query object that compiles into existing Octocode tool runners; it is not a
  * raw string DSL. Schemas/descriptions co-locate here for now (tools-core) and
- * may migrate to `@octocodeai/octocode-core/oql` per the plan's Phase 8.
+ * may migrate to `@octocodeai/octocode-core/oql` once a second consumer needs
+ * OQL validation without the rest of tools-core.
  */
 
-// V1 code-research targets + V2 research-surface targets (now active).
-export type OqlActiveTargetV1 =
+// Active OQL targets.
+export type OqlActiveTarget =
   | 'code'
   | 'content'
   | 'structure'
@@ -22,16 +23,17 @@ export type OqlActiveTargetV1 =
   | 'artifacts'
   | 'diff'
   | 'research'
+  | 'graph'
   // Addressable materialization: clone/cache a bounded corpus and return a
   // stable local checkpoint (not a side-effect of a search).
   | 'materialize';
 
-// V3 (fixes/dataflow) remain reserved — they need engine proof support.
+// Reserved capabilities need proof/dry-run engines before they become targets.
 export type OqlReservedTarget = 'fixes' | 'dataflow';
 
-export type OqlTarget = OqlActiveTargetV1 | OqlReservedTarget;
+export type OqlTarget = OqlActiveTarget | OqlReservedTarget;
 
-export const ACTIVE_TARGETS: readonly OqlActiveTargetV1[] = [
+export const ACTIVE_TARGETS: readonly OqlActiveTarget[] = [
   'code',
   'content',
   'structure',
@@ -44,6 +46,7 @@ export const ACTIVE_TARGETS: readonly OqlActiveTargetV1[] = [
   'artifacts',
   'diff',
   'research',
+  'graph',
   'materialize',
 ];
 
@@ -53,7 +56,7 @@ export const RESERVED_TARGETS: readonly OqlReservedTarget[] = [
 ];
 
 /** Targets that do not need a code corpus (provider/registry discovery). */
-export const CORPUS_OPTIONAL_TARGETS: readonly OqlActiveTargetV1[] = [
+export const CORPUS_OPTIONAL_TARGETS: readonly OqlActiveTarget[] = [
   'packages',
   'repositories',
 ];
@@ -74,6 +77,7 @@ export interface QueryScope {
   excludeDir?: string[];
   hidden?: boolean;
   noIgnore?: boolean;
+  minDepth?: number;
   maxDepth?: number;
 }
 
@@ -107,12 +111,14 @@ export interface StructuralRule {
   stopBy?: 'end';
 }
 
+export type StructuralRuleInput = StructuralRule | string;
+
 export interface StructuralPredicate {
   id?: PredicateId;
   kind: 'structural';
   lang: string;
   pattern?: string;
-  rule?: StructuralRule;
+  rule?: StructuralRuleInput;
 }
 
 export type FieldName =
@@ -121,6 +127,12 @@ export type FieldName =
   | 'extension'
   | 'size'
   | 'modified'
+  | 'accessed'
+  | 'empty'
+  | 'permissions'
+  | 'executable'
+  | 'readable'
+  | 'writable'
   | 'entryType';
 
 export type FieldOp =
@@ -134,7 +146,8 @@ export type FieldOp =
   | '>='
   | '<'
   | '<='
-  | 'within';
+  | 'within'
+  | 'before';
 
 export interface FieldPredicate {
   id?: PredicateId;
@@ -190,7 +203,13 @@ export interface FetchInstructions {
   };
   tree?: {
     maxDepth?: number;
+    pattern?: string;
     includeSizes?: boolean;
+    extensions?: string[];
+    filesOnly?: boolean;
+    directoriesOnly?: boolean;
+    sortBy?: 'name' | 'size' | 'time' | 'extension';
+    reverse?: boolean;
   };
 }
 
@@ -201,6 +220,8 @@ export interface QueryControls {
     onlyMatching?: boolean;
     unique?: boolean;
     countUnique?: boolean;
+    contextLines?: number;
+    invertMatch?: boolean;
     matchWindow?: number;
     matchContentLength?: number;
     maxMatchesPerFile?: number;
@@ -231,10 +252,10 @@ export type SelectField = string;
 
 export type QueryView = 'discovery' | 'paginated' | 'detailed';
 
-export interface OqlQueryV1 {
-  schema: 'oql/v1';
+export interface OqlQuery {
+  schema: 'oql';
   id?: string;
-  target: OqlActiveTargetV1;
+  target: OqlActiveTarget;
   from?: QuerySource;
   scope?: QueryScope;
   where?: Predicate;
@@ -247,18 +268,17 @@ export interface OqlQueryV1 {
   page?: number;
   itemsPerPage?: number;
   /**
-   * Target-specific parameter bag for V2 research targets (semantics,
-   * repositories, packages, pullRequests, commits, artifacts, diff). The
-   * backing tool's schema validates it; the planner only routes by target.
+   * Target-specific parameter bag. The backing tool's schema remains the
+   * exhaustive validator; OQL validates the documented common fields early.
    */
   params?: Record<string, unknown>;
   explain?: boolean;
 }
 
-export interface OqlBatchV1 {
-  schema: 'oql/v1';
+export interface OqlBatch {
+  schema: 'oql';
   id?: string;
-  queries: OqlQueryV1[];
+  queries: OqlQuery[];
   combine?: 'independent' | 'merge';
   limit?: number;
   page?: number;
@@ -266,10 +286,10 @@ export interface OqlBatchV1 {
   explain?: boolean;
 }
 
-export type OqlCanonicalInputV1 = OqlQueryV1 | OqlBatchV1;
+export type OqlCanonicalInput = OqlQuery | OqlBatch;
 
-export interface OqlInputQueryV1 {
-  schema?: 'oql/v1';
+export interface OqlInputQuery {
+  schema?: 'oql';
   id?: string;
   target: OqlTarget;
   from?: QuerySource;
@@ -294,15 +314,13 @@ export interface OqlInputQueryV1 {
   pattern?: string;
   rule?: StructuralRule;
   lang?: string;
-  langType?: string;
-  minify?: 'none' | 'standard' | 'symbols';
   [key: string]: unknown;
 }
 
-export interface OqlInputBatchV1 {
-  schema?: 'oql/v1';
+export interface OqlInputBatch {
+  schema?: 'oql';
   id?: string;
-  queries: OqlInputQueryV1[];
+  queries: OqlInputQuery[];
   combine?: 'independent' | 'merge';
   limit?: number;
   page?: number;
@@ -310,7 +328,7 @@ export interface OqlInputBatchV1 {
   explain?: boolean;
 }
 
-export type OqlSearchInputV1 = OqlInputQueryV1 | OqlInputBatchV1;
+export type OqlSearchInput = OqlInputQuery | OqlInputBatch;
 
 /* ----------------------------- diagnostics ------------------------------ */
 
@@ -326,6 +344,10 @@ export type DiagnosticCode =
   | 'residualNotExact'
   | 'fieldTypeMismatch'
   | 'requiresMaterialization'
+  | 'vendorNoEquivalent'
+  | 'lossyTransform'
+  | 'unsupportedVendorPredicate'
+  | 'responseShapeMismatch'
   | 'materializationNotAllowed'
   | 'materializationFailed'
   | 'providerUnindexed'
@@ -354,7 +376,7 @@ export interface OqlDiagnostic {
   blocksAnswer: boolean;
   repair?: {
     message: string;
-    suggestedQuery?: OqlSearchInputV1;
+    suggestedQuery?: OqlSearchInput;
   };
   continuation?: OqlContinuation;
 }
@@ -378,12 +400,21 @@ export interface OqlBackendCall {
   exact: boolean;
 }
 
+export interface OqlTransformerTrace {
+  id: string;
+  status: string;
+  sourceKinds: readonly string[];
+  target: string;
+  backends: readonly Pick<OqlBackendCall, 'backend' | 'operation' | 'exact'>[];
+}
+
 export interface OqlExplainPlan {
   input: unknown;
-  normalized: OqlCanonicalInputV1;
+  normalized: OqlCanonicalInput;
   defaults: Record<string, unknown>;
   nodes: OqlPlanNode[];
   backendCalls: OqlBackendCall[];
+  transformers?: readonly OqlTransformerTrace[];
   materialization?: MaterializePolicy & { required: boolean; reason: string };
   budgets: QueryControls['budget'];
   truncated?: boolean;
@@ -393,9 +424,25 @@ export interface OqlExplainPlan {
 
 /* --------------------------- result envelope ---------------------------- */
 
-export interface OqlCodeResultRow {
+export type OqlProofGrade =
+  | 'candidate'
+  | 'text'
+  | 'structural'
+  | 'semantic'
+  | 'graph'
+  | 'missing';
+
+interface OqlProofGradedRow {
+  /**
+   * Mandatory on rows emitted by `runOqlSearch`; adapters may omit it while the
+   * runner computes the final proof grade from query semantics and row shape.
+   */
+  proofGrade?: OqlProofGrade;
+}
+
+export interface OqlCodeResultRow extends OqlProofGradedRow {
   kind: 'code';
-  source: QuerySource;
+  source?: QuerySource;
   path: string;
   /**
    * 1-based match line. Optional because some providers (GitHub code search)
@@ -405,6 +452,13 @@ export interface OqlCodeResultRow {
   endLine?: number;
   column?: number;
   snippet?: string;
+  /** File-level count payloads from local search count modes. */
+  totalMatchedLines?: number;
+  totalOccurrences?: number;
+  /** Provider snippet offsets when available, e.g. GitHub code search indices. */
+  matchIndices?: Array<{ start: number; end: number; lineOffset?: number }>;
+  /** Row-level provider/context metadata that is useful but not identity. */
+  metadata?: Record<string, unknown>;
   /**
    * Structural (AST) metavariable captures. `$X` → single-element list; `$$$X`
    * → node list. Keyed by bare metavar name. Present only for structural
@@ -430,9 +484,9 @@ export interface OqlCodeResultRow {
   next?: Record<string, OqlContinuation>;
 }
 
-export interface OqlFileResultRow {
+export interface OqlFileResultRow extends OqlProofGradedRow {
   kind: 'file';
-  source: QuerySource;
+  source?: QuerySource;
   path: string;
   entryType: 'file' | 'directory';
   size?: number;
@@ -440,9 +494,9 @@ export interface OqlFileResultRow {
   next?: Record<string, OqlContinuation>;
 }
 
-export interface OqlTreeResultRow {
+export interface OqlTreeResultRow extends OqlProofGradedRow {
   kind: 'tree';
-  source: QuerySource;
+  source?: QuerySource;
   path: string;
   entryType: 'file' | 'directory';
   depth: number;
@@ -451,9 +505,9 @@ export interface OqlTreeResultRow {
   next?: Record<string, OqlContinuation>;
 }
 
-export interface OqlContentResultRow {
+export interface OqlContentResultRow extends OqlProofGradedRow {
   kind: 'content';
-  source: QuerySource;
+  source?: QuerySource;
   path: string;
   content: string;
   range?: {
@@ -467,11 +521,11 @@ export interface OqlContentResultRow {
 }
 
 /**
- * Generic record row for V2 research targets whose payload is the backing
- * tool's typed result (repository, package, PR, commit, symbol/location,
- * artifact, diff). `recordType` names the family; `data` is the row payload.
+ * Generic record row for targets whose payload is a typed research object
+ * (repository, package, PR, commit, symbol/location, artifact, diff, packet).
+ * `recordType` names the family; `data` is the row payload.
  */
-export interface OqlRecordResultRow {
+export interface OqlRecordResultRow extends OqlProofGradedRow {
   kind: 'record';
   recordType:
     | 'semantics'
@@ -482,10 +536,13 @@ export interface OqlRecordResultRow {
     | 'artifact'
     | 'diff'
     | 'research'
+    | 'graph'
     | 'materialized';
   /** Stable, citeable identity (repo, name@version, #PR, SHA, path, uri). */
   id?: string;
   source?: QuerySource;
+  /** Parent/query metadata preserved from the backing tool payload. */
+  metadata?: Record<string, unknown>;
   data: Record<string, unknown>;
   next?: Record<string, OqlContinuation>;
 }
@@ -493,7 +550,7 @@ export interface OqlRecordResultRow {
 /* --- typed `data` contracts per recordType (documented payload shapes) ----
  * The backing tool owns the exhaustive payload; these name the fields agents
  * rely on to cite + continue. All optional (backend-dependent); never fabricated.
- * Parity: OCTOCODE_SEARCH_PARITY_CHECKLIST gap #4. */
+ */
 
 export interface OqlRepositoryData {
   fullName?: string;
@@ -577,12 +634,50 @@ export interface OqlResearchData {
   kind?: 'researchFlow';
   goal?: string;
   intent?: string;
-  facets?: string[];
+  facets?: readonly string[];
+  mode?: 'plan' | 'analyze' | 'prove';
   summary?: Record<string, unknown>;
-  flow?: unknown[];
+  flow?: readonly unknown[];
+  nativeGraphSummary?: Record<string, unknown>;
+  graphSummary?: Record<string, unknown>;
+  packetPage?: Pagination;
+  packets?: unknown[];
+  /** Present only in detailed view — a windowed slice (see `manifestsPage`). */
+  manifests?: unknown[];
+  manifestsPage?: Pagination;
+  /** Present only in detailed view — a windowed slice (see `filesPage`). */
   files?: unknown[];
+  filesPage?: Pagination;
+  /** Present only in detailed view — a windowed slice (see `dependenciesPage`). */
   dependencies?: unknown[];
+  dependenciesPage?: Pagination;
+  /** Present only in detailed view — a windowed slice (see `symbolsPage`). */
   symbols?: unknown[];
+  symbolsPage?: Pagination;
+  /** Present only in detailed view — a windowed slice (see `graphFactsPage`). */
+  graphFacts?: unknown[];
+  graphFactsPage?: Pagination;
+  caveats?: string[];
+  [k: string]: unknown;
+}
+export interface OqlGraphData {
+  kind?: 'relationshipGraph';
+  goal?: string;
+  intent?: string;
+  facets?: readonly string[];
+  mode?: 'plan' | 'analyze' | 'prove';
+  root?: string;
+  filters?: Record<string, unknown>;
+  summary?: Record<string, unknown>;
+  flow?: readonly unknown[];
+  nativeGraphSummary?: Record<string, unknown>;
+  graphSummary?: unknown;
+  packetPage?: Pagination;
+  nodes?: unknown[];
+  edges?: unknown[];
+  facts?: unknown[];
+  packets?: unknown[];
+  missingProof?: unknown[];
   caveats?: string[];
   [k: string]: unknown;
 }
@@ -624,6 +719,10 @@ export type OqlResearchRow = OqlRecordResultRow & {
   recordType: 'research';
   data: OqlResearchData;
 };
+export type OqlGraphRow = OqlRecordResultRow & {
+  recordType: 'graph';
+  data: OqlGraphData;
+};
 
 export type OqlResultRow =
   | OqlCodeResultRow
@@ -632,11 +731,24 @@ export type OqlResultRow =
   | OqlContentResultRow
   | OqlRecordResultRow;
 
+export type OqlProofGradedResultRow = OqlResultRow & {
+  proofGrade: OqlProofGrade;
+};
+
 export interface Pagination {
   currentPage?: number;
   totalPages?: number;
+  nextPage?: number;
   itemsPerPage?: number;
   totalItems?: number;
+  reportedTotalItems?: number;
+  reachableTotalItems?: number;
+  totalItemsKind?: string;
+  itemUnit?: string;
+  rowCount?: number;
+  reportedRowCount?: number;
+  totalItemsCapped?: boolean;
+  uniqueFileCount?: number;
   hasMore: boolean;
   next?: OqlContinuation;
 }
@@ -653,7 +765,7 @@ export interface OqlProvenance {
 }
 
 export interface OqlContinuation {
-  query: OqlCanonicalInputV1;
+  query: OqlCanonicalInput;
   baseQueryId?: string;
   queryIndex?: number;
   why: string;
@@ -665,7 +777,7 @@ export type EvidenceKind = 'proof' | 'partial' | 'candidate' | 'unsupported';
 export interface OqlResultEnvelope {
   queryId?: string;
   queryIndex?: number;
-  results: OqlResultRow[];
+  results: OqlProofGradedResultRow[];
   pagination?: Pagination;
   next?: Record<string, OqlContinuation>;
   diagnostics: OqlDiagnostic[];
@@ -693,16 +805,12 @@ export interface OqlBatchResultEnvelope {
 
 export type OqlRunResult = OqlResultEnvelope | OqlBatchResultEnvelope;
 
-export function isBatchInput(
-  input: OqlSearchInputV1
-): input is OqlInputBatchV1 {
-  return Array.isArray((input as OqlInputBatchV1).queries);
+export function isBatchInput(input: OqlSearchInput): input is OqlInputBatch {
+  return Array.isArray((input as OqlInputBatch).queries);
 }
 
-export function isCanonicalBatch(
-  input: OqlCanonicalInputV1
-): input is OqlBatchV1 {
-  return Array.isArray((input as OqlBatchV1).queries);
+export function isCanonicalBatch(input: OqlCanonicalInput): input is OqlBatch {
+  return Array.isArray((input as OqlBatch).queries);
 }
 
 export function isBatchEnvelope(

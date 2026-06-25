@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { executeBulkOperation } from '../../../utils/response/bulk.js';
 import {
@@ -37,6 +38,8 @@ import {
   type SemanticEmptyCategory,
   type SemanticContentType,
   type SymbolAnchoredSemanticQuery,
+  type WorkspaceSymbolSemanticQuery,
+  type DiagnosticSemanticQuery,
 } from '../shared/semanticTypes.js';
 import {
   resolveFileAnchor,
@@ -59,6 +62,113 @@ function isNativeJsTsFile(uri: string): boolean {
     );
   }
   return nativeJsTsExtsCache.has(path.extname(uri).toLowerCase());
+}
+
+const WORKSPACE_SYMBOL_FALLBACK_EXTENSIONS = [
+  'py',
+  'rs',
+  'go',
+  'java',
+  'kt',
+  'cs',
+  'c',
+  'cc',
+  'cpp',
+  'h',
+  'hpp',
+  'rb',
+  'php',
+  'swift',
+  'scala',
+  'lua',
+  'dart',
+  'ex',
+  'exs',
+  'erl',
+  'hrl',
+  'clj',
+  'cljs',
+] as const;
+
+function toLocalPath(value: string, workspaceRoot: string): string {
+  const filePath = value.startsWith('file://') ? fileURLToPath(value) : value;
+  return path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(workspaceRoot, filePath);
+}
+
+function workspaceSymbolAnchorExtensions(): string[] {
+  return [
+    ...contextUtils.getSupportedJsTsExtensions(),
+    ...WORKSPACE_SYMBOL_FALLBACK_EXTENSIONS,
+  ];
+}
+
+function workspaceSymbolAnchorIncludeGlobs(): string[] {
+  return workspaceSymbolAnchorExtensions().map(ext => `**/*.${ext}`);
+}
+
+const WORKSPACE_SYMBOL_EXCLUDE_DIRS = [
+  '.git',
+  'node_modules',
+  'dist',
+  'out',
+  'coverage',
+  'target',
+] as const;
+
+async function findWorkspaceSymbolAnchorByName(
+  query: WorkspaceSymbolSemanticQuery,
+  workspaceRoot: string
+): Promise<string | undefined> {
+  const symbolName = query.symbolName?.trim();
+  if (!symbolName) return undefined;
+  try {
+    const result = await contextUtils.searchRipgrep({
+      path: workspaceRoot,
+      pattern: symbolName,
+      fixedString: true,
+      caseSensitive: true,
+      filesOnly: true,
+      include: workspaceSymbolAnchorIncludeGlobs(),
+      excludeDir: [...WORKSPACE_SYMBOL_EXCLUDE_DIRS],
+      maxSnippetChars: 1,
+    });
+    return result.files[0]?.path;
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveWorkspaceSymbolAnchor(
+  query: WorkspaceSymbolSemanticQuery,
+  workspaceRoot: string
+): Promise<string> {
+  if (query.uri) return toLocalPath(query.uri, workspaceRoot);
+  const symbolHit = await findWorkspaceSymbolAnchorByName(query, workspaceRoot);
+  if (symbolHit) return symbolHit;
+  try {
+    const result = contextUtils.queryFileSystem({
+      path: workspaceRoot,
+      recursive: true,
+      includeRoot: false,
+      showHidden: false,
+      entryType: 'f',
+      extensions: workspaceSymbolAnchorExtensions(),
+      maxDepth: 5,
+      limit: 1,
+    });
+    const first = result.entries[0];
+    if (first) return first.path;
+  } catch {
+    // Fall back to the root; the language-server availability check returns a
+    // structured serverUnavailable envelope if no source-file anchor exists.
+  }
+  return workspaceRoot;
+}
+
+function lspErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -225,6 +335,9 @@ function compactSemanticPayload(
       };
     case 'hover':
     case 'empty':
+    case 'workspaceSymbol':
+    case 'typeHierarchy':
+    case 'diagnostic':
       return payload;
   }
 }
@@ -350,6 +463,12 @@ async function getSemanticContent(
 ): Promise<LspSemanticEnvelope | Record<string, unknown>> {
   if (query.type === 'documentSymbols') {
     return getDocumentSymbols(query);
+  }
+  if (query.type === 'workspaceSymbol') {
+    return getWorkspaceSymbols(query);
+  }
+  if (query.type === 'diagnostic') {
+    return getFileDiagnostics(query);
   }
 
   const anchor = await resolveSymbolAnchor(
@@ -508,6 +627,17 @@ async function getSemanticContent(
         );
       }
       return callsEnvelope(query, anchor.value, client);
+    case 'supertypes':
+    case 'subtypes':
+      if (!client.hasCapability('typeHierarchyProvider')) {
+        return emptyEnvelope(
+          query.type,
+          anchor.value,
+          'typeHierarchyProvider unsupported',
+          true
+        );
+      }
+      return typeHierarchyEnvelope(query, anchor.value, client);
   }
 }
 
@@ -532,12 +662,23 @@ async function getDocumentSymbols(
     : null;
   const lspProvides = Boolean(client?.hasCapability('documentSymbolProvider'));
 
-  // Source priority: type-aware LSP when present, else the native oxc outline
-  // for JS/TS (server-free, no type inference). Stamp `source` so callers know
-  // the fidelity tier.
+  // Source priority:
+  //   1. Native OXC (JS/TS only) — always fast, no server round-trip.
+  //      Preferred even when a server is available; avoids indexing-wait on
+  //      documentSymbols for the most common file types.
+  //   2. LSP server — for non-JS/TS languages with a documentSymbolProvider.
+  //   3. Markdown heading outline — for .md files without a server.
+  // Stamp `source` so callers know the fidelity tier.
   let symbols: unknown[] = [];
   let source: 'lsp' | 'native' | 'markdown' | undefined;
-  if (lspProvides && client) {
+  const nativeFast = nativeDocumentSymbols(
+    anchor.value.uri,
+    anchor.value.content
+  );
+  if (nativeFast?.length) {
+    symbols = nativeFast;
+    source = 'native';
+  } else if (lspProvides && client) {
     const raw = await client.documentSymbols(
       anchor.value.uri,
       anchor.value.content
@@ -545,22 +686,13 @@ async function getDocumentSymbols(
     symbols = Array.isArray(raw) ? raw : [];
     source = 'lsp';
   } else {
-    const native = nativeDocumentSymbols(
-      anchor.value.uri,
-      anchor.value.content
+    const markdown = markdownHeadingOutlineToDocumentSymbols(
+      anchor.value.content,
+      anchor.value.uri
     );
-    if (native) {
-      symbols = native;
-      source = 'native';
-    } else {
-      const markdown = markdownHeadingOutlineToDocumentSymbols(
-        anchor.value.content,
-        anchor.value.uri
-      );
-      if (markdown) {
-        symbols = markdown;
-        source = 'markdown';
-      }
+    if (markdown) {
+      symbols = markdown;
+      source = 'markdown';
     }
   }
 
@@ -887,6 +1019,337 @@ async function callsEnvelope(
     },
     pagination,
   };
+}
+
+async function getWorkspaceSymbols(
+  query: WorkspaceSymbolSemanticQuery
+): Promise<LspSemanticEnvelope | Record<string, unknown>> {
+  const symbolQuery = query.symbolName ?? '';
+  const workspaceRoot = path.resolve(query.workspaceRoot ?? process.cwd());
+
+  // workspace/symbol is project-wide, but language-server selection is
+  // extension-based. Use an explicit uri when provided; otherwise pick a
+  // representative source file under the workspace root.
+  const anchorFile = await resolveWorkspaceSymbolAnchor(query, workspaceRoot);
+  const serverAvailable = await isLanguageServerAvailable(
+    anchorFile,
+    workspaceRoot
+  );
+  if (!serverAvailable) {
+    return {
+      type: 'workspaceSymbol',
+      uri: anchorFile,
+      lsp: { serverAvailable: false },
+      payload: {
+        kind: 'empty',
+        category: 'serverUnavailable',
+        reason: 'Language server unavailable',
+      },
+    } satisfies LspSemanticEnvelope;
+  }
+
+  const client = await acquirePooledClient(workspaceRoot, anchorFile);
+  if (!client) {
+    return {
+      type: 'workspaceSymbol',
+      uri: anchorFile,
+      lsp: { serverAvailable: false },
+      payload: {
+        kind: 'empty',
+        category: 'serverUnavailable',
+        reason: 'Language server unavailable',
+      },
+    } satisfies LspSemanticEnvelope;
+  }
+
+  if (!client.hasCapability('workspaceSymbolProvider')) {
+    return {
+      type: 'workspaceSymbol',
+      uri: anchorFile,
+      lsp: { serverAvailable: true, provider: 'workspaceSymbolProvider' },
+      payload: {
+        kind: 'empty',
+        category: 'unsupportedOperation',
+        reason: 'workspaceSymbolProvider unsupported',
+      },
+    } satisfies LspSemanticEnvelope;
+  }
+
+  let raw: unknown[];
+  try {
+    if (path.extname(anchorFile)) {
+      await client.openDocument(anchorFile);
+    }
+    raw = await client.workspaceSymbol(symbolQuery);
+  } catch (error) {
+    return {
+      type: 'workspaceSymbol',
+      uri: anchorFile,
+      lsp: { serverAvailable: true, provider: 'workspaceSymbolProvider' },
+      payload: {
+        kind: 'empty',
+        category: 'unsupportedOperation',
+        reason: `workspaceSymbolProvider failed: ${lspErrorMessage(error)}`,
+      },
+    } satisfies LspSemanticEnvelope;
+  }
+  const symbols = compactWorkspaceSymbols(raw);
+  const { pageItems, pagination } = paginateItems(
+    symbols,
+    query.page ?? 1,
+    query.itemsPerPage ?? DEFAULT_SYMBOLS_PER_PAGE
+  );
+
+  return {
+    type: 'workspaceSymbol',
+    uri: anchorFile,
+    lsp: { serverAvailable: true, provider: 'workspaceSymbolProvider' },
+    summary: { query: symbolQuery, totalSymbols: symbols.length },
+    payload:
+      symbols.length > 0
+        ? {
+            kind: 'workspaceSymbol',
+            query: symbolQuery,
+            symbols: pageItems,
+            totalSymbols: symbols.length,
+          }
+        : {
+            kind: 'empty',
+            category: 'noWorkspaceSymbols',
+            reason: `workspaceSymbolProvider returned no symbols for query "${symbolQuery}"`,
+          },
+    pagination,
+  } satisfies LspSemanticEnvelope;
+}
+
+type CompactWorkspaceSymbol = CompactSymbol & { uri: string };
+
+function compactWorkspaceSymbols(raw: unknown[]): CompactWorkspaceSymbol[] {
+  return raw.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const sym = item as Record<string, unknown>;
+    const name = typeof sym['name'] === 'string' ? sym['name'] : undefined;
+    if (!name) return [];
+    const kind = sym['kind'];
+    // WorkspaceSymbol has `location.uri + location.range`; SymbolInformation same shape.
+    const loc = sym['location'] as Record<string, unknown> | undefined;
+    const range = loc?.['range'] as
+      | {
+          start?: { line?: number; character?: number };
+          end?: { line?: number };
+        }
+      | undefined;
+    const uri = typeof loc?.['uri'] === 'string' ? loc['uri'] : '';
+    const line = (range?.start?.line ?? 0) + 1;
+    const endLine = (range?.end?.line ?? range?.start?.line ?? 0) + 1;
+    const containerName =
+      typeof sym['containerName'] === 'string'
+        ? sym['containerName']
+        : undefined;
+    return [
+      {
+        name,
+        kind: symbolKindName(kind),
+        line,
+        character: range?.start?.character ?? 0,
+        endLine,
+        childCount: 0,
+        ...(containerName ? { containerName } : {}),
+        uri,
+      },
+    ];
+  });
+}
+
+async function typeHierarchyEnvelope(
+  query: SymbolAnchoredSemanticQuery,
+  anchor: SymbolAnchor,
+  client: NonNullable<Awaited<ReturnType<typeof acquirePooledClient>>>
+): Promise<LspSemanticEnvelope> {
+  const items = await client.prepareTypeHierarchy(
+    anchor.uri,
+    anchor.resolvedSymbol.position,
+    anchor.content
+  );
+  const root = items[0];
+  if (!root) {
+    return emptyEnvelope(
+      query.type,
+      anchor,
+      'No type-hierarchy item found at position',
+      true
+    );
+  }
+
+  const direction = query.type === 'supertypes' ? 'supertypes' : 'subtypes';
+  const relatives =
+    direction === 'supertypes'
+      ? await client.typeHierarchySupertypes(root)
+      : await client.typeHierarchySubtypes(root);
+
+  const { pageItems, pagination } = paginateItems(
+    relatives,
+    query.page ?? 1,
+    query.itemsPerPage ?? DEFAULT_SYMBOLS_PER_PAGE
+  );
+
+  return {
+    type: query.type,
+    uri: anchor.uri,
+    resolvedSymbol: compactResolvedSymbol(anchor.resolvedSymbol),
+    lsp: { serverAvailable: true, provider: 'typeHierarchyProvider' },
+    payload:
+      relatives.length > 0
+        ? {
+            kind: 'typeHierarchy',
+            direction,
+            root,
+            items: pageItems,
+            totalItems: relatives.length,
+          }
+        : {
+            kind: 'empty',
+            category: 'noTypeHierarchy',
+            reason: `typeHierarchyProvider returned no ${direction} for this symbol`,
+          },
+    pagination,
+  };
+}
+
+async function getFileDiagnostics(
+  query: DiagnosticSemanticQuery
+): Promise<LspSemanticEnvelope | Record<string, unknown>> {
+  const uri = query.uri ?? '';
+  const workspaceRoot =
+    query.workspaceRoot ??
+    (uri ? await resolveWorkspaceRootForFile(uri) : process.cwd());
+
+  const serverAvailable = await isLanguageServerAvailable(uri, workspaceRoot);
+  if (!serverAvailable) {
+    return {
+      type: 'diagnostic',
+      uri,
+      lsp: { serverAvailable: false },
+      payload: {
+        kind: 'empty',
+        category: 'serverUnavailable',
+        reason: 'Language server unavailable',
+      },
+    } satisfies LspSemanticEnvelope;
+  }
+
+  const client = await acquirePooledClient(workspaceRoot, uri);
+  if (!client) {
+    return {
+      type: 'diagnostic',
+      uri,
+      lsp: { serverAvailable: false },
+      payload: {
+        kind: 'empty',
+        category: 'serverUnavailable',
+        reason: 'Language server unavailable',
+      },
+    } satisfies LspSemanticEnvelope;
+  }
+
+  if (!client.hasCapability('diagnosticProvider')) {
+    return {
+      type: 'diagnostic',
+      uri,
+      lsp: { serverAvailable: true, provider: 'diagnosticProvider' },
+      payload: {
+        kind: 'empty',
+        category: 'unsupportedOperation',
+        reason:
+          'diagnosticProvider (pull) unsupported — server uses push (publishDiagnostics) instead',
+      },
+      warnings: [
+        'This server pushes diagnostics via textDocument/publishDiagnostics. ' +
+          'Pull diagnostics (type: "diagnostic") require LSP 3.17 pull support. ' +
+          'Check server docs to enable it.',
+      ],
+    } satisfies LspSemanticEnvelope;
+  }
+
+  const raw = await client.getDiagnostics(uri);
+  const diags = extractDiagnostics(raw);
+  const errorCount = diags.filter(d => d.severity === 1).length;
+  const warningCount = diags.filter(d => d.severity === 2).length;
+
+  const { pageItems, pagination } = paginateItems(
+    diags,
+    query.page ?? 1,
+    query.itemsPerPage ?? DEFAULT_SYMBOLS_PER_PAGE
+  );
+
+  return {
+    type: 'diagnostic',
+    uri,
+    lsp: { serverAvailable: true, provider: 'diagnosticProvider' },
+    summary: {
+      totalDiagnostics: diags.length,
+      errorCount,
+      warningCount,
+    },
+    payload:
+      diags.length > 0
+        ? {
+            kind: 'diagnostic',
+            diagnostics: pageItems,
+            totalDiagnostics: diags.length,
+            errorCount,
+            warningCount,
+          }
+        : {
+            kind: 'empty',
+            category: 'noDiagnostics',
+            reason: 'No diagnostics — file has no errors or warnings',
+          },
+    pagination,
+  } satisfies LspSemanticEnvelope;
+}
+
+type DiagnosticItem = {
+  severity?: number;
+  message: string;
+  line: number;
+  endLine: number;
+  character: number;
+  code?: string | number;
+  source?: string;
+};
+
+function extractDiagnostics(raw: unknown): DiagnosticItem[] {
+  // Pull response shape: { kind: "full", items: Diagnostic[] }
+  if (raw && typeof raw === 'object') {
+    const report = raw as Record<string, unknown>;
+    const items = Array.isArray(report['items']) ? report['items'] : [];
+    return items.flatMap(item => parseDiagnostic(item));
+  }
+  return [];
+}
+
+function parseDiagnostic(item: unknown): DiagnosticItem[] {
+  if (!item || typeof item !== 'object') return [];
+  const d = item as Record<string, unknown>;
+  const range = d['range'] as
+    | { start?: { line?: number; character?: number }; end?: { line?: number } }
+    | undefined;
+  const message = typeof d['message'] === 'string' ? d['message'] : '';
+  if (!message) return [];
+  return [
+    {
+      severity: typeof d['severity'] === 'number' ? d['severity'] : undefined,
+      message,
+      line: (range?.start?.line ?? 0) + 1,
+      endLine: (range?.end?.line ?? range?.start?.line ?? 0) + 1,
+      character: range?.start?.character ?? 0,
+      ...(d['code'] !== undefined
+        ? { code: d['code'] as string | number }
+        : {}),
+      ...(typeof d['source'] === 'string' ? { source: d['source'] } : {}),
+    },
+  ];
 }
 
 function paginateItems<T>(

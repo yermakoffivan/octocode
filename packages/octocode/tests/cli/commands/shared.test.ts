@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EXIT } from '../../../src/cli/exit-codes.js';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn().mockReturnValue(false),
@@ -244,6 +243,9 @@ describe('cli/commands/shared', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Not authenticated')
       );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('anonymous requests may work')
+      );
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('login'));
     });
   });
@@ -360,7 +362,7 @@ describe('statusCommand', () => {
     expect(typeof auth.hostname).toBe('string');
   });
 
-  it('sets EXIT.AUTH when not authenticated in --json mode', async () => {
+  it('does not fail read-only --json status when not authenticated', async () => {
     const { statusCommand } =
       await import('../../../src/cli/commands/status.js');
 
@@ -370,6 +372,6 @@ describe('statusCommand', () => {
       options: { json: true },
     });
 
-    expect(process.exitCode).toBe(EXIT.AUTH);
+    expect(process.exitCode).toBeUndefined();
   });
 });

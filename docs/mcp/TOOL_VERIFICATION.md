@@ -173,7 +173,7 @@ Primary code: [src/tools/local_find_files/](https://github.com/bgauryy/octocode/
 | Surface | Checks |
 | --- | --- |
 | Params | Verify `path`, name/pattern filters, file type, size filters, modified/accessed/created filters, permissions if exposed, `limit`, `filesPerPage`, `filePageNumber`, `charOffset`, `charLength`. |
-| Implementation | Uses the safe find command builder, respects allowed paths, handles large trees without unbounded output, and returns stable metadata. |
+| Implementation | Uses the safe file-discovery path, respects allowed paths, handles large trees without unbounded output, and returns stable metadata. |
 | Pagination | File pagination and char pagination both work. Cap notices must not replace next-page cursors. |
 | Empty | Empty hints quote active filters such as `name`, `modifiedWithin`, or `sizeGreater`. No-filter empty stays silent. |
 | Research quality | Results should support targeted follow-ups by path, type, size, permissions, and timestamps. |
@@ -278,7 +278,7 @@ npx knip
 
 Do not mark a tool-surface change complete until these are true:
 
-1. All 13 tools still register with input and output schemas.
+1. All 14 tools still register with input and output schemas.
 2. All public schema defaults, caps, hidden fields, and mutex rules have tests.
 3. Every tool has success, empty, error, mixed-bulk, pagination, lean-output (`base`/`shared`), and verbosity coverage.
 4. Remote tools cover auth, rate limit, provider error, no results, and provider-mapper edge cases.

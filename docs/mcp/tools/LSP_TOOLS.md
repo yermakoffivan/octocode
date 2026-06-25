@@ -1,18 +1,20 @@
 # LSP Tools Reference
 
-This is the canonical reference for Octocode's public Language Server Protocol tools.
+This is the canonical reference for Octocode's semantic code-intelligence operations. LSP is the protocol layer behind these operations; structural AST search remains part of `localSearchCode`.
 
-Octocode exposes **one** public LSP tool:
+Octocode exposes **one** public semantic tool:
 
 | Tool | Use it for |
 |------|------------|
 | `lspGetSemantics` | Definitions, references, callers, callees, bidirectional call hierarchy, hover, document symbols, type definitions, and implementations. |
 
-LSP tools are local-only. They require `ENABLE_LOCAL=true` and a file that exists on disk. Use `localSearchCode` first when you need a symbol `lineHint`.
+Semantic operations are local-only. They require `ENABLE_LOCAL=true` and a file that exists on disk. Use `localSearchCode` first when you need a symbol `lineHint`; `mode:"structural"` matches can provide AST-derived anchors before LSP proves symbol identity.
+
+For external repos: clone first with `ghCloneRepo` (or fetch a subtree with `ghGetFileContent(type:"directory")`), then use the returned `localPath` as the `uri` prefix for `lspGetSemantics`. The path is always absolute and immediately valid.
 
 ## Workflow
 
-1. Search textually with `localSearchCode` and capture the exact `lineHint`.
+1. Search textually or structurally with `localSearchCode` and capture the exact `lineHint`.
 2. Query `lspGetSemantics` with `uri`, `type`, `symbolName`, and `lineHint`.
 3. Page large symbol or call-flow results with `page` and `itemsPerPage`.
 4. Run project lint, typecheck, and tests before claiming risky changes are fully verified.
@@ -100,6 +102,14 @@ The TS/JS server resolves in this order:
 1. `OCTOCODE_TS_SERVER_PATH` — explicit override (args auto-selected: `--lsp -stdio` if the path is `tsgo`, else `--stdio`).
 2. **`tsgo` on `PATH`** — Microsoft's Go-native server (`tsgo --lsp -stdio`, Node-free, ~10× faster). Opt-in: present-on-PATH only, no flag. References/rename are still maturing upstream.
 3. **`typescript-language-server`** — the bundled zero-config default.
+
+For the bundled default, Octocode first honors an executable
+`typescript-language-server` already available on `PATH`. If the command is not
+available, the resolver looks for `node_modules/typescript-language-server/lib/cli.mjs`
+from the detected `workspaceRoot` and then from Octocode's package root. That
+fallback keeps cloned or external workspaces working without installing a
+language server inside every analyzed repository; the CLI path is run through the
+current Node executable.
 
 ## Language Servers
 

@@ -68,6 +68,30 @@ const GitHubFetchDirectoryEntrySchema = z.object({
   repoRoot: z.string().optional(),
   fileCount: z.number(),
   totalSize: z.number(),
+  complete: z.boolean().optional(),
+  directoryEntryCount: z.number().optional(),
+  eligibleFileCount: z.number().optional(),
+  savedFileCount: z.number().optional(),
+  skipped: z
+    .object({
+      nonFile: z.number(),
+      missingDownloadUrl: z.number(),
+      oversized: z.number(),
+      binary: z.number(),
+      fileLimit: z.number(),
+      fetchFailed: z.number(),
+      totalSizeLimit: z.number(),
+      pathTraversal: z.number(),
+    })
+    .optional(),
+  limits: z
+    .object({
+      maxDirectoryFiles: z.number(),
+      maxTotalSize: z.number(),
+      maxFileSize: z.number(),
+    })
+    .optional(),
+  warnings: z.array(z.string()).optional(),
   files: z
     .array(z.object({ path: z.string(), size: z.number(), type: z.string() }))
     .optional(),
@@ -111,6 +135,14 @@ export const GitHubFetchContentOutputLocalSchema = z.object({
       repo: z.string(),
       files: z.array(GitHubFetchFileEntrySchema).optional(),
       directories: z.array(GitHubFetchDirectoryEntrySchema).optional(),
+      data: z
+        .object({
+          owner: z.string(),
+          repo: z.string(),
+          files: z.array(GitHubFetchFileEntrySchema).optional(),
+          directories: z.array(GitHubFetchDirectoryEntrySchema).optional(),
+        })
+        .optional(),
     })
   ),
   errors: z

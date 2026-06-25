@@ -17,23 +17,43 @@ import type {
   Pagination,
   QuerySource,
 } from '../types.js';
+import { toOqlPagination, type ToolPaginationPayload } from './pagination.js';
 
 export interface MappedResult {
   results: OqlResultRow[];
   pagination?: Pagination;
 }
 
+// Delegate to the single OQL pagination normalizer so the code/structure/file
+// paths recompute `totalPages`/`hasMore` from the resolved unit fields exactly
+// like every other target (P2 — one consistent page math everywhere).
 function toPagination(
-  p:
-    | { currentPage?: number; totalPages?: number; hasMore?: boolean }
-    | undefined
+  p: ToolPaginationPayload | undefined
+): Pagination | undefined {
+  return toOqlPagination(p);
+}
+
+function toCodePagination(
+  p: ToolPaginationPayload | undefined
 ): Pagination | undefined {
   if (!p) return undefined;
-  return {
-    ...(p.currentPage !== undefined ? { currentPage: p.currentPage } : {}),
-    ...(p.totalPages !== undefined ? { totalPages: p.totalPages } : {}),
-    hasMore: Boolean(p.hasMore),
-  };
+
+  // localSearchCode pages matched files, while OQL code rows are individual
+  // matches. Keep that unit explicit so the runner does not invent row-page
+  // continuations that localSearchCode cannot execute.
+  return toOqlPagination({
+    currentPage: p.currentPage,
+    totalPages: p.totalPages,
+    nextPage: p.nextPage,
+    hasMore: p.hasMore,
+    itemsPerPage: p.filesPerPage ?? p.itemsPerPage ?? p.perPage,
+    totalItems: p.totalFiles ?? p.totalItems,
+    reportedTotalMatches: p.totalMatches ?? p.reportedTotalMatches,
+    reachableTotalMatches: p.reachableTotalMatches,
+    totalMatchesKind: p.totalFiles !== undefined ? 'files' : p.totalMatchesKind,
+    totalMatchesCapped: p.totalMatchesCapped,
+    uniqueFileCount: p.uniqueFileCount ?? p.totalFiles,
+  });
 }
 
 export function mapCodeResult(
@@ -44,8 +64,24 @@ export function mapCodeResult(
   for (const file of result.files ?? []) {
     const matches = file.matches ?? [];
     if (matches.length === 0) {
-      // filesOnly / discovery mode: one row per file at line 1
-      rows.push({ kind: 'code', source, path: file.path, line: 1 });
+      // filesOnly / discovery / count modes: one row per file at line 1.
+      // Count modes carry file-level totals even though they do not carry match rows.
+      const counts = file as {
+        totalMatchedLines?: number;
+        totalOccurrences?: number;
+      };
+      rows.push({
+        kind: 'code',
+        source,
+        path: file.path,
+        line: 1,
+        ...(counts.totalMatchedLines !== undefined
+          ? { totalMatchedLines: counts.totalMatchedLines }
+          : {}),
+        ...(counts.totalOccurrences !== undefined
+          ? { totalOccurrences: counts.totalOccurrences }
+          : {}),
+      });
       continue;
     }
     for (const m of matches) {
@@ -53,7 +89,6 @@ export function mapCodeResult(
       // ranges. The engine produces these for structural matches that capture;
       // forward them verbatim (never fabricated when absent). The per-capture
       // ranges let an agent feed a capture straight to lspGetSemantics.
-      // See OCTOCODE_SEARCH_PARITY_CHECKLIST.md gap log #18 (structural metavars).
       const captures = m.metavars;
       const ranges = m.metavarRanges;
       rows.push({
@@ -75,9 +110,26 @@ export function mapCodeResult(
   }
   return {
     results: rows,
-    pagination: toPagination(
-      result.pagination as Parameters<typeof toPagination>[0]
+    pagination: enrichCodePagination(
+      toCodePagination(result.pagination as Parameters<typeof toPagination>[0]),
+      rows.length
     ),
+  };
+}
+
+function enrichCodePagination(
+  pagination: Pagination | undefined,
+  rowCount: number
+): Pagination | undefined {
+  if (!pagination) return undefined;
+  if (pagination.totalItemsKind !== 'files') return pagination;
+  return {
+    ...pagination,
+    itemUnit: 'files',
+    rowCount,
+    ...(pagination.reportedTotalItems !== undefined
+      ? { reportedRowCount: pagination.reportedTotalItems }
+      : {}),
   };
 }
 
