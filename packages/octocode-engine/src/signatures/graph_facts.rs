@@ -280,8 +280,7 @@ fn visit_node(
             let range = line_index.range(node);
             let line = range.start.line + 1;
             let id = format!("symbol:{}#{}", acc.file_path, name);
-            let exported =
-                is_exported_declaration(&acc.ext, node, content, &name, active_decl);
+            let exported = is_exported_declaration(&acc.ext, node, content, &name, active_decl);
             let parent = active_decl.map(str::to_owned);
             GraphDeclaration {
                 id,
@@ -346,9 +345,7 @@ fn visit_node(
     }
 
     if is_call_node(node.kind()) {
-        if let (Some(caller), Some(callee)) =
-            (next_decl, call_callee_name(node, content))
-        {
+        if let (Some(caller), Some(callee)) = (next_decl, call_callee_name(node, content)) {
             let range = line_index.range(node);
             let line = range.start.line + 1;
             let caller_name = caller

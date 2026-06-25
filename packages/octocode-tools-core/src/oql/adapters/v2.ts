@@ -16,7 +16,7 @@ import { analyzeResearchFlow } from '../research/analyze.js';
 import type { AdapterResult } from './local.js';
 import type {
   OqlDiagnostic,
-  OqlQueryV1,
+  OqlQuery,
   OqlRecordResultRow,
   QuerySource,
 } from '../types.js';
@@ -118,6 +118,8 @@ function stableId(
     }
     case 'research':
       return s('intent') ?? s('goal') ?? 'research';
+    default:
+      return undefined;
   }
 }
 
@@ -157,7 +159,7 @@ function splitRepo(source: QuerySource | undefined): {
   return { owner: source.owner };
 }
 
-function params(query: OqlQueryV1): Record<string, unknown> {
+function params(query: OqlQuery): Record<string, unknown> {
   return query.params ?? {};
 }
 
@@ -227,7 +229,7 @@ function finishRecords(
 /* --------------------------- target adapters ---------------------------- */
 
 export async function executeRepositories(
-  query: OqlQueryV1
+  query: OqlQuery
 ): Promise<AdapterResult> {
   const { owner } = splitRepo(query.from);
   const result = await runDirect('ghSearchRepos', {
@@ -242,9 +244,7 @@ export async function executeRepositories(
   );
 }
 
-export async function executePackages(
-  query: OqlQueryV1
-): Promise<AdapterResult> {
+export async function executePackages(query: OqlQuery): Promise<AdapterResult> {
   const result = await runDirect('npmSearch', { ...params(query) });
   return finishRecords(
     result,
@@ -254,9 +254,7 @@ export async function executePackages(
   );
 }
 
-export async function executeHistory(
-  query: OqlQueryV1
-): Promise<AdapterResult> {
+export async function executeHistory(query: OqlQuery): Promise<AdapterResult> {
   const { owner, repo } = splitRepo(query.from);
   const commits = query.target === 'commits';
   const result = await runDirect('ghHistoryResearch', {
@@ -281,7 +279,7 @@ export async function executeHistory(
  * A request that fits neither returns a repair diagnostic rather than silently
  * falling through to a PR-patch call (see OCTOCODE_SEARCH_PARITY_CHECKLIST.md gap log #8).
  */
-export async function executeDiff(query: OqlQueryV1): Promise<AdapterResult> {
+export async function executeDiff(query: OqlQuery): Promise<AdapterResult> {
   const p = params(query);
   const { owner, repo } = splitRepo(query.from);
   // Lane discriminant is shared with the planner (diffLanes.ts) — one source of
@@ -333,7 +331,7 @@ export async function executeDiff(query: OqlQueryV1): Promise<AdapterResult> {
 
 /** Direct two-ref file diff via two content reads + a pure local line diff. */
 async function executeDirectFileDiff(
-  query: OqlQueryV1,
+  query: OqlQuery,
   owner: string | undefined,
   repo: string | undefined,
   refs: { baseRef: string; headRef: string; path: string }
@@ -484,7 +482,7 @@ export function computeLineDiff(baseText: string, headText: string): LineDiff {
 }
 
 export async function executeArtifacts(
-  query: OqlQueryV1
+  query: OqlQuery
 ): Promise<AdapterResult> {
   const path =
     query.from?.kind === 'local'
@@ -538,7 +536,7 @@ export async function executeArtifacts(
 }
 
 export async function executeSemantics(
-  query: OqlQueryV1
+  query: OqlQuery
 ): Promise<AdapterResult> {
   let uri: string | undefined;
   const provenance: AdapterResult['provenance'] = [];
@@ -626,9 +624,7 @@ export async function executeSemantics(
   };
 }
 
-export async function executeResearch(
-  query: OqlQueryV1
-): Promise<AdapterResult> {
+export async function executeResearch(query: OqlQuery): Promise<AdapterResult> {
   const p = params(query);
   const root =
     query.from?.kind === 'local'
@@ -678,7 +674,7 @@ export async function executeResearch(
 /** Dispatch map: V2 target -> adapter. */
 export const V2_ADAPTERS: Record<
   string,
-  (q: OqlQueryV1) => Promise<AdapterResult>
+  (q: OqlQuery) => Promise<AdapterResult>
 > = {
   repositories: executeRepositories,
   packages: executePackages,
