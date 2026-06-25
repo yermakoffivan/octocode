@@ -244,9 +244,7 @@ export async function executeRepositories(
   );
 }
 
-export async function executePackages(
-  query: OqlQuery
-): Promise<AdapterResult> {
+export async function executePackages(query: OqlQuery): Promise<AdapterResult> {
   const result = await runDirect('npmSearch', { ...params(query) });
   return finishRecords(
     result,
@@ -256,9 +254,7 @@ export async function executePackages(
   );
 }
 
-export async function executeHistory(
-  query: OqlQuery
-): Promise<AdapterResult> {
+export async function executeHistory(query: OqlQuery): Promise<AdapterResult> {
   const { owner, repo } = splitRepo(query.from);
   const commits = query.target === 'commits';
   const result = await runDirect('ghHistoryResearch', {
@@ -628,9 +624,7 @@ export async function executeSemantics(
   };
 }
 
-export async function executeResearch(
-  query: OqlQuery
-): Promise<AdapterResult> {
+export async function executeResearch(query: OqlQuery): Promise<AdapterResult> {
   const p = params(query);
   const root =
     query.from?.kind === 'local'

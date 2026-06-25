@@ -147,18 +147,17 @@ const researchParams = z
   .passthrough();
 
 /** Per-target params schema; targets without a `params` bag are absent. */
-export const V2_PARAM_SCHEMAS: Partial<
-  Record<OqlActiveTarget, z.ZodTypeAny>
-> = {
-  semantics: semanticsParams,
-  repositories: repositoriesParams,
-  packages: packagesParams,
-  pullRequests: pullRequestsParams,
-  commits: commitsParams,
-  artifacts: artifactsParams,
-  diff: diffParams,
-  research: researchParams,
-};
+export const V2_PARAM_SCHEMAS: Partial<Record<OqlActiveTarget, z.ZodTypeAny>> =
+  {
+    semantics: semanticsParams,
+    repositories: repositoriesParams,
+    packages: packagesParams,
+    pullRequests: pullRequestsParams,
+    commits: commitsParams,
+    artifacts: artifactsParams,
+    diff: diffParams,
+    research: researchParams,
+  };
 
 /**
  * Validate a target's `params` bag against its typed schema. Returns `null` when

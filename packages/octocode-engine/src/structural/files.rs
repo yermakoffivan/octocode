@@ -159,8 +159,7 @@ pub fn search_files(
                 SearchOutcome::ParsedNoMatch => parsed_files += 1,
                 SearchOutcome::Matched(result) => {
                     parsed_files += 1;
-                    total_matches =
-                        total_matches.saturating_add(result.matches.len() as u32);
+                    total_matches = total_matches.saturating_add(result.matches.len() as u32);
                     files.push(result);
                 }
             }
