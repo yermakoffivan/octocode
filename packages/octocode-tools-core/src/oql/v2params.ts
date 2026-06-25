@@ -11,7 +11,7 @@
  * This is the typed-contract layer for OCTOCODE_SEARCH_PARITY_CHECKLIST gap #3.
  */
 import { z } from 'zod';
-import type { OqlActiveTargetV1 } from './types.js';
+import type { OqlActiveTarget } from './types.js';
 
 const intMin1 = z.number().int().min(1);
 const nonNegInt = z.number().int().min(0);
@@ -148,7 +148,7 @@ const researchParams = z
 
 /** Per-target params schema; targets without a `params` bag are absent. */
 export const V2_PARAM_SCHEMAS: Partial<
-  Record<OqlActiveTargetV1, z.ZodTypeAny>
+  Record<OqlActiveTarget, z.ZodTypeAny>
 > = {
   semantics: semanticsParams,
   repositories: repositoriesParams,
@@ -166,7 +166,7 @@ export const V2_PARAM_SCHEMAS: Partial<
  * raises as `invalidQuery`.
  */
 export function validateV2Params(
-  target: OqlActiveTargetV1,
+  target: OqlActiveTarget,
   params: unknown
 ): string | null {
   const schema = V2_PARAM_SCHEMAS[target];
