@@ -27,13 +27,16 @@ octocode search <file> --target artifacts --inspect
 octocode unzip <archive>
 
 # Raw tool runner
-octocode tools
+octocode tools                                # all tools, concise descriptions
+octocode tools --json --compact               # lean minified machine catalog
+octocode tools --json --full                  # wrapped full all-tool schema catalog
 octocode tools <name> --scheme
-octocode tools <name> --queries '<json>'
+octocode tools <name> --scheme --json --compact # one minified machine schema
+octocode tools <name> --queries '<json>' --compact
 octocode context [--full] [--json]
 
 # Agent setup
-octocode skill --add <github-folder> --platform common|cursor|claude|codex|all [--mode copy|symlink] [--force] [--json]
+octocode skill (--add <github-folder> | --name <octocode-skill>) [--platform common|cursor|claude|codex|opencode|pi|all] [--mode copy|symlink|hybrid] [--force|--update] [--json]
 ```
 
 ## Command Index
@@ -46,7 +49,7 @@ octocode skill --add <github-folder> --platform common|cursor|claude|codex|all [
 | `cache` | Materialize remote files/trees/repos, inspect status, or clear tmp storage. |
 | `tools` | List tools, read schemas, and run any MCP tool directly. |
 | `context` | Print agent-facing protocol, system prompt, tool descriptions, and schemas. |
-| `skill` | Fetch one GitHub Agent Skill folder and install it into Common, Cursor, Claude, Codex, or all supported skill destinations. |
+| `skill` | Fetch one GitHub Agent Skill folder or named Octocode skill and install it into Common, Cursor, Claude, Codex, OpenCode, Pi, or all supported skill destinations. |
 | `install` | Configure Octocode in supported MCP clients. |
 | `auth` | Run auth subcommands: `login`, `logout`, `refresh`, or read-only `status`. |
 | `login` / `logout` | Open the interactive auth picker or clear stored GitHub credentials directly. |
@@ -59,11 +62,11 @@ Removed commands: `cat`, `ls`, `find`, `diff`, `history`, `repo`, `pkg`, `binary
 Agents should use this order:
 
 1. `octocode context`
-2. `octocode tools`
-3. `octocode tools <name> --scheme`
-4. `octocode tools <name> --queries '<json>'`
+2. `octocode tools --json --compact`
+3. `octocode tools <name> --scheme --json --compact`
+4. `octocode tools <name> --queries '<json>' --compact`
 
-Use `octocode context --full` for complete tool descriptions, and `octocode context --json` when automation needs a machine-readable `{ "context": "..." }` wrapper. Read schemas on demand with `octocode tools <name> --scheme`.
+Use `octocode context --full` for complete tool descriptions, and `octocode context --json` when automation needs a machine-readable `{ "context": "..." }` wrapper. Bare `octocode tools --json` is a lean discovery catalog; add `--compact` to minify it for agents. Read one full schema on demand with `octocode tools <name> --scheme --json --compact`. Use `octocode tools --json --full` only when automation truly needs every schema in one payload.
 
 ## UX Map
 
@@ -75,9 +78,9 @@ Use `octocode context --full` for complete tool descriptions, and `octocode cont
 | Outline a file / trace symbols semantically | `search <file> --op documentSymbols` or `search <file> --symbols`, then `search <file> --op ... --symbol ... --line ...`; structural `search` matches can also provide anchors |
 | Inspect PRs/history or clone for local analysis | `search --target pullRequests`, `search --target commits`, `clone`, `cache fetch`, or `search --repo` |
 | Inspect archives/binaries | `search --target artifacts`, `unzip` |
-| Install Agent Skills into clients | `skill --add <github-folder> --platform common|cursor|claude|codex|all` |
+| Install Agent Skills into clients | `skill (--add <github-folder> | --name <octocode-skill>) --platform common|cursor|claude|codex|opencode|pi|all` |
 | Configure Octocode | `install`, `auth`, `login`, `logout`, `status` |
-| Run any MCP tool directly | `tools <name> --scheme`, then `tools <name> --queries '<json>'` |
+| Run any MCP tool directly | `tools --json --compact`, then `tools <name> --scheme --json --compact`, then `tools <name> --queries '<json>' --compact` |
 
 ## Global Options
 
@@ -85,7 +88,7 @@ Use `octocode context --full` for complete tool descriptions, and `octocode cont
 |--------|---------|
 | `--help` | Show help. |
 | `--version` | Show version. |
-| `--json` | Print raw JSON MCP envelope for tool runs. |
+| `--json` | Print JSON output. For tool runs this is the raw MCP envelope; for bare `tools --json` this is the lean catalog. |
 | `--compact` | Print lean tool output. |
 | `--no-color` | Disable ANSI color. Also honors `NO_COLOR=1`. |
 
@@ -481,10 +484,10 @@ octocode search <localPath-from-unzip-output> --tree
 
 ### skill
 
-Install one GitHub Agent Skill folder into deterministic skill destinations. This command is built for agents and scripts: `--platform` is required, `--target` is an alias, and the command never opens an interactive chooser.
+Install one GitHub Agent Skill folder or named Octocode skill into deterministic skill destinations. This command is built for agents and scripts: it defaults to `common`, accepts explicit destinations with `--platform`, `--target` is an alias, and the command never opens an interactive chooser.
 
 ```
-skill --add <github-folder> --platform common|cursor|claude|codex|all [--branch <ref>] [--mode copy|symlink] [--force] [--json]
+skill (--add <github-folder> | --name <octocode-skill>) [--platform common|cursor|claude|codex|opencode|pi|all] [--branch <ref>] [--mode copy|symlink|hybrid] [--force|--update] [--json]
 ```
 
 Accepted GitHub folder forms:
@@ -504,7 +507,9 @@ Platforms:
 | `cursor` | Cursor skills directory |
 | `claude` | Claude Code and Claude Desktop skill directories |
 | `codex` | Codex skills directory |
-| `all` | Common, Cursor, Claude, and Codex |
+| `opencode` | OpenCode skills directory |
+| `pi` | Pi's global `~/.pi/agent/skills` directory |
+| `all` | Common, Cursor, Claude, Codex, OpenCode, and Pi |
 
 Install modes:
 
@@ -512,24 +517,27 @@ Install modes:
 |------|----------|
 | `copy` | Default. Copy the fetched folder into every selected destination. |
 | `symlink` | Keep the fetched folder under Octocode's `skill-sources` cache and link each destination to it. |
+| `hybrid` | Copy for Claude targets and symlink everywhere else. |
 
 Examples:
 
 ```bash
-octocode skill --add bgauryy/octocode-mcp/skills/octocode-engineer --platform common
+octocode skill --name octocode-engineer --platform common
+octocode skill --name octocode-engineer --platform pi
 octocode skill --add bgauryy/octocode-mcp@main/skills/octocode-engineer --platform cursor,codex --mode copy --json
-octocode skill --add https://github.com/bgauryy/octocode-mcp/tree/main/skills/octocode-engineer --platform all --mode symlink --force
+octocode skill --add https://github.com/bgauryy/octocode/tree/main/skills/octocode-engineer --platform all --mode symlink --force
+for skill in octocode octocode-awareness octocode-brainstorming octocode-engineer octocode-loop octocode-research octocode-rfc-generator octocode-roast octocode-skills octocode-stats; do octocode skill --name "$skill" --platform pi --mode copy --update; done
 ```
 
 Agent-safe failure behavior:
 
 | Case | Exit |
 |------|------|
-| Missing `--add`, missing `--platform`, invalid platform, invalid mode, or invalid GitHub folder | `2` |
+| Missing source, invalid platform, invalid mode, or invalid GitHub folder | `2` |
 | GitHub folder does not contain `SKILL.md` or cannot be fetched | `3` |
 | One or more destination installs fail | `1` |
 
-JSON output includes the skill name, source URL, cache path, selected platforms, concrete targets, mode, and installed/skipped/failed counts. Full DX guide: [Skills Guide](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md).
+JSON output includes the skill name, source URL, cache path, selected platforms, concrete targets, mode, and installed/skipped/failed counts. The shell loop above installs every current Octocode skill folder from `https://github.com/bgauryy/octocode/tree/main/skills`. Full DX guide: [Skills Guide](https://github.com/bgauryy/octocode/blob/main/docs/SKILLS_GUIDE.md).
 
 ### install
 
@@ -562,7 +570,13 @@ Shows auth state, token presence/source, MCP client install health, and cache in
 
 ## Tool Runner
 
-`octocode tools` uses the canonical direct-tool catalog from `@octocodeai/octocode-tools-core/direct`; the CLI does not maintain separate tool schemas.
+`octocode tools` uses the canonical direct-tool catalog from `@octocodeai/octocode-tools-core/direct`; the CLI does not maintain separate tool schemas. By default it prints every tool grouped by category with only the tool name and a concise description.
+
+Agent-friendly schema flow:
+
+- `octocode tools --json --compact` prints a lean discovery catalog with tool names, categories, short descriptions, compact field hints, and per-tool schema/run commands. It intentionally omits full field descriptions and nested schemas.
+- `octocode tools <name> --scheme --json --compact` prints one machine-readable full schema for the chosen tool.
+- `octocode tools --json --full` prints the full all-tool schema catalog as a wrapped JSON payload with `tools[]`; it is intentionally explicit because it is much larger.
 
 Raw tool calls use `--queries`. Legacy `--input` is not supported, and unsupported tool flags are rejected before execution.
 
@@ -590,10 +604,12 @@ Examples:
 
 ```bash
 octocode tools
+octocode tools --json --compact
 octocode tools localSearchCode --scheme
-octocode tools localSearchCode --queries '{"path":".","keywords":"runCLI"}'
-octocode tools ghSearchCode --queries '{"keywordsToSearch":["useReducer"],"owner":"facebook","repo":"react"}'
-octocode tools ghCloneRepo --queries '{"owner":"facebook","repo":"react","sparsePath":"packages/react"}'
+octocode tools localSearchCode --scheme --json --compact
+octocode tools localSearchCode --queries '{"path":".","keywords":"runCLI"}' --compact
+octocode tools ghSearchCode --queries '{"keywordsToSearch":["useReducer"],"owner":"facebook","repo":"react"}' --compact
+octocode tools ghCloneRepo --queries '{"owner":"facebook","repo":"react","sparsePath":"packages/react"}' --compact
 ```
 
 ## Environment
@@ -604,7 +620,7 @@ octocode tools ghCloneRepo --queries '{"owner":"facebook","repo":"react","sparse
 | `GH_TOKEN` | GitHub CLI compatible token. |
 | `GITHUB_TOKEN` | GitHub token fallback. |
 | `OCTOCODE_HOME` | Override Octocode data directory. Defaults: macOS `~/.octocode`, Windows `%APPDATA%\octocode`, Linux `${XDG_CONFIG_HOME:-~/.config}/octocode`. |
-| `ENABLE_LOCAL` | Enable local filesystem tools (default: `true`). |
+| `ENABLE_LOCAL` | Enable local filesystem tools (default: `true`; set `false` to disable). |
 | `ENABLE_CLONE` | Clone gate. CLI clone/materialization is enabled by default and only disabled by `ENABLE_CLONE=false`; MCP clone tools require `ENABLE_CLONE=true`. |
 | `NO_COLOR` | Disable terminal color. |
 

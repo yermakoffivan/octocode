@@ -4,7 +4,6 @@ import type {
   InstallMethod,
   MCPClient,
 } from '../types/index.js';
-import type { MCPRegistryEntry } from '../configs/mcp-registry.js';
 import { isWindows } from './platform.js';
 
 export {
@@ -13,6 +12,32 @@ export {
   MCP_CLIENTS,
 } from './mcp-paths.js';
 export { readMCPConfig, writeMCPConfig } from './mcp-io.js';
+
+export interface MCPRegistryEntry {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  repository: string;
+  website?: string;
+  stars?: number;
+  installationType: 'npm' | 'npx' | 'pip' | 'docker' | 'source';
+  npmPackage?: string;
+  pipPackage?: string;
+  dockerImage?: string;
+  installConfig: {
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+  };
+  requiredEnvVars?: Array<{
+    name: string;
+    description: string;
+    example?: string;
+  }>;
+  official?: boolean;
+  tags?: string[];
+}
 
 export interface OctocodeEnvOptions {
   enableLocal?: boolean;
@@ -29,7 +54,7 @@ export function getOctocodeServerConfig(
     case 'npx':
       config = {
         command: 'npx',
-        args: ['octocode-mcp@latest'],
+        args: ['-y', '@octocodeai/mcp@latest'],
       };
       break;
 
@@ -40,8 +65,8 @@ export function getOctocodeServerConfig(
   if (envOptions) {
     const env: Record<string, string> = {};
 
-    if (envOptions.enableLocal) {
-      env.ENABLE_LOCAL = 'true';
+    if (envOptions.enableLocal !== undefined) {
+      env.ENABLE_LOCAL = envOptions.enableLocal ? 'true' : 'false';
     }
 
     if (envOptions.githubToken) {

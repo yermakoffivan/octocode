@@ -9,7 +9,7 @@ import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { initialize } from '../serverConfig.js';
 import { initializeProviders } from '../providers/factory.js';
 import { getConfigSync } from '../shared/index.js';
-import { LSP_GET_SEMANTIC_CONTENT_TOOL_NAME } from './lsp/shared/semanticTypes.js';
+import { LSP_GET_SEMANTICS_TOOL_NAME } from './lsp/shared/semanticTypes.js';
 import type { ToolConfig } from './toolConfig.js';
 import { ALL_TOOLS } from './toolConfig.js';
 import {
@@ -91,7 +91,7 @@ export async function executeDirectTool(
     // get a consistent result shape instead of an exception.
     return buildToolErrorResult(tool.name, error);
   } finally {
-    if (name === LSP_GET_SEMANTIC_CONTENT_TOOL_NAME) {
+    if (name === LSP_GET_SEMANTICS_TOOL_NAME) {
       await releaseAllPooledClients();
     }
   }
@@ -143,7 +143,7 @@ function assertDirectToolEnabled(tool: DirectToolRuntimeDefinition): void {
 
   if (tool.isClone && !(config.local.enabled && config.local.enableClone)) {
     const error = new Error(
-      `Tool "${tool.name}" requires clone support. Set ENABLE_CLONE=true and ENABLE_LOCAL=true to use it.`
+      `Tool "${tool.name}" requires clone support. Set ENABLE_CLONE=true and make sure ENABLE_LOCAL is not false.`
     );
     (error as { code?: string }).code = 'cloneDisabled';
     throw error;

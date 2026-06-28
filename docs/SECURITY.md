@@ -55,7 +55,7 @@ Local filesystem access is bounded by a multi-layer validator before any read:
 3. Apply the ignore filter (sensitive files/dirs — keys, `.env`, credential stores — are blocked by default).
 4. Resolve symlinks with `realpath`, then **re-validate** the real target (symlink escapes are caught).
 
-`ALLOWED_PATHS` adds roots; an empty list is **not** unrestricted. The default validator includes `HOME`, while stricter embedded/test validators can opt out with `includeHomeDir:false`. MCP local tools are still disabled unless enabled by config; the CLI local surface is enabled by default but uses the same validator.
+`ALLOWED_PATHS` adds roots; an empty list is **not** unrestricted. The default validator includes `HOME`, while stricter embedded/test validators can opt out with `includeHomeDir:false`. Local tools are enabled by default, can be disabled with `ENABLE_LOCAL=false`, and always use the same validator.
 
 ### Blocked sensitive files and directories
 
@@ -85,7 +85,7 @@ The canonical lists are `IGNORED_FILE_PATTERNS` and `IGNORED_PATH_PATTERNS` in t
 - GitHub auth resolves in priority order: `OCTOCODE_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN`, then encrypted on-disk Octocode OAuth credentials, then the `gh` CLI token.
 - On-disk OAuth credentials are stored **AES-256-GCM encrypted** under `OCTOCODE_HOME`.
 - Tokens are read from the environment / secure store at request time and are themselves subject to output masking — they are never echoed in results.
-- See [Authentication](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md) and [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md).
+- See [Authentication](https://github.com/bgauryy/octocode/blob/main/docs/AUTHENTICATION.md) and [Credentials Architecture](https://github.com/bgauryy/octocode/blob/main/docs/mcp/CREDENTIALS.md).
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "name": "@octocodeai/octocode-engine-linux-x64-gnu",
-  "version": "16.6.0",
+  "version": "16.6.2",
   "os": [
     "linux"
   ],
@@ -17,6 +17,9 @@
   "description": "High-performance Rust minification for Octocode — linux-x64",
   "author": "Guy Bary <bgauryy@octocodeai.com>",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20.0.0"
   },

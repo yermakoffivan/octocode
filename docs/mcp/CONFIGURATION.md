@@ -19,10 +19,9 @@ Use environment variables for per-client/per-project settings and tokens. Use `.
   "mcpServers": {
     "octocode": {
       "command": "npx",
-      "args": ["-y", "octocode-mcp@latest"],
+      "args": ["-y", "@octocodeai/mcp@latest"],
       "env": {
         "GITHUB_TOKEN": "ghp_xxxxxxxxxxxx",
-        "ENABLE_LOCAL": "true",
         "ENABLE_CLONE": "false"
       }
     }
@@ -88,8 +87,8 @@ Invalid file values fall back to defaults or env overrides. Unknown keys warn an
 | Env | `.octocoderc` | Default | Meaning |
 |-----|---------------|---------|---------|
 | `GITHUB_API_URL` | `github.apiUrl` | `https://api.github.com` | GitHub API endpoint. Use `/api/v3` for GitHub Enterprise. |
-| `ENABLE_LOCAL` | `local.enabled` | CLI always on (ignored), MCP `false` | Enable local filesystem and LSP tools. **The CLI ignores this flag** (local-first interface); it only gates the MCP server. |
-| `ENABLE_CLONE` | `local.enableClone` | CLI `true`, MCP `false` | Enable `ghCloneRepo` and directory fetch. The CLI respects an explicit `ENABLE_CLONE=false`; on MCP, clone also requires `ENABLE_LOCAL`. |
+| `ENABLE_LOCAL` | `local.enabled` | `true` | Enable local filesystem and LSP tools. Set `false` to explicitly disable them. |
+| `ENABLE_CLONE` | `local.enableClone` | CLI `true`, MCP `false` | Enable `ghCloneRepo` and directory fetch. The CLI respects an explicit `ENABLE_CLONE=false`; MCP clone tools require `ENABLE_CLONE=true`. |
 | `WORKSPACE_ROOT` | `local.workspaceRoot` | `process.cwd()` | Root used for relative local paths and project context. Must be absolute when set. |
 | `ALLOWED_PATHS` | `local.allowedPaths` | `[]` | Comma-separated env list or JSON array. Empty means unrestricted after path validation. |
 | `TOOLS_TO_RUN` | `tools.enabled` | `null` | Strict whitelist. Overrides add/remove filters. |
@@ -127,7 +126,8 @@ Env-only options:
 
 - Auth tokens are env-only. Do not put tokens in `.octocoderc`.
 - `TOOLS_TO_RUN` is a strict whitelist and overrides `ENABLE_TOOLS` and `DISABLE_TOOLS`.
-- **Surface-specific local/clone defaults.** The CLI **ignores `ENABLE_LOCAL`** — local tools are always enabled (local-first interface); clone is enabled by default but still honors an explicit `ENABLE_CLONE=false`. The MCP server honors `ENABLE_LOCAL` and defaults local tools and clone off; on MCP, explicit env or `.octocoderc` values override those defaults and clone also requires local enabled.
+- **Local tools default on.** Set `ENABLE_LOCAL=false` or `local.enabled:false` only when you want to disable the whole local surface. To hide individual tools, prefer `DISABLE_TOOLS` or `tools.disabled`.
+- **Clone defaults differ by surface.** The CLI enables clone/materialization by default unless `ENABLE_CLONE=false`; MCP clone tools require `ENABLE_CLONE=true`.
 - LSP requires local tools enabled. If `OCTOCODE_LSP_CONFIG` is unset, Octocode checks `<workspace>/.octocode/lsp-servers.json`, then `<octocode-home>/lsp-servers.json`.
 - `WORKSPACE_ROOT` env overrides `local.workspaceRoot`.
 
@@ -161,31 +161,33 @@ Octocode also reads a per-project `.octocode/` directory at the workspace root. 
 
 ### `lsp-servers.json` format
 
-Keys are file-extension patterns (must start with `.`). `languageId` is required.
+Keys are file-extension patterns (must start with `.`). `command` and `languageId` are
+required; `args` (default `[]`) and `initializationOptions` (passed verbatim in the LSP
+`initialize` request) are optional. A custom entry **overrides the built-in server** for that
+extension, and — more usefully — **adds semantics for a language with no built-in server**
+(e.g. Scala, Kotlin, Ruby):
 
 ```jsonc
 {
   "languageServers": {
-    ".py": {
-      "command": "pylsp",
-      "args": [],
-      "languageId": "python"
-    },
-    ".go": {
-      "command": "gopls",
-      "args": [],
-      "languageId": "go"
-    },
+    // Bring-your-own: Scala has no built-in server — this gives it full semantics.
+    ".scala": { "command": "metals", "args": ["stdio"], "languageId": "scala" },
+
+    // Override a built-in: a different Java launch with init options.
     ".java": {
       "command": "jdtls",
       "args": ["-data", "/tmp/jdtls-workspace"],
-      "languageId": "java"
+      "languageId": "java",
+      "initializationOptions": { "bundles": [] }
     }
   }
 }
 ```
 
-TypeScript/JavaScript are bundled — no entry needed. Set `OCTOCODE_LSP_CONFIG` to point to a different file entirely.
+TypeScript/JavaScript are bundled — no entry needed. Set `OCTOCODE_LSP_CONFIG` to point to a
+different file entirely. Without an entry, an unsupported extension's semantic ops throw
+`lspServerUnavailable` and the agent falls back to text/structural search — see
+[`LSP_SERVER_LIFECYCLE.md`](https://github.com/bgauryy/octocode/blob/main/docs/LSP_SERVER_LIFECYCLE.md#custom--bring-your-own-lsp-any-language).
 
 ## Quick Checks
 
@@ -193,22 +195,22 @@ TypeScript/JavaScript are bundled — no entry needed. Set `OCTOCODE_LSP_CONFIG`
 echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+set}"
 echo "ENABLE_LOCAL: ${ENABLE_LOCAL:-not set}"
 echo "ENABLE_CLONE: ${ENABLE_CLONE:-not set}"
-octocode status --json
+npx octocode status --json
 ```
 
 Common fixes:
 
 | Symptom | Check |
 |---------|-------|
-| Token missing | Set `OCTOCODE_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`, or run `octocode auth login`. |
-| Local tools unavailable | MCP only: set `ENABLE_LOCAL=true` or enable `local.enabled` in `.octocoderc`, and check that tool filters did not hide them. The CLI always has local tools on — `ENABLE_LOCAL` is ignored there. |
-| Clone unavailable (MCP) | Set `ENABLE_CLONE=true` (and keep local enabled). The CLI enables clone by default unless you set `ENABLE_CLONE=false`. |
+| Token missing | Set `OCTOCODE_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`, or run `npx octocode auth login`. |
+| Local tools unavailable | Check for `ENABLE_LOCAL=false`, `local.enabled:false`, or tool filters hiding them. |
+| Clone unavailable (MCP) | Set `ENABLE_CLONE=true` and make sure local tools are not explicitly disabled. The CLI enables clone by default unless you set `ENABLE_CLONE=false`. |
 | Tool hidden | Check `TOOLS_TO_RUN`, `ENABLE_TOOLS`, and `DISABLE_TOOLS`. |
 | Timeout | Increase `REQUEST_TIMEOUT` up to `300000`. |
 
 ## See Also
 
-- [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/mcp/AUTHENTICATION.md)
+- [Authentication Setup](https://github.com/bgauryy/octocode/blob/main/docs/AUTHENTICATION.md)
 - [CLI Reference](https://github.com/bgauryy/octocode/blob/main/docs/cli/REFERENCE.md)
 - [Local Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LOCAL_TOOLS.md)
 - [LSP Tools Reference](https://github.com/bgauryy/octocode/blob/main/docs/mcp/tools/LSP_TOOLS.md)

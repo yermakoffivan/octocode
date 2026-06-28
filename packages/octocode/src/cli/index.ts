@@ -262,9 +262,18 @@ export async function runCLI(argv?: string[]): Promise<boolean> {
   }
 
   if (args.command === 'search' && args.options.scheme === true) {
-    const { oqlSchemaText } =
+    // Engine-free `/schema` subpath: print the schema without loading the
+    // native engine. --compact prints the lean agent guide (TEXT);
+    // --json --compact prints a small machine-readable guide.
+    const { oqlSchemaText, oqlCompactSchemeText, oqlCompactSchemeJson } =
       await import('@octocodeai/octocode-tools-core/schema');
-    process.stdout.write(`${oqlSchemaText()}\n`);
+    const schemeText =
+      args.options.json === true && args.options.compact === true
+        ? oqlCompactSchemeJson()
+        : args.options.compact === true
+          ? oqlCompactSchemeText()
+          : oqlSchemaText();
+    process.stdout.write(`${schemeText}\n`);
     return true;
   }
 

@@ -74,7 +74,7 @@ describe('MCP Config Utilities', () => {
       const config = getOctocodeServerConfig('npx');
 
       expect(config.command).toBe('npx');
-      expect(config.args).toContain('octocode-mcp@latest');
+      expect(config.args).toContain('@octocodeai/mcp@latest');
     });
 
     it('should throw for unknown method (direct removed)', async () => {
@@ -97,6 +97,17 @@ describe('MCP Config Utilities', () => {
       expect(config.env).toBeDefined();
       expect(config.env!.ENABLE_LOCAL).toBe('true');
       expect(config.env!.GITHUB_TOKEN).toBe('test-token');
+    });
+
+    it('should write ENABLE_LOCAL=false when local tools are disabled', async () => {
+      const { getOctocodeServerConfig } =
+        await import('../../src/utils/mcp-config.js');
+      const config = getOctocodeServerConfig('npx', {
+        enableLocal: false,
+      });
+
+      expect(config.env).toBeDefined();
+      expect(config.env!.ENABLE_LOCAL).toBe('false');
     });
   });
 
@@ -144,7 +155,7 @@ describe('MCP Config Utilities', () => {
         await import('../../src/utils/mcp-config.js');
       const config = {
         mcpServers: {
-          octocode: { command: 'npx', args: ['octocode-mcp@latest'] },
+          octocode: { command: 'npx', args: ['@octocodeai/mcp@latest'] },
         },
       };
 

@@ -2,11 +2,12 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { CLICommand, ParsedArgs } from '../types.js';
 import { getBool, getString, intFlag, isFlagError } from '../options.js';
-import { c, bold, dim } from '../../utils/colors.js';
+import { c, dim } from '../../utils/colors.js';
 import { EXIT, classifyToolErrorText } from '../exit-codes.js';
 import { printCliError } from '../cli-error.js';
 import { resolveRef, isGithubRef, cloneCommandFor } from '../routing.js';
 import { outlineSymbols } from './symbol-outline.js';
+import { render, renderRawContent } from './search-render.js';
 import {
   formatMaterializationHints,
   materializeRemoteForCli,
@@ -15,8 +16,10 @@ import {
 import {
   runOqlSearch,
   oqlSchemaText,
+  oqlCompactSchemeText,
+  oqlCompactSchemeJson,
+  sanitizeStructuredContent,
   buildShorthandInput,
-  type OqlResultEnvelope,
   type OqlRunResult,
   isBatchEnvelope,
 } from '@octocodeai/octocode-tools-core/oql';
@@ -36,6 +39,32 @@ type CliSearchShorthand = Record<string, unknown> & {
  * typed envelope. No OQL logic lives here (the brain owns it); shorthand only
  * builds the sugar object the core normalizer already accepts.
  */
+/**
+ * Map friendly `--target` abbreviations to the canonical OQL enum. The top-level
+ * help and agent prompt advertise short forms (`repos`, `PRs`); without this an
+ * agent copying them hits "--target must be one of …". Unknown values pass
+ * through unchanged so the OQL layer still validates real typos. Mutates in place.
+ */
+const TARGET_ALIASES: Record<string, string> = {
+  repo: 'repositories',
+  repos: 'repositories',
+  pr: 'pullRequests',
+  prs: 'pullRequests',
+  pullrequest: 'pullRequests',
+  pullrequests: 'pullRequests',
+  commit: 'commits',
+  package: 'packages',
+  pkg: 'packages',
+  npm: 'packages',
+  artifact: 'artifacts',
+};
+function normalizeTargetAlias(options: Record<string, unknown>): void {
+  const raw = options['target'];
+  if (typeof raw !== 'string') return;
+  const canonical = TARGET_ALIASES[raw.trim().toLowerCase()];
+  if (canonical) options['target'] = canonical;
+}
+
 export const searchCommand: CLICommand = {
   name: 'search',
   options: [
@@ -195,9 +224,22 @@ export const searchCommand: CLICommand = {
   handler: async (args): Promise<void> => {
     const { options } = args;
 
-    // --scheme: print the OQL schema and exit.
+    // Accept friendly `--target` abbreviations (the ones the help/agent prompt
+    // use, e.g. `repos`, `PRs`) and fold them to the canonical OQL enum so an
+    // agent copying the help string doesn't hit "must be one of …".
+    normalizeTargetAlias(options);
+
+    // --scheme: print the OQL schema and exit. --scheme --compact prints the
+    // lean agent guide (TEXT); --scheme --json --compact prints the same guide
+    // as small machine-readable JSON. Plain --scheme --json remains full.
     if (getBool(options, 'scheme')) {
-      process.stdout.write(`${oqlSchemaText()}\n`);
+      const schemeText =
+        getBool(options, 'json') && getBool(options, 'compact')
+          ? oqlCompactSchemeJson()
+          : getBool(options, 'compact')
+            ? oqlCompactSchemeText()
+            : oqlSchemaText();
+      process.stdout.write(`${schemeText}\n`);
       return;
     }
     if (getBool(options, 'raw') && getBool(options, 'json')) {
@@ -242,6 +284,12 @@ export const searchCommand: CLICommand = {
       process.exitCode = EXIT.TOOL;
       return;
     }
+
+    // Redact secrets before ANY output path (json / raw / rendered). OQL
+    // adapters return raw rows and rely on the interface layer to sanitize; the
+    // MCP path does this via sanitizeCallToolResult, so the CLI must too — else
+    // code snippets can leak tokens/keys to stdout.
+    result = sanitizeStructuredContent(result) as OqlRunResult;
 
     if (getBool(options, 'json')) {
       // --compact emits single-line minified JSON (stream/parse friendly);
@@ -337,7 +385,7 @@ function resolveInput(args: ParsedArgs): Resolved {
   const jsonText = readJsonText(args);
   if (jsonText && 'text' in jsonText) {
     try {
-      return { input: JSON.parse(jsonText.text) };
+      return { input: parseOqlQueryJson(jsonText.text) };
     } catch (err) {
       return {
         error: `Could not parse OQL query JSON: ${(err as Error).message}`,
@@ -348,6 +396,11 @@ function resolveInput(args: ParsedArgs): Resolved {
 
   // 2. Shorthand sugar -> the sugar object the core normalizer accepts.
   return buildSugar(args);
+}
+
+function parseOqlQueryJson(text: string): unknown {
+  const parsed = JSON.parse(text) as unknown;
+  return Array.isArray(parsed) ? { schema: 'oql', queries: parsed } : parsed;
 }
 
 function readJsonText(
@@ -375,7 +428,7 @@ function readJsonText(
   }
   // bare positional JSON, e.g. `search '{...}'`
   const first = args.args[0];
-  if (first && first.trim().startsWith('{')) return { text: first };
+  if (first && looksLikeJsonText(first)) return { text: first };
   return undefined;
 }
 
@@ -478,6 +531,38 @@ function resolveGithubDiffShortcut(
  *   search --pattern '<shape>' [target] --lang t -> structural pattern
  *   search --rule '<json|yaml>' [target] --lang t -> structural rule
  */
+/**
+ * Warn (to stderr, never fatal) about two silently-ignored shorthand mistakes:
+ *  • Extra path positionals — `search` takes ONE corpus, so `search t a.ts b.ts`
+ *    quietly searched only `a.ts`. Conservative: text/diff lanes consume 2
+ *    positionals, flag/target-only lanes consume 1, so we only flag the surplus.
+ *  • A grep-style `\|` in a LITERAL text term — it matches verbatim (a no-op for
+ *    alternation); point at `--regex`, which is what the user meant.
+ * stderr keeps stdout (YAML/JSON results) clean, so this is safe in every mode.
+ */
+function emitSearchInputWarnings(o: {
+  positionals: string[];
+  text: string | undefined;
+  fromFlag: boolean;
+  targetOnly: boolean;
+  hasDiff: boolean;
+}): void {
+  const consumed = o.hasDiff ? 2 : o.fromFlag || o.targetOnly ? 1 : 2;
+  const ignored = o.positionals.slice(consumed);
+  if (ignored.length > 0) {
+    const list = ignored.map(s => `'${s}'`).join(', ');
+    process.stderr.write(
+      `  ${c('yellow', '!')} ${dim(`ignored extra argument${ignored.length > 1 ? 's' : ''} ${list} — search takes a single corpus (one path or owner/repo). Search a directory, or narrow with`)} ${c('cyan', '--include <glob>')}${dim('.')}\n`
+    );
+  }
+  if (o.text && o.text.includes('\\|')) {
+    const asRegex = o.text.replace(/\\\|/g, '|');
+    process.stderr.write(
+      `  ${c('yellow', '!')} ${dim(`'${o.text}' is matched literally — \`\\|\` is not alternation. For OR-matching use`)} ${c('cyan', `--regex '${asRegex}'`)}${dim('.')}\n`
+    );
+  }
+}
+
 function buildSugar(args: ParsedArgs): Resolved {
   const { options } = args;
   const positionals = args.args.filter(a => !a.startsWith('-'));
@@ -533,6 +618,16 @@ function buildSugar(args: ParsedArgs): Resolved {
       ? positionals[0]
       : positionals[fromFlag || targetOnly ? 0 : 1];
   const targetArg = positionalTargetArg ?? pathOption;
+
+  // Surface two otherwise-silent input mistakes (same "guide, don't drop" rule
+  // as the stray-arg / --target alias fixes) instead of quietly ignoring them.
+  emitSearchInputWarnings({
+    positionals,
+    text,
+    fromFlag,
+    targetOnly,
+    hasDiff: Boolean(diffPath),
+  });
 
   if (
     !fromFlag &&
@@ -973,6 +1068,14 @@ function isSinglePositionalTarget(
   }
   if (!target && !hasTargetIntent(args.options)) return false;
   if (target === 'packages' || target === 'repositories') return false;
+  // A file-like positional with content intent (e.g. --content-view, line
+  // range, --match-string) is the read TARGET even if it doesn't exist yet —
+  // otherwise it falls through to a text search with no corpus and resolves to
+  // cwd ".", yielding a misleading "Path is a directory" instead of a clean
+  // "File not found".
+  if (hasContentIntent(args.options) && looksLikeFilePath(first ?? '')) {
+    return true;
+  }
   return isCorpusLike(first) || target === 'content' || target === 'structure';
 }
 
@@ -1327,478 +1430,4 @@ function exitCodeFor(result: OqlRunResult): number {
     if (env.evidence.kind === 'unsupported') return EXIT.TOOL;
   }
   return EXIT.OK;
-}
-
-/* ------------------------------ rendering ------------------------------- */
-
-function render(result: OqlRunResult, compact: boolean): string {
-  if (isBatchEnvelope(result)) {
-    const parts = result.children.map(
-      child =>
-        `${bold(c('cyan', `# query ${child.queryIndex} (${child.queryId})`))}\n` +
-        renderEnvelope(child.envelope, compact)
-    );
-    if (result.merged) {
-      parts.push(
-        `${bold(c('cyan', '# merged'))}\n` +
-          renderEnvelope(result.merged, compact)
-      );
-    }
-    for (const d of result.diagnostics) {
-      parts.push(dim(`! ${d.code}: ${d.message}`));
-    }
-    return parts.join('\n\n');
-  }
-  return renderEnvelope(result, compact);
-}
-
-function renderRawContent(result: OqlRunResult): string | undefined {
-  if (isBatchEnvelope(result)) return undefined;
-  const contentRows = result.results.filter(row => row.kind === 'content');
-  if (
-    contentRows.length === 0 ||
-    contentRows.length !== result.results.length
-  ) {
-    return undefined;
-  }
-  return contentRows.map(row => row.content).join('\n');
-}
-
-function renderEnvelope(env: OqlResultEnvelope, compact: boolean): string {
-  const lines: string[] = [];
-
-  if (env.plan) {
-    lines.push(bold(c('magenta', 'PLAN')));
-    for (const node of env.plan.nodes) {
-      lines.push(
-        `  ${node.path}  ${routeColor(node.route)}${node.backend ? dim(` -> ${node.backend}`) : ''}`
-      );
-      if (!compact) lines.push(dim(`    ${node.reason}`));
-    }
-    if (env.plan.materialization) {
-      lines.push(
-        dim(
-          `  materialize: ${env.plan.materialization.mode} (${env.plan.materialization.reason})`
-        )
-      );
-    }
-    lines.push('');
-  }
-
-  for (const row of env.results) {
-    lines.push(renderRow(row));
-  }
-
-  if (env.results.length === 0 && !env.plan) {
-    lines.push(dim('  (no results)'));
-  }
-
-  if (env.pagination?.hasMore) {
-    lines.push(dim('  … more results available (follow next.page)'));
-  }
-
-  // If a structural zero-match guidance is present, render it prominently and
-  // skip the paired generic "zeroMatches: Query ran and matched nothing." line
-  // which adds no information alongside it.
-  const diagnosticMessageText = (message: unknown): string =>
-    typeof message === 'string'
-      ? message
-      : message instanceof Error
-        ? message.message
-        : (JSON.stringify(message) ?? String(message));
-  const hasStructuralGuidance = env.diagnostics.some(d =>
-    diagnosticMessageText(d.message).startsWith('0 structural')
-  );
-  for (const d of env.diagnostics) {
-    if (hasStructuralGuidance && d.code === 'zeroMatches') continue;
-    const message = diagnosticMessageText(d.message);
-    if (message.startsWith('0 structural')) {
-      // Surface the body-shape hint as a standalone actionable block.
-      lines.push(`  ${c('yellow', '⚡ structural pattern tip:')}`);
-      for (const part of message
-        .replace(/^0 structural matches\.\s*/, '')
-        .split(/\s{2,}|\n/)) {
-        if (part.trim()) lines.push(`    ${dim(part.trim())}`);
-      }
-      continue;
-    }
-    const sev =
-      d.severity === 'error'
-        ? c('red', '✗')
-        : d.severity === 'warning'
-          ? c('yellow', '!')
-          : dim('·');
-    lines.push(`  ${sev} ${dim(d.code)}: ${message}`);
-  }
-
-  const ev = env.evidence;
-  // answerReady=false means more proof work remains (follow next.* continuations),
-  // not that the query failed. Make that distinction visible inline.
-  const readyHint =
-    !ev.answerReady && ev.kind !== 'unsupported'
-      ? '  · follow next.* continuations for more complete proof'
-      : '';
-  lines.push(
-    dim(
-      `  evidence: ${ev.kind}  answerReady=${ev.answerReady}  complete=${ev.complete}${readyHint}`
-    )
-  );
-
-  // Surface next.* continuations so humans can follow the research/graph
-  // workflow without switching to --json. Each key prints its name and a
-  // truncated --query flag value ready to copy-paste into the terminal.
-  if (env.next && Object.keys(env.next).length > 0) {
-    lines.push('');
-    for (const [rawKey, cont] of Object.entries(env.next)) {
-      // Stored keys are already prefixed ("next.page", "next.graph"); strip it
-      // so the label map matches and we don't print a doubled "next.next.".
-      const key = rawKey.startsWith('next.')
-        ? rawKey.slice('next.'.length)
-        : rawKey;
-      const label =
-        key === 'graph'
-          ? 'upgrade to LSP proof'
-          : key === 'page'
-            ? 'next page'
-            : key === 'charRange'
-              ? 'next char window'
-              : key;
-      lines.push(dim(`  next.${key}`) + `  ${dim(label)}`);
-      if (!compact && cont.query) {
-        const q = JSON.stringify(cont.query);
-        const truncated = q.length > 220 ? q.slice(0, 220) + '…' : q;
-        lines.push(dim(`    --query '${truncated}'`));
-      }
-    }
-  }
-
-  return lines.join('\n');
-}
-
-function renderRow(row: OqlResultEnvelope['results'][number]): string {
-  switch (row.kind) {
-    case 'code':
-      return `  ${c('green', row.path)}${row.line !== undefined ? `:${row.line}` : ''}${row.snippet ? `  ${dim(row.snippet.trim().slice(0, 200))}` : ''}`;
-    case 'file':
-      return `  ${c('green', row.path)}${row.entryType === 'directory' ? '/' : ''}`;
-    case 'tree':
-      return `  ${row.entryType === 'directory' ? c('blue', row.path) + '/' : c('green', row.path)}`;
-    case 'content':
-      return `  ${c('green', row.path)} [${row.contentView}]\n${row.content}`;
-    case 'record':
-      return renderRecord(row);
-  }
-}
-
-/** Render a record row meaningfully per recordType (id + key fields). */
-function renderRecord(row: {
-  recordType: string;
-  id?: string;
-  data: Record<string, unknown>;
-}): string {
-  const d = row.data;
-  const get = (k: string): string | undefined =>
-    d[k] === undefined || d[k] === null ? undefined : String(d[k]);
-  const head = `  ${c('cyan', row.recordType)} ${c('green', row.id ?? '(no id)')}`;
-  let detail = '';
-  switch (row.recordType) {
-    case 'repository':
-      detail = [
-        get('stars') && `★${get('stars')}`,
-        get('language'),
-        get('description'),
-      ]
-        .filter(Boolean)
-        .join('  ');
-      break;
-    case 'package':
-      detail = [get('description'), get('repository')]
-        .filter(Boolean)
-        .join('  ');
-      break;
-    case 'pullRequest':
-      detail = [get('state'), get('title'), get('author')]
-        .filter(Boolean)
-        .join('  ');
-      break;
-    case 'commit': {
-      const authorRaw = d.author;
-      const authorName =
-        authorRaw === undefined || authorRaw === null
-          ? undefined
-          : typeof authorRaw === 'string'
-            ? authorRaw
-            : (authorRaw as Record<string, unknown>).name != null
-              ? String((authorRaw as Record<string, unknown>).name)
-              : undefined;
-      detail = [get('title') ?? get('messageHeadline'), authorName]
-        .filter(Boolean)
-        .join('  ');
-      break;
-    }
-    case 'artifact':
-      detail = renderArtifactRecord(d);
-      break;
-    case 'diff':
-      detail = [
-        get('path') ?? get('filename'),
-        get('additions') && `+${get('additions')}`,
-        get('deletions') && `-${get('deletions')}`,
-      ]
-        .filter(Boolean)
-        .join('  ');
-      break;
-    case 'semantics':
-      detail = renderSemanticsRecord(d);
-      break;
-    case 'research':
-      detail = renderResearchRecord(d);
-      break;
-  }
-  return detail ? `${head}  ${dim(detail.slice(0, 200))}` : head;
-}
-
-function renderArtifactRecord(d: Record<string, unknown>): string {
-  const get = (k: string): string | undefined =>
-    d[k] === undefined || d[k] === null ? undefined : String(d[k]);
-  const mode = get('mode');
-  const base = [mode, get('format'), get('arch')].filter(Boolean);
-  if (mode === 'list') {
-    const entries = stringArray(d.entries);
-    return [
-      ...base,
-      get('backend'),
-      countPart('entries', get('totalEntries') ?? String(entries.length)),
-      previewList(entries, 5),
-    ]
-      .filter(Boolean)
-      .join('  ');
-  }
-  if (mode === 'inspect') {
-    const libraries = stringArray(d.libraries);
-    return [
-      ...base,
-      get('bits') && `${get('bits')}-bit`,
-      get('description'),
-      countPart('symbols', get('symbolCount')),
-      countPart('imports', get('importCount')),
-      countPart('exports', get('exportCount')),
-      libraries.length ? `libs=${previewList(libraries, 2)}` : undefined,
-    ]
-      .filter(Boolean)
-      .join('  ');
-  }
-  return [
-    ...base,
-    get('description'),
-    get('localPath') && `localPath=${get('localPath')}`,
-  ]
-    .filter(Boolean)
-    .join('  ');
-}
-
-function renderSemanticsRecord(d: Record<string, unknown>): string {
-  const get = (k: string): string | undefined =>
-    d[k] === undefined || d[k] === null ? undefined : String(d[k]);
-  const payload = recordValue(d.payload);
-  const summary = recordValue(d.summary);
-  const resolved = recordValue(d.resolvedSymbol);
-  const type = get('type') ?? stringField(payload, 'kind');
-  const resolvedName = renderSymbolAnchor(resolved);
-
-  if (
-    type === 'documentSymbols' ||
-    stringField(payload, 'kind') === 'documentSymbols'
-  ) {
-    const symbols = recordArray(payload?.symbols);
-    const total =
-      stringField(summary, 'totalSymbols') ??
-      stringField(payload, 'totalSymbols') ??
-      String(symbols.length);
-    return [
-      type,
-      `symbols=${stringField(summary, 'returnedSymbols') ?? String(symbols.length)}/${total}`,
-      renderKindCounts(recordValue(summary?.kinds)),
-      previewList(symbols.map(renderSymbolSummary), 5),
-    ]
-      .filter(Boolean)
-      .join('  ');
-  }
-
-  const locations = recordArray(payload?.locations);
-  if (locations.length > 0 || type === 'references') {
-    return [
-      type,
-      resolvedName,
-      countPart(
-        'refs',
-        stringField(payload, 'totalReferences') ?? String(locations.length)
-      ),
-      countPart('files', stringField(payload, 'totalFiles')),
-      previewList(locations.map(renderLocationSummary), 3),
-    ]
-      .filter(Boolean)
-      .join('  ');
-  }
-
-  const calls = recordArray(payload?.calls);
-  if (calls.length > 0 || type === 'callers' || type === 'callees') {
-    return [
-      type,
-      renderSymbolAnchor(recordValue(payload?.root)) ?? resolvedName,
-      countPart('incoming', stringField(payload, 'incomingCalls')),
-      countPart('outgoing', stringField(payload, 'outgoingCalls')),
-      previewList(calls.map(renderCallSummary), 3),
-    ]
-      .filter(Boolean)
-      .join('  ');
-  }
-
-  const diagnostics = recordArray(payload?.diagnostics);
-  if (diagnostics.length > 0 || type === 'diagnostic') {
-    return [
-      type,
-      countPart('diagnostics', String(diagnostics.length)),
-      previewList(diagnostics.map(renderDiagnosticSummary), 3),
-    ]
-      .filter(Boolean)
-      .join('  ');
-  }
-
-  return [type, resolvedName, get('uri')].filter(Boolean).join('  ');
-}
-
-function renderResearchRecord(d: Record<string, unknown>): string {
-  const summary =
-    d.summary && typeof d.summary === 'object' && !Array.isArray(d.summary)
-      ? (d.summary as Record<string, unknown>)
-      : {};
-  const n = (key: string): string | undefined =>
-    typeof summary[key] === 'number' ? String(summary[key]) : undefined;
-  const parts = [
-    typeof d.intent === 'string' ? `intent=${d.intent}` : undefined,
-    n('sourceFiles') && `files=${n('sourceFiles')}`,
-    n('unusedFiles') && `unusedFiles=${n('unusedFiles')}`,
-    n('exportedSymbols') && `symbols=${n('exportedSymbols')}`,
-    n('candidateUnusedExports') &&
-      `candidateExports=${n('candidateUnusedExports')}`,
-    n('transitiveDeadExports') &&
-      `transitiveDead=${n('transitiveDeadExports')}`,
-    n('unlistedDependencies') && `unlistedDeps=${n('unlistedDependencies')}`,
-    n('unusedDependencies') && `unusedDeps=${n('unusedDependencies')}`,
-    n('duplicateDependencies') && `duplicateDeps=${n('duplicateDependencies')}`,
-  ].filter(Boolean);
-  return parts.join('  ');
-}
-
-function recordValue(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function recordArray(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter(recordValue) : [];
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value
-        .map(item => (item === undefined || item === null ? '' : String(item)))
-        .filter(Boolean)
-    : [];
-}
-
-function stringField(
-  record: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = record?.[key];
-  return value === undefined || value === null ? undefined : String(value);
-}
-
-function countPart(
-  label: string,
-  value: string | undefined
-): string | undefined {
-  return value === undefined ? undefined : `${label}=${value}`;
-}
-
-function previewList(items: string[], max: number): string | undefined {
-  const cleaned = items.map(item => item.trim()).filter(Boolean);
-  if (cleaned.length === 0) return undefined;
-  const suffix = cleaned.length > max ? `, +${cleaned.length - max} more` : '';
-  return `${cleaned.slice(0, max).join(', ')}${suffix}`;
-}
-
-function renderSymbolAnchor(
-  symbol: Record<string, unknown> | undefined
-): string | undefined {
-  const name = stringField(symbol, 'name');
-  if (!name) return undefined;
-  const line =
-    stringField(symbol, 'line') ??
-    stringField(symbol, 'foundAtLine') ??
-    stringField(symbol, 'selectionLine');
-  return line ? `${name}:${line}` : name;
-}
-
-function renderSymbolSummary(symbol: Record<string, unknown>): string {
-  const anchor = renderSymbolAnchor(symbol);
-  const kind = stringField(symbol, 'kind');
-  return [anchor, kind].filter(Boolean).join(' ');
-}
-
-function renderLocationSummary(location: Record<string, unknown>): string {
-  const range = recordValue(location.displayRange);
-  const line = stringField(range, 'startLine');
-  const uri = stringField(location, 'uri');
-  const content = stringField(location, 'content');
-  return [
-    uri && line ? `${uri}:${line}` : uri,
-    content ? content.trim().slice(0, 80) : undefined,
-  ]
-    .filter(Boolean)
-    .join(' ');
-}
-
-function renderCallSummary(call: Record<string, unknown>): string {
-  const item = recordValue(call.item);
-  const anchor = renderSymbolAnchor(item);
-  const ranges = recordArray(call.ranges);
-  return [anchor, ranges.length ? `ranges=${ranges.length}` : undefined]
-    .filter(Boolean)
-    .join(' ');
-}
-
-function renderDiagnosticSummary(diagnostic: Record<string, unknown>): string {
-  return [
-    stringField(diagnostic, 'severity'),
-    stringField(diagnostic, 'message')?.slice(0, 80),
-  ]
-    .filter(Boolean)
-    .join(': ');
-}
-
-function renderKindCounts(
-  kinds: Record<string, unknown> | undefined
-): string | undefined {
-  if (!kinds) return undefined;
-  const parts = Object.entries(kinds).map(
-    ([kind, count]) => `${kind}=${count}`
-  );
-  return parts.length > 0 ? parts.join(' ') : undefined;
-}
-
-function routeColor(route: string): string {
-  switch (route) {
-    case 'PUSHDOWN':
-      return c('green', route);
-    case 'ROUTE':
-      return c('cyan', route);
-    case 'RESIDUAL':
-      return c('yellow', route);
-    default:
-      return c('red', route);
-  }
 }

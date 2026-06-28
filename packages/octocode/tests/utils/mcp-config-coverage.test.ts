@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MCPConfig } from '../../src/types/index.js';
-import type { MCPRegistryEntry } from '../../src/configs/mcp-registry.js';
+import type { MCPRegistryEntry } from '../../src/utils/mcp-config.js';
 
 vi.mock('../../src/utils/platform.js', () => ({
   isWindows: false,
@@ -35,6 +35,16 @@ describe('MCP Config Coverage Tests', () => {
 
       expect(result.env).toBeDefined();
       expect(result.env!.ENABLE_LOCAL).toBe('true');
+    });
+
+    it('should include ENABLE_LOCAL=false env when enableLocal is false', async () => {
+      const { getOctocodeServerConfig } =
+        await import('../../src/utils/mcp-config.js');
+
+      const result = getOctocodeServerConfig('npx', { enableLocal: false });
+
+      expect(result.env).toBeDefined();
+      expect(result.env!.ENABLE_LOCAL).toBe('false');
     });
 
     it('should include GITHUB_TOKEN env when githubToken is provided', async () => {
@@ -289,7 +299,7 @@ describe('MCP Config Coverage Tests', () => {
 
       const existing: MCPConfig = {
         mcpServers: {
-          octocode: { command: 'npx', args: ['octocode-mcp@latest'] },
+          octocode: { command: 'npx', args: ['@octocodeai/mcp@latest'] },
         },
       };
 
@@ -390,7 +400,7 @@ describe('MCP Config Coverage Tests', () => {
       const config: MCPConfig = {
         mcpServers: {
           'external-mcp': { command: 'npx', args: [] },
-          octocode: { command: 'npx', args: ['octocode-mcp@latest'] },
+          octocode: { command: 'npx', args: ['@octocodeai/mcp@latest'] },
         },
       };
 
@@ -780,22 +790,11 @@ describe('MCP Config Coverage Tests', () => {
     it('should use Windows config when isWindows is true', async () => {
       vi.resetModules();
 
+      // Per-test override (not hoisted) so the re-imported module sees Windows.
+      // mcp-paths.js / mcp-io.js are already mocked at the top level, so we don't
+      // re-`vi.mock` them here (that hoists and triggers a deprecation warning).
       vi.doMock('../../src/utils/platform.js', () => ({
         isWindows: true,
-      }));
-
-      vi.mock('../../src/utils/mcp-paths.js', () => ({
-        getMCPConfigPath: vi.fn(),
-        clientConfigExists: vi.fn(),
-        configFileExists: vi.fn(),
-        detectCurrentClient: vi.fn(),
-        detectAvailableClients: vi.fn(),
-        MCP_CLIENTS: {},
-      }));
-
-      vi.mock('../../src/utils/mcp-io.js', () => ({
-        readMCPConfig: vi.fn(),
-        writeMCPConfig: vi.fn(),
       }));
 
       const { mergeOctocodeConfig } =
