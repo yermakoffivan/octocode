@@ -1,38 +1,112 @@
 # Octocode Awareness
 
-`octocode-awareness` gives agents situational awareness in a real local repo. It stores local memory, file claims, handoffs, peer messages, and verification records in SQLite so separate runs can coordinate instead of starting cold or colliding silently.
+`octocode-awareness` gives coding agents situational awareness in a real local repo. It stores memories, file claims, handoffs, peer messages, and verification records in a local SQLite database so separate runs can coordinate instead of starting cold or colliding silently.
 
-The core loop is simple: read before acting, claim files before editing, verify before saying done.
+Use it alongside engineering work whenever the repo state matters.
+
+## When to use
+
+- A task will create, edit, or delete files in a dirty or shared workspace.
+- Multiple agents or sessions may touch overlapping files.
+- Work should leave a handoff for the next run.
+- A lesson, failure, decision, or gotcha should be remembered.
+- The user asks what other agents are doing, what is pending, or what remains unverified.
+- You need a local viewer for awareness data.
+
+Do not use this as a search or test runner. It coordinates work, records lessons, and makes verification visible.
+
+## Features
+
+- Global reusable memories for lessons, workflows, gotchas, decisions, and recurring failures.
+- Workspace, repo, and branch-scoped refinements for handoffs and unfinished work.
+- File locks with owner, rationale, test plan, acquisition time, and expiry.
+- Agent-to-agent notifications for claims, questions, blockers, decisions, replies, and handoffs.
+- Verification records that connect an edit intent to the test or review that actually ran.
+- Reflection and weakness-mining commands for turning failures into reusable lessons.
+- Optional semantic memory recall with local embeddings.
+- Curated Markdown corpus notes under `~/.octocode/awareness/corpus/**/*.md`.
+- HTML viewer for memories, locks, intents, notifications, and refinements.
+- Hook helpers for automatic pre-edit claims, post-edit release, notification delivery, session capture, and unverified-work checks.
 
 ## How it works
 
-The skill starts by recalling relevant memories, refinements, active locks, and unread peer messages for the current workspace. Before edits it records a pre-flight intent for the target files, then after the work it records verification, releases locks, and saves reusable lessons or handoffs when the next agent would benefit.
+The skill uses one shared local store:
 
-## Good asks
+```text
+~/.octocode/memory/awareness.sqlite3
+```
 
-- "Use awareness before changing this repo."
-- "Check whether another agent is working on these files."
-- "Remember the lesson from this failed test for next time."
-- "Leave a handoff for the next agent on this branch."
-- "Show me the awareness data."
+Records are scoped by workspace, repo, branch/ref, file path, state, and agent id rather than by separate per-repo databases. The main CLI is `scripts/awareness.py`; helper scripts validate schemas, install hooks, render the viewer, prune stale locks, and smoke-test multi-agent behavior.
 
-## What you get
+The normal loop is:
 
-- Reusable memories for lessons, gotchas, workflows, and decisions.
-- Repo and branch-specific handoffs for unfinished work.
-- File locks that say who claimed a file, why, and when the claim expires.
-- Agent-to-agent messages for blockers, questions, decisions, and handoffs.
-- Verification records tying an edit intent to the test or review plan that actually ran.
-- A local HTML viewer when a human wants to inspect the stored state.
+```text
+ATTEND -> FOCUS -> CLAIM -> WORK -> VERIFY -> ENCODE -> SLEEP
+```
 
-## Where it fits
+- Attend: read status, relevant memories, refinements, and unread notifications.
+- Focus: identify target files, rationale, and test plan.
+- Claim: create a pre-flight intent and file locks before editing.
+- Work: make the scoped change.
+- Verify: run the declared check and record the verification event.
+- Encode: save reusable lessons as memories and repo-specific work state as refinements.
+- Sleep: release locks, resolve or prune stale state, reflect, and leave the next run clean.
 
-Use Awareness alongside editing or investigation skills when the repo is dirty, the task is long-running, multiple agents may touch the same files, or the user wants durable lessons. It is not a code-search skill and it does not replace tests; it makes coordination and verification visible.
+## Internal flow
 
-## Hook-aware behavior
+```mermaid
+flowchart TD
+  Prompt["Prompt + workspace state"] --> Attend["Attend: status, memory, refinements, notifications"]
+  Attend --> Claim["Claim files: pre-flight intent + lock"]
+  Claim --> Work["Do scoped work"]
+  Work --> Verify["Run test plan + record verification"]
+  Verify --> Encode{"Keep the trace?"}
+  Encode -->|general lesson| Memory["Memory: reusable knowledge"]
+  Encode -->|repo handoff| Refinement["Refinement: workspace state"]
+  Encode -->|live coordination| Notify["Notification: peer message"]
+  Verify --> Release["Release lock or leave pending verification"]
+  Memory --> Recall["Future recall"]
+  Refinement --> Recall
+  Notify --> Recall
+```
 
-In hosts that support lifecycle hooks, Awareness can automatically claim files before edits, release locks afterward, surface unread messages, capture session handoffs, and flag unverified "done" claims. Without hooks, agents can run the same commands manually through `scripts/awareness.py`; the data model stays the same.
+Lifecycle hooks can automate parts of this flow in hosts that support them. Without hooks, the same operations are available through explicit `awareness.py` commands.
 
-## User value
+## Installation
 
-The user gets calmer multi-agent work: fewer hidden collisions, less repeated rediscovery, clearer handoffs, and success claims backed by recorded verification instead of good intentions.
+Install the published skill:
+
+```bash
+npx octocode skill --name octocode-awareness
+```
+
+Install from a GitHub path or fork:
+
+```bash
+npx octocode skill --add bgauryy/octocode/skills/octocode-awareness
+```
+
+After installing, run a readiness check from the installed skill folder:
+
+```bash
+node ~/.octocode/skills/octocode-awareness/scripts/install.mjs --check-only
+```
+
+Always-on Claude file-lock hooks are optional. Inspect first and preview writes before installing:
+
+```bash
+node ~/.octocode/skills/octocode-awareness/scripts/install-hooks.mjs --check --global
+node ~/.octocode/skills/octocode-awareness/scripts/install-hooks.mjs --dry-run --global
+```
+
+## Benefits
+
+- Fewer hidden file collisions in shared or long-running work.
+- Less rediscovery across agent runs.
+- Clearer handoffs when a task pauses or moves between agents.
+- Success claims backed by recorded verification.
+- A durable, inspectable history of lessons and decisions without committing secrets.
+
+## For developers
+
+Keep the agent-facing map in `SKILL.md`, data-model and coordination semantics in focused `references/`, and deterministic behavior in `scripts/awareness.py` plus hook helpers. When changing memory fields, lock behavior, notification semantics, hooks, or verification flow, update schema helpers, README examples, viewer rendering, smoke tests, and relevant references together.

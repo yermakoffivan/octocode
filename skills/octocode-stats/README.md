@@ -1,41 +1,71 @@
 # Octocode Stats
 
-`octocode-stats` builds a local HTML dashboard from Octocode MCP usage stats. It is for users who want to see response savings, cache behavior, errors, and rate-limit effects without manually reading `stats.json`.
+`octocode-stats` builds a local HTML dashboard from Octocode usage stats. It is for users who want to understand response savings, cache behavior, errors, and rate-limit effects without manually reading `stats.json`.
 
-The dashboard builder script owns the math and rendering.
+The dashboard builder script owns parsing, calculations, rendering, and optional browser opening.
+
+## When to use
+
+- Show Octocode usage stats.
+- Render a local dashboard.
+- Estimate tokens or characters saved by Octocode responses.
+- Inspect cache hits, avoided rate limits, errors, or registry failures.
+- Render a specific stats file from a test run or alternate `OCTOCODE_HOME`.
+
+Use `octocode` or `octocode-research` for code research. Use `octocode-awareness` for durable memory or handoff data. Use setup guidance, not this skill, for credentials or MCP install questions.
+
+## Features
+
+- Stats path resolution from user input, `${OCTOCODE_HOME}/stats.json`, or `~/.octocode/stats.json`.
+- Deterministic dashboard generation with `scripts/build_dashboard.mjs`.
+- Local HTML output using `assets/template.html`.
+- Total measured tool calls.
+- Raw, response, and saved-character estimates.
+- Approximate token-savings view.
+- GitHub cache-hit and rate-limit avoidance signals.
+- Error summaries and empty-state handling when stats are missing.
+- `--no-open`, `--output`, `--allow-empty`, and explicit `--stats` workflows.
 
 ## How it works
 
-The skill resolves the stats source from an explicit path, `${OCTOCODE_HOME}/stats.json`, or `~/.octocode/stats.json`, then runs `scripts/build_dashboard.mjs` to generate a local HTML report. It summarizes measured calls, savings estimates, cache behavior, rate-limit signals, and tool errors, including an empty-state dashboard when stats are missing but the user still wants the view.
+The skill follows this flow:
 
-## Good asks
+```text
+RESOLVE STATS -> RUN BUILDER -> REPORT PATH + KEY NUMBERS
+```
 
-- "Show my Octocode stats."
-- "Open the usage dashboard."
-- "How many approximate tokens or characters did Octocode save?"
-- "Check GitHub cache hits and avoided rate limits."
-- "Render this specific stats file."
-- "Review Octocode tool errors from the stats data."
+It resolves the stats file, calls the builder script, and reports the dashboard path, stats source, total calls, estimated savings, cache behavior, and errors. The skill does not recalculate metrics in chat; it delegates calculations to the script so dashboard and summary stay consistent.
 
-## What you get
+## Internal flow
 
-- A generated dashboard path.
-- The stats source path.
-- Total measured tool calls.
-- Approximate tokens and characters saved.
-- GitHub cache hits and rate-limit avoidance signals.
-- Error counts and missing-stats notes when relevant.
+1. Check for a user-provided stats path.
+2. Fall back to `${OCTOCODE_HOME}/stats.json`.
+3. Fall back to `~/.octocode/stats.json`.
+4. If no stats exist, explain that Octocode must run first or render an empty-state dashboard when requested.
+5. Run `node skills/octocode-stats/scripts/build_dashboard.mjs` with the chosen flags.
+6. Return the generated dashboard path and the key numbers.
 
-## Where it reads from
+## Installation
 
-The skill resolves stats from `${OCTOCODE_HOME}/stats.json`, then `~/.octocode/stats.json`, unless the user provides a specific stats path. It can render an empty-state dashboard when requested.
+Install the published skill:
 
-## Use another skill when
+```bash
+npx octocode skill --name octocode-stats
+```
 
-- The user is asking about credentials, MCP install, or configuration: use regular Octocode setup guidance.
-- The user wants research about a codebase: route to the `octocode` or `octocode-engineer` skill.
-- The user wants durable memory or handoff data: use `octocode-awareness`.
+Install from a GitHub path or fork:
 
-## User value
+```bash
+npx octocode skill --add bgauryy/octocode/skills/octocode-stats
+```
 
-This skill turns a raw telemetry file into a readable local dashboard and a short summary, so users can understand Octocode's practical savings and failure patterns at a glance.
+## Benefits
+
+- Turns raw telemetry into a readable local report.
+- Helps users see where Octocode saves context and repeated work.
+- Makes cache, rate-limit, and error patterns visible.
+- Keeps metric math deterministic and reproducible.
+
+## For developers
+
+Keep deterministic parsing, calculation, HTML rendering, and browser-opening behavior inside `scripts/build_dashboard.mjs`. Keep interpretation caveats in `references/measurement-notes.md`, transport/setup notes in `references/octocode.md`, and the visual shell in `assets/template.html`.

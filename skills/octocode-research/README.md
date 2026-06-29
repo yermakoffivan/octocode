@@ -1,46 +1,78 @@
 # Octocode Research
 
-`octocode-research` is the broad technical research skill for evidence-first answers. It can map a landscape, validate a technical direction, investigate behavior, or plan a change using local code, GitHub, npm, PRs, history, artifacts, binaries, OQL packets, papers, specs, and official docs.
+`octocode-research` is the main evidence-first skill for technical and code work. It covers investigation, implementation planning, code changes, PR or local diff review, refactors, architecture analysis, dead-code proof, artifact inspection, prior-art mapping, and repeated Act -> Observe -> Learn loops.
 
-It is a research skill, not an implementation session.
+Use it whenever an answer, review, decision, or patch should be grounded in code and verifiable evidence.
+
+## When to use
+
+- Find a root cause and explain it with proof.
+- Review a PR, local diff, module, or architecture slice.
+- Implement a scoped code change and verify it.
+- Plan or de-risk a refactor before editing.
+- Map prior art across local code, GitHub, npm, docs, specs, or papers.
+- Inspect generated artifacts, archives, binaries, or `.wasm`/`.node` files.
+- Continue searching until a clear question converges or the evidence budget is exhausted.
+
+Use `octocode-brainstorming` when the idea is still fuzzy. Use `octocode-rfc-generator` when the result should be a formal proposal. Use `octocode-roast` when the user wants critique as entertainment.
+
+## Features
+
+- Mode selection for Map, Validate, Investigate, Plan, Review, Change, and Loop tasks.
+- One-line scope that states question, corpus, mode, and active evidence surfaces.
+- Cheap orientation before exact reads.
+- Evidence grouped by surface instead of raw search dumps.
+- Exact anchors such as `file:line`, repo path, package id, PR number, commit, artifact fact, or fetched URL.
+- AST, structural search, LSP, history, package, GitHub, and local-file workflows through Octocode when available.
+- Confidence labels for confirmed, likely, uncertain, and weak claims.
+- Verification reporting for code changes and reviews.
+- Long-form brief support when the task needs a durable artifact.
 
 ## How it works
 
-The skill classifies the request as map, validate, investigate, or plan, then selects only the useful evidence surfaces: local code, GitHub, npm, history, artifacts, specs, papers, or official docs. It starts broad enough to avoid tunnel vision, deep-reads the strongest anchors, marks confidence explicitly, and recommends one next action.
+The skill follows this flow:
 
-## Good asks
+```text
+SCOPE -> SEARCH -> READ EXACT -> VALIDATE -> DECIDE/PATCH -> VERIFY
+```
 
-- "Research this technical area and tell me what matters."
-- "Why does this tool or package behave this way?"
-- "What options exist across local code, GitHub, npm, and docs?"
-- "What evidence supports this implementation direction?"
-- "Find the files, repos, packages, or docs that prove the answer."
+It chooses a mode from the user's intent, starts with low-cost discovery, reads exact evidence once anchors appear, checks findings before presenting them, and either recommends a next action or applies the smallest requested patch with verification.
 
-## What you get
+## Internal flow
 
-- A one-line scope: question, corpus, mode, and active surfaces.
-- A small hypothesis map before the agent narrows too early.
-- Evidence grouped by surface rather than dumped as raw results.
-- Exact anchors such as file:line, repo path, package id, PR number, commit, artifact fact, or fetched formal URL.
-- Confidence marked as confirmed, likely, or uncertain.
-- One recommended next action.
-
-## Research modes
-
-| Mode | Best for | User result |
+| Mode | Best for | Output |
 |---|---|---|
-| Map | Prior art or "what exists?" | Landscape clusters and the strongest evidence. |
-| Validate | "Is this direction worth it?" | A verdict with supporting and weakening signals. |
+| Map | Prior art, ecosystems, "what exists?" | Landscape clusters and strongest evidence. |
+| Validate | "Should we add or build this?" | Verdict with supporting and weakening signals. |
 | Investigate | "Why does this happen?" | Root cause or behavior explanation with proof. |
-| Plan | "What path should we take?" | Current-state evidence, options, and a safe next step. |
+| Plan | "What path should we take?" | Current-state evidence, options, and safe next step. |
+| Review | PR, local diff, or code-quality review | Severity-ranked findings with citations. |
+| Change | User asked for edits now | Minimal patch plus actual verification. |
+| Loop | Clear question needs convergence | Answer, decisive observations, gaps, and verification. |
 
-## Use another skill when
+Supporting references split the workflow: `research-flow.md` for research modes, `code-research.md` for implementation/review/refactor work, `loop-research.md` for repeated loops, `finding-checks.md` for validation, `long-research.md` for durable reports, and `github-landscape.md` for ecosystem comparisons.
 
-- The idea is still fuzzy or market-like: use `octocode-brainstorming`.
-- The user wants code changes, review, or refactoring: use `octocode-engineer`.
-- The user specifically wants repeated Act -> Observe loops: use `octocode-loop`.
-- The result should be a full RFC or proposal: use `octocode-rfc-generator`.
+## Installation
 
-## User value
+Install the published skill:
 
-This skill gives users a researched answer with traceable proof and honest uncertainty. It is useful when the answer spans more than one source but does not yet require code edits.
+```bash
+npx octocode skill --name octocode-research
+```
+
+Install from a GitHub path or fork:
+
+```bash
+npx octocode skill --add bgauryy/octocode/skills/octocode-research
+```
+
+## Benefits
+
+- Replaces search-and-guess with proof-carrying technical work.
+- Gives users traceable evidence and honest uncertainty.
+- Keeps implementation changes scoped to what the evidence supports.
+- Handles research and code work in one skill so agents do not split context across similar workflows.
+
+## For developers
+
+Keep `SKILL.md` as the compact router for modes, evidence rules, references, scripts, and output shape. Keep workflow depth in `references/research-flow.md`, code-change specifics in `references/code-research.md`, loop mechanics in `references/loop-research.md`, validation rules in `references/finding-checks.md`, and long-report artifacts in `references/long-research.md`. Run `scripts/eval-research.mjs --self-test` after prompt or reference changes.
