@@ -2,12 +2,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const packageRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(packageRoot, '../..');
 const distDir = path.join(packageRoot, 'dist');
+
+const require = createRequire(import.meta.url);
+
+function resolveOctocodeOutDir() {
+  const pkgJsonPath = require.resolve('octocode/package.json');
+  return path.join(path.dirname(pkgJsonPath), 'out');
+}
 
 const SOURCE_PATHS = {
   extension: path.join(packageRoot, 'src', 'index.js'),
@@ -20,6 +28,7 @@ const OUTPUT_PATHS = {
   extension: path.join(distDir, 'index.js'),
   skills: path.join(distDir, 'skills'),
   systemPrompt: path.join(distDir, 'system', 'APPEND_SYSTEM.md'),
+  bin: path.join(distDir, 'bin'),
 };
 
 const SKIPPED_DIRECTORIES = new Set([
@@ -33,6 +42,8 @@ const SKIPPED_DIRECTORIES = new Set([
   'out',
   'target',
 ]);
+
+const SKIPPED_SKILLS = new Set(['octocode', 'octocode-stats']);
 
 function isSecretEnvFile(name) {
   return name === '.env' || (name.startsWith('.env.') && name !== '.env.example');
@@ -104,6 +115,13 @@ function assertNoSecretEnvFiles(targetDir) {
   }
 }
 
+function assertBundledBin() {
+  const entry = path.join(OUTPUT_PATHS.bin, 'octocode.js');
+  if (!fs.existsSync(entry)) {
+    throw new Error(`Missing bundled Octocode CLI entry: ${entry}`);
+  }
+}
+
 function assertBundledSkills() {
   const skillNames = fs
     .readdirSync(OUTPUT_PATHS.skills, { withFileTypes: true })
@@ -125,7 +143,14 @@ function clean() {
 
 function refreshPackageSkills() {
   fs.rmSync(SOURCE_PATHS.skills, { recursive: true, force: true });
-  copyDirectory(SOURCE_PATHS.rootSkills, SOURCE_PATHS.skills);
+  fs.mkdirSync(SOURCE_PATHS.skills, { recursive: true });
+  for (const entry of fs.readdirSync(SOURCE_PATHS.rootSkills, { withFileTypes: true })) {
+    if (entry.isDirectory() && SKIPPED_SKILLS.has(entry.name)) continue;
+    const src = path.join(SOURCE_PATHS.rootSkills, entry.name);
+    const dst = path.join(SOURCE_PATHS.skills, entry.name);
+    if (entry.isDirectory()) copyDirectory(src, dst);
+    else if (entry.isFile()) copyFile(src, dst);
+  }
   assertNoSecretEnvFiles(SOURCE_PATHS.skills);
 }
 
@@ -136,11 +161,18 @@ function build() {
   copyFile(SOURCE_PATHS.extension, OUTPUT_PATHS.extension);
   copyFile(SOURCE_PATHS.systemPrompt, OUTPUT_PATHS.systemPrompt);
   copyDirectory(SOURCE_PATHS.skills, OUTPUT_PATHS.skills);
+
+  const octocodeOutDir = resolveOctocodeOutDir();
+  copyDirectory(octocodeOutDir, OUTPUT_PATHS.bin);
+  assertBundledBin();
+
   assertNoSecretEnvFiles(distDir);
 
   const skillNames = assertBundledSkills();
+  const binFiles = fs.readdirSync(OUTPUT_PATHS.bin).length;
   console.log(`Built @octocodeai/pi-extension with ${skillNames.length} skills.`);
   console.log(`Skills: ${skillNames.join(', ')}`);
+  console.log(`Bundled Octocode CLI: ${binFiles} entries in dist/bin/`);
 }
 
 if (process.argv.includes('--clean')) {

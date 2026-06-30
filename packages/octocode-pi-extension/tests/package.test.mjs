@@ -52,7 +52,7 @@ test('build copies the canonical system prompt', () => {
 
   const prompt = fs.readFileSync(paths.systemPrompt, 'utf8');
   assert.match(prompt, /<context_management>/);
-  assert.match(prompt, /<verification>/);
+  assert.match(prompt, /<how_to_build>/);
 });
 
 test('build copies bundled Octocode skills without secret env files', () => {
