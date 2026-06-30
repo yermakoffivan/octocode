@@ -1,6 +1,6 @@
 {
   "name": "octocode",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Code research CLI for Octocode tools, local workspaces, GitHub repositories, LSP, and MCP setup",
   "keywords": [
     "ai-coding",
@@ -40,7 +40,7 @@
   },
   "scripts": {
     "build": "yarn readme:sync && yarn lint && node build.mjs",
-    "build:dev": "yarn readme:sync && node build.mjs",
+    "build:dev": "yarn readme:sync && yarn workspace @octocodeai/octocode-tools-core build:dev && node build.mjs",
     "clean": "rm -rf out/",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
@@ -61,7 +61,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
-    "@octocodeai/octocode-core": "^16.6.0",
+    "@octocodeai/octocode-core": "^16.6.1",
     "@octocodeai/octocode-engine": "^16.6.0",
     "@octokit/auth-oauth-device": "^8.0.3",
     "@octokit/oauth-methods": "^6.0.2",
