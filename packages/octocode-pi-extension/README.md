@@ -1,164 +1,262 @@
 # @octocodeai/pi-extension
 
-The official Octocode Pi package. This is the Octocode team's preferred and
-recommended harness for coding agents that use Pi: keep Pi lean, then add the
-Octocode system prompt, skills, setup commands, and evidence-first operating
-model as one package.
+> The research, memory, and operating model layer for Pi coding agents — powered by a bundled Octocode CLI.
 
-Use it when you want a Pi agent to research with evidence, edit conservatively,
-preserve crucial context before compaction, and verify work before claiming it
-is done.
+---
 
-```text
-orient -> search/read exact evidence -> decide or plan -> patch when asked
-       -> verify -> remember or hand off what matters
+## The problem with blank-slate agents
+
+Pi is intentionally minimal. A lean terminal harness, no opinions, stays out of your way. That's exactly right — until you actually try to use it on a real codebase.
+
+A blank-slate agent will:
+
+- **Grep instead of understand.** It searches for text, not meaning. It finds the string "authenticate" in 40 files and picks one at random.
+- **Act on search results as if they were proof.** It sees a function name, assumes it's the right one, and edits it. No call graph. No callers checked. Regressions shipped.
+- **Lose everything at compaction.** The context window fills, Pi compresses, and the agent forgets what it decided, what it changed, and why.
+- **Reinvent the wheel every session.** Same research loop, no shared patterns, no accumulated workflow knowledge.
+
+These aren't Pi's failures. They're gaps that every coding agent harness leaves open. This package fills them.
+
+---
+
+## What this package adds
+
+Three building blocks, assembled into one `pi install`:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                      Pi Agent                        │
+│                                                      │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────┐ │
+│  │ APPEND_SYSTEM│   │    Skills    │   │Extension │ │
+│  │  (operating  │   │  (research,  │   │ (locks,  │ │
+│  │   model +    │   │  memory,     │   │commands, │ │
+│  │   rules)     │   │  review...)  │   │ setup)   │ │
+│  └──────────────┘   └──────────────┘   └──────────┘ │
+│            │               │                │        │
+│            └───────────────┴────────────────┘        │
+│                            │                         │
+│              Bundled Octocode CLI (dist/bin/)         │
+│         (local · GitHub · npm · LSP · AST)           │
+└─────────────────────────────────────────────────────┘
 ```
 
-Pi is the primary recommended host because it is a minimal terminal coding
-harness extended through skills, extensions, prompt templates, themes, and
-packages. Pi edits and orchestrates; Octocode supplies research, planning,
-review, memory, and verification discipline.
+---
+
+## Building block 1: The operating model
+
+The system prompt (`APPEND_SYSTEM.md`) is injected into every Pi agent turn. It defines how the agent must think before it acts:
+
+```
+orient → hypothesize → search/read → prove → act → verify
+```
+
+This isn't a list of tips. It's a behavioral contract enforced on every response.
+
+**Why this loop matters:** most agent failures happen between "I found something" and "I changed something". The agent finds a reference, assumes it's authoritative, makes the edit. The loop breaks this. Orient means checking git state and environment first. Hypothesize means naming what you believe before you look. Search/read means gathering actual evidence. **Prove** means accepting only exact file reads, passing tests, or runtime output — not search results. Act. Then verify.
+
+Key rules the model enforces:
+
+- **Verify ground truth before acting** — `git status`, `git log`, manifest files, environment. Never assume the state you expect.
+- **Search results are leads, not proof** — a function found in a search result is a hypothesis. An exact file read is evidence.
+- **Minimum-path build check** — seven escalation steps before writing new code: YAGNI → reuse existing → stdlib → platform native → installed dep → one-liner → only then write. Most new code requests shouldn't produce new code.
+- **Root-cause bug fixes** — grep every caller before touching anything. The fix belongs in the shared function, not the reported call site.
+- **Delegate with a context packet** — `pi -p` with the minimum self-contained prompt a fresh agent needs. No session history dumps.
+- **Verify before claiming done** — leave one runnable self-check for every non-trivial change.
+
+The agent reads this every turn. The rules stay in scope regardless of how long the session runs.
+
+---
+
+## Building block 2: Octocode as the research backbone
+
+The Octocode CLI ships bundled inside the package (`dist/bin/`). It's ready the moment `pi install` completes — no separate install, no `npx` cold start, no version drift between the CLI and the skills.
+
+The extension injects the exact binary path into the system prompt at session start, so the agent uses `node /path/to/dist/bin/octocode.js` directly.
+
+**Why Octocode instead of grep/find/cat?**
+
+Grep finds strings. Octocode finds meaning.
+
+When a coding agent uses grep, it gets line numbers and text matches. It has no idea whether that function is called from one place or fifty, whether the symbol it found is the canonical definition or a re-export, whether the package it's about to add already exists in the dependency tree.
+
+Octocode gives the agent a research surface that spans everything a real engineer would check:
+
+**Local code — files, symbols, structure, semantics:**
+
+```bash
+# Find a term or symbol across a directory
+octocode search "authenticate" src/
+
+# Visualize the codebase layout before touching anything
+octocode search src/ --tree
+
+# AST pattern: find every arrow function that returns a Promise
+octocode search src/ --pattern 'async function $NAME' --lang typescript
+
+# LSP semantics: who calls this function?
+octocode search src/auth.ts --op callers --symbol verifyToken --line 42
+```
+
+**GitHub — code, PRs, history, repos:**
+
+```bash
+# Search across a repo's code
+octocode search "rate limit" owner/repo
+
+# Find prior art before building something new
+octocode search "webhook signature validation" --target repositories
+
+# Read a PR's context and decisions
+octocode search owner/repo#1234 --target pullRequests
+```
+
+**npm — packages, APIs, prior art:**
+
+```bash
+# Find the right package before adding a dependency
+octocode search "jwt validation" --target packages
+```
+
+This is the research surface the agent gets by default. The system prompt instructs it to use Octocode for all discovery — before grep, before cat, before any assumption.
+
+---
+
+## Building block 3: Skills — reusable research workflows
+
+Skills are focused workflow prompts that activate on demand. They're loaded automatically into Pi when the package is installed — no setup, no registration, just there.
+
+| Skill | What it does |
+|---|---|
+| `octocode` | Quick CLI reference and transport lookup |
+| `octocode-research` | Full code investigation: local, GitHub, LSP, AST, PR history, architecture |
+| `octocode-awareness` | Durable memory: claim files before edits, record decisions, hand off state across sessions |
+| `octocode-brainstorming` | Evidence-grounded idea exploration and prior-art research before building |
+| `octocode-rfc-generator` | Structured proposals for risky or cross-cutting work before implementation |
+| `octocode-roast` | Adversarial code review with severity-ranked findings and fix paths |
+| `octocode-skills` | Find, install, rate, and create skills |
+
+Invoke explicitly with `/skill:<name>`, or let Pi discover them from context.
+
+**Why skills matter beyond prompt files:** each skill encodes a complete research pattern — not just instructions, but the sequence of Octocode calls that produce trustworthy answers. `octocode-research` tells the agent to orient with a tree first, then search, then read exact slices. `octocode-awareness` tells it to claim files before editing, record decisions before compacting, verify before concluding. These aren't tips. They're tested workflows the agent can activate without reinventing them every session.
+
+---
+
+## The memory layer: awareness
+
+`octocode-awareness` deserves its own mention because it solves the hardest problem in multi-session or multi-agent work: **what did we decide, and who is editing what right now?**
+
+When the awareness bridge is active (bundled `awareness.py` script present), every Pi `write` or `edit` tool call goes through a preflight check:
+
+1. The agent claims the file with a rationale and TTL.
+2. If another agent already holds the lock, the edit is blocked with a clear reason.
+3. When the tool call completes, the lock is released.
+
+This means two parallel Pi agents on the same codebase can't silently stomp each other's edits. The conflict surfaces at claim time, not at git merge time.
+
+Before compaction, the agent can record decisions, open questions, and file states to the awareness store. The next session — or the next agent — can read them back. Context doesn't die at the context window boundary.
+
+---
+
+## The extension glue
+
+The extension (`dist/index.js`) is the piece that wires all of this into Pi's lifecycle:
+
+- **`resources_discover`** — tells Pi where the bundled skills are, so they load into every session automatically.
+- **`before_agent_start`** — appends the system prompt and injects the exact bundled CLI path into the agent's context on every turn.
+- **`tool_call` / `tool_result`** — hooks into Pi's tool lifecycle to run the awareness preflight and release locks.
+- **Slash commands** — `/octocode-setup`, `/octocode-status`, `/octocode-mcp-install`, `/octocode-skills-update` for setup and maintenance.
+
+None of this requires MCP. Pi core is lean by design; the extension respects that. MCP is additive, not required.
+
+---
 
 ## Install
 
-Install from npm:
-
 ```bash
+# Global (recommended — available in all projects)
 pi install npm:@octocodeai/pi-extension
-```
 
-Install from this repository while developing:
-
-```bash
-yarn workspace @octocodeai/pi-extension build
-pi install /Users/guybary/Documents/octocode-mcp/packages/octocode-pi-extension
-```
-
-Project-local install:
-
-```bash
+# Project-local only
 pi install -l npm:@octocodeai/pi-extension
+
+# From source (development)
+yarn workspace @octocodeai/pi-extension build
+pi install /path/to/octocode-mcp/packages/octocode-pi-extension
 ```
 
-Pi packages run with full system access. Review this package before installing
-it in a sensitive environment.
+> Pi packages run with full system access. Review this package before installing it in a sensitive environment.
 
-## What It Adds
+---
 
-The package build creates a self-contained Pi package:
+## Get started
 
-| Asset | Source | Shipped location |
-|---|---|---|
-| System prompt | `packages/octocode-pi-extension/docs/PI/APPEND_SYSTEM.md` | `dist/system/APPEND_SYSTEM.md` |
-| Skills | root `skills/` copied during build | `skills/` and `dist/skills/` |
-| Extension | `src/index.js` | `dist/index.js` |
+Once installed, the operating model, skills, and bundled CLI are live. Verify everything is wired:
 
-The extension:
+```bash
+/octocode-status
+```
 
-- appends the bundled Octocode system prompt to Pi agent turns;
-- exposes bundled Octocode skills to Pi through package metadata and
-  `resources_discover`;
-- bridges Pi `write`/`edit` tool calls to bundled `octocode-awareness` file
-  locks when the awareness script is available;
-- provides setup/status/update commands;
-- keeps MCP optional, because Pi core is intentionally lean and does not ship
-  native MCP as a baseline requirement.
+The output shows: bundled CLI version and path, skill list, awareness bridge state, system prompt location.
 
-The build excludes secret env files such as `skills/**/.env` and generated
-Python caches, but keeps `.env.example` files.
+To write a persistent `APPEND_SYSTEM.md` to disk (pinned across sessions and visible in your project):
 
-## Commands
+```bash
+# Project-local (.pi/APPEND_SYSTEM.md)
+/octocode-setup
+
+# Global (~/.pi/agent/APPEND_SYSTEM.md)
+/octocode-setup --global
+```
+
+Authenticate Octocode for GitHub and npm access — the bundled path is shown by `/octocode-status`:
+
+```bash
+node <bundled-path> auth status --json
+# or if octocode is also on PATH:
+octocode auth status --json
+```
+
+---
+
+## Slash commands
 
 | Command | Purpose |
 |---|---|
-| `/octocode-status` | Show bundled prompt and skills status. |
-| `/octocode-setup` | Write the managed Octocode prompt block to project `.pi/APPEND_SYSTEM.md`. |
-| `/octocode-setup --global` | Write the managed Octocode prompt block to `~/.pi/agent/APPEND_SYSTEM.md`. |
-| `/octocode-mcp-install [args]` | Confirm, then run `npx octocode install ...` for MCP-native clients. |
-| `/octocode-skills-update` | Confirm, then run `pi update npm:@octocodeai/pi-extension` and reload Pi resources. |
+| `/octocode-status` | Show bundled CLI, prompt, and skills — verify everything loaded |
+| `/octocode-setup` | Write managed prompt block to `.pi/APPEND_SYSTEM.md` |
+| `/octocode-setup --global` | Write managed prompt block to `~/.pi/agent/APPEND_SYSTEM.md` |
+| `/octocode-mcp-install [args]` | Confirm, then run the bundled `octocode install ...` for MCP clients |
+| `/octocode-skills-update` | Confirm, then update the package and reload Pi resources |
 
-The package already loads the bundled skills. Use `/octocode-setup` when you
-also want a durable `APPEND_SYSTEM.md` file on disk.
+---
 
-`/octocode-status` reports whether the Pi-native awareness file-lock bridge can
-find the bundled `octocode-awareness` script. If it is missing, Pi continues
-normally and the awareness skill can still be used manually.
+## What ships in the package
 
-## Skill Cookbook
+| Asset | Source | Shipped location |
+|---|---|---|
+| System prompt | `docs/PI/APPEND_SYSTEM.md` | `dist/system/APPEND_SYSTEM.md` |
+| Skills | root `skills/` (copied during build) | `skills/` and `dist/skills/` |
+| Extension | `src/index.js` | `dist/index.js` |
+| **Octocode CLI** | `octocode` npm dep (`out/`) | `dist/bin/octocode.js` + `dist/bin/chunks/` |
 
-Use the smallest skill that matches the job:
+The CLI is physically copied from the `octocode` package into `dist/bin/` at build time. When Pi installs the package, the CLI is already on disk — no separate download, no `npx` invocation, always in sync with the extension version.
 
-| Skill | Use for |
-|---|---|
-| `octocode` | Quick Octocode transport guidance and lookup recipes. |
-| `octocode-research` | Default code research, implementation, review, refactoring, debugging, PR/history, binary, AST, LSP, and architecture work. Covers everything `octocode-engineer` used to handle. |
-| `octocode-awareness` | Memory, file locks, handoff state, verification records, and durable learning. |
-| `octocode-brainstorming` | Evidence-grounded idea exploration and prior-art validation. |
-| `octocode-rfc-generator` | RFCs, migration plans, architecture proposals, and risky pre-implementation plans. |
-| `octocode-roast` | Explicit hard review and evidence-backed critique. |
-| `octocode-skills` | Search, compare, lint, create, and update skills. |
-| `octocode-stats` | Octocode usage stats and reports. |
+The build excludes secret env files and Python caches; `.env.example` files are kept intact.
 
-In Pi, call skills with `/skill:<name>` when you want to force a mode, or let
-the package make them available for normal Pi skill discovery.
+---
 
-## Operating Model
+## Optional: Octocode MCP inside Pi
 
-- Prefer Pi skills plus the Octocode CLI for Pi-native work.
-- Prefer MCP tools for MCP-native hosts.
-- Treat MCP, subagents, plan mode, permission gates, and sandboxing as optional
-  Pi extensions or external wrappers, not assumptions about Pi core.
-- Read live schemas/help before raw tool calls.
-- Treat search results as leads; exact reads, tests, schemas, and runtime output
-  are proof.
-- Keep active context small; write durable handoffs and research receipts to
-  files before compaction or delegation.
-- Use `octocode-awareness` when work is long-running, concurrent, dirty, or
-  worth remembering.
-- Route risky or cross-package work through `octocode-rfc-generator` before
-  implementation.
+The bundled CLI covers the full research surface. Add MCP only when you specifically want Pi to call Octocode through structured tool calls rather than shell invocations.
 
-## Pi Claim Check
-
-Research against upstream Pi docs and source supports these claims:
-
-- Pi is a minimal terminal coding harness designed to stay small at the core and
-  be extended through skills, TypeScript extensions, prompt templates, themes,
-  and Pi packages.
-- Pi loads context files, `APPEND_SYSTEM.md`, skills, slash commands,
-  non-interactive print mode, custom models, and compaction.
-- Pi does not include built-in MCP, subagents, permission popups, plan mode,
-  to-dos, background bash, or a default permission sandbox. Those are extension
-  or environment choices.
-- Pi has extension examples for subagents, plan mode, permission gates,
-  protected paths, tool routing, and sandboxing. The Octocode harness should
-  recommend them as optional upgrades, not baseline requirements.
-
-## Use `npx octocode` First
-
-For Pi, prefer the Octocode CLI. In normal Pi workflows, the bundled skills plus
-`npx octocode` are the recommended path and are good enough for code research,
-navigation, GitHub/package lookup, and LSP-backed checks. You do not need MCP
-just to use Octocode well from Pi.
-
-```bash
-npx octocode search "<term>" <path-or-owner/repo>
-npx octocode search <path> --tree
-npx octocode auth status --json
-```
-
-MCP is optional. Add it only when you specifically want Pi to call Octocode
-through MCP tools, or when you are configuring another MCP-native client.
-
-### Optional: Octocode MCP inside Pi
-
-Install a Pi MCP adapter, then restart Pi:
+Install a Pi MCP adapter:
 
 ```bash
 pi install npm:pi-mcp-adapter
 ```
 
-Add Octocode to a project-local `.mcp.json` file:
+Add Octocode to `.mcp.json` in your project:
 
 ```json
 {
@@ -171,47 +269,31 @@ Add Octocode to a project-local `.mcp.json` file:
 }
 ```
 
-Use `~/.config/mcp/mcp.json` instead when you want the same server available in
-all projects. Add `env` values such as `GITHUB_TOKEN`, `GH_TOKEN`, or
-`ENABLE_CLONE=true` only when that project needs them.
+Use `~/.config/mcp/mcp.json` to make it available across all projects.
 
-The adapter reads standard MCP config files and keeps servers lazy by default,
-so the Octocode MCP server is not started until the agent actually calls it.
-
-### Configure other MCP clients
-
-For Cursor, Claude Code, VS Code, and other MCP-native hosts, use the Octocode
-installer:
+For Cursor, Claude Code, VS Code, and other MCP-native hosts:
 
 ```bash
 /octocode-mcp-install --ide cursor
+# or directly (using the bundled CLI):
+node <bundled-path> install --ide cursor
 ```
 
-That command asks before running `npx octocode install ...` because it may write
-external client configuration. You can also run the CLI directly:
-
-```bash
-npx octocode install --ide cursor
-```
+---
 
 ## Development
 
-Build the package with the repo's Yarn release:
-
 ```bash
+# Build
 yarn workspace @octocodeai/pi-extension build
-```
 
-Verify just this package:
-
-```bash
+# Build + lint + test
 yarn workspace @octocodeai/pi-extension verify
 ```
 
-The build refreshes the ignored package-local `skills/` mirror from the root
-`skills/` directory, then copies that mirror into `dist/skills/`. The npm
-package ships both `skills/` and `dist/skills/` so Pi can load skills from the
-package root and the extension can use its generated runtime assets.
+The build: refreshes the local `skills/` mirror from root `skills/`, copies everything into `dist/`, then copies the octocode CLI from `node_modules/octocode/out/` into `dist/bin/`. An assertion fails the build if `dist/bin/octocode.js` is missing — the bundled CLI is not optional.
+
+---
 
 ## References
 

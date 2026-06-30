@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 export const PACKAGE_NAME = '@octocodeai/pi-extension';
 export const SYSTEM_PROMPT_MARKER = '<!-- octocode-pi-extension:system-prompt -->';
@@ -126,17 +127,61 @@ export function getAwarenessBridgeStatus(baseDir = extensionDir) {
   return fs.existsSync(getAwarenessScriptPath(baseDir)) ? 'available' : 'missing';
 }
 
+export function getBundledOctocodeScript() {
+  // Preferred: physically bundled into dist/bin/ during build (always present when published)
+  const distBin = path.join(extensionDir, 'bin', 'octocode.js');
+  if (fs.existsSync(distBin)) return distBin;
+
+  // Fallback: resolve from node_modules (development / non-standard installs)
+  try {
+    const require = createRequire(import.meta.url);
+    const pkgJsonPath = require.resolve('octocode/package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+    const binEntry = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.octocode;
+    if (!binEntry) return null;
+    const scriptPath = path.resolve(path.dirname(pkgJsonPath), binEntry);
+    return fs.existsSync(scriptPath) ? scriptPath : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getBundledOctocodeVersion() {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkgJsonPath = require.resolve('octocode/package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+    return pkg.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function runOctocode(args, options = {}) {
+  const script = getBundledOctocodeScript();
+  if (script) {
+    return defaultRunCommand(process.execPath, [script, ...args], options);
+  }
+  return defaultRunCommand('npx', ['octocode', ...args], options);
+}
+
 export function formatStatus(baseDir = extensionDir) {
   const paths = getAssetPaths(baseDir);
   const skills = listBundledSkills(baseDir);
   const promptStatus = fs.existsSync(paths.systemPrompt) ? 'found' : 'missing';
   const awarenessStatus = getAwarenessBridgeStatus(baseDir);
+  const octocodeScript = getBundledOctocodeScript();
+  const octocodeVersion = getBundledOctocodeVersion();
+  const octocodeStatus = octocodeScript
+    ? `bundled v${octocodeVersion ?? '?'} → ${octocodeScript}`
+    : 'not bundled (fallback: npx octocode)';
 
   return [
     'Octocode Pi extension',
     `system prompt: ${promptStatus}`,
     `skills: ${skills.length}${skills.length > 0 ? ` (${skills.join(', ')})` : ''}`,
     `awareness file locks: ${awarenessStatus}`,
+    `octocode CLI: ${octocodeStatus}`,
     `package assets: ${baseDir}`,
   ].join('\n');
 }
@@ -364,8 +409,14 @@ export default function octocodePiExtension(pi) {
         return;
       }
 
+      const script = getBundledOctocodeScript();
+      const version = script ? getBundledOctocodeVersion() : null;
+      const bundledNote = script
+        ? `\n\n<!-- octocode-pi-extension:bundled-cli -->\nBundled Octocode CLI${version ? ` v${version}` : ''} — use \`node ${script}\` instead of \`npx octocode\`.\n<!-- octocode-pi-extension:bundled-cli -->`
+        : '';
+
       return {
-        systemPrompt: `${event.systemPrompt}\n\n${renderSystemPromptAddendum(prompt)}`,
+        systemPrompt: `${event.systemPrompt}\n\n${renderSystemPromptAddendum(prompt)}${bundledNote}`,
       };
     });
 
@@ -392,16 +443,32 @@ export default function octocodePiExtension(pi) {
   });
 
   pi.registerCommand('octocode-mcp-install', {
-    description: 'Run the Octocode MCP installer after confirmation.',
+    description: 'Run the Octocode MCP installer using the bundled CLI.',
     handler: async (args, ctx) => {
       const extraArgs = splitArgs(args);
-      const cmdStr = ['npx', 'octocode', 'install', ...extraArgs].join(' ').trim();
-      const ok = await confirm(ctx, 'Run Octocode MCP installer?', `Execute: ${cmdStr}`);
+      const script = getBundledOctocodeScript();
+      const cmdLabel = script
+        ? `node ${path.basename(script)} install ${extraArgs.join(' ')}`.trim()
+        : `npx octocode install ${extraArgs.join(' ')}`.trim();
+
+      const ok = await confirm(ctx, 'Run Octocode MCP installer?', `Execute: ${cmdLabel}`);
       if (!ok) {
         notify(ctx, 'Command cancelled.', 'info');
         return;
       }
-      pi.sendUserMessage(cmdStr, { deliverAs: 'followUp' });
+
+      notify(ctx, 'Running Octocode MCP installer…', 'info');
+      const result = await runOctocode(['install', ...extraArgs], {
+        cwd: ctx?.cwd ?? process.cwd(),
+        timeout: 60000,
+      });
+
+      const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+      if (result.status !== 0) {
+        notify(ctx, `MCP install failed:\n${output || 'Unknown error'}`, 'error');
+      } else {
+        notify(ctx, output || 'Octocode MCP installed successfully.', 'info');
+      }
     },
   });
 
