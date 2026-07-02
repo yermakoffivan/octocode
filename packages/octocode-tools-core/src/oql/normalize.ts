@@ -590,6 +590,7 @@ function normalizeWhere(
   }
 
   validatePredicate(predicate, 'where');
+  validatePredicateIds(predicate, 'where', new Map());
 
   // Validate via schema (catches malformed shapes/unknown keys inside where).
   const check = PredicateSchema.safeParse(predicate);
@@ -780,6 +781,39 @@ function validatePredicate(p: Predicate, path: string): void {
       break;
     default:
       break;
+  }
+}
+
+/**
+ * User-supplied predicate `id`s must be unique across the tree: the planner
+ * keys plan nodes, backend calls, and diagnostics on `p.id ?? path`, so a
+ * duplicate id conflates two distinct predicates in explain/provenance.
+ */
+function validatePredicateIds(
+  p: Predicate,
+  path: string,
+  seen: Map<string, { path: string; node: Predicate }>
+): void {
+  if (typeof p.id === 'string') {
+    const first = seen.get(p.id);
+    // Sugar expansion (oneOf/xor) legitimately places the SAME predicate
+    // object at multiple tree paths — only two DISTINCT nodes sharing an id
+    // are a user error.
+    if (first !== undefined && first.node !== p) {
+      fail(
+        diagnostic(
+          'invalidQuery',
+          `Duplicate predicate id "${p.id}" at ${first.path} and ${path}; ids must be unique across \`where\`.`,
+          { queryPath: path, predicateId: p.id }
+        )
+      );
+    }
+    if (first === undefined) seen.set(p.id, { path, node: p });
+  }
+  if (p.kind === 'all' || p.kind === 'any') {
+    p.of.forEach((c, i) => validatePredicateIds(c, `${path}.of[${i}]`, seen));
+  } else if (p.kind === 'not') {
+    validatePredicateIds(p.predicate, `${path}.predicate`, seen);
   }
 }
 

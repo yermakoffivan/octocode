@@ -21,6 +21,34 @@ describe('oqlSchemaText (full --scheme)', () => {
       expect(full).toContain(field);
     }
   });
+
+  it('teaches field-predicate lane scoping and boolean sugar', () => {
+    const full = oqlSchemaText();
+    // field predicates are files-lane only; agents must learn this BEFORE
+    // hitting unsupportedPredicate.
+    expect(full).toMatch(/field predicates evaluate file attributes/i);
+    expect(full).toContain('booleanSugar');
+    for (const sugar of [
+      'and:',
+      'or:',
+      'noneOf:',
+      'xor:',
+      'oneOf:',
+      'invert:true',
+    ]) {
+      expect(full).toContain(sugar);
+    }
+  });
+
+  it('enumerates controls.search.sort values with the files-only gate', () => {
+    // The schema doc is JSON-serialized, so unescape inner quotes to assert
+    // on the human-readable enum text.
+    const full = oqlSchemaText().replace(/\\"/g, '"');
+    expect(full).toContain(
+      'sort?:"relevance"|"matchCount"|"path"|"modified"|"accessed"|"created"|"size"|"name"'
+    );
+    expect(full).toMatch(/"size"\/"name" apply to target:"files" only/);
+  });
 });
 
 describe('oqlCompactSchemeText (--scheme --compact)', () => {

@@ -4,140 +4,93 @@
   <img src="https://github.com/bgauryy/octocode-mcp/raw/main/packages/octocode-pi-extension/assets/logo.png" width="640px" alt="Octocode + Pi">
 </div>
 
-> A complete research-quality evidence harness for Pi — so your agent investigates, reasons, and verifies like a senior engineer across every development and research task.
-
----
-
-## Why this exists
-
-A coding agent is only as good as the evidence it works from. Left on its own, it guesses: it matches text instead of grasping meaning, treats a search hit as proof, forgets what it decided when context runs out, and rebuilds the same research loop every session.
-
-This package closes that gap. It turns a blank-slate Pi agent into an evidence-first one — research before assumptions, proof before edits, memory that survives the session. One `pi install`, and it's live on every turn: no config, no `npx`, nothing to wire up.
-
-It does this by bundling three things that reinforce each other.
-
----
-
-## Quick start
-
-**1. Install** (globally, available in every project — or add `-l` for project-local only):
+The Octocode harness for [Pi](https://github.com/earendil-works/pi). One install gives the agent a research engine, a persistent memory, an engineering operating model, and subagent coordination — active on every turn.
 
 ```bash
 pi install npm:@octocodeai/pi-extension
 ```
 
-> Pi packages run with full system access. Review the package before installing in a sensitive environment.
+---
 
-**2. Verify** everything loaded — shows the bundled CLI, skills, awareness state, and prompt location:
+## What the agent gets
 
-```bash
-/octocode-status
-```
+**A research engine.** The agent uses [Octocode](https://octocode.ai) for all code discovery — local files, GitHub, npm, LSP semantics, AST patterns, binaries. One tool instead of grep, gh, and curl. It reads lean: locate first, then understand structure, then read exactly.
 
-**3. Authenticate** to GitHub once — Octocode stores the token where both you and the agent's bundled CLI read it:
+**Live web access.** A single `web` tool lets the agent search the web and read pages as clean text — for docs, changelogs, error messages, and anything beyond the codebase or its training cutoff. Works with **zero config** (DuckDuckGo); add a Tavily or Serper key for higher-quality, AI-answered search. Fetches are SSRF-guarded and browser-realistic.
 
-```bash
-npx octocode auth login     # store a GitHub token (interactive)
-npx octocode auth status     # confirm you're authenticated
-```
+**An engineering operating model.** A system prompt shapes how the agent reasons on every turn: research before writing, prove before claiming done, verify after every change. It reads git state and project config before acting. It maps blast radius before touching anything. It builds incrementally — reuse before adding, minimum that works, one owner per behavior, fix root causes not call sites, leave no traps.
 
-> `npx octocode` works anywhere. To use the bundled binary directly instead, copy the path from `/octocode-status` (shown as `octocode CLI: bundled … → <path>`) and run `node <path> auth login`. Agents can skip login entirely by passing `GITHUB_TOKEN` / `OCTOCODE_TOKEN` / `GH_TOKEN` via env. See the [authentication docs](https://github.com/bgauryy/octocode/blob/main/docs/AUTHENTICATION.md) for all options.
+**Clean code and architecture.** The agent writes code with intent-named functions, single responsibility, guard-clause returns, and no speculative params. It respects Clean Architecture — core logic free of I/O and framework, side effects at the edges, dependencies pointing inward. Types and schemas are treated as contracts: producers and consumers change together, every type change fixes every error.
 
-**4. (Optional) Pin the system prompt to disk** so it's visible in your project:
+**Persistent memory.** Before starting work the agent queries a shared memory store for prior lessons, decisions, and gotchas. After finishing it records what it learned — findings, failures, decisions — so the next session starts knowing what this one discovered. The same store is shared across all Octocode tools and agents on the machine.
 
-```bash
-/octocode-setup            # writes .pi/APPEND_SYSTEM.md
-/octocode-setup --global   # writes ~/.pi/agent/APPEND_SYSTEM.md
-```
+**Self-improvement.** The agent tracks recurring failures by signature and surfaces patterns. It proposes improvements to its own behavior after tasks. A human reviews and merges them.
+
+**Subagent coordination.** The agent forks work to independent sub-sessions when tasks are self-contained and unrelated to the current context. It writes a plan before complex work, compacts to that plan, then executes step by step. Parallel tasks that touch the same files are isolated and merged sequentially. Context is managed autonomously — compact, clear, or hand off — without asking.
+
+**Safe by default.** Every file edit is locked before it runs and released after, via hooks — no two agents collide. Destructive actions require confirmation. Protected files surface before editing.
 
 ---
 
-## What's in the bundle
+## Research workflows
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                         Pi Agent                          │
-│                                                           │
-│   System prompt   +   Octocode CLI    +       Skills      │
-│   (how to think)      (the research      (how to research:│
-│                        tool it uses)     proven workflows)│
-└──────────────────────────────────────────────────────────┘
-```
+Six skills ship with the bundle:
 
-### 1. The system prompt — how the agent thinks
-
-A short operating model injected on every turn:
-
-```
-orient → hypothesize → search/read → prove → act → verify
-```
-
-Most agent failures happen between *"I found something"* and *"I changed something."* This loop closes that gap. The core rules:
-
-- **Search results are leads, not proof** — a hit is a hypothesis; an exact file read or a passing test is evidence.
-- **Verify ground truth first** — check `git status`, manifests, and environment before assuming state.
-- **Don't write code you don't need** — reuse, stdlib, and existing deps come before new code.
-- **Fix root causes** — find every caller before changing a shared function.
-- **Verify before claiming done** — leave one runnable self-check for every real change.
-
-### 2. The Octocode CLI — the research tool, bundled
-
-One research tool for everything the agent needs to understand — local code, GitHub, and npm — instead of juggling `grep` / `find` / `cat` / `gh` / `npm`. It's bundled with the package, so there's **no separate download and no version drift** between the CLI, the skills, and the prompt: ready the moment install finishes, with the agent told exactly where to find it.
-
-See the [Octocode CLI docs](https://github.com/bgauryy/octocode/blob/main/docs/OCTOCODE_CLI.md) for the full command surface.
-
-### 3. The skills — reusable research workflows
-
-Tested workflows the agent activates on demand instead of improvising. They load automatically when the package is installed.
-
-| Skill | What it does |
+| | |
 |---|---|
-| [`octocode-research`](https://github.com/bgauryy/octocode/tree/main/skills/octocode-research) | Evidence-first investigation with preset workflows — code research, implementation, PR/diff review, refactor, dead-code, architecture mapping, binary/artifact inspection |
-| [`octocode-awareness`](https://github.com/bgauryy/octocode/tree/main/skills/octocode-awareness) | Durable memory + file locks — claim files before editing, record decisions, hand off across sessions |
-| [`octocode-brainstorming`](https://github.com/bgauryy/octocode/tree/main/skills/octocode-brainstorming) | Evidence-grounded idea and prior-art exploration before building — needs a web search key (`SERPER_API_KEY` or `TAVILY_API_KEY`) |
-| [`octocode-rfc-generator`](https://github.com/bgauryy/octocode/tree/main/skills/octocode-rfc-generator) | Structured proposals for risky or cross-cutting work |
-| [`octocode-roast`](https://github.com/bgauryy/octocode/tree/main/skills/octocode-roast) | Adversarial code review with severity-ranked findings |
-| [`octocode-skills`](https://github.com/bgauryy/octocode/tree/main/skills/octocode-skills) | Find, install, rate, and create skills |
+| `octocode-research` | Evidence-first investigation: code exploration, implementation planning, PR review, refactoring, architecture mapping |
+| `octocode-brainstorming` | Idea validation against real evidence before building — outputs a decision, not code |
+| `octocode-rfc-generator` | Structured proposal for risky or cross-cutting changes, before any code is written |
+| `octocode-roast` | Adversarial code review with ranked findings and specific fix paths |
+| `octocode-prompt-optimizer` | Fix agent instructions that drift, skip steps, or produce inconsistent output |
+| `octocode-skills` | Find, install, and author new skills |
 
-Pi picks the right skill from context, or you can invoke one directly with `/skill:<name>`. Each skill links to its own README above.
-
----
-
-## Slash commands
-
-| Command | Purpose |
-|---|---|
-| `/octocode-status` | Show bundled CLI, prompt, and skills — verify everything loaded |
-| `/octocode-setup [--global]` | Write the system prompt to disk (project or global) |
-| `/octocode-mcp-install [args]` | Run the bundled `octocode install` for MCP-native hosts |
-| `/octocode-skills-update` | Update the package and reload skills |
+Invoke directly with `/skill:<name>`, or the agent picks the right one from context. Skills compose — research into roast, brainstorming into RFC — for end-to-end workflows.
 
 ---
 
-## Optional: Octocode MCP inside Pi
-
-The bundled CLI already covers the full research surface. Add MCP only if you specifically want Pi to call Octocode through structured tool calls instead of shell commands.
+## Setup
 
 ```bash
-pi install npm:pi-mcp-adapter
+pi install npm:@octocodeai/pi-extension
+npx octocode auth login     # GitHub access for code research
+/octocode-status            # confirm everything loaded (skills, memory, prompt, web provider)
 ```
 
-```json
-{
-  "mcpServers": {
-    "octocode": {
-      "command": "npx",
-      "args": ["-y", "@octocodeai/mcp@latest"]
-    }
-  }
-}
-```
+That's it — everything below is optional.
 
 ---
 
-## Links
+## Configuration
 
-- [Octocode](https://octocode.ai) · [Octocode MCP](https://github.com/bgauryy/octocode-mcp)
-- [The system prompt (`APPEND_SYSTEM.md`)](https://github.com/bgauryy/octocode/blob/main/packages/octocode-pi-extension/docs/PI/APPEND_SYSTEM.md) — the full operating model
-- [Pi packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md) · [extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md) · [skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md)
-- [Pi MCP adapter](https://github.com/nicobailon/pi-mcp-adapter)
+All optional. Put keys and settings in a `.env` under your Octocode home — `~/.octocode/.env` (global) or `<project>/.octocode/.env` (per-repo, overrides global). It's loaded automatically at session start and shared with the bundled CLI, skills, and the `web` tool.
+
+```bash
+# ~/.octocode/.env   — every line optional
+TAVILY_API_KEY=tvly-...      # richer web search: AI answer + results  → app.tavily.com
+SERPER_API_KEY=...           # Google SERP web search                  → serper.dev
+# OCTOCODE_WEB_USER_AGENT=…  # override the browser UA used for web fetch
+```
+
+- **Web search** auto-picks the best available provider: **Tavily → Serper → DuckDuckGo** (no key needed — DuckDuckGo is the fallback).
+- **GitHub tokens do *not* go here** — run `npx octocode auth login` (encrypted) or use your shell env. They're protected keys and won't be read from `.env`.
+- Values are never logged. Full reference: [CONFIGURATION.md](https://github.com/bgauryy/octocode-mcp/blob/main/docs/CONFIGURATION.md).
+
+---
+
+## Commands
+
+| | |
+|---|---|
+| `/octocode-status` | Confirm CLI, skills, memory, and prompt all loaded |
+| `/octocode-setup` | Pin the operating model to your project |
+| `/octocode-setup --global` | Pin the operating model globally |
+| `/octocode-skills-update` | Update to the latest version |
+
+---
+
+**Prefer one command?** [`octocode-agent`](../octocode-agent) bundles Pi + this harness into a single branded launcher (`octocode-agent`) with the harness leading the prompt.
+
+---
+
+[Octocode](https://octocode.ai) · [GitHub](https://github.com/bgauryy/octocode-mcp) · [Configuration](https://github.com/bgauryy/octocode-mcp/blob/main/docs/CONFIGURATION.md) · [Authentication](https://github.com/bgauryy/octocode/blob/main/docs/AUTHENTICATION.md) · [Pi packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md)

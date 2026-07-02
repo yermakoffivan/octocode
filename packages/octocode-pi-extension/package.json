@@ -1,6 +1,6 @@
 {
   "name": "@octocodeai/pi-extension",
-  "version": "0.3.0",
+  "version": "1.0.2",
   "description": "Official Octocode Pi package: system prompt, skills, harness docs, and setup commands for coding agents.",
   "keywords": [
     "ai-coding",
@@ -27,6 +27,7 @@
   "files": [
     "dist/**",
     "skills/**",
+    ".env.example",
     "README.md",
     "LICENSE"
   ],
@@ -34,7 +35,19 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "octocode": "^2.2.4"
+    "octocode": "workspace:*",
+    "@octocodeai/octocode-core": ">=16.6.1"
+  },
+  "devDependencies": {
+    "@octocodeai/config": "workspace:*"
+  },
+  "peerDependencies": {
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "typebox": {
+      "optional": true
+    }
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -43,7 +56,9 @@
     "test": "yarn build && node --test tests/*.test.mjs",
     "typecheck": "yarn lint",
     "verify": "yarn lint && yarn test && yarn build",
-    "prepack": "yarn build",
+    "check:no-workspace": "node scripts/check-no-workspace-protocol.mjs",
+    "prepack": "node scripts/check-no-workspace-protocol.mjs && yarn build",
+    "prepublishOnly": "node scripts/check-no-workspace-protocol.mjs",
     "readme:sync": "node ../../scripts/sync-package-readmes.mjs ."
   },
   "pi": {
