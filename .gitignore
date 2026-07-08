@@ -25,6 +25,17 @@ coverage
 !/skills/octocode-research/output/
 # Build artifact injected by skills/scripts/sync.mjs — regenerated from packages/octocode-config/dist/
 /skills/*/scripts/octocode-config.mjs
+# Package-owned awareness skill mirrors regenerated from packages/octocode-awareness/skills/.
+/skills/octocode-agent-communication/
+/skills/octocode-awareness/
+/skills/octocode-reflection/
+# Vendored at packages/octocode-awareness build from repo-root skills/octocode-skills.
+# Ships on npm via package files skills/**; keep out of git.
+/packages/octocode-awareness/skills/octocode-skills/
+# Build artifact regenerated from root skills/ + packages/octocode-awareness/skills/.
+/packages/octocode-pi-extension/skills/
+# Bundled skills copied into the octocode CLI package during build/prepack.
+/packages/octocode/skills/
 # sqlite DB
 mcp.sqlite
 
@@ -41,8 +52,8 @@ devScripts
 .agents
 # Generated from root README.md during package build/prepack
 /packages/*/README.md
+!/packages/octocode-awareness/README.md
 !/packages/octocode-pi-extension/README.md
 !/packages/octocode-agent/README.md
-/packages/octocode-pi-extension/skills/
 output
 __pycache__

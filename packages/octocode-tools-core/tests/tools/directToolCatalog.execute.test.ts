@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { executeDirectTool } from '../../src/tools/directToolCatalog.js';
-import {
-  OQL_SEARCH_TOOL_NAME,
-  STATIC_TOOL_NAMES,
-} from '../../src/tools/toolNames.js';
+import { STATIC_TOOL_NAMES } from '../../src/tools/toolNames.js';
 import { cleanup } from '../../src/serverConfig.js';
 import {
   setRuntimeSurface,
@@ -128,7 +125,14 @@ describe('executeDirectTool - invalid input handling (finding 3)', () => {
     ).rejects.toThrow(/Unknown tool/);
   });
 
-  it('rejects ghCloneRepo when ENABLE_CLONE is false', async () => {
+  it('does not expose oqlSearch as a direct tool; use the CLI search command or OQL API instead', async () => {
+    await expect(executeDirectTool('oqlSearch', {})).rejects.toThrow(/Unknown tool/);
+  });
+
+  // ENABLE_CLONE gate is MCP-only (packages/octocode-mcp/src/tools/toolFilters.ts).
+  // tools-core no longer rejects based on ENABLE_CLONE — it is gate-free at
+  // this layer. The MCP decides whether to register/expose ghCloneRepo at all.
+  it('does NOT gate ghCloneRepo in tools-core when ENABLE_CLONE is false (gate is MCP-only)', async () => {
     process.env.ENABLE_LOCAL = 'true';
     process.env.ENABLE_CLONE = 'false';
     cleanup();
@@ -140,28 +144,21 @@ describe('executeDirectTool - invalid input handling (finding 3)', () => {
           {
             owner: 'octocat',
             repo: 'Hello-World',
-            mainResearchGoal: 'Verify clone gate',
-            researchGoal: 'Ensure direct clone execution respects ENABLE_CLONE',
-            reasoning: 'Regression test for direct CLI clone gate',
+            mainResearchGoal: 'Verify clone gate is MCP-only',
+            researchGoal: 'Confirm tools-core does not gate on ENABLE_CLONE',
+            reasoning: 'Architectural decision: clone gating belongs in the MCP layer',
           },
         ],
       }
     );
 
-    expect(result.isError).toBe(true);
-    const structured = result.structuredContent as
-      | {
-          error?: {
-            code?: string;
-            message?: string;
-          };
-        }
-      | undefined;
-    expect(structured?.error?.code).toBe('cloneDisabled');
-    expect(structured?.error?.message).toContain('ENABLE_CLONE=true');
+    // tools-core must NOT return a cloneDisabled error — that code was removed.
+    // The call may error for other reasons (network, auth) but not clone gating.
+    const structured = result.structuredContent as { error?: { code?: string } } | undefined;
+    expect(structured?.error?.code).not.toBe('cloneDisabled');
   });
 
-  it('rejects ghGetFileContent directory materialization when ENABLE_CLONE is false', async () => {
+  it('does NOT gate ghGetFileContent directory type in tools-core when ENABLE_CLONE is false (gate is MCP-only)', async () => {
     process.env.ENABLE_LOCAL = 'true';
     process.env.ENABLE_CLONE = 'false';
     cleanup();
@@ -173,104 +170,17 @@ describe('executeDirectTool - invalid input handling (finding 3)', () => {
           {
             owner: 'octocat',
             repo: 'Hello-World',
-            path: 'src',
-            type: 'directory',
-            mainResearchGoal: 'Verify directory fetch clone gate',
-            researchGoal:
-              'Ensure directory fetch requires clone support before provider work',
-            reasoning: 'Regression test for ghGetFileContent directory gate',
+            path: 'README.md',
+            mainResearchGoal: 'Verify directory fetch clone gate is MCP-only',
+            researchGoal: 'Confirm tools-core does not gate directory fetch on ENABLE_CLONE',
+            reasoning: 'Architectural decision: clone gating belongs in the MCP layer',
           },
         ],
       }
     );
 
-    expect(result.isError).toBe(true);
+    // tools-core must NOT emit "Directory fetch requires local clone support".
     const text = JSON.stringify(result.structuredContent);
-    expect(text).toContain('Directory fetch requires local clone support');
-    expect(text).toContain('ENABLE_CLONE=true');
-  });
-
-  it('wraps oqlSearch output once in the standard direct-tool results[].data shape', async () => {
-    setRuntimeSurface('cli');
-    cleanup();
-
-    const result = await executeDirectTool(OQL_SEARCH_TOOL_NAME, {
-      target: 'code',
-      from: { kind: 'local', path: 'src/oql' },
-      where: { kind: 'text', value: 'runOqlSearch' },
-      view: 'discovery',
-      limit: 2,
-    });
-
-    expect(result.isError).not.toBe(true);
-    const structured = result.structuredContent as {
-      results?: Array<{ id?: string; status?: string; data?: unknown }>;
-      oql?: unknown;
-    };
-    expect(Array.isArray(structured.results)).toBe(true);
-    expect(structured.results?.[0]?.id).toBe('oqlSearch-1');
-    expect(structured.results?.[0]?.status).toBeUndefined();
-    expect(structured).not.toHaveProperty('oql');
-    expect(
-      (structured.results?.[0]?.data as { results?: unknown[] }).results?.length
-    ).toBeGreaterThan(0);
-  });
-
-  it('deduplicates direct oqlSearch row continuation hints without dropping executable queries', async () => {
-    setRuntimeSurface('cli');
-    cleanup();
-
-    const result = await executeDirectTool(OQL_SEARCH_TOOL_NAME, {
-      target: 'code',
-      from: { kind: 'local', path: 'src/oql' },
-      where: { kind: 'text', value: 'runOqlSearch' },
-      view: 'discovery',
-      limit: 2,
-    });
-
-    expect(result.isError).not.toBe(true);
-    const structured = result.structuredContent as {
-      results?: Array<{
-        data?: {
-          nextHints?: Record<string, { why?: string; confidence?: string }>;
-          results?: Array<{
-            next?: Record<
-              string,
-              { query?: Record<string, unknown>; why?: string; confidence?: string }
-            >;
-          }>;
-        };
-      }>;
-    };
-    const data = structured.results?.[0]?.data;
-    const firstRowNext = data?.results?.[0]?.next;
-    expect(data?.nextHints?.['next.fetch']).toMatchObject({
-      why: 'Read the exact content at this hit.',
-      confidence: 'exact',
-    });
-    expect(firstRowNext?.['next.fetch']?.query).toMatchObject({
-      target: 'content',
-    });
-    expect(firstRowNext?.['next.fetch']).not.toHaveProperty('why');
-    expect(firstRowNext?.['next.fetch']).not.toHaveProperty('confidence');
-  });
-
-  it('marks zero-match oqlSearch rows as empty without failing the call', async () => {
-    setRuntimeSurface('cli');
-    cleanup();
-
-    const result = await executeDirectTool(OQL_SEARCH_TOOL_NAME, {
-      target: 'code',
-      from: { kind: 'local', path: 'src/oql' },
-      where: { kind: 'text', value: 'definitely-no-such-oql-symbol-xyz' },
-      view: 'discovery',
-      limit: 2,
-    });
-
-    expect(result.isError).not.toBe(true);
-    const structured = result.structuredContent as {
-      results?: Array<{ status?: string; data?: unknown }>;
-    };
-    expect(structured.results?.[0]?.status).toBe('empty');
+    expect(text).not.toContain('Directory fetch requires local clone support');
   });
 });

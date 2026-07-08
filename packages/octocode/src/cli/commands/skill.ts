@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import type {
   MarketplaceSkill,
   MarketplaceSource,
@@ -9,10 +10,12 @@ import {
   parseUserSkillPlatformList,
 } from '../../features/skills.js';
 import { c, bold, dim } from '../../utils/colors.js';
-import { fileExists } from '../../utils/fs.js';
+import { dirExists, fileExists } from '../../utils/fs.js';
 import { HOME } from '../../utils/platform.js';
 import {
   formatSkillInstallTargets,
+  getAvailableSkills,
+  getSkillsSourceDir,
   isSafeSkillName,
   installSkillToDestination,
   resolveModeForTarget,
@@ -282,6 +285,82 @@ function buildOctocodeSkillsSource(branchOverride?: string): MarketplaceSource {
   };
 }
 
+function getBundledSkillsSource(): MarketplaceSource | null {
+  try {
+    const skillsPath = getSkillsSourceDir();
+    return {
+      id: 'bundled-octocode-skills',
+      name: 'Bundled',
+      type: 'local',
+      owner: '',
+      repo: '',
+      branch: '',
+      skillsPath,
+      skillPattern: 'skill-folders',
+      description: 'Bundled Octocode skills',
+      url: `file://${skillsPath}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function tryResolveBundledSkillRequest(
+  skillName: string
+): SkillInstallRequest | null {
+  try {
+    if (!isSafeSkillName(skillName)) return null;
+
+    const bundledSource = getBundledSkillsSource();
+    if (!bundledSource) return null;
+
+    const skillPath = path.join(bundledSource.skillsPath, skillName);
+    if (
+      !dirExists(skillPath) ||
+      !fileExists(path.join(skillPath, 'SKILL.md'))
+    ) {
+      return null;
+    }
+
+    return {
+      skill: {
+        name: skillName,
+        displayName: formatSkillName(skillName),
+        description: 'Bundled Octocode skill',
+        path: skillName,
+        source: bundledSource,
+      },
+      sourceUrl: `file://${skillPath}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveAllBundledSkillRequests(): SkillInstallRequest[] {
+  try {
+    const bundledSource = getBundledSkillsSource();
+    if (!bundledSource) return [];
+
+    return getAvailableSkills()
+      .filter(name =>
+        fileExists(path.join(bundledSource.skillsPath, name, 'SKILL.md'))
+      )
+      .map(name => ({
+        skill: {
+          name,
+          displayName: formatSkillName(name),
+          description: 'Bundled Octocode skill',
+          path: name,
+          source: bundledSource,
+        },
+        sourceUrl: `file://${path.join(bundledSource.skillsPath, name)}`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 function buildGitHubLibrarySource(ref: GithubSkillFolder): MarketplaceSource {
   const sourceId = slugify(
     ['github', ref.owner, ref.repo, ref.branch, ref.skillPath || 'root'].join(
@@ -300,6 +379,114 @@ function buildGitHubLibrarySource(ref: GithubSkillFolder): MarketplaceSource {
     skillPattern: 'skill-folders',
     description: `GitHub skills library ${ref.owner}/${ref.repo}/${ref.skillPath}`,
     url: ref.url,
+  };
+}
+
+function buildLocalSkillSource(sourceRoot: string): MarketplaceSource {
+  const resolvedRoot = path.resolve(sourceRoot);
+  return {
+    id: slugify(['local', resolvedRoot].join('-')) || 'local-skills',
+    name: 'Local skills',
+    type: 'local',
+    owner: '',
+    repo: '',
+    branch: '',
+    skillsPath: resolvedRoot,
+    skillPattern: 'skill-folders',
+    description: 'Local skill folder',
+    url: pathToFileURL(resolvedRoot).href,
+  };
+}
+
+function stripLocalSkillMd(rawPath: string): string {
+  const trimmed = rawPath.trim();
+  return path.basename(trimmed).toLowerCase() === 'skill.md'
+    ? path.dirname(trimmed)
+    : trimmed;
+}
+
+function expandLocalPath(rawPath: string): string {
+  const trimmed = rawPath.trim();
+  if (trimmed === '~') return HOME;
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    return path.join(HOME, trimmed.slice(2));
+  }
+  return trimmed;
+}
+
+function buildLocalSkillRequest(skillDir: string): SkillInstallRequest | null {
+  const resolvedSkillDir = path.resolve(stripLocalSkillMd(skillDir));
+  if (
+    !dirExists(resolvedSkillDir) ||
+    !fileExists(path.join(resolvedSkillDir, 'SKILL.md'))
+  ) {
+    return null;
+  }
+
+  const skillName = path.basename(resolvedSkillDir);
+  if (!isSafeSkillName(skillName)) {
+    return null;
+  }
+
+  return {
+    skill: {
+      name: skillName,
+      displayName: formatSkillName(skillName),
+      description: 'Local skill folder',
+      path: skillName,
+      source: buildLocalSkillSource(path.dirname(resolvedSkillDir)),
+    },
+    sourceUrl: pathToFileURL(resolvedSkillDir).href,
+  };
+}
+
+function resolveLocalSkillRequests(
+  rawPath: string
+):
+  | { requests: SkillInstallRequest[] }
+  | { error: string; status: typeof EXIT.NOT_FOUND | typeof EXIT.USAGE } {
+  const resolvedPath = path.resolve(
+    stripLocalSkillMd(expandLocalPath(rawPath))
+  );
+  const directSkill = buildLocalSkillRequest(resolvedPath);
+  if (directSkill) {
+    return { requests: [directSkill] };
+  }
+
+  if (!dirExists(resolvedPath)) {
+    return {
+      error: `Local skill path not found: ${resolvedPath}`,
+      status: EXIT.NOT_FOUND,
+    };
+  }
+
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(resolvedPath, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() || entry.isSymbolicLink())
+      .map(entry => entry.name)
+      .sort((a, b) => a.localeCompare(b));
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : `Could not read local skill path: ${resolvedPath}`,
+      status: EXIT.NOT_FOUND,
+    };
+  }
+
+  const requests = entries
+    .map(name => buildLocalSkillRequest(path.join(resolvedPath, name)))
+    .filter((request): request is SkillInstallRequest => request !== null);
+
+  if (requests.length > 0) {
+    return { requests };
+  }
+
+  return {
+    error: `Local path does not contain a SKILL.md or direct child skill folders: ${resolvedPath}`,
+    status: EXIT.NOT_FOUND,
   };
 }
 
@@ -461,13 +648,16 @@ function printUsageError(message: string, jsonOutput: boolean): void {
     console.log();
     console.log(`  ${c('red', '✗')} ${message}`);
     console.log(
-      `  ${dim('Usage:')} skill (--add <github-path> | --name <octocode-skill> | --install-all) [--platform common|cursor|claude|codex|opencode|pi|copilot|gemini|all] [--mode symlink|copy|hybrid] [--force|--update] [--dry-run]`
+      `  ${dim('Usage:')} skill (--add <github-path> | --add --path <local-skill-or-skills-dir> | --name <octocode-skill> | --install-all) [--platform common|cursor|claude|codex|opencode|pi|copilot|gemini|all] [--mode symlink|copy|hybrid] [--force|--update] [--dry-run]`
     );
     console.log(`  ${dim('List:  ')} skill --list`);
     console.log(`  ${dim('Example:')} skill --name octocode-research`);
     console.log(`  ${dim('Example:')} skill --install-all --platform common`);
     console.log(
       `  ${dim('Example:')} skill --add owner/repo/skills --platform cursor`
+    );
+    console.log(
+      `  ${dim('Example:')} skill --add --path /path/to/skills --platform common`
     );
     console.log();
   }
@@ -482,6 +672,7 @@ export const skillCommand: CLICommand = {
   name: 'skill',
   options: [
     { name: 'add', hasValue: true },
+    { name: 'path', hasValue: true },
     { name: 'name', hasValue: true },
     { name: 'platform', hasValue: true },
     { name: 'target', hasValue: true },
@@ -576,6 +767,7 @@ export const skillCommand: CLICommand = {
 
     // ── Parse source ──────────────────────────────────────────────────────────
     const rawAdd = args.options['add'];
+    const rawPath = args.options['path'];
     const rawName = args.options['name'];
     const namedSkill =
       typeof rawName === 'string' && rawName.trim().length > 0
@@ -584,14 +776,20 @@ export const skillCommand: CLICommand = {
     const githubFolder =
       typeof rawAdd === 'string' && rawAdd.trim().length > 0
         ? rawAdd.trim()
-        : args.args[0];
+        : rawAdd === true
+          ? undefined
+          : args.args[0];
+    const localSkillPath =
+      typeof rawPath === 'string' && rawPath.trim().length > 0
+        ? rawPath.trim()
+        : undefined;
     const installAll = Boolean(
       args.options['install-all'] || args.options['all-skills']
     );
 
-    if (!githubFolder && !namedSkill && !installAll) {
+    if (!githubFolder && !localSkillPath && !namedSkill && !installAll) {
       printUsageError(
-        'Missing GitHub skill path, Octocode skill name, or --install-all  (try --list to browse)',
+        'Missing GitHub skill path, local --path, Octocode skill name, or --install-all  (try --list to browse)',
         jsonOutput
       );
       return;
@@ -599,12 +797,13 @@ export const skillCommand: CLICommand = {
 
     const sourceChoices = [
       Boolean(githubFolder),
+      Boolean(localSkillPath),
       Boolean(namedSkill),
       installAll,
     ].filter(Boolean).length;
     if (sourceChoices > 1) {
       printUsageError(
-        'Use only one of --add <github-path>, --name <octocode-skill>, or --install-all',
+        'Use only one of --add <github-path>, --add --path <local-skill-or-skills-dir>, --name <octocode-skill>, or --install-all',
         jsonOutput
       );
       return;
@@ -656,20 +855,80 @@ export const skillCommand: CLICommand = {
 
     let requests: SkillInstallRequest[] = [];
     if (installAll) {
-      const spinner = jsonOutput
-        ? null
-        : new Spinner('Fetching Octocode skills list...').start();
-      requests = await resolveOctocodeAllSkillRequests(branchOverride);
-      spinner?.stop();
-    } else {
-      const ref = namedSkill
-        ? buildOctocodeSkillFolder(namedSkill, branchOverride)
-        : parseGitHubSkillFolder(githubFolder, branchOverride);
+      // Prefer bundled skills; fall back to GitHub fetch if bundle is unavailable.
+      const bundledRequests = resolveAllBundledSkillRequests();
+      if (bundledRequests.length > 0) {
+        requests = bundledRequests;
+      } else {
+        const spinner = jsonOutput
+          ? null
+          : new Spinner('Fetching Octocode skills list...').start();
+        requests = await resolveOctocodeAllSkillRequests(branchOverride);
+        spinner?.stop();
+      }
+    } else if (namedSkill) {
+      // For official Octocode skills: prefer bundled path (offline, correct version).
+      const bundledRequest = tryResolveBundledSkillRequest(namedSkill);
+      if (bundledRequest) {
+        requests = [bundledRequest];
+      } else {
+        const ref = buildOctocodeSkillFolder(namedSkill, branchOverride);
+        if (!ref) {
+          printUsageError('Invalid Octocode skill name', jsonOutput);
+          return;
+        }
+
+        const spinner = jsonOutput
+          ? null
+          : new Spinner(`Resolving ${namedSkill}...`).start();
+        const resolved = await resolveGitHubSkillRequests(ref, namedSkill);
+        spinner?.stop();
+        if ('error' in resolved) {
+          if (jsonOutput) {
+            const skill = buildMarketplaceSkill(ref);
+            console.log(
+              JSON.stringify({
+                success: false,
+                skill: skill?.name,
+                source: ref.url,
+                error: resolved.error,
+              })
+            );
+          } else {
+            console.log();
+            console.log(`  ${c('red', '✗')} ${resolved.error}`);
+            console.log();
+          }
+          process.exitCode = resolved.status;
+          return;
+        }
+        requests = resolved.requests;
+      }
+    } else if (localSkillPath) {
+      const resolved = resolveLocalSkillRequests(localSkillPath);
+      if ('error' in resolved) {
+        if (jsonOutput) {
+          console.log(
+            JSON.stringify({
+              success: false,
+              source: localSkillPath,
+              error: resolved.error,
+            })
+          );
+        } else {
+          console.log();
+          console.log(`  ${c('red', '✗')} ${resolved.error}`);
+          console.log();
+        }
+        process.exitCode = resolved.status;
+        return;
+      }
+      requests = resolved.requests;
+    } else if (githubFolder) {
+      const ref = parseGitHubSkillFolder(githubFolder, branchOverride);
       if (!ref) {
         printUsageError(
-          namedSkill
-            ? 'Invalid Octocode skill name'
-            : 'Expected a GitHub path URL or owner/repo/path shorthand',
+          'Expected a GitHub path URL or owner/repo/path shorthand',
           jsonOutput
         );
         return;
@@ -677,8 +936,8 @@ export const skillCommand: CLICommand = {
 
       const spinner = jsonOutput
         ? null
-        : new Spinner(`Resolving ${namedSkill ?? githubFolder}...`).start();
-      const resolved = await resolveGitHubSkillRequests(ref, namedSkill);
+        : new Spinner(`Resolving ${githubFolder}...`).start();
+      const resolved = await resolveGitHubSkillRequests(ref, undefined);
       spinner?.stop();
       if ('error' in resolved) {
         if (jsonOutput) {

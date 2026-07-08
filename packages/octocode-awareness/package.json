@@ -1,0 +1,68 @@
+{
+  "name": "@octocodeai/octocode-awareness",
+  "version": "1.0.0",
+  "description": "Octocode Awareness: shared workspace coordination plus reflection/learning skills — zero npm runtime deps.",
+  "keywords": [
+    "octocode",
+    "memory",
+    "sqlite",
+    "agent"
+  ],
+  "author": "Guy Bary <bgauryy@octocodeai.com>",
+  "homepage": "https://octocode.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bgauryy/octocode-mcp.git",
+    "directory": "packages/octocode-awareness"
+  },
+  "bugs": "https://github.com/bgauryy/octocode-mcp/issues",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./bin/awareness": "./dist/bin/awareness.js",
+    "./bin/octocode-awareness": "./dist/bin/awareness.js",
+    "./bin/extract-hook-files": "./dist/bin/extract-hook-files.js"
+  },
+  "bin": {
+    "octocode-awareness": "./dist/bin/awareness.js"
+  },
+  "files": [
+    "dist/**",
+    "skills/**",
+    "docs/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:dev": "node build.mjs",
+    "clean": "rm -rf dist/",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "yarn build && node ../../node_modules/vitest/vitest.mjs run --coverage",
+    "test:quiet": "yarn build && node ../../node_modules/vitest/vitest.mjs run --reporter=dot --silent",
+    "test:smoke": "node skills/octocode-awareness/scripts/smoke-multi-agent.mjs",
+    "self-test": "node dist/bin/awareness.js maintenance self-test",
+    "verify": "yarn lint && yarn test"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "^4.1.9",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

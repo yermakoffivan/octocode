@@ -8,7 +8,17 @@ const SKILL_SPEC_OPTION_PATCHES: Record<
   add: {
     hasValue: true,
     description:
-      'GitHub skill path URL or owner/repo/path shorthand; a library path installs every direct child skill folder',
+      'GitHub skill path URL or owner/repo/path shorthand; combine with --path for a local skill folder or local skills library',
+  },
+  name: {
+    hasValue: true,
+    description:
+      'Official Octocode skill name; checks bundled package skills first, then falls back to GitHub',
+  },
+  path: {
+    hasValue: true,
+    description:
+      'Local skill folder, SKILL.md path, or skills library path; use with --add when the agent already knows the bundled skill location',
   },
   platform: {
     hasValue: true,
@@ -35,6 +45,11 @@ const SKILL_SPEC_OPTION_PATCHES: Record<
 
 const SKILL_SPEC_EXTRA_OPTIONS = [
   {
+    name: 'path',
+    hasValue: true,
+    description: SKILL_SPEC_OPTION_PATCHES.path.description,
+  },
+  {
     name: 'install-all',
     description: 'Install every current official Octocode skill',
   },
@@ -55,29 +70,51 @@ function patchSkillCommandSpec(spec: CLICommandSpec): CLICommandSpec {
     ...patchedOptions,
     ...SKILL_SPEC_EXTRA_OPTIONS.filter(option => !optionNames.has(option.name)),
   ];
+  const scheme = (spec.scheme ?? []).map(line => {
+    if (line.startsWith('required source:')) {
+      return 'required source: pass exactly one of --add <github-folder>, --add --path <local-skill-or-skills-dir>, --name <octocode-skill>, or --install-all. --name checks bundled skills first, then falls back to GitHub.';
+    }
+    if (line.startsWith('accepted --add forms')) {
+      return 'accepted --add forms include GitHub URLs/shorthands, or --add --path pointing at a local skill folder, SKILL.md, or direct-child skills library.';
+    }
+    if (line.startsWith('--name must')) {
+      return '--name must be a safe official skill name such as octocode-awareness or octocode-research. Run with --list to see available Octocode skill names.';
+    }
+    if (line.startsWith('--platform')) {
+      return '--platform (alias --target, default: common) accepts comma-separated values: common (-> ~/.agents/skills), cursor (-> ~/.cursor/skills), claude (-> Claude Code + Claude Desktop skill folders), codex (-> ~/.agents/skills), opencode (-> ~/.config/opencode/skills), pi (-> ~/.pi/agent/skills), copilot, gemini, or all. --all is shorthand for --platform all.';
+    }
+    if (line.startsWith('platform paths:')) {
+      return 'platform paths: common/codex -> ~/.agents/skills, cursor -> ~/.cursor/skills, opencode -> ~/.config/opencode/skills, pi -> ~/.pi/agent/skills, claude -> Claude Code plus Claude Desktop skill folders. Windows uses platform-appropriate AppData paths.';
+    }
+    if (line.startsWith('install mode:')) {
+      return 'install mode: symlink (default) links each target to the Octocode-managed source cache; copy embeds a standalone copy; hybrid uses copy for claude targets and symlink for everything else.';
+    }
+    if (line.startsWith('runtime:')) {
+      return "runtime: validates the source, refreshes Octocode's skill-sources cache, then installs to the selected platform destinations. Bundled/local sources avoid GitHub.";
+    }
+    if (line.startsWith('output:')) {
+      return 'output: human summary by default; --json returns success, skills[], platforms, mode, and installed/skipped/failed counts.';
+    }
+    return line;
+  });
 
   return {
     ...spec,
-    description:
-      'Install one GitHub Agent Skill folder, every skill in a GitHub skills library path, one named Octocode skill, or every official Octocode skill into supported local skill directories.',
     usage:
-      'skill --list\nskill (--add <github-path> | --name <octocode-skill> | --install-all) [--platform common|cursor|claude|codex|opencode|pi|copilot|gemini|all] [--mode symlink|copy|hybrid] [--force|--update] [--dry-run] [--verbose] [--branch <ref>] [--json]',
+      'skill --list\nskill (--add <github-path> | --add --path <local-skill-or-skills-dir> | --name <octocode-skill> | --install-all) [--platform common|cursor|claude|codex|opencode|pi|copilot|gemini|all] [--mode symlink|copy|hybrid] [--force|--update] [--dry-run] [--verbose] [--branch <ref>] [--json]',
     scheme: [
-      'required source: pass exactly one of --add <github-path>, --name <octocode-skill>, or --install-all. --add accepts a GitHub skill folder URL or owner/repo/path shorthand; a library path such as owner/repo/skills installs every direct child skill folder with SKILL.md.',
-      '--name must be a safe Octocode skill folder name such as octocode-research. Run --list to see the live named-skill catalog.',
-      '--platform (alias --target, default: common) accepts comma-separated values: common, cursor, claude, codex, opencode, pi, copilot, gemini, or all. --all is shorthand for --platform all.',
-      'platform paths: common -> ~/.agents/skills, cursor -> ~/.cursor/skills, claude -> ~/.claude/skills plus ~/.claude-desktop/skills, codex -> ~/.agents/skills, opencode -> ~/.config/opencode/skills, pi -> ~/.pi/agent/skills, copilot -> ~/.copilot/skills, gemini -> ~/.gemini/skills. Windows uses platform-appropriate home/AppData paths.',
-      'install mode: symlink (default) refreshes ~/.octocode/skills/<skill> and links selected clients to that canonical source. copy duplicates the refreshed source into each destination. hybrid copies Claude targets and symlinks the rest.',
-      '--force (alias --update) replaces existing destination folders or links. The canonical source in ~/.octocode/skills refreshes on every install attempt.',
-      '--dry-run previews source and destination paths without fetching or writing anything.',
-      'output: human output prints mode, platforms, canonical source path, every destination path, and a final summary. --json returns skills[] entries plus top-level platforms, mode, and aggregate summary.',
+      ...scheme,
+      '--install-all installs every current official Octocode skill; --all-skills is an alias.',
+      '--add --path <local-skill-or-skills-dir> installs from a local skill folder, SKILL.md, or direct-child skills library without resolving GitHub.',
+      'additional platforms: copilot and gemini are accepted by this CLI build.',
     ],
     whenToUse: [
-      'Use --list to discover all available Octocode named skills before installing.',
-      'Use --name for Octocode-maintained skills like octocode-research; use --add for arbitrary GitHub skill folders or GitHub skills libraries.',
-      'Omit --platform to install to the default shared location (~/.agents/skills); use --platform all for every supported local skill destination.',
+      ...(spec.whenToUse ?? []).map(line =>
+        line.includes('octocode-engineer')
+          ? 'Use --name for official Octocode skills like octocode-awareness or octocode-research; use --add for GitHub skill folders; use --add --path when the agent already knows a local bundled skill location.'
+          : line
+      ),
       'Use --install-all to install every current official Octocode skill without a shell loop.',
-      'Use --dry-run before broad installs or forced overwrites.',
     ],
     examples: [
       'skill --list',
@@ -89,6 +126,7 @@ function patchSkillCommandSpec(spec: CLICommandSpec): CLICommandSpec {
       'skill --install-all --platform pi',
       'skill --add owner/repo/skills/code-review --platform cursor,codex',
       'skill --add owner/repo/skills --platform common',
+      'skill --add --path /path/to/skills/octocode-awareness --platform common',
       'skill --add https://github.com/owner/repo/blob/main/skills/code-review/SKILL.md --platform claude --json',
     ],
     options,

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { copyFileSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,30 +7,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, '..');
 const rootReadme = join(rootDir, 'README.md');
-const packagesDir = join(rootDir, 'packages');
-const requestedTargets = process.argv.slice(2);
 
-function packageDirsFromArgs(args) {
-  if (args.length > 0) {
-    return args.map((arg) => resolve(process.cwd(), arg));
+// Packages with hand-authored READMEs that must never be overwritten by this
+// script. They are committed to git and explicitly un-ignored in .gitignore
+// via the !/packages/<name>/README.md rules.
+const PROTECTED_PACKAGES = new Set([
+  'packages/octocode-awareness',
+  'packages/octocode-pi-extension',
+  'packages/octocode-agent',
+]);
+
+const TARGETS = [
+  'packages/octocode',
+  'packages/octocode-engine',
+  'packages/octocode-mcp',
+];
+
+for (const target of TARGETS) {
+  if (PROTECTED_PACKAGES.has(target)) {
+    throw new Error(
+      `Cannot sync root README.md to ${target} — it has a hand-authored README.md ` +
+      `committed to git. Remove it from TARGETS.`,
+    );
   }
 
-  return readdirSync(packagesDir)
-    .map((packageDirName) => join(packagesDir, packageDirName))
-    .filter((packageDir) => existsSync(join(packageDir, 'package.json')));
-}
-
-for (const packageDir of packageDirsFromArgs(requestedTargets).sort()) {
+  const packageDir = join(rootDir, target);
   const packageJsonPath = join(packageDir, 'package.json');
 
   if (!existsSync(packageJsonPath) || !statSync(packageDir).isDirectory()) {
     throw new Error(`Expected a package directory with package.json: ${packageDir}`);
-  }
-
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-  if (packageJson.octocode?.readmeSync === false) {
-    console.log(`✓ README.md preserved for ${relative(rootDir, packageDir)}`);
-    continue;
   }
 
   copyFileSync(rootReadme, join(packageDir, 'README.md'));

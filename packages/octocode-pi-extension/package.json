@@ -22,24 +22,34 @@
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
     "dist/**",
     "skills/**",
+    "docs/**",
     ".env.example",
     "README.md",
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
-    "octocode": "workspace:*",
-    "@octocodeai/octocode-core": ">=16.6.1"
+    "@octocodeai/octocode-awareness": "workspace:*",
+    "@octocodeai/octocode-core": "^16.6.3",
+    "@octocodeai/octocode-tools-core": "workspace:*"
   },
   "devDependencies": {
-    "@octocodeai/config": "workspace:*"
+    "@octocodeai/config": "workspace:*",
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "^4.1.9",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.9"
   },
   "peerDependencies": {
     "typebox": "*"
@@ -51,11 +61,15 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:skills": "node scripts/build.mjs --skills-only",
     "clean": "node scripts/build.mjs --clean",
-    "lint": "node --check src/index.js && node --check scripts/build.mjs && node --check tests/package.test.mjs",
-    "test": "yarn build && node --test tests/*.test.mjs",
-    "typecheck": "yarn lint",
-    "verify": "yarn lint && yarn test && yarn build",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "yarn build && node ../../node_modules/vitest/vitest.mjs run",
+    "test:unit": "node ../../node_modules/vitest/vitest.mjs run",
+    "test:watch": "node ../../node_modules/vitest/vitest.mjs --watch",
+    "test:coverage": "node ../../node_modules/vitest/vitest.mjs run --coverage",
+    "verify": "yarn typecheck && yarn test",
     "check:no-workspace": "node scripts/check-no-workspace-protocol.mjs",
     "prepack": "node scripts/check-no-workspace-protocol.mjs && yarn build",
     "prepublishOnly": "node scripts/check-no-workspace-protocol.mjs",
@@ -66,7 +80,6 @@
       "./dist/index.js"
     ],
     "skills": [
-      "./skills",
       "./dist/skills"
     ]
   },

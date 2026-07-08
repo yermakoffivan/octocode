@@ -368,9 +368,7 @@ function stableId(
         : (s('url') ?? valueLeadingToken(d));
     case 'commit':
       return (
-        s('sha')?.slice(0, 12) ??
-        s('oid')?.slice(0, 12) ??
-        valueLeadingToken(d)
+        s('sha')?.slice(0, 12) ?? s('oid')?.slice(0, 12) ?? valueLeadingToken(d)
       );
     case 'artifact':
       return s('localPath') ?? s('path');

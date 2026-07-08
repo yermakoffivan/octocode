@@ -2,7 +2,22 @@ use super::patterns::{PATTERNS, PATTERN_REGEXES, REGEX_SET};
 use std::sync::LazyLock;
 
 pub(crate) const CHUNK_SIZE: usize = 500_000;
-const CHUNK_OVERLAP: usize = 1_000;
+/// Hard cap on content handed to the detector. Content above this is redacted
+/// wholesale rather than scanned, bounding worst-case memory/time. Shared by
+/// `sanitize_content` and `mask_text` so both entry points agree on the limit.
+pub(crate) const MAX_CONTENT_SIZE: usize = 10_000_000;
+/// Wholesale placeholder emitted when content exceeds `MAX_CONTENT_SIZE`.
+pub(crate) const CONTENT_SIZE_LIMIT_PLACEHOLDER: &str = "[CONTENT-REDACTED-SIZE-LIMIT]";
+/// Overlap window carried between chunks so a secret straddling a chunk boundary
+/// is still fully contained in one chunk and redacted by the fast path. Sized to
+/// cover the common cases without a full rescan: bounded token patterns top out
+/// at a few hundred chars, and 8 KiB covers typical PEM key blocks (RSA/EC up to
+/// ~4096-bit). A secret longer than this that lands across a 500 KB boundary is
+/// invisible to every chunk slice — that residual gap is closed by the
+/// straddle-proofing post-condition in `detect_chunked` (a single linear
+/// full-content `is_match` + `replace_all` fallback per candidate pattern), so
+/// the overlap is now a fast path rather than the sole correctness guarantee.
+const CHUNK_OVERLAP: usize = 8_192;
 
 // ---------------------------------------------------------------------------
 // File-context regex cache — compiled once, index-aligned with PATTERNS.
@@ -179,6 +194,25 @@ pub(crate) fn detect_chunked(content: &str, file_path: Option<&str>) -> DetectRe
             chunk_start = next;
         }
 
+        // Straddle-proofing post-condition. The chunk walk can miss a match that
+        // is longer than CHUNK_OVERLAP and lands across a 500 KB boundary: no
+        // single chunk slice contains it, so `is_match(chunk)` never fires even
+        // though `REGEX_SET` proved the pattern matches the full content. A
+        // pattern can also match inside one chunk AND separately straddle a
+        // boundary, so `found_in_pattern` alone does not guarantee the output is
+        // clean. Run the pattern's regex once over the FULL sanitized string
+        // (the regex crate is linear, so this scan is cheap); if it still
+        // matches, fall back to a full-content `replace_all` (detect_single
+        // style). This makes "no candidate pattern matches the output" a
+        // guaranteed post-condition regardless of where a secret lands.
+        if regex.is_match(&sanitized) {
+            let result = regex.replace_all(&sanitized, replacement);
+            if result != sanitized.as_str() {
+                found_in_pattern = true;
+                sanitized = result.into_owned();
+            }
+        }
+
         if found_in_pattern {
             secrets_detected.push(pattern.name.to_string());
         }
@@ -201,6 +235,16 @@ pub(crate) fn detect_chunked(content: &str, file_path: Option<&str>) -> DetectRe
 pub(crate) fn mask_text(text: String) -> String {
     if text.is_empty() {
         return text;
+    }
+
+    // Mirror `sanitize_content`'s size cap so `maskSensitiveData` can't be handed
+    // an unbounded input: over-limit content is redacted wholesale rather than
+    // masked. Below the cap, masking is a single linear pass building one output
+    // string (bounded by the ≤10 MB input), so no chunked variant is needed —
+    // unlike `detect_chunked`, whose placeholder replacement can't produce the
+    // even-char `*` masking this path requires.
+    if text.len() > MAX_CONTENT_SIZE {
+        return CONTENT_SIZE_LIMIT_PLACEHOLDER.to_string();
     }
 
     let candidate_indices = matching_non_context_indices(&text);
@@ -325,6 +369,14 @@ mod tests {
     }
 
     #[test]
+    fn mask_text_redacts_oversized_content_wholesale() {
+        // Over-limit input must be redacted wholesale (mirroring sanitize_content)
+        // instead of scanned, so maskSensitiveData can't be handed unbounded work.
+        let input = "a".repeat(MAX_CONTENT_SIZE + 1);
+        assert_eq!(mask_text(input), CONTENT_SIZE_LIMIT_PLACEHOLDER);
+    }
+
+    #[test]
     fn find_char_boundary_at_end_returns_len() {
         let s = "hello";
         assert_eq!(find_char_boundary(s, 10), s.len());
@@ -352,6 +404,32 @@ mod tests {
             result.sanitized.contains("[REDACTED-"),
             "chunked path must redact token near chunk boundary"
         );
+        assert!(!result.secrets_detected.is_empty());
+    }
+
+    #[test]
+    fn detect_chunked_redacts_long_secret_spanning_chunk_boundary() {
+        // A multi-line PEM private key block is far longer than 1 KB and matches
+        // via `[\s\S]*?`. Straddle it across the CHUNK_SIZE boundary so BEGIN sits
+        // ~1.5 KB before the edge and END after it — beyond the old 1 KB overlap,
+        // within the current one. Proves the widened overlap catches secrets that
+        // exceed the previous window.
+        let key_body =
+            "MIIBODEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\n".repeat(30);
+        let key =
+            format!("-----BEGIN RSA PRIVATE KEY-----\n{key_body}-----END RSA PRIVATE KEY-----");
+        assert!(
+            key.len() > 1_000,
+            "key block must exceed the old 1 KB overlap"
+        );
+        let prefix = "a".repeat(CHUNK_SIZE - 1_500);
+        let input = format!("{prefix}{key}\n tail");
+        let result = detect_chunked(&input, None);
+        assert!(
+            result.sanitized.contains("[REDACTED-"),
+            "chunked path must redact a >1 KB secret straddling the chunk boundary"
+        );
+        assert!(!result.sanitized.contains("-----BEGIN RSA PRIVATE KEY-----"));
         assert!(!result.secrets_detected.is_empty());
     }
 
@@ -464,5 +542,238 @@ mod tests {
         assert!(output.starts_with("token: "), "prefix must be untouched");
         assert!(output.ends_with(", rest"), "suffix must be untouched");
         assert!(output.contains('*'), "match region must be masked");
+    }
+
+    // ── Straddle-proofing post-condition tests ────────────────────────────────
+    //
+    // These pin the guarantee that `detect_chunked`'s output never still matches
+    // a candidate pattern, even when a secret is longer than CHUNK_OVERLAP and
+    // lands across a 500 KB chunk boundary (invisible to every chunk slice).
+
+    /// Build an RSA-private-key block whose body is `body_lines` × 64 chars, so
+    /// the whole block comfortably exceeds a chosen byte size. Matches the
+    /// unbounded `rsaPrivateKey` regex (`[\s\S]*?` between BEGIN/END markers).
+    fn rsa_key(body_lines: usize) -> String {
+        let body =
+            "MIIBODEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\n".repeat(body_lines);
+        format!("-----BEGIN RSA PRIVATE KEY-----\n{body}-----END RSA PRIVATE KEY-----")
+    }
+
+    /// Post-condition assertion: for every reported pattern, its regex must no
+    /// longer match the sanitized output — the airtight guarantee.
+    fn assert_no_pattern_matches(result: &DetectResult) {
+        for name in &result.secrets_detected {
+            let idx = PATTERNS
+                .iter()
+                .position(|p| p.name == *name)
+                .expect("reported pattern must exist in PATTERNS");
+            assert!(
+                !PATTERN_REGEXES[idx].is_match(&result.sanitized),
+                "pattern `{name}` still matches sanitized output — post-condition violated"
+            );
+        }
+    }
+
+    #[test]
+    fn detect_chunked_redacts_oversized_secret_straddling_boundary() {
+        // A >8 KiB secret placed so it straddles the 500 KB chunk boundary with
+        // BEGIN before the edge and END after it, both markers landing OUTSIDE
+        // the 8 KiB overlap window. No single chunk slice contains the whole
+        // block, so the chunk fast path can't see it — only the full-content
+        // post-condition catches it.
+        let key = rsa_key(300); // ~19 KiB, well over CHUNK_OVERLAP
+        let half = key.len() / 2;
+        assert!(
+            half > CHUNK_OVERLAP,
+            "each half of the key must exceed the overlap window so no chunk contains the whole block"
+        );
+        let prefix = "a".repeat(CHUNK_SIZE - half);
+        let input = format!("{prefix}{key}\n tail");
+        assert!(
+            input.len() > CHUNK_SIZE,
+            "input must exceed CHUNK_SIZE so detect_chunked actually chunks"
+        );
+
+        let result = detect_chunked(&input, None);
+
+        assert!(
+            !result.sanitized.contains("-----BEGIN RSA PRIVATE KEY-----"),
+            "oversized straddling key must be redacted"
+        );
+        assert!(result.sanitized.contains("[REDACTED-RSAPRIVATEKEY]"));
+        assert!(result
+            .secrets_detected
+            .contains(&"rsaPrivateKey".to_string()));
+        assert_no_pattern_matches(&result);
+    }
+
+    #[test]
+    fn detect_chunked_redacts_both_in_chunk_and_straddling_matches() {
+        // One key fully inside chunk 1 (redacted by the fast path, so
+        // `found_in_pattern` is set) AND a second oversized key straddling the
+        // chunk 1/2 boundary beyond the overlap window (invisible to every
+        // chunk). `found_in_pattern` alone would mark the pattern detected while
+        // leaving the straddling instance in the output — the post-condition
+        // must redact it too.
+        let key_early = rsa_key(5); // small, fully inside chunk 1
+        let key_straddle = rsa_key(300); // ~19 KiB, straddles the boundary
+        let half = key_straddle.len() / 2;
+        assert!(half > CHUNK_OVERLAP);
+        let filler = "a".repeat(CHUNK_SIZE - half - key_early.len());
+        let input = format!("{key_early}{filler}{key_straddle}\n tail");
+
+        let result = detect_chunked(&input, None);
+
+        assert!(
+            !result.sanitized.contains("-----BEGIN RSA PRIVATE KEY-----"),
+            "both the in-chunk and straddling keys must be redacted"
+        );
+        assert_eq!(
+            result.sanitized.matches("[REDACTED-RSAPRIVATEKEY]").count(),
+            2,
+            "both key instances must be replaced"
+        );
+        assert_eq!(
+            result
+                .secrets_detected
+                .iter()
+                .filter(|n| *n == "rsaPrivateKey")
+                .count(),
+            1,
+            "pattern must be reported exactly once"
+        );
+        assert_no_pattern_matches(&result);
+    }
+
+    // ── Property tests ───────────────────────────────────────────────────────
+    //
+    // Two complementary checks (both proptest!):
+    //
+    // 1. `prop_chunked_matches_single_small` (default-run): byte-identical
+    //    equivalence of `detect_chunked` and `detect_single` across small,
+    //    randomly-shaped inputs incl. multi-byte chars. This is fast — the heavy
+    //    cost lives in the `RegexSet` DFA, whose debug-build execution on a
+    //    multi-hundred-KB string is orders of magnitude slower than release; so
+    //    we keep the default cases small and rely on the dedicated boundary
+    //    unit tests (`detect_chunked_redacts_token_spanning_chunk_boundary`,
+    //    `detect_chunked_terminates_when_tail_shorter_than_overlap`) for the
+    //    million-byte path. Both paths share the same per-pattern replacement
+    //    loop, so small-input agreement is strong evidence of equivalence.
+    //
+    // 2. `prop_chunked_matches_single_boundary` (#[ignore] by default): the same
+    //    equivalence on ~500KB inputs with the token placed at boundary-relevant
+    //    offsets, including a multi-byte char near the chunk edge. Run on demand
+    //    (`cargo test -- --ignored`) or in a release-profile CI lane. Not run by
+    //    default because the debug-build `RegexSet` DFA is pathologically slow on
+    //    this input size (tracked separately; correctness is verified).
+    //
+    // `prop_sanitized_has_no_raw_token_shape` pins the no-re-trigger guarantee:
+    // redaction output never re-exposes a raw `ghp_` token shape that a later
+    // pattern could match on a subsequent pass.
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 64,
+            ..ProptestConfig::default()
+        })]
+
+        /// `detect_chunked` and `detect_single` agree on small, randomly-shaped
+        /// inputs (incl. multi-byte chars interspersed around the token). Fast —
+        /// keeps the default suite quick; the chunk-boundary mega-input case is
+        /// covered by the dedicated unit tests and the #[ignore] property below.
+        #[test]
+        fn prop_chunked_matches_single_small(
+            pre in "[ a-z]{0,16}",
+            post in "[ a-z]{0,16}",
+            token_idx in 0usize..4,
+            mb_before in any::<bool>(),
+            mb_after in any::<bool>(),
+        ) {
+            let token = match token_idx {
+                0 => FAKE_GH_TOKEN.to_string(),
+                1 => FAKE_AWS_KEY.to_string(),
+                2 => format!("sk-{}T3BlbkFJ{}", "a".repeat(20), "a".repeat(20)),
+                _ => format!("gho_{}", "a".repeat(36)),
+            };
+            let before = if mb_before { format!("{pre}é") } else { pre };
+            let after = if mb_after { format!("é{post}") } else { post };
+            let input = format!("{before} {token} {after}");
+
+            let single = detect_single(&input, None);
+            let chunked = detect_chunked(&input, None);
+            prop_assert_eq!(single.sanitized, chunked.sanitized);
+            let s: std::collections::HashSet<_> = single.secrets_detected.iter().collect();
+            let c: std::collections::HashSet<_> = chunked.secrets_detected.iter().collect();
+            prop_assert_eq!(s, c);
+        }
+
+        /// ~500KB chunk-boundary equivalence. Still `#[ignore]` by default:
+        /// `[profile.dev.package."regex-automata"] opt-level = 3` (Cargo.toml)
+        /// fixes clean-ASCII 500KB inputs, but the DFA is still algorithmically
+        /// slow on the multi-byte-char-near-boundary shape (a 2-byte UTF-8 char
+        /// placed in the overlap window causes the regex crate's DFA to explore
+        /// many more states). This is a fundamental crate behaviour, not a
+        /// compilation issue. Run with `cargo test -- --ignored prop_chunked` or
+        /// in a release CI lane. Correctness is already pinned by the unit tests.
+        #[test]
+        #[ignore]
+        fn prop_chunked_matches_single_boundary(
+            offset_idx in 0usize..5,
+            token_idx in 0usize..4,
+        ) {
+            let token = match token_idx {
+                0 => FAKE_GH_TOKEN.to_string(),
+                1 => FAKE_AWS_KEY.to_string(),
+                2 => format!("sk-{}T3BlbkFJ{}", "a".repeat(20), "a".repeat(20)),
+                _ => format!("gho_{}", "a".repeat(36)),
+            };
+            let base = match offset_idx {
+                0 => 0,
+                1 => CHUNK_SIZE - token.len() - 8,
+                2 => CHUNK_SIZE - token.len() / 2,
+                3 => CHUNK_SIZE + CHUNK_OVERLAP / 2,
+                _ => CHUNK_SIZE + CHUNK_OVERLAP + 4,
+            };
+            let mut prefix: String = "x".repeat(base);
+            if prefix.len() > 1000 {
+                // One multi-byte char well inside the prefix so the overlap
+                // window crosses a non-ASCII byte (stresses find_char_boundary),
+                // while the chunk edge itself stays a clean ASCII boundary.
+                let pos = prefix.len() - 500;
+                prefix.replace_range(pos..pos, "é");
+            }
+            let input = format!("{prefix}token={token}\n tail");
+
+            let single = detect_single(&input, None);
+            let chunked = detect_chunked(&input, None);
+            prop_assert_eq!(single.sanitized, chunked.sanitized);
+            let s: std::collections::HashSet<_> = single.secrets_detected.iter().collect();
+            let c: std::collections::HashSet<_> = chunked.secrets_detected.iter().collect();
+            prop_assert_eq!(s, c);
+        }
+
+        /// Sanitized output must contain no raw secret-token prefix that a later
+        /// pattern could re-match — the no-re-trigger invariant. Uses the
+        /// FAKE_GH_TOKEN shape proven to redact in the unit tests above.
+        #[test]
+        fn prop_sanitized_has_no_raw_token_shape(
+            wrap in "[ .,]{0,4}",
+            rest in "[ -~]{0,40}", // printable ASCII so we don't re-invent secrets
+        ) {
+            let input = format!("{wrap}{FAKE_GH_TOKEN}{rest}");
+            let out = detect_single(&input, None);
+            // The redacted form is `[REDACTED-GITHUBTOKENS]` — it must NOT contain
+            // the bare `ghp_` prefix followed by token chars.
+            prop_assert!(
+                !out.sanitized.contains("ghp_"),
+                "raw token leaked into sanitized output: {:?}",
+                out.sanitized
+            );
+            // And mask_text must preserve total byte length for this ASCII input
+            // (even-indexed chars become '*'; ASCII '*' == 1 byte, so length holds).
+            let masked = mask_text(input.clone());
+            prop_assert_eq!(masked.len(), input.len());
+        }
     }
 }

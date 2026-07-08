@@ -7,33 +7,40 @@ import {
   createRelaxedBulkQuerySchema,
   lineNumberField,
 } from '../../scheme/fields.js';
-
-const minifyField = z
-  .enum(['none', 'standard', 'symbols'])
-  .optional()
-  .default('standard');
 import {
   createQueryShapeSchema,
   describeQuerySchema,
 } from '../../scheme/coreSchemas.js';
 import { responseEnvelopeFields } from '../../scheme/responseEnvelope.js';
 
-const PaginationInfoSchema = z.object({
+const minifyField = z
+  .enum(['none', 'standard', 'symbols'])
+  .optional()
+  .default('standard');
+
+// File entry pagination mirrors the PaginationInfo the finalizer emits: item
+// page coordinates are always present, and char-window fields (charOffset/
+// charLength/nextCharOffset) appear when the content was char-paginated.
+const GitHubFetchFilePaginationSchema = z.object({
   currentPage: z.number(),
   totalPages: z.number(),
   hasMore: z.boolean(),
   nextPage: z.number().optional(),
-  nextMatchPage: z.number().optional(),
   charOffset: z.number().optional(),
   charLength: z.number().optional(),
   totalChars: z.number().optional(),
   nextCharOffset: z.number().optional(),
-  filesPerPage: z.number().optional(),
-  totalFiles: z.number().optional(),
-  entriesPerPage: z.number().optional(),
-  totalEntries: z.number().optional(),
-  matchesPerPage: z.number().optional(),
-  totalMatches: z.number().optional(),
+});
+
+// Machine-ready continuation the finalizer attaches to a char-paginated file so
+// the agent can fetch the next window with a ready-made ghGetFileContent query.
+const GitHubFetchFileNextSchema = z.object({
+  continueChars: z
+    .object({
+      tool: z.literal('ghGetFileContent'),
+      query: z.record(z.string(), z.unknown()),
+    })
+    .optional(),
 });
 
 const GitHubFetchFileEntrySchema = z.object({
@@ -47,7 +54,8 @@ const GitHubFetchFileEntrySchema = z.object({
   sourceChars: z.number().optional(),
   sourceBytes: z.number().optional(),
   resolvedBranch: z.string().optional(),
-  pagination: PaginationInfoSchema.optional(),
+  pagination: GitHubFetchFilePaginationSchema.optional(),
+  next: GitHubFetchFileNextSchema.optional(),
   isPartial: z.boolean().optional(),
   startLine: z.number().optional(),
   endLine: z.number().optional(),
@@ -129,9 +137,6 @@ export const GitHubFetchContentOutputLocalSchema = z.object({
     .optional(),
   responsePagination: responseEnvelopeFields.responsePagination,
   results: z.array(
-    // Canonical row shape, aligned with every other tool: { id, data:{...} }.
-    // The previously-mirrored flat top-level owner/repo/files/directories were
-    // byte-identical duplicates of data.* and have been removed.
     z.object({
       id: z.string(),
       data: z
