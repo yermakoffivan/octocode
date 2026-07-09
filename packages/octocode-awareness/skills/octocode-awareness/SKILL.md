@@ -1,6 +1,6 @@
 ---
 name: octocode-awareness
-description: "Use when shared-repo coordination, multi-agent plans/tasks, taskless locks/signals, run verification, memory/wiki, hooks, reflection/evals, maintenance, or reviewing or editing this package requires packages/octocode-awareness dogfooding or Octocode skill/research routing."
+description: "Use when multiple agents share a repo or work must persist across sessions — shared-repo coordination for any workspace: attend the task, plan/task or taskless locks/signals to avoid collisions, run verification, then bookkeep (learn from outcomes and failures) and housekeep (prune stale state). Covers durable memory/wiki, reflection/evals, hooks, and repo-context projection; also multi-agent work and reviewing or editing this package (packages/octocode-awareness dogfood), and Octocode skill/research routing."
 hooks:
   PreToolUse: [{ matcher: "Write|Edit|MultiEdit|NotebookEdit|apply_patch|ApplyPatch", hooks: [{ type: command, command: "${CLAUDE_SKILL_DIR}/scripts/hooks/pre-edit.sh", timeout: 20 }, { type: command, command: "${CLAUDE_SKILL_DIR}/scripts/hooks/harness-guard.sh", timeout: 20 }] }]
   PostToolUse: [{ matcher: "Write|Edit|MultiEdit|NotebookEdit|apply_patch|ApplyPatch", hooks: [{ type: command, command: "${CLAUDE_SKILL_DIR}/scripts/hooks/post-edit.sh", timeout: 20 }] }]

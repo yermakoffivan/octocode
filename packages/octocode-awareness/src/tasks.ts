@@ -103,14 +103,25 @@ function evictExpiredTaskClaims(db: DatabaseSync, now = utcNow()): void {
   const expired = db.prepare(
     'SELECT task_id, run_id, agent_id FROM task_claims WHERE expires_at <= ?',
   ).all(now) as unknown as Array<{ task_id: string; run_id: string; agent_id: string }>;
-  for (const claim of expired) {
-    db.prepare('DELETE FROM locks WHERE run_id = ?').run(claim.run_id);
-    db.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'")
-      .run(now, claim.run_id);
-    db.prepare("UPDATE tasks SET status = 'OPEN', updated_at = ? WHERE task_id = ? AND status = 'IN_PROGRESS'")
-      .run(now, claim.task_id);
-    db.prepare('DELETE FROM task_claims WHERE task_id = ?').run(claim.task_id);
-    event(db, claim.task_id, claim.run_id, claim.agent_id, 'CLAIM_EXPIRED', 'claim lease expired', now);
+  if (expired.length === 0) return;
+
+  // SAVEPOINT (not BEGIN): claimTask already holds BEGIN IMMEDIATE when it calls us.
+  db.exec('SAVEPOINT evict_expired_task_claims');
+  try {
+    for (const claim of expired) {
+      db.prepare('DELETE FROM locks WHERE run_id = ?').run(claim.run_id);
+      db.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'")
+        .run(now, claim.run_id);
+      db.prepare("UPDATE tasks SET status = 'OPEN', updated_at = ? WHERE task_id = ? AND status = 'IN_PROGRESS'")
+        .run(now, claim.task_id);
+      db.prepare('DELETE FROM task_claims WHERE task_id = ?').run(claim.task_id);
+      event(db, claim.task_id, claim.run_id, claim.agent_id, 'CLAIM_EXPIRED', 'claim lease expired', now);
+    }
+    db.exec('RELEASE SAVEPOINT evict_expired_task_claims');
+  } catch (e) {
+    try { db.exec('ROLLBACK TO SAVEPOINT evict_expired_task_claims'); } catch { /* already rolled back */ }
+    try { db.exec('RELEASE SAVEPOINT evict_expired_task_claims'); } catch { /* already released */ }
+    throw e;
   }
 }
 
@@ -180,13 +191,13 @@ export function createTask(
     const insertPath = db.prepare('INSERT INTO task_paths(task_id, path, ordinal) VALUES (?, ?, ?)');
     paths.forEach((path, ordinal) => insertPath.run(taskId, path, ordinal));
     event(db, taskId, null, createdBy, 'CREATED', reasoning, now);
+    for (const dependency of params.dependsOn ?? []) {
+      addTaskDependency(db, { taskId, dependsOnTaskId: dependency, agentId: createdBy });
+    }
     db.exec('COMMIT');
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch { /* transaction did not open */ }
     throw error;
-  }
-  for (const dependency of params.dependsOn ?? []) {
-    addTaskDependency(db, { taskId, dependsOnTaskId: dependency, agentId: createdBy });
   }
   return { task: getTask(db, taskId)! };
 }
@@ -338,14 +349,19 @@ export function submitTask(
   db: DatabaseSync,
   params: { taskId: string; runId: string; agentId: string; message?: string },
 ): { task: PlanTaskRecord; run: TaskRunRecord } {
-  const claim = db.prepare('SELECT * FROM task_claims WHERE task_id = ?')
-    .get(params.taskId) as unknown as TaskClaimRecord | undefined;
-  if (!claim || claim.run_id !== params.runId || claim.agent_id !== params.agentId) {
-    throw new Error('only the active claimant can submit this task');
-  }
   const now = utcNow();
+  // Evict outside the write TX so a rejected submit does not undo lease expiry cleanup.
+  evictExpiredTaskClaims(db, now);
   db.exec('BEGIN IMMEDIATE');
   try {
+    const claim = db.prepare(
+      `SELECT 1 AS ok FROM task_claims
+       WHERE task_id = ? AND run_id = ? AND agent_id = ? AND expires_at > ?`,
+    ).get(params.taskId, params.runId, params.agentId, now);
+    if (!claim) {
+      db.exec('ROLLBACK');
+      throw new Error('only the active claimant can submit this task');
+    }
     db.prepare('DELETE FROM locks WHERE run_id = ?').run(params.runId);
     db.prepare("UPDATE task_runs SET status = 'PENDING', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'")
       .run(now, params.runId);
@@ -368,15 +384,20 @@ export function releaseTaskClaim(
   db: DatabaseSync,
   params: { taskId: string; runId: string; agentId: string; blockedReason?: string | null },
 ): PlanTaskRecord {
-  const claim = db.prepare('SELECT * FROM task_claims WHERE task_id = ?')
-    .get(params.taskId) as unknown as TaskClaimRecord | undefined;
-  if (!claim || claim.run_id !== params.runId || claim.agent_id !== params.agentId) {
-    throw new Error('only the active claimant can release this task');
-  }
   const now = utcNow();
   const blockedReason = params.blockedReason?.trim();
+  // Evict outside the write TX so a rejected release does not undo lease expiry cleanup.
+  evictExpiredTaskClaims(db, now);
   db.exec('BEGIN IMMEDIATE');
   try {
+    const claim = db.prepare(
+      `SELECT 1 AS ok FROM task_claims
+       WHERE task_id = ? AND run_id = ? AND agent_id = ? AND expires_at > ?`,
+    ).get(params.taskId, params.runId, params.agentId, now);
+    if (!claim) {
+      db.exec('ROLLBACK');
+      throw new Error('only the active claimant can release this task');
+    }
     db.prepare('DELETE FROM locks WHERE run_id = ?').run(params.runId);
     db.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'")
       .run(now, params.runId);

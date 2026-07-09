@@ -67,6 +67,18 @@ export function connectDb(dbPath: string): DatabaseSync {
 }
 
 /**
+ * Checkpoint the WAL so the main DB file absorbs pending pages.
+ * Non-fatal on :memory: stores or when a concurrent reader blocks TRUNCATE.
+ */
+export function checkpointWal(db: DatabaseSync): void {
+  try {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  } catch {
+    /* non-fatal */
+  }
+}
+
+/**
  * Return a cached connection for high-frequency in-process harness operations.
  * Keyed by resolved DB path so tests and multiple workspaces stay isolated.
  */

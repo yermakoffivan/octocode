@@ -219,6 +219,12 @@ function connectDb(dbPath) {
   _db = db2;
   return db2;
 }
+function checkpointWal(db2) {
+  try {
+    db2.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } catch {
+  }
+}
 var SCHEMA_DDL = `
     CREATE TABLE IF NOT EXISTS sessions (
       session_id     TEXT PRIMARY KEY,
@@ -1176,12 +1182,27 @@ function evictExpiredTaskClaims(db2, now = utcNow()) {
   const expired = db2.prepare(
     "SELECT task_id, run_id, agent_id FROM task_claims WHERE expires_at <= ?"
   ).all(now);
-  for (const claim of expired) {
-    db2.prepare("DELETE FROM locks WHERE run_id = ?").run(claim.run_id);
-    db2.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'").run(now, claim.run_id);
-    db2.prepare("UPDATE tasks SET status = 'OPEN', updated_at = ? WHERE task_id = ? AND status = 'IN_PROGRESS'").run(now, claim.task_id);
-    db2.prepare("DELETE FROM task_claims WHERE task_id = ?").run(claim.task_id);
-    event(db2, claim.task_id, claim.run_id, claim.agent_id, "CLAIM_EXPIRED", "claim lease expired", now);
+  if (expired.length === 0) return;
+  db2.exec("SAVEPOINT evict_expired_task_claims");
+  try {
+    for (const claim of expired) {
+      db2.prepare("DELETE FROM locks WHERE run_id = ?").run(claim.run_id);
+      db2.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'").run(now, claim.run_id);
+      db2.prepare("UPDATE tasks SET status = 'OPEN', updated_at = ? WHERE task_id = ? AND status = 'IN_PROGRESS'").run(now, claim.task_id);
+      db2.prepare("DELETE FROM task_claims WHERE task_id = ?").run(claim.task_id);
+      event(db2, claim.task_id, claim.run_id, claim.agent_id, "CLAIM_EXPIRED", "claim lease expired", now);
+    }
+    db2.exec("RELEASE SAVEPOINT evict_expired_task_claims");
+  } catch (e) {
+    try {
+      db2.exec("ROLLBACK TO SAVEPOINT evict_expired_task_claims");
+    } catch {
+    }
+    try {
+      db2.exec("RELEASE SAVEPOINT evict_expired_task_claims");
+    } catch {
+    }
+    throw e;
   }
 }
 function activeTaskClaimForAgent(db2, params) {
@@ -1986,6 +2007,7 @@ function digest(db2, params = {}) {
     }
   } catch {
   }
+  checkpointWal(db2);
   return {
     ok: true,
     archived_memories: archiveRes.changes,

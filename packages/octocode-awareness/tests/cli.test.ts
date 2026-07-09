@@ -43,7 +43,8 @@ function run(dbPath: string, args: string[], opts: { cwd?: string } = {}): RunRe
   const result = spawnSync(NODE, [SCRIPT, '--db', dbPath, ...args], {
     cwd: opts.cwd ?? process.cwd(),
     encoding: 'utf8',
-    timeout: 10000,
+    // repo inject / heavy CLI paths can exceed 10s on cold machines
+    timeout: 30000,
   });
   let parsed: Record<string, unknown> | null = null;
   try { parsed = JSON.parse(result.stdout) as Record<string, unknown>; } catch { /* non-JSON */ }

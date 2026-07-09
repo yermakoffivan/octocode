@@ -22,7 +22,6 @@ import {
   RUN_LOG_INSERT_ABANDONED,
   RUN_LOG_INSERT_STALE_ABANDONED,
   RUN_LOG_INSERT_VERIFIED,
-  RUNS_UPDATE_PENDING_VERIFIED,
   RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT,
   RUNS_SELECT_STATUS,
   RUNS_SELECT_PENDING_IDS,
@@ -340,28 +339,38 @@ export function markVerified(
     if (workspacePath) selectBinds.push(workspacePath);
     if (artifact) selectBinds.push(artifact);
 
-    const rows = db.prepare(selectSql).all(...selectBinds) as unknown as Array<{ run_id: string }>;
-    const now = utcNow();
-    const ids: string[] = [];
-    for (const row of rows) {
-      db.prepare(RUNS_UPDATE_PENDING_VERIFIED).run(status, now, row.run_id);
-      finishLinkedTask(db, row.run_id, status, agentId, now, message);
-      ids.push(row.run_id);
-      if (message) {
-        try {
-          db.prepare(RUN_LOG_INSERT_VERIFIED).run(
-            'evt_' + randomUUID().replace(/-/g, ''), row.run_id, agentId, message, now,
-          );
-        } catch { /* non-critical audit log */ }
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const rows = db.prepare(selectSql).all(...selectBinds) as unknown as Array<{ run_id: string }>;
+      const now = utcNow();
+      const ids: string[] = [];
+      for (const row of rows) {
+        const upd = db.prepare(RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
+          status, now, row.run_id, agentId,
+        ) as { changes: number };
+        if (upd.changes === 0) continue;
+        finishLinkedTask(db, row.run_id, status, agentId, now, message);
+        ids.push(row.run_id);
+        if (message) {
+          try {
+            db.prepare(RUN_LOG_INSERT_VERIFIED).run(
+              'evt_' + randomUUID().replace(/-/g, ''), row.run_id, agentId, message, now,
+            );
+          } catch { /* non-critical audit log */ }
+        }
       }
+      db.exec('COMMIT');
+      // VER-1: Return null for run_id — no single task applies in allPending batch mode.
+      // Footgun guard: unscoped --all-pending verifies EVERY pending run for this
+      // agent across ALL workspaces. Surface it so the caller sees the blast radius.
+      const warning = !workspacePath && !artifact && ids.length > 0
+        ? `marked ${ids.length} pending run(s) across ALL workspaces for agent "${agentId}" — no --workspace/--artifact scope given; pass --workspace to limit`
+        : undefined;
+      return { ok: true, run_id: null, run_ids: ids, count: ids.length, status: status as RunStatus, updated_at: now, ...(warning ? { warning } : {}) };
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch { /* not in transaction */ }
+      throw e;
     }
-    // VER-1: Return null for run_id — no single task applies in allPending batch mode.
-    // Footgun guard: unscoped --all-pending verifies EVERY pending run for this
-    // agent across ALL workspaces. Surface it so the caller sees the blast radius.
-    const warning = !workspacePath && !artifact && ids.length > 0
-      ? `marked ${ids.length} pending run(s) across ALL workspaces for agent "${agentId}" — no --workspace/--artifact scope given; pass --workspace to limit`
-      : undefined;
-    return { ok: true, run_id: null, run_ids: ids, count: ids.length, status: status as RunStatus, updated_at: now, ...(warning ? { warning } : {}) };
   }
 
   if (!runId) {
@@ -369,40 +378,47 @@ export function markVerified(
   }
 
   const now = utcNow();
-  const result = db.prepare(RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
-    status, now, runId, agentId,
-  ) as { changes: number };
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = db.prepare(RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
+      status, now, runId, agentId,
+    ) as { changes: number };
 
-  if (result.changes === 0) {
-    // Distinguish: no such run / wrong agent / not PENDING
-    const row = db.prepare(RUNS_SELECT_STATUS).get(runId) as unknown as AgentStatusRow | undefined;
+    if (result.changes === 0) {
+      db.exec('ROLLBACK');
+      // Distinguish: no such run / wrong agent / not PENDING
+      const row = db.prepare(RUNS_SELECT_STATUS).get(runId) as unknown as AgentStatusRow | undefined;
 
-    if (!row) {
-      return { ok: false, error: `no run found with run_id=${runId}`, run_id: runId };
-    }
-    if (row.agent_id !== agentId) {
+      if (!row) {
+        return { ok: false, error: `no run found with run_id=${runId}`, run_id: runId };
+      }
+      if (row.agent_id !== agentId) {
+        return {
+          ok: false,
+          error: `run ${runId} belongs to agent "${row.agent_id}", not "${agentId}"`,
+          run_id: runId,
+        };
+      }
       return {
         ok: false,
-        error: `run ${runId} belongs to agent "${row.agent_id}", not "${agentId}"`,
+        error: `run ${runId} has status "${row.status}" — only PENDING runs can be verified`,
         run_id: runId,
       };
     }
-    return {
-      ok: false,
-      error: `run ${runId} has status "${row.status}" — only PENDING runs can be verified`,
-      run_id: runId,
-    };
+
+    if (message) {
+      try {
+        db.prepare(RUN_LOG_INSERT_VERIFIED).run(
+          'evt_' + randomUUID().replace(/-/g, ''), runId, agentId, message, now,
+        );
+      } catch { /* non-critical audit log */ }
+    }
+
+    finishLinkedTask(db, runId, status, agentId, now, message);
+    db.exec('COMMIT');
+    return { ok: true, run_id: runId, status: status as RunStatus, updated_at: now };
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* not in transaction */ }
+    throw e;
   }
-
-  if (message) {
-    try {
-      db.prepare(RUN_LOG_INSERT_VERIFIED).run(
-        'evt_' + randomUUID().replace(/-/g, ''), runId, agentId, message, now,
-      );
-    } catch { /* non-critical audit log */ }
-  }
-
-  finishLinkedTask(db, runId, status, agentId, now, message);
-
-  return { ok: true, run_id: runId, status: status as RunStatus, updated_at: now };
 }

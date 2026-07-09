@@ -475,4 +475,111 @@ describe('plan and task collaboration', () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it('createTask with missing dependsOn rolls back the whole task', () => {
+    const db = freshDb();
+    const workspace = mkdtempSync(join(tmpdir(), 'oc-plan-'));
+    try {
+      const { plan } = createPlan(db, {
+        name: 'Atomic deps', objective: 'No orphan tasks on bad dependsOn.',
+        leadAgentId: 'lead', workspacePath: workspace,
+      });
+      expect(() => createTask(db, {
+        planId: plan.plan_id,
+        title: 'Orphan risk',
+        reasoning: 'Depends on a missing task.',
+        paths: ['src/x.ts'],
+        createdBy: 'lead',
+        dependsOn: ['task_missing'],
+      })).toThrow(/must exist/);
+      expect(listTasks(db, { planId: plan.plan_id })).toEqual([]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('createTask with partial dependsOn list rolls back', () => {
+    const db = freshDb();
+    const workspace = mkdtempSync(join(tmpdir(), 'oc-plan-'));
+    try {
+      const { plan } = createPlan(db, {
+        name: 'Partial deps', objective: 'All-or-nothing dependency edges.',
+        leadAgentId: 'lead', workspacePath: workspace,
+      });
+      const first = createTask(db, {
+        planId: plan.plan_id, title: 'Base', reasoning: 'Exists.',
+        paths: ['src/a.ts'], createdBy: 'lead',
+      }).task;
+      const before = listTasks(db, { planId: plan.plan_id }).map((t) => t.task_id);
+      expect(() => createTask(db, {
+        planId: plan.plan_id,
+        title: 'Partial',
+        reasoning: 'One valid edge then a missing one.',
+        paths: ['src/b.ts'],
+        createdBy: 'lead',
+        dependsOn: [first.task_id, 'task_missing'],
+      })).toThrow(/must exist/);
+      expect(listTasks(db, { planId: plan.plan_id }).map((t) => t.task_id)).toEqual(before);
+      expect(db.prepare('SELECT COUNT(*) AS c FROM task_dependencies WHERE depends_on_task_id = ?')
+        .get(first.task_id)).toEqual({ c: 0 });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('submitTask rejects expired claim without a prior listTasks/getTask', () => {
+    const db = freshDb();
+    const workspace = mkdtempSync(join(tmpdir(), 'oc-plan-'));
+    try {
+      const { plan } = createPlan(db, {
+        name: 'Expired submit', objective: 'Expired leases cannot submit.',
+        leadAgentId: 'lead', workspacePath: workspace,
+      });
+      const { task } = createTask(db, {
+        planId: plan.plan_id, title: 'Work', reasoning: 'Claim then expire.',
+        paths: ['src/a.ts'], createdBy: 'lead',
+      });
+      const claim = claimTask(db, { taskId: task.task_id, agentId: 'worker', leaseMs: 5_000 });
+      if (!claim.ok) throw new Error(claim.error);
+      db.prepare("UPDATE task_claims SET expires_at = '2000-01-01T00:00:00Z' WHERE task_id = ?")
+        .run(task.task_id);
+      expect(() => submitTask(db, {
+        taskId: task.task_id, runId: claim.run.run_id, agentId: 'worker',
+      })).toThrow(/active claimant/);
+      expect(db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(task.task_id))
+        .toEqual({ status: 'OPEN' });
+      expect(db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(claim.run.run_id))
+        .toEqual({ status: 'FAILED' });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('releaseTaskClaim rejects expired claim without a prior listTasks/getTask', () => {
+    const db = freshDb();
+    const workspace = mkdtempSync(join(tmpdir(), 'oc-plan-'));
+    try {
+      const { plan } = createPlan(db, {
+        name: 'Expired release', objective: 'Expired leases cannot release as claimant.',
+        leadAgentId: 'lead', workspacePath: workspace,
+      });
+      const { task } = createTask(db, {
+        planId: plan.plan_id, title: 'Work', reasoning: 'Claim then expire.',
+        paths: ['src/a.ts'], createdBy: 'lead',
+      });
+      const claim = claimTask(db, { taskId: task.task_id, agentId: 'worker', leaseMs: 5_000 });
+      if (!claim.ok) throw new Error(claim.error);
+      db.prepare("UPDATE task_claims SET expires_at = '2000-01-01T00:00:00Z' WHERE task_id = ?")
+        .run(task.task_id);
+      expect(() => releaseTaskClaim(db, {
+        taskId: task.task_id, runId: claim.run.run_id, agentId: 'worker',
+      })).toThrow(/active claimant/);
+      expect(db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(task.task_id))
+        .toEqual({ status: 'OPEN' });
+      expect(db.prepare('SELECT COUNT(*) AS c FROM task_claims WHERE task_id = ?').get(task.task_id))
+        .toEqual({ c: 0 });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });

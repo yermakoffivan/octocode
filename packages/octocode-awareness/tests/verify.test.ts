@@ -191,6 +191,79 @@ describe('markVerified', () => {
     const second = markVerified(db, { runId, agentId: 'agent-a', status: 'SUCCESS' });
     expect(second.ok).toBe(false);
   });
+
+  it('allPending verifies two pending runs atomically', () => {
+    const db = freshDb();
+    const a = makePending(db, 'agent-a', '/tmp/ws-a');
+    const b = makePending(db, 'agent-a', '/tmp/ws-a');
+    const result = markVerified(db, {
+      agentId: 'agent-a',
+      allPending: true,
+      workspacePath: '/tmp/ws-a',
+      status: 'SUCCESS',
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.count).toBe(2);
+      expect(result.run_ids?.sort()).toEqual([a, b].sort());
+    }
+    expect(db.prepare("SELECT COUNT(*) AS c FROM task_runs WHERE status = 'SUCCESS' AND agent_id = 'agent-a'")
+      .get()).toEqual({ c: 2 });
+    expect(auditUnverified(db, { agentId: 'agent-a', workspacePath: '/tmp/ws-a' }).count).toBe(0);
+  });
+
+  it('allPending rolls back when a later finish step fails', () => {
+    const db = freshDb();
+    const a = makePending(db, 'agent-a', '/tmp/ws-a');
+    const b = makePending(db, 'agent-a', '/tmp/ws-a');
+    // Link both runs to VERIFY tasks so finishLinkedTask inserts task_events.
+    for (const runId of [a, b]) {
+      const taskId = `task_${runId.slice(4)}`;
+      db.prepare(`INSERT INTO plans(plan_id, name, objective, lead_agent_id, status, workspace_path, doc_dir, created_at, updated_at)
+        VALUES (?, 'p', 'o', 'lead', 'ACTIVE', '/tmp/ws-a', '/tmp/docs', datetime('now'), datetime('now'))`)
+        .run(`plan_${runId}`);
+      db.prepare(`INSERT INTO tasks(task_id, plan_id, title, reasoning, acceptance_criteria, status, priority, created_by, created_at, updated_at)
+        VALUES (?, ?, 't', 'r', 'a', 'VERIFY', 0, 'lead', datetime('now'), datetime('now'))`)
+        .run(taskId, `plan_${runId}`);
+      db.prepare('UPDATE task_runs SET task_id = ? WHERE run_id = ?').run(taskId, runId);
+    }
+    // Abort on the second task_events insert so the batch must roll back.
+    db.exec(`CREATE TRIGGER reject_second_task_event BEFORE INSERT ON task_events
+      WHEN (SELECT COUNT(*) FROM task_events) >= 1
+      BEGIN SELECT RAISE(ABORT, 'forced finishLinkedTask failure'); END`);
+
+    expect(() => markVerified(db, {
+      agentId: 'agent-a',
+      allPending: true,
+      workspacePath: '/tmp/ws-a',
+      status: 'SUCCESS',
+    })).toThrow(/forced finishLinkedTask failure/);
+
+    expect(db.prepare("SELECT COUNT(*) AS c FROM task_runs WHERE status = 'PENDING' AND agent_id = 'agent-a'")
+      .get()).toEqual({ c: 2 });
+    expect(db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status = 'VERIFY'").get()).toEqual({ c: 2 });
+    expect(auditUnverified(db, { agentId: 'agent-a', workspacePath: '/tmp/ws-a' }).count).toBe(2);
+  });
+
+  it('allPending UPDATE is agent-scoped — tampered agent_id is not flipped', () => {
+    const db = freshDb();
+    const runId = makePending(db, 'agent-a', '/tmp/ws-a');
+    // Simulate TOCTOU: row still PENDING but now owned by another agent.
+    db.prepare("UPDATE task_runs SET agent_id = 'agent-b' WHERE run_id = ?").run(runId);
+    const result = markVerified(db, {
+      agentId: 'agent-a',
+      allPending: true,
+      workspacePath: '/tmp/ws-a',
+      status: 'SUCCESS',
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.count).toBe(0);
+      expect(result.run_ids ?? []).toEqual([]);
+    }
+    expect(db.prepare('SELECT status, agent_id FROM task_runs WHERE run_id = ?').get(runId))
+      .toEqual({ status: 'PENDING', agent_id: 'agent-b' });
+  });
 });
 
 describe('workspace-scope symlink stability (regression)', () => {

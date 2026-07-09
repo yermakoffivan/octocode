@@ -15,7 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { isAbsolute, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { hasFts, rebuildFts, evictExpiredLocks } from './db.js';
+import { hasFts, rebuildFts, evictExpiredLocks, checkpointWal } from './db.js';
 import { fillScope, normalizeWorkspacePath } from './git.js';
 import { normalizeArtifact, parseJsonList, utcNow } from './helpers.js';
 import { getNotifications } from './notifications.js';
@@ -774,6 +774,9 @@ export function digest(
   } catch {
     // FTS5 may not be available in all builds; non-fatal
   }
+
+  // 6. Absorb WAL pages after bulk maintenance writes (non-fatal on :memory:).
+  checkpointWal(db);
 
   return {
     ok: true,

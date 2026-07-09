@@ -195,6 +195,12 @@ function connectDb(dbPath2) {
   _db = db3;
   return db3;
 }
+function checkpointWal(db3) {
+  try {
+    db3.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } catch {
+  }
+}
 var SCHEMA_DDL = `
     CREATE TABLE IF NOT EXISTS sessions (
       session_id     TEXT PRIMARY KEY,
@@ -2944,12 +2950,27 @@ function evictExpiredTaskClaims(db3, now = utcNow()) {
   const expired = db3.prepare(
     "SELECT task_id, run_id, agent_id FROM task_claims WHERE expires_at <= ?"
   ).all(now);
-  for (const claim of expired) {
-    db3.prepare("DELETE FROM locks WHERE run_id = ?").run(claim.run_id);
-    db3.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'").run(now, claim.run_id);
-    db3.prepare("UPDATE tasks SET status = 'OPEN', updated_at = ? WHERE task_id = ? AND status = 'IN_PROGRESS'").run(now, claim.task_id);
-    db3.prepare("DELETE FROM task_claims WHERE task_id = ?").run(claim.task_id);
-    event(db3, claim.task_id, claim.run_id, claim.agent_id, "CLAIM_EXPIRED", "claim lease expired", now);
+  if (expired.length === 0) return;
+  db3.exec("SAVEPOINT evict_expired_task_claims");
+  try {
+    for (const claim of expired) {
+      db3.prepare("DELETE FROM locks WHERE run_id = ?").run(claim.run_id);
+      db3.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'").run(now, claim.run_id);
+      db3.prepare("UPDATE tasks SET status = 'OPEN', updated_at = ? WHERE task_id = ? AND status = 'IN_PROGRESS'").run(now, claim.task_id);
+      db3.prepare("DELETE FROM task_claims WHERE task_id = ?").run(claim.task_id);
+      event(db3, claim.task_id, claim.run_id, claim.agent_id, "CLAIM_EXPIRED", "claim lease expired", now);
+    }
+    db3.exec("RELEASE SAVEPOINT evict_expired_task_claims");
+  } catch (e) {
+    try {
+      db3.exec("ROLLBACK TO SAVEPOINT evict_expired_task_claims");
+    } catch {
+    }
+    try {
+      db3.exec("RELEASE SAVEPOINT evict_expired_task_claims");
+    } catch {
+    }
+    throw e;
   }
 }
 function hydrateTask(db3, row) {
@@ -3002,6 +3023,9 @@ function createTask(db3, params) {
     const insertPath = db3.prepare("INSERT INTO task_paths(task_id, path, ordinal) VALUES (?, ?, ?)");
     paths.forEach((path2, ordinal) => insertPath.run(taskId, path2, ordinal));
     event(db3, taskId, null, createdBy, "CREATED", reasoning, now);
+    for (const dependency of params.dependsOn ?? []) {
+      addTaskDependency(db3, { taskId, dependsOnTaskId: dependency, agentId: createdBy });
+    }
     db3.exec("COMMIT");
   } catch (error) {
     try {
@@ -3009,9 +3033,6 @@ function createTask(db3, params) {
     } catch {
     }
     throw error;
-  }
-  for (const dependency of params.dependsOn ?? []) {
-    addTaskDependency(db3, { taskId, dependsOnTaskId: dependency, agentId: createdBy });
   }
   return { task: getTask(db3, taskId) };
 }
@@ -3149,13 +3170,18 @@ function heartbeatTaskClaim(db3, params) {
   return db3.prepare("SELECT * FROM task_claims WHERE task_id = ?").get(params.taskId);
 }
 function submitTask(db3, params) {
-  const claim = db3.prepare("SELECT * FROM task_claims WHERE task_id = ?").get(params.taskId);
-  if (!claim || claim.run_id !== params.runId || claim.agent_id !== params.agentId) {
-    throw new Error("only the active claimant can submit this task");
-  }
   const now = utcNow();
+  evictExpiredTaskClaims(db3, now);
   db3.exec("BEGIN IMMEDIATE");
   try {
+    const claim = db3.prepare(
+      `SELECT 1 AS ok FROM task_claims
+       WHERE task_id = ? AND run_id = ? AND agent_id = ? AND expires_at > ?`
+    ).get(params.taskId, params.runId, params.agentId, now);
+    if (!claim) {
+      db3.exec("ROLLBACK");
+      throw new Error("only the active claimant can submit this task");
+    }
     db3.prepare("DELETE FROM locks WHERE run_id = ?").run(params.runId);
     db3.prepare("UPDATE task_runs SET status = 'PENDING', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'").run(now, params.runId);
     db3.prepare("UPDATE tasks SET status = 'VERIFY', updated_at = ? WHERE task_id = ?").run(now, params.taskId);
@@ -3175,14 +3201,19 @@ function submitTask(db3, params) {
   };
 }
 function releaseTaskClaim(db3, params) {
-  const claim = db3.prepare("SELECT * FROM task_claims WHERE task_id = ?").get(params.taskId);
-  if (!claim || claim.run_id !== params.runId || claim.agent_id !== params.agentId) {
-    throw new Error("only the active claimant can release this task");
-  }
   const now = utcNow();
   const blockedReason = params.blockedReason?.trim();
+  evictExpiredTaskClaims(db3, now);
   db3.exec("BEGIN IMMEDIATE");
   try {
+    const claim = db3.prepare(
+      `SELECT 1 AS ok FROM task_claims
+       WHERE task_id = ? AND run_id = ? AND agent_id = ? AND expires_at > ?`
+    ).get(params.taskId, params.runId, params.agentId, now);
+    if (!claim) {
+      db3.exec("ROLLBACK");
+      throw new Error("only the active claimant can release this task");
+    }
     db3.prepare("DELETE FROM locks WHERE run_id = ?").run(params.runId);
     db3.prepare("UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'").run(now, params.runId);
     db3.prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?").run(blockedReason ? "BLOCKED" : "OPEN", now, params.taskId);
@@ -3411,7 +3442,6 @@ import { randomUUID as randomUUID7 } from "node:crypto";
 // src/sql/runs.ts
 var RUNS_SELECT_PENDING_IDS = `SELECT run_id FROM task_runs WHERE status = 'PENDING' AND agent_id = ? {DYNAMIC_WHERE}`;
 var RUNS_SELECT_STATUS = `SELECT agent_id, status FROM task_runs WHERE run_id = ?`;
-var RUNS_UPDATE_PENDING_VERIFIED = `UPDATE task_runs SET status = ?, updated_at = ? WHERE run_id = ? AND status = 'PENDING'`;
 var RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT = `UPDATE task_runs SET status = ?, updated_at = ? WHERE run_id = ? AND agent_id = ? AND status = 'PENDING'`;
 var RUNS_UPDATE_PENDING_TO_FAILED = `UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'PENDING'`;
 var RUNS_UPDATE_ACTIVE_TO_FAILED = `UPDATE task_runs SET status = 'FAILED', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'`;
@@ -4386,6 +4416,7 @@ function digest(db3, params = {}) {
     }
   } catch {
   }
+  checkpointWal(db3);
   return {
     ok: true,
     archived_memories: archiveRes.changes,
@@ -4832,71 +4863,98 @@ function markVerified(db3, params) {
     const selectBinds = [agentId2];
     if (workspacePath) selectBinds.push(workspacePath);
     if (artifact2) selectBinds.push(artifact2);
-    const rows = db3.prepare(selectSql).all(...selectBinds);
-    const now2 = utcNow();
-    const ids = [];
-    for (const row of rows) {
-      db3.prepare(RUNS_UPDATE_PENDING_VERIFIED).run(status, now2, row.run_id);
-      finishLinkedTask(db3, row.run_id, status, agentId2, now2, message);
-      ids.push(row.run_id);
-      if (message) {
-        try {
-          db3.prepare(RUN_LOG_INSERT_VERIFIED).run(
-            "evt_" + randomUUID9().replace(/-/g, ""),
-            row.run_id,
-            agentId2,
-            message,
-            now2
-          );
-        } catch {
+    db3.exec("BEGIN IMMEDIATE");
+    try {
+      const rows = db3.prepare(selectSql).all(...selectBinds);
+      const now2 = utcNow();
+      const ids = [];
+      for (const row of rows) {
+        const upd = db3.prepare(RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
+          status,
+          now2,
+          row.run_id,
+          agentId2
+        );
+        if (upd.changes === 0) continue;
+        finishLinkedTask(db3, row.run_id, status, agentId2, now2, message);
+        ids.push(row.run_id);
+        if (message) {
+          try {
+            db3.prepare(RUN_LOG_INSERT_VERIFIED).run(
+              "evt_" + randomUUID9().replace(/-/g, ""),
+              row.run_id,
+              agentId2,
+              message,
+              now2
+            );
+          } catch {
+          }
         }
       }
+      db3.exec("COMMIT");
+      const warning = !workspacePath && !artifact2 && ids.length > 0 ? `marked ${ids.length} pending run(s) across ALL workspaces for agent "${agentId2}" \u2014 no --workspace/--artifact scope given; pass --workspace to limit` : void 0;
+      return { ok: true, run_id: null, run_ids: ids, count: ids.length, status, updated_at: now2, ...warning ? { warning } : {} };
+    } catch (e) {
+      try {
+        db3.exec("ROLLBACK");
+      } catch {
+      }
+      throw e;
     }
-    const warning = !workspacePath && !artifact2 && ids.length > 0 ? `marked ${ids.length} pending run(s) across ALL workspaces for agent "${agentId2}" \u2014 no --workspace/--artifact scope given; pass --workspace to limit` : void 0;
-    return { ok: true, run_id: null, run_ids: ids, count: ids.length, status, updated_at: now2, ...warning ? { warning } : {} };
   }
   if (!runId) {
     return { ok: false, error: "--run-id is required (or use --all-pending)", run_id: null };
   }
   const now = utcNow();
-  const result = db3.prepare(RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
-    status,
-    now,
-    runId,
-    agentId2
-  );
-  if (result.changes === 0) {
-    const row = db3.prepare(RUNS_SELECT_STATUS).get(runId);
-    if (!row) {
-      return { ok: false, error: `no run found with run_id=${runId}`, run_id: runId };
-    }
-    if (row.agent_id !== agentId2) {
+  db3.exec("BEGIN IMMEDIATE");
+  try {
+    const result = db3.prepare(RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
+      status,
+      now,
+      runId,
+      agentId2
+    );
+    if (result.changes === 0) {
+      db3.exec("ROLLBACK");
+      const row = db3.prepare(RUNS_SELECT_STATUS).get(runId);
+      if (!row) {
+        return { ok: false, error: `no run found with run_id=${runId}`, run_id: runId };
+      }
+      if (row.agent_id !== agentId2) {
+        return {
+          ok: false,
+          error: `run ${runId} belongs to agent "${row.agent_id}", not "${agentId2}"`,
+          run_id: runId
+        };
+      }
       return {
         ok: false,
-        error: `run ${runId} belongs to agent "${row.agent_id}", not "${agentId2}"`,
+        error: `run ${runId} has status "${row.status}" \u2014 only PENDING runs can be verified`,
         run_id: runId
       };
     }
-    return {
-      ok: false,
-      error: `run ${runId} has status "${row.status}" \u2014 only PENDING runs can be verified`,
-      run_id: runId
-    };
-  }
-  if (message) {
+    if (message) {
+      try {
+        db3.prepare(RUN_LOG_INSERT_VERIFIED).run(
+          "evt_" + randomUUID9().replace(/-/g, ""),
+          runId,
+          agentId2,
+          message,
+          now
+        );
+      } catch {
+      }
+    }
+    finishLinkedTask(db3, runId, status, agentId2, now, message);
+    db3.exec("COMMIT");
+    return { ok: true, run_id: runId, status, updated_at: now };
+  } catch (e) {
     try {
-      db3.prepare(RUN_LOG_INSERT_VERIFIED).run(
-        "evt_" + randomUUID9().replace(/-/g, ""),
-        runId,
-        agentId2,
-        message,
-        now
-      );
+      db3.exec("ROLLBACK");
     } catch {
     }
+    throw e;
   }
-  finishLinkedTask(db3, runId, status, agentId2, now, message);
-  return { ok: true, run_id: runId, status, updated_at: now };
 }
 
 // src/agents.ts

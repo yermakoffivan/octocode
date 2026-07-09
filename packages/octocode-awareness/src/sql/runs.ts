@@ -6,9 +6,6 @@ export const RUNS_SELECT_PENDING_IDS =
 export const RUNS_SELECT_STATUS =
   `SELECT agent_id, status FROM task_runs WHERE run_id = ?`;
 
-export const RUNS_UPDATE_PENDING_VERIFIED =
-  `UPDATE task_runs SET status = ?, updated_at = ? WHERE run_id = ? AND status = 'PENDING'`;
-
 export const RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT =
   `UPDATE task_runs SET status = ?, updated_at = ? WHERE run_id = ? AND agent_id = ? AND status = 'PENDING'`;
 

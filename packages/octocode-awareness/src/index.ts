@@ -10,7 +10,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // DB layer
-export { connectDb, connectCachedDb, initDb, memoryHome, resolveDbPath, hasFts, tableColumns, replaceMemoryReferences, referenceKind, evictExpiredLocks } from './db.js';
+export { connectDb, connectCachedDb, initDb, memoryHome, resolveDbPath, hasFts, tableColumns, replaceMemoryReferences, referenceKind, evictExpiredLocks, checkpointWal } from './db.js';
 
 // Memory operations
 export { insertMemory, getMemory, bumpAccess, lexicalSearch, decayScore, findSimilarMemories, mineWeakness, forgetMemory, storeEmbedding, searchByEmbedding, loadMemoriesByIds } from './memory.js';

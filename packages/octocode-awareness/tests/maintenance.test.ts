@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import { initDb, replaceMemoryReferences } from '../src/db.js';
+import { initDb, replaceMemoryReferences, connectDb, checkpointWal } from '../src/db.js';
 import {
   pruneStale,
   notifyGet,
@@ -461,6 +461,28 @@ describe('digest — dry_run with new schema', () => {
     expect(res.pruned_old).toBe(1);
     const remaining = db.prepare('SELECT memory_id FROM memories ORDER BY memory_id').all() as Array<{ memory_id: string }>;
     expect(remaining.map(row => row.memory_id)).toEqual(['mem_ws_b_old']);
+  });
+
+  it('checkpointWal and digest complete on a file-backed WAL store', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-wal-'));
+    try {
+      const dbPath = join(dir, 'awareness.sqlite3');
+      const db = connectDb(dbPath);
+      const mode = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
+      expect(String(mode.journal_mode).toLowerCase()).toBe('wal');
+      expect(() => checkpointWal(db)).not.toThrow();
+      const oldDate = new Date(Date.now() - 91 * 86400000).toISOString();
+      db.prepare(`
+        INSERT INTO memories (memory_id, agent_id, task_context, observation, importance, state, created_at, updated_at)
+        VALUES ('mem_wal_old', 'agent-x', 'old', 'old observation', 3, 'SUPERSEDED', ?, ?)
+      `).run(oldDate, oldDate);
+      const res = digest(db, {});
+      expect(res.ok).toBe(true);
+      expect(res.pruned_old).toBe(1);
+      expect(() => checkpointWal(db)).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
