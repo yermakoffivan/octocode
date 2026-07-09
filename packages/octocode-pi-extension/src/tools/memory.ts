@@ -6,6 +6,8 @@ import {
   connectCachedDb,
   getPiAwarenessSessionId,
   MEMORY_LABEL_VALUES,
+  NOTIFICATION_KIND_VALUES,
+  REFLECTION_OUTCOME_VALUES,
   resolveDbPath,
   runAwarenessToolOperation,
 } from '@octocodeai/octocode-awareness';
@@ -24,7 +26,7 @@ const MEMORY_LABELS = MEMORY_LABEL_VALUES.join('|');
 const MEMORY_STATES = ['ACTIVE', 'SUPERSEDED'] as const;
 const RECALL_SORTS = ['smart', 'importance', 'recent', 'accessed'] as const;
 const REFINEMENT_STATES = ['open', 'ongoing', 'done'] as const;
-const NOTIFICATION_KINDS = ['claim', 'handoff', 'question', 'reply', 'blocker', 'request', 'decision', 'fyi'] as const;
+// NOTIFICATION_KIND_VALUES imported from @octocodeai/octocode-awareness — single source of truth.
 const FILE_LOCK_TYPES = ['lock', 'release', 'status', 'renew'] as const;
 const FILE_LOCK_KINDS = ['EXCLUSIVE', 'SHARED'] as const;
 const AGENT_SIGNAL_ACTIONS = ['publish', 'list', 'reply', 'resolve', 'ack'] as const;
@@ -140,12 +142,12 @@ export function buildMemoryToolDefinition(
     maximum: 10,
     description: '1–3 minor, 4–6 useful, 7–8 important, 9–10 critical.',
   }));
-  const outcomeSchema = stringEnumSchema(Type, ['worked', 'partial', 'failed'], 'worked|partial|failed.');
+  const outcomeSchema = stringEnumSchema(Type, REFLECTION_OUTCOME_VALUES, REFLECTION_OUTCOME_VALUES.join('|') + '.');
   const verifyStatusSchema = stringEnumSchema(Type, ['SUCCESS', 'FAILED'], 'SUCCESS or FAILED; default SUCCESS.');
   const memoryStateSchema = stringEnumSchema(Type, MEMORY_STATES, 'ACTIVE (default) or SUPERSEDED.');
   const recallSortSchema = stringEnumSchema(Type, RECALL_SORTS, 'smart (default), importance, recent, or accessed.');
   const refinementStateSchema = stringEnumSchema(Type, REFINEMENT_STATES, 'open|ongoing|done. Default open/ongoing.');
-  const notificationKindSchema = stringEnumSchema(Type, NOTIFICATION_KINDS, 'claim|handoff|question|reply|blocker|request|decision|fyi.');
+  const notificationKindSchema = stringEnumSchema(Type, NOTIFICATION_KIND_VALUES, NOTIFICATION_KIND_VALUES.join('|') + '.');
   const fileLockTypeSchema = stringEnumSchema(Type, FILE_LOCK_TYPES, 'lock|release|status|renew.');
   const fileLockKindSchema = stringEnumSchema(Type, FILE_LOCK_KINDS, 'EXCLUSIVE or SHARED; default EXCLUSIVE.');
   const agentSignalActionSchema = stringEnumSchema(Type, AGENT_SIGNAL_ACTIONS, 'publish|list|reply|resolve|ack.');
