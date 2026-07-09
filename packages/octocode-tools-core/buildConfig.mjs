@@ -10,7 +10,7 @@ export const nodeExternals = [
   ...builtinModules.map((m) => `node:${m}`),
 ];
 
-export const bundledRuntimeDependencies = new Set([]);
+export const bundledRuntimeDependencies = new Set(['@octocodeai/config']);
 
 export const runtimeExternals = Object.keys(pkg.dependencies ?? {}).filter(
   (dependencyName) => !bundledRuntimeDependencies.has(dependencyName)

@@ -263,12 +263,12 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@octocodeai/octocode-engine-darwin-arm64": "workspace:*",
-    "@octocodeai/octocode-engine-darwin-x64": "workspace:*",
-    "@octocodeai/octocode-engine-linux-arm64-gnu": "workspace:*",
-    "@octocodeai/octocode-engine-linux-x64-gnu": "workspace:*",
-    "@octocodeai/octocode-engine-linux-x64-musl": "workspace:*",
-    "@octocodeai/octocode-engine-win32-x64-msvc": "workspace:*"
+    "@octocodeai/octocode-engine-darwin-arm64": "16.7.0",
+    "@octocodeai/octocode-engine-darwin-x64": "16.7.0",
+    "@octocodeai/octocode-engine-linux-arm64-gnu": "16.7.0",
+    "@octocodeai/octocode-engine-linux-x64-gnu": "16.7.0",
+    "@octocodeai/octocode-engine-linux-x64-musl": "16.7.0",
+    "@octocodeai/octocode-engine-win32-x64-msvc": "16.7.0"
   },
   "engines": {
     "node": ">=20.0.0"

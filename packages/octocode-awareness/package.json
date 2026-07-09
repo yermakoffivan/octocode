@@ -30,9 +30,7 @@
     "./bin/octocode-awareness": "./dist/bin/awareness.js",
     "./bin/extract-hook-files": "./dist/bin/extract-hook-files.js"
   },
-  "bin": {
-    "octocode-awareness": "./dist/bin/awareness.js"
-  },
+  "bin": "./dist/bin/awareness.js",
   "files": [
     "dist/**",
     "skills/**",

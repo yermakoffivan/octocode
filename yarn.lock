@@ -2174,7 +2174,7 @@ __metadata:
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@octocodeai/config": "workspace:*"
-    "@octocodeai/octocode-core": "file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core"
+    "@octocodeai/octocode-core": "npm:^16.6.3"
     "@octocodeai/octocode-engine": "workspace:*"
     "@octocodeai/octocode-tools-core": "workspace:*"
     "@octokit/oauth-methods": "npm:^6.0.2"
@@ -2194,7 +2194,6 @@ __metadata:
     zod: "npm:^4.4.3"
   bin:
     octocode-mcp: dist/index.js
-    octocode-mcp-beta: dist/index.js
   languageName: unknown
   linkType: soft
 
@@ -2218,89 +2217,62 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Fmcp%40workspace%3Apackages%2Foctocode-mcp":
-  version: 16.7.0
-  resolution: "@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core#///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::hash=ff017c&locator=%40octocodeai%2Fmcp%40workspace%3Apackages%2Foctocode-mcp"
+"@octocodeai/octocode-core@npm:^16.6.3":
+  version: 16.6.3
+  resolution: "@octocodeai/octocode-core@npm:16.6.3"
   peerDependencies:
     zod: ">=4.0.0"
-  checksum: 10c0/7d3ef363b9ec426281a5ddce83e34fa9576109a09a42d983f17737cb927f98d94e7542fb18af528ca4841ed61ec194e2a671b038f0f445b564da8afc22d6f720
+  checksum: 10c0/d8c0186a5034778861e22a53bf6e67cb587cd15df2c643abc1fb7f58d336bdd3bb85f9979bc55b48669810a3655d67c9850acef535f834d39e58d44b56aa959b
   languageName: node
   linkType: hard
 
-"@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core":
-  version: 16.7.0
-  resolution: "@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core#///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::hash=ff017c&locator=%40octocodeai%2Foctocode-tools-core%40workspace%3Apackages%2Foctocode-tools-core"
-  peerDependencies:
-    zod: ">=4.0.0"
-  checksum: 10c0/7d3ef363b9ec426281a5ddce83e34fa9576109a09a42d983f17737cb927f98d94e7542fb18af528ca4841ed61ec194e2a671b038f0f445b564da8afc22d6f720
-  languageName: node
-  linkType: hard
-
-"@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::locator=%40octocodeai%2Fpi-extension%40workspace%3Apackages%2Foctocode-pi-extension":
-  version: 16.7.0
-  resolution: "@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core#///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::hash=ff017c&locator=%40octocodeai%2Fpi-extension%40workspace%3Apackages%2Foctocode-pi-extension"
-  peerDependencies:
-    zod: ">=4.0.0"
-  checksum: 10c0/7d3ef363b9ec426281a5ddce83e34fa9576109a09a42d983f17737cb927f98d94e7542fb18af528ca4841ed61ec194e2a671b038f0f445b564da8afc22d6f720
-  languageName: node
-  linkType: hard
-
-"@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::locator=octocode%40workspace%3Apackages%2Foctocode":
-  version: 16.7.0
-  resolution: "@octocodeai/octocode-core@file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core#///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core::hash=ff017c&locator=octocode%40workspace%3Apackages%2Foctocode"
-  peerDependencies:
-    zod: ">=4.0.0"
-  checksum: 10c0/7d3ef363b9ec426281a5ddce83e34fa9576109a09a42d983f17737cb927f98d94e7542fb18af528ca4841ed61ec194e2a671b038f0f445b564da8afc22d6f720
-  languageName: node
-  linkType: hard
-
-"@octocodeai/octocode-engine-darwin-arm64@workspace:*, @octocodeai/octocode-engine-darwin-arm64@workspace:packages/octocode-engine/npm/darwin-arm64":
+"@octocodeai/octocode-engine-darwin-arm64@npm:16.7.0, @octocodeai/octocode-engine-darwin-arm64@workspace:packages/octocode-engine/npm/darwin-arm64":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-engine-darwin-arm64@workspace:packages/octocode-engine/npm/darwin-arm64"
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-engine-darwin-x64@workspace:*, @octocodeai/octocode-engine-darwin-x64@workspace:packages/octocode-engine/npm/darwin-x64":
+"@octocodeai/octocode-engine-darwin-x64@npm:16.7.0, @octocodeai/octocode-engine-darwin-x64@workspace:packages/octocode-engine/npm/darwin-x64":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-engine-darwin-x64@workspace:packages/octocode-engine/npm/darwin-x64"
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-engine-linux-arm64-gnu@workspace:*, @octocodeai/octocode-engine-linux-arm64-gnu@workspace:packages/octocode-engine/npm/linux-arm64-gnu":
+"@octocodeai/octocode-engine-linux-arm64-gnu@npm:16.7.0, @octocodeai/octocode-engine-linux-arm64-gnu@workspace:packages/octocode-engine/npm/linux-arm64-gnu":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-engine-linux-arm64-gnu@workspace:packages/octocode-engine/npm/linux-arm64-gnu"
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-engine-linux-x64-gnu@workspace:*, @octocodeai/octocode-engine-linux-x64-gnu@workspace:packages/octocode-engine/npm/linux-x64-gnu":
+"@octocodeai/octocode-engine-linux-x64-gnu@npm:16.7.0, @octocodeai/octocode-engine-linux-x64-gnu@workspace:packages/octocode-engine/npm/linux-x64-gnu":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-engine-linux-x64-gnu@workspace:packages/octocode-engine/npm/linux-x64-gnu"
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-engine-linux-x64-musl@workspace:*, @octocodeai/octocode-engine-linux-x64-musl@workspace:packages/octocode-engine/npm/linux-x64-musl":
+"@octocodeai/octocode-engine-linux-x64-musl@npm:16.7.0, @octocodeai/octocode-engine-linux-x64-musl@workspace:packages/octocode-engine/npm/linux-x64-musl":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-engine-linux-x64-musl@workspace:packages/octocode-engine/npm/linux-x64-musl"
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-engine-win32-x64-msvc@workspace:*, @octocodeai/octocode-engine-win32-x64-msvc@workspace:packages/octocode-engine/npm/win32-x64-msvc":
+"@octocodeai/octocode-engine-win32-x64-msvc@npm:16.7.0, @octocodeai/octocode-engine-win32-x64-msvc@workspace:packages/octocode-engine/npm/win32-x64-msvc":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-engine-win32-x64-msvc@workspace:packages/octocode-engine/npm/win32-x64-msvc"
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-engine@workspace:*, @octocodeai/octocode-engine@workspace:packages/octocode-engine":
+"@octocodeai/octocode-engine@npm:^16.6.3, @octocodeai/octocode-engine@npm:^16.7.0, @octocodeai/octocode-engine@workspace:*, @octocodeai/octocode-engine@workspace:packages/octocode-engine":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-engine@workspace:packages/octocode-engine"
   dependencies:
     "@napi-rs/cli": "npm:^3.7.2"
-    "@octocodeai/octocode-engine-darwin-arm64": "workspace:*"
-    "@octocodeai/octocode-engine-darwin-x64": "workspace:*"
-    "@octocodeai/octocode-engine-linux-arm64-gnu": "workspace:*"
-    "@octocodeai/octocode-engine-linux-x64-gnu": "workspace:*"
-    "@octocodeai/octocode-engine-linux-x64-musl": "workspace:*"
-    "@octocodeai/octocode-engine-win32-x64-msvc": "workspace:*"
+    "@octocodeai/octocode-engine-darwin-arm64": "npm:16.7.0"
+    "@octocodeai/octocode-engine-darwin-x64": "npm:16.7.0"
+    "@octocodeai/octocode-engine-linux-arm64-gnu": "npm:16.7.0"
+    "@octocodeai/octocode-engine-linux-x64-gnu": "npm:16.7.0"
+    "@octocodeai/octocode-engine-linux-x64-musl": "npm:16.7.0"
+    "@octocodeai/octocode-engine-win32-x64-msvc": "npm:16.7.0"
     "@types/node": "npm:^25.9.3"
     "@vitest/coverage-v8": "npm:^4.1.9"
     bash-language-server: "npm:^5.6.0"
@@ -2329,14 +2301,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@octocodeai/octocode-tools-core@workspace:*, @octocodeai/octocode-tools-core@workspace:packages/octocode-tools-core":
+"@octocodeai/octocode-tools-core@npm:^16.6.3, @octocodeai/octocode-tools-core@workspace:*, @octocodeai/octocode-tools-core@workspace:packages/octocode-tools-core":
   version: 0.0.0-use.local
   resolution: "@octocodeai/octocode-tools-core@workspace:packages/octocode-tools-core"
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@octocodeai/config": "workspace:*"
-    "@octocodeai/octocode-core": "file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core"
-    "@octocodeai/octocode-engine": "workspace:*"
+    "@octocodeai/octocode-core": "npm:^16.6.3"
+    "@octocodeai/octocode-engine": "npm:^16.7.0"
     "@octokit/core": "npm:^7.0.6"
     "@octokit/oauth-methods": "npm:^6.0.2"
     "@octokit/openapi-types": "npm:^27.0.0"
@@ -2361,7 +2333,7 @@ __metadata:
   dependencies:
     "@octocodeai/config": "workspace:*"
     "@octocodeai/octocode-awareness": "workspace:*"
-    "@octocodeai/octocode-core": "file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core"
+    "@octocodeai/octocode-core": "npm:^16.6.3"
     "@octocodeai/octocode-tools-core": "workspace:*"
     "@types/node": "npm:^25.9.3"
     "@vitest/coverage-v8": "npm:^4.1.9"
@@ -7458,9 +7430,9 @@ __metadata:
   dependencies:
     "@inquirer/prompts": "npm:^8.5.2"
     "@octocodeai/config": "workspace:*"
-    "@octocodeai/octocode-core": "file:///Users/bgaryy/code/octocode-mcp-host/packages/octocode-core"
-    "@octocodeai/octocode-engine": "workspace:*"
-    "@octocodeai/octocode-tools-core": "workspace:*"
+    "@octocodeai/octocode-core": "npm:^16.6.3"
+    "@octocodeai/octocode-engine": "npm:^16.6.3"
+    "@octocodeai/octocode-tools-core": "npm:^16.6.3"
     "@octokit/auth-oauth-device": "npm:^8.0.3"
     "@octokit/oauth-methods": "npm:^6.0.2"
     "@octokit/plugin-throttling": "npm:^11.0.3"
