@@ -312,6 +312,27 @@ describe('releaseFileLock', () => {
     } finally { cleanup(); }
   });
 
+  it('closes an explicit standalone run after its TTL lock is already gone', () => {
+    const db = freshDb();
+    const { dir, path, cleanup } = tempFile();
+    try {
+      const claim = preFlightIntent(db, {
+        agentId: 'agent-a', sessionId: 'session-a', workspacePath: dir, artifact: 'pkg', targetFiles: [path],
+      });
+      if (!claim.ok) throw new Error('claim failed');
+      db.prepare('DELETE FROM locks WHERE run_id = ?').run(claim.run.run_id);
+
+      const released = releaseFileLock(db, {
+        agentId: 'agent-a', sessionId: 'session-a', workspacePath: dir, artifact: 'pkg',
+        runId: claim.run.run_id, status: 'SUCCESS',
+        verified: true, verifiedNote: 'lockless run verified',
+      });
+      expect(released).toMatchObject({ released: true, locks_released: 0, run_ids: [claim.run.run_id] });
+      expect(db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(claim.run.run_id))
+        .toEqual({ status: 'SUCCESS' });
+    } finally { cleanup(); }
+  });
+
   it('atomically deletes locks row and updates task status on release', () => {
     const db = freshDb();
     const { path, cleanup } = tempFile();

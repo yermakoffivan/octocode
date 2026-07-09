@@ -79,6 +79,8 @@ octocode-awareness lock release \
 
 Target-file release is allowed, but overlapping runs from the same agent can make it ambiguous. Prefer `--run-id`.
 
+Terminal `lock release` states apply only to standalone runs. A task-linked run accepts `--status ACTIVE` for interim file release; use `task submit` or `task release` for its lifecycle. The CLI rejects terminal lock release on linked runs.
+
 For a verified standalone edit, release can close directly:
 
 ```bash
@@ -107,6 +109,7 @@ Scoped `--all-pending` closes this agent's pending runs in the workspace. Unscop
 ## TTL And Prune
 
 File-lock TTL is hard-capped at 10 minutes. It recovers from crashes; it does not prove work ended.
+If a standalone run's locks already expired, explicit `lock release --run-id ...` can still close that run after real verification.
 
 ```bash
 octocode-awareness lock prune \

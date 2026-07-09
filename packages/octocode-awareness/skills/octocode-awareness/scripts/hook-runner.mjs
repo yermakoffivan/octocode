@@ -1073,6 +1073,24 @@ function releaseFileLock(db2, params) {
       WHERE ${where}`
   ).all(...whereParams);
   const runIds = [...new Set(locks.map((l) => l.run_id))];
+  if (runId && !runIds.includes(runId)) {
+    const directWhere = ["run_id = ?", "agent_id = ?"];
+    const directParams = [runId, agentId2];
+    if (sessionId2) {
+      directWhere.push("session_id = ?");
+      directParams.push(sessionId2);
+    }
+    if (workspacePath) {
+      directWhere.push("workspace_path = ?");
+      directParams.push(workspaceScopeRoot(workspacePath));
+    }
+    if (artifactScope) {
+      directWhere.push("(artifact = ? OR artifact IS NULL)");
+      directParams.push(artifactScope);
+    }
+    const directRun = db2.prepare(`SELECT run_id FROM task_runs WHERE ${directWhere.join(" AND ")}`).get(...directParams);
+    if (directRun) runIds.push(directRun.run_id);
+  }
   const ambiguousRelease = !runId && absFiles.length > 0 && runIds.length > 1;
   if (ambiguousRelease) {
     return {
@@ -1085,7 +1103,7 @@ function releaseFileLock(db2, params) {
       ambiguousRelease: "target-file release matched multiple active runs; pass --run-id to release exactly one run"
     };
   }
-  if (locks.length === 0) {
+  if (runIds.length === 0) {
     return {
       agent_id: agentId2,
       status: effectiveStatus,
@@ -1095,17 +1113,27 @@ function releaseFileLock(db2, params) {
       updated_at: now
     };
   }
+  const runMetadata = db2.prepare(`SELECT run_id, task_id FROM task_runs
+    WHERE run_id IN (${runIds.map(() => "?").join(",")})`).all(...runIds);
+  if (effectiveStatus !== "ACTIVE" && runMetadata.some((run) => run.task_id != null)) {
+    throw new Error("task-linked runs must use task submit or task release; lock release may only keep them ACTIVE");
+  }
   db2.exec("BEGIN IMMEDIATE");
+  let updatedRuns = 0;
   try {
     const lockIds = locks.map((lock) => lock.lock_id);
-    db2.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => "?").join(",")})`).run(...lockIds);
+    if (lockIds.length > 0) {
+      db2.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => "?").join(",")})`).run(...lockIds);
+    }
     for (const tid of runIds) {
       const remaining = db2.prepare("SELECT 1 FROM locks WHERE run_id = ? LIMIT 1").get(tid);
       if (!remaining) {
-        db2.prepare(
-          "UPDATE task_runs SET status = ?, updated_at = ? WHERE run_id = ? AND agent_id = ?"
+        const updated = db2.prepare(
+          `UPDATE task_runs SET status = ?, updated_at = ?
+           WHERE run_id = ? AND agent_id = ? AND status IN ('ACTIVE','PENDING')`
         ).run(effectiveStatus, now, tid, agentId2);
-        if (verified && verifiedNote) {
+        updatedRuns += updated.changes;
+        if (updated.changes > 0 && verified && verifiedNote) {
           try {
             db2.prepare(
               `INSERT INTO run_log(event_id, run_id, agent_id, event_type, message, created_at)
@@ -1127,7 +1155,7 @@ function releaseFileLock(db2, params) {
   return {
     agent_id: agentId2,
     status: effectiveStatus,
-    released: locks.length > 0,
+    released: locks.length > 0 || updatedRuns > 0,
     locks_released: locks.length,
     run_ids: runIds,
     updated_at: now,

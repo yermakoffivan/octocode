@@ -23,6 +23,7 @@ Standalone run:
 2. run the declared check
 3. `verify mark --run-id ... --message ...`
 
-For a claimed task, release interim locks with `--status ACTIVE` and use `task submit --task-id ... --run-id ...` when work ends. After the declared check, `verify mark --run-id ...` moves the task from VERIFY to DONE or FAILED.
+For a claimed task, release interim locks with `--status ACTIVE` and use `task submit --task-id ... --run-id ...` when work ends. Terminal lock release on a linked run is rejected. After the declared check, `verify mark --run-id ...` moves the task from VERIFY to DONE or FAILED.
 
-`SUCCESS` without `--verified` downgrades to PENDING. `verify audit` is the final gate. Scoped `--all-pending` closes this agent's pending runs; avoid unscoped batch verification. `verify audit --abandon` fails both linked task and run, so use it only when truly abandoning work.
+`SUCCESS` without `--verified` downgrades to PENDING. An explicit run id can close a standalone run after its TTL locks disappear.
+`verify audit` is the final gate. Scope `--all-pending` to this agent's workspace. `verify audit --abandon` fails both linked task and run, so reserve it for real abandonment.
