@@ -5,21 +5,21 @@
  * verification, briefing, and session-capture logic lives here so Claude/Codex
  * skill hooks and Pi native adapters share the same package-owned behavior.
  */
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { registerAgent } from '../src/agents.js';
 import { insertEditLog } from '../src/audit.js';
 import { connectDb, resolveDbPath } from '../src/db.js';
-import { canonicalizePath, normalizeWorkspacePath } from '../src/git.js';
+import { normalizeWorkspacePath } from '../src/git.js';
 import { preFlightIntent, releaseFileLock } from '../src/intents.js';
+import { activeTaskClaimForAgent } from '../src/tasks.js';
 import { auditUnverified } from '../src/verify.js';
 import { digest, notifyGet, sessionCapture } from '../src/maintenance.js';
 import { endSession } from '../src/sessions.js';
-import { extractPiWriteTargetPaths } from '../src/pi-hooks.js';
+import { evaluateHarnessGuard, extractPiWriteTargetPaths } from '../src/pi-hooks.js';
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -175,52 +175,52 @@ function resolveHookPath(file: string, cwd = process.cwd()): string {
   return resolve(cwd, file);
 }
 
-function isInsidePath(candidate: string, root: string): boolean {
-  // Shared with the workspace-scope resolver (src/git.ts) so containment
-  // checks and scope keys always agree on symlinked paths (e.g. macOS
-  // /tmp -> /private/tmp) instead of maintaining two divergent copies.
-  const resolvedRoot = canonicalizePath(root);
-  const resolvedCandidate = canonicalizePath(candidate);
-  if (resolvedCandidate === resolvedRoot) return true;
-  // A real path is inside root iff its relative path neither escapes upward
-  // (`..`) nor is absolute (different drive/root) — string prefixes are unsafe
-  // because `/a/b-sibling` textually starts with `/a/b`.
-  const rel = relative(resolvedRoot, resolvedCandidate);
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
-}
-
 function db() {
   return connectDb(resolveDbPath(null));
 }
 
-interface HookTaskStateEntry {
-  taskId: string;
+interface HookRunStateEntry {
+  runId: string;
   files: string[];
   createdAt: string;
 }
 
-type HookTaskState = Record<string, HookTaskStateEntry[]>;
+type HookRunState = Record<string, HookRunStateEntry[]>;
 
-function hookTaskStateDir(): string {
-  const stateDir = join(dirname(resolveDbPath(null)), 'hook-state', 'tasks');
+function hookRunStateDir(): string {
+  const stateDir = join(dirname(resolveDbPath(null)), 'hook-state', 'runs');
   mkdirSync(stateDir, { recursive: true });
   return stateDir;
 }
 
-function hookTaskStateFile(key: string): string {
-  return join(hookTaskStateDir(), `${key}.json`);
+function hookRunStateFile(key: string): string {
+  return join(hookRunStateDir(), `${key}.json`);
 }
 
-function legacyHookTaskStateFile(): string {
+function legacyHookRunStateFile(): string {
   const stateDir = join(dirname(resolveDbPath(null)), 'hook-state');
   mkdirSync(stateDir, { recursive: true });
   return join(stateDir, 'shell-hook-tasks.json');
 }
 
-function readLegacyHookTaskEntries(key: string): HookTaskStateEntry[] {
+function readLegacyPerRunFile(key: string): HookRunStateEntry[] {
+  const file = join(dirname(resolveDbPath(null)), 'hook-state', 'tasks', `${key}.json`);
   try {
-    const legacyFile = legacyHookTaskStateFile();
-    const state = JSON.parse(readFileSync(legacyFile, 'utf8')) as HookTaskState;
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown;
+    const entries = Array.isArray(parsed) ? parsed as HookRunStateEntry[] : [];
+    if (entries.length > 0) {
+      try { unlinkSync(file); } catch { /* migration cleanup is best-effort */ }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+function readLegacyHookRunEntries(key: string): HookRunStateEntry[] {
+  try {
+    const legacyFile = legacyHookRunStateFile();
+    const state = JSON.parse(readFileSync(legacyFile, 'utf8')) as HookRunState;
     const entries = Array.isArray(state[key]) ? state[key]! : [];
     if (entries.length === 0) return [];
     delete state[key];
@@ -231,17 +231,17 @@ function readLegacyHookTaskEntries(key: string): HookTaskStateEntry[] {
   }
 }
 
-function readHookTaskEntries(key: string): HookTaskStateEntry[] {
+function readHookRunEntries(key: string): HookRunStateEntry[] {
   try {
-    const parsed = JSON.parse(readFileSync(hookTaskStateFile(key), 'utf8')) as unknown;
-    return Array.isArray(parsed) ? parsed as HookTaskStateEntry[] : [];
+    const parsed = JSON.parse(readFileSync(hookRunStateFile(key), 'utf8')) as unknown;
+    return Array.isArray(parsed) ? parsed as HookRunStateEntry[] : [];
   } catch {
-    return readLegacyHookTaskEntries(key);
+    return readLegacyPerRunFile(key).concat(readLegacyHookRunEntries(key));
   }
 }
 
-function writeHookTaskEntries(key: string, entries: HookTaskStateEntry[]): void {
-  const file = hookTaskStateFile(key);
+function writeHookRunEntries(key: string, entries: HookRunStateEntry[]): void {
+  const file = hookRunStateFile(key);
   if (entries.length === 0) {
     try { unlinkSync(file); } catch { /* already absent */ }
     return;
@@ -271,7 +271,7 @@ function hookEventId(payload: Record<string, unknown>): string | null {
   );
 }
 
-function hookTaskKey(payload: Record<string, unknown>, files: string[], cwd: string): string {
+function hookRunKey(payload: Record<string, unknown>, files: string[], cwd: string): string {
   const explicitId = hookEventId(payload);
   const identity = {
     agent: agentId(payload),
@@ -283,26 +283,26 @@ function hookTaskKey(payload: Record<string, unknown>, files: string[], cwd: str
   return createHash('sha1').update(JSON.stringify(identity)).digest('hex');
 }
 
-function recordHookTask(payload: Record<string, unknown>, files: string[], cwd: string, taskId: string): void {
-  const key = hookTaskKey(payload, files, cwd);
-  const entries = readHookTaskEntries(key);
+function recordHookRun(payload: Record<string, unknown>, files: string[], cwd: string, runId: string): void {
+  const key = hookRunKey(payload, files, cwd);
+  const entries = readHookRunEntries(key);
   entries.push({
-    taskId,
+    runId,
     files: files.map(file => resolveHookPath(file, cwd)),
     createdAt: new Date().toISOString(),
   });
-  writeHookTaskEntries(key, entries.slice(-20));
+  writeHookRunEntries(key, entries.slice(-20));
 }
 
-function consumeHookTask(payload: Record<string, unknown>, files: string[], cwd: string): string | null {
-  const key = hookTaskKey(payload, files, cwd);
-  const entries = readHookTaskEntries(key);
+function consumeHookRun(payload: Record<string, unknown>, files: string[], cwd: string): string | null {
+  const key = hookRunKey(payload, files, cwd);
+  const entries = readHookRunEntries(key);
   const entry = entries.shift();
-  writeHookTaskEntries(key, entries);
-  return entry?.taskId ?? null;
+  writeHookRunEntries(key, entries);
+  return entry?.runId ?? null;
 }
 
-function uniqueActiveHookTaskId(
+function uniqueActiveHookRunId(
   database: DatabaseSync,
   params: { agentId: string; workspacePath: string; artifact: string | null; files: string[] },
 ): string | null {
@@ -324,13 +324,13 @@ function uniqueActiveHookTaskId(
     binds.push(params.artifact);
   }
   const rows = database.prepare(
-    `SELECT DISTINCT fl.task_id
+    `SELECT DISTINCT fl.run_id
        FROM locks fl
-       JOIN tasks ai ON ai.task_id = fl.task_id
+       JOIN task_runs ai ON ai.run_id = fl.run_id
       WHERE ${where.join(' AND ')}
-      ORDER BY fl.task_id ASC`
-  ).all(...binds) as Array<{ task_id: string }>;
-  return rows.length === 1 ? rows[0]!.task_id : null;
+      ORDER BY fl.run_id ASC`
+  ).all(...binds) as Array<{ run_id: string }>;
+  return rows.length === 1 ? rows[0]!.run_id : null;
 }
 
 function hookAgentContext(payload: Record<string, unknown>, hookName: string): string {
@@ -373,11 +373,17 @@ async function runPreEdit(payload: Record<string, unknown>): Promise<number> {
   try {
     const database = db();
     registerHookAgent(database, payload, 'hook:pre-edit');
+    const activeClaim = activeTaskClaimForAgent(database, {
+      agentId: agentId(payload),
+      workspacePath: workspace(payload) ?? process.cwd(),
+      artifact: artifact(payload),
+    });
     const result = preFlightIntent(database, {
       agentId: agentId(payload),
       sessionId: sessionId(payload),
       workspacePath: workspace(payload) ?? process.cwd(),
       artifact: artifact(payload),
+      runId: activeClaim?.run_id,
       rationale: autoClaimRationale(payload, files),
       testPlan: 'post-edit verification',
       targetFiles: files,
@@ -388,7 +394,7 @@ async function runPreEdit(payload: Record<string, unknown>): Promise<number> {
       console.error(JSON.stringify(result));
       return 2;
     }
-    recordHookTask(payload, files, workspace(payload) ?? process.cwd(), result.task.task_id);
+    recordHookRun(payload, files, workspace(payload) ?? process.cwd(), result.run.run_id);
     return 0;
   } catch (error) {
     console.error(`octocode-awareness pre-flight warning (continuing): ${error instanceof Error ? error.message : String(error)}`);
@@ -405,29 +411,30 @@ async function runPostEdit(payload: Record<string, unknown>): Promise<number> {
     const hookAgentId = agentId(payload);
     const hookWorkspace = workspace(payload) ?? process.cwd();
     const hookArtifact = artifact(payload);
-    const correlatedTaskId = consumeHookTask(payload, files, hookWorkspace)
-      ?? uniqueActiveHookTaskId(database, {
+    const correlatedRunId = consumeHookRun(payload, files, hookWorkspace)
+      ?? uniqueActiveHookRunId(database, {
         agentId: hookAgentId,
         workspacePath: hookWorkspace,
         artifact: hookArtifact,
         files,
       });
-    if (!correlatedTaskId) {
-      console.error('octocode-awareness post-edit warning (continuing): could not identify a unique hook task to release; leaving locks for verify/cleanup.');
+    if (!correlatedRunId) {
+      console.error('octocode-awareness post-edit warning (continuing): could not identify a unique hook run to release; leaving locks for verify/cleanup.');
       return 0;
     }
+    const linkedClaim = database.prepare('SELECT 1 FROM task_claims WHERE run_id = ? LIMIT 1').get(correlatedRunId);
     const release = releaseFileLock(database, {
       agentId: hookAgentId,
       workspacePath: hookWorkspace,
       artifact: hookArtifact,
-      taskId: correlatedTaskId,
-      status: 'PENDING',
+      runId: correlatedRunId,
+      status: linkedClaim ? 'ACTIVE' : 'PENDING',
     });
-    const taskId = release.task_ids.length === 1 ? release.task_ids[0] : correlatedTaskId;
+    const runId = release.run_ids.length === 1 ? release.run_ids[0] : correlatedRunId;
     for (const file of files) {
       insertEditLog(database, {
         agentId: hookAgentId,
-        taskId,
+        runId,
         filePath: resolveHookPath(file, hookWorkspace),
         operation: 'update',
         workspacePath: hookWorkspace,
@@ -441,45 +448,21 @@ async function runPostEdit(payload: Record<string, unknown>): Promise<number> {
 }
 
 async function runHarnessGuard(payload: Record<string, unknown>): Promise<number> {
-  const skillRoot = process.env.OCTOCODE_SKILL_ROOT;
-  if (!skillRoot) return 0;
-  const files = extractFiles(payload);
-  if (files.length === 0) return 0;
-  const insideSkill = files.some((file) => isInsidePath(resolveHookPath(file), skillRoot));
-  if (!insideSkill) return 0;
-
-  if (process.env.OCTOCODE_ALLOW_HARNESS_APPLY !== '1') {
-    console.error('octocode-awareness: editing the skill itself is gated. A human must set OCTOCODE_ALLOW_HARNESS_APPLY=1. Edit blocked.');
+  // Gate logic is shared with the Pi bridge (evaluateHarnessGuard in
+  // src/pi-hooks.ts) so the shell hosts (claude/codex/cursor) and Pi can never
+  // drift. OCTOCODE_SKILL_ROOT is exported by harness-guard.sh; a missing root
+  // (unset) makes the guard a no-op, matching the Pi default when no skill root
+  // is wired.
+  const reason = evaluateHarnessGuard({
+    targetFiles: extractFiles(payload),
+    skillRoot: process.env.OCTOCODE_SKILL_ROOT,
+    cwd: process.cwd(),
+  });
+  if (reason) {
+    console.error(`${reason} Edit blocked.`);
     return 2;
   }
-
-  // "Dedicated branch" is checked against the skill root's actual git branch.
-  // main/master is never allowed (self-harness.md Hard NO); a detached HEAD or
-  // non-repo needs the explicit OCTOCODE_HARNESS_BRANCH_OK=1 acknowledgement.
-  const branch = gitBranchOf(skillRoot);
-  if (branch === 'main' || branch === 'master') {
-    console.error(`octocode-awareness: harness self-fix is never allowed on ${branch}. Create a dedicated branch first. Edit blocked.`);
-    return 2;
-  }
-  if (!branch || branch === 'HEAD') {
-    if (process.env.OCTOCODE_HARNESS_BRANCH_OK !== '1') {
-      console.error('octocode-awareness: cannot confirm a dedicated git branch for the skill. Create one, or set OCTOCODE_HARNESS_BRANCH_OK=1 to acknowledge. Edit blocked.');
-      return 2;
-    }
-  }
-
   return 0;
-}
-
-function gitBranchOf(dir: string): string | null {
-  try {
-    const r = spawnSync('git', ['-C', dir, 'rev-parse', '--abbrev-ref', 'HEAD'], {
-      encoding: 'utf8', timeout: 5000,
-    });
-    return r.status === 0 ? String(r.stdout).trim() : null;
-  } catch {
-    return null;
-  }
 }
 
 async function runStopVerify(payload: Record<string, unknown>): Promise<number> {
@@ -491,10 +474,10 @@ async function runStopVerify(payload: Record<string, unknown>): Promise<number> 
     if (report.count > 0) {
       const parts: string[] = [];
       if (report.unverified.length > 0) {
-        parts.push(report.unverified.map((u) => `${u.status}:${u.task_id}: ${u.test_plan}`).join('; '));
+        parts.push(report.unverified.map((u) => `${u.status}:${u.run_id}: ${u.test_plan}`).join('; '));
       }
       if (report.stale_active.length > 0) {
-        parts.push('Stale active (lock expired): ' + report.stale_active.map((s) => `${s.task_id}: ${s.rationale}`).join('; '));
+        parts.push('Stale active (lock expired): ' + report.stale_active.map((s) => `${s.run_id}: ${s.rationale}`).join('; '));
       }
       console.error(`octocode-awareness: concluding with unverified work. ${parts.join(' | ')}`);
       return 2;

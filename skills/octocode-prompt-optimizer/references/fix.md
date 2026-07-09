@@ -1,93 +1,49 @@
 # FIX Gate
-
-Load when fixing rated issues, after RATE and before VALIDATE.
-
-**STOP. Fix issues in priority order: Critical → High → Medium → Low.**
-
+Load after RATE and before VALIDATE. Fix Critical → High → Medium → Low; record deliberate deferrals.
 ### Pre-Conditions
-- [ ] RATE gate completed
-- [ ] Issues table produced
+- [ ] RATE produced evidenced issues and a before score.
+## Rules
+- Preserve intent, working logic, branches, identifiers/commands, and necessary metadata.
+- Use MUST/NEVER only for critical, fragile, destructive, or permission-sensitive behavior.
+- Prefer direct positive actions; keep prohibitions where crossing the boundary is dangerous.
+- Use `conciseness-toolkit.md` for token cuts and `attention.md` for placement.
+- Keep one term per concept and one owner per rule.
+## Critical Rule Pattern
+Use the smallest reliable form; add all three locks only when omission is high-risk:
+1. State the required action.
+2. Forbid the unsafe opposite.
+3. Require a concrete verification signal.
 
-### Fix priority (follow the order)
-1. **Critical** — weak words in MUST/FORBIDDEN contexts.
-2. **High** — missing enforcement, ambiguous instructions.
-3. **Medium** — missing output formats, missing gates.
-4. **Low** — redundancy, density, wordiness (only where value is added).
-
-### Command strength hierarchy
-| Strength | Keywords | Use for |
-|----------|----------|---------|
-| Absolute | never, always, must, forbidden, critical | Non-negotiable rules |
-| Stop | STOP, HALT, DO NOT proceed, WAIT | Gates and checkpoints |
-| Required | required, mandatory | Essential steps |
-| Soft | should, prefer | Optional guidance only |
-
-Prefer positive framing (tell the agent what to do); reserve prohibitions for destructive, fragile, or order-dependent rules.
-
-### Triple Lock (for critical rules)
-1. STATE: "The agent must X"
-2. FORBID: "FORBIDDEN: not doing X"
-3. REQUIRE: "Require verification that X is complete"
-
-### Conciseness pass (shorten without losing logic)
-Apply when a line is wordy or indirect (RATE `wordy-indirect`). Use `conciseness-toolkit.md` for the specific moves.
-- Density over length: minimal is not the same as short. Cut only tokens that carry no signal; keep every token that changes behavior.
-- **IF** a sentence packs more than one directive or exceeds about 20-25 words → **THEN** split into one instruction per sentence.
-- **IF** a line uses a nominalization, passive voice, expletive opener, or double negative → **THEN** rewrite per the toolkit, preserving exact logic.
-
-### Attention & structure pass (place what survives where it lands)
-Apply after the conciseness pass, for `imprecise-wording`, `buried-critical-rule`, or `unmarked-example-or-data`. Use `attention.md` for the specific moves.
-- **IF** a verb is a catch-all or a concept uses shifting synonyms → **THEN** swap in the concrete verb / one consistent term, keeping exact commands and versions intact.
-- **IF** a MUST/NEVER rule sits mid-section → **THEN** move it to the section start and restate the single most important one at the end; never re-specify it differently.
-- **IF** literal examples or reference data are mixed into instructions → **THEN** wrap them in `<example>`/`<context>` tags; keep Markdown default elsewhere.
-
-### Reasoning block (before changes)
-Required on Full Path, or on Fast Path with any Critical/High issue. Optional on Fast Path with only Medium/Low issues — include a one-line rationale instead.
-
+## Reasoning Receipt
+Required on Full Path or for Critical/High issues; otherwise one rationale line is enough.
 ```markdown
-<reasoning>
-1. Current state: [What exists now]
-2. Goal: [What we are trying to achieve]
-3. Approach: [Why this specific change]
-4. Risk: [What could go wrong]
-</reasoning>
+Current: <problem>
+Goal: <preserved intent>
+Change: <bounded repair>
+Risk: <regression and check>
 ```
 
-### Gate template (when adding gates)
+## Gate Template
 ```markdown
-## [Name] Gate
-**STOP. DO NOT proceed. [What to verify]**
-### Pre-Conditions
-- [ ] [Previous step completed]
-### Required actions
-1. [Action]
-### Gate Check
-- [ ] [Condition]
-### Forbidden
-- [What not to do]
-### Allowed
-- [What is permitted]
-### On Failure
-- **IF** [condition] → **THEN** [recovery]
+## <Name> Gate
+STOP: <condition>
+Pre-Conditions: <state>
+Required Actions: <ordered actions>
+Gate Check: <observable pass>
+Forbidden: <unsafe action>
+Allowed: <safe action>
+On Failure: IF <condition> → THEN <recovery>
 ```
 
 ### Gate Check
-- [ ] All Critical issues fixed
-- [ ] All High issues fixed
-- [ ] Medium/Low addressed or recorded as skipped
-- [ ] Reasoning requirement satisfied (block produced, or Fast Path low-risk rationale recorded)
+- [ ] Critical/High issues fixed; others fixed or recorded.
+- [ ] Intent/branches remain unchanged; growth is under 10% or justified.
 
 ### Forbidden
-- Over-strengthening soft guidance (keep "should" for optional items)
-- Changing logic that already works
-- Adding unnecessary complexity
-- Skipping Critical/High issues
-- Bloating: over 10% line increase without a justification in VALIDATE
+- Optional-to-mandatory escalation, redesign, conflicting duplicates, or unverified writes.
 
 ### Allowed
-- Text output (draft fixes)
-- Iterating on fixes
+- Draft text, iterative comparison, and scoped structural changes.
 
 ### On Failure
-- **IF** over-strengthening detected → **THEN** revert and re-assess with the RATE criteria.
-- **IF** unsure whether logic changed → **THEN** compare before/after intent.
+- **IF** intent or working logic changed → **THEN** revert that edit and return to UNDERSTAND.

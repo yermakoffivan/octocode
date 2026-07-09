@@ -551,8 +551,8 @@ export function buildMemoryRenderCall(
     }
     case 'memory_verify': {
       if (a.allPending) summary = 'allPending';
-      else if (Array.isArray(a.task_ids)) summary = `${a.task_ids.length} task${a.task_ids.length === 1 ? '' : 's'}`;
-      else if (typeof a.task_id === 'string') summary = a.task_id.slice(0, 20);
+      else if (Array.isArray(a.run_ids)) summary = `${a.run_ids.length} run${a.run_ids.length === 1 ? '' : 's'}`;
+      else if (typeof a.run_id === 'string') summary = a.run_id.slice(0, 20);
       if (a.status) summary += ` \u2192 ${s(a.status, 10)}`;
       break;
     }
@@ -632,7 +632,7 @@ function parseMemoryStat(toolName: string, text: string): string {
       case 'memory_workspace_status': {
         const locks = Array.isArray(data.locks) ? data.locks.length : 0;
         const agents = Array.isArray(data.agents) ? data.agents.length : 0;
-        const pending = typeof data.pending_tasks === 'number' ? data.pending_tasks : 0;
+        const pending = typeof data.pending_runs === 'number' ? data.pending_runs : 0;
         const parts = [
           locks > 0 ? `${locks} lock${locks === 1 ? '' : 's'}` : '',
           agents > 0 ? `${agents} agent${agents === 1 ? '' : 's'}` : '',
@@ -648,7 +648,7 @@ function parseMemoryStat(toolName: string, text: string): string {
       case 'memory_audit_unverified': {
         const count = typeof data.count === 'number' ? data.count
           : Array.isArray(data.pending) ? data.pending.length : 0;
-        return `${count} pending task${count === 1 ? '' : 's'}`;
+        return `${count} pending run${count === 1 ? '' : 's'}`;
       }
       case 'memory_verify': {
         const count = typeof data.count === 'number' ? data.count

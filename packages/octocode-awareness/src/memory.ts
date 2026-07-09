@@ -991,6 +991,7 @@ export interface MineWeaknessResult {
   clusters: WeaknessCluster[];
   total_signatures: number;
   total_memories: number;
+  next: string;
 }
 
 export interface MineWeaknessParams {
@@ -1155,7 +1156,11 @@ export function mineWeakness(db: DatabaseSync, params: MineWeaknessParams = {}):
      FROM memories WHERE ${conditions.join(' AND ')}`
   ).get(...bindParams) as unknown as TotalRow;
 
-  return { ok: true, clusters: selected, total_signatures: totals.sigs, total_memories: totals.mems };
+  const next = selected.length > 0
+    ? 'Next: choose one cluster, inspect its memory_ids, implement one scoped fix, verify it, then run octocode-awareness reflect record with the same --failure-signature and either --fix-repo or --fix-harness.'
+    : 'No recurring failure cluster met the threshold. Record verified failures with octocode-awareness reflect record --failure-signature <signature>, then mine again after repetition.';
+
+  return { ok: true, clusters: selected, total_signatures: totals.sigs, total_memories: totals.mems, next };
 }
 
 // ─── Embedding storage + cosine search (ARCH-6) ─────────────────────────────

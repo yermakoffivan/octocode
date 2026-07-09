@@ -13,6 +13,7 @@ import { insertEditLog } from './audit.js';
 const _sessionStartupToken = randomUUID().slice(0, 8);
 import { normalizeArtifact } from './helpers.js';
 import { preFlightIntent, releaseFileLock } from './intents.js';
+import { activeTaskClaimForAgent } from './tasks.js';
 import { auditUnverified } from './verify.js';
 import { notifyGet, sessionCapture } from './maintenance.js';
 import { registerAgent } from './agents.js';
@@ -46,7 +47,7 @@ export interface PiToolEvent {
 
 export interface PiAwarenessBridgeOptions {
   pendingToolFiles?: Map<string, string[]>;
-  pendingToolTasks?: Map<string, string>;
+  pendingToolRuns?: Map<string, string>;
   dbPath?: string | null;
   getDb?: (ctx?: PiLikeContext) => DatabaseSync;
   skillRoot?: string | null;
@@ -232,38 +233,59 @@ function gitBranchOf(dir: string): string | null {
   }
 }
 
-function guardPiHarnessEdit(targetFiles: string[], ctx: PiLikeContext | undefined, skillRoot: string | null | undefined): string | null {
+/**
+ * Single source of truth for the harness self-edit gate, shared by the Pi
+ * bridge and the shell hook runner (bin/hook-runner.ts) so the two vendors can
+ * never drift. Returns a human-readable block reason, or null to allow.
+ *
+ * Gate (only when a target resolves inside `skillRoot`):
+ *   1. OCTOCODE_ALLOW_HARNESS_APPLY=1 must be set (human approval).
+ *   2. The skill root's git branch must not be main/master.
+ *   3. A detached HEAD or non-repo skill root needs OCTOCODE_HARNESS_BRANCH_OK=1.
+ */
+export function evaluateHarnessGuard(params: {
+  targetFiles: string[];
+  skillRoot: string | null | undefined;
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+}): string | null {
+  const { targetFiles, skillRoot, cwd } = params;
+  const env = params.env ?? process.env;
   if (!skillRoot) return null;
-  const cwd = ctx?.cwd ?? process.cwd();
+  if (targetFiles.length === 0) return null;
   const insideSkill = targetFiles.some((file) => isInsidePath(resolvePiTargetPath(file, cwd), skillRoot));
   if (!insideSkill) return null;
 
-  if (process.env.OCTOCODE_ALLOW_HARNESS_APPLY !== '1') {
-    return 'Octocode awareness blocked this edit: editing the skill itself is gated. A human must set OCTOCODE_ALLOW_HARNESS_APPLY=1.';
+  if (env.OCTOCODE_ALLOW_HARNESS_APPLY !== '1') {
+    return 'octocode-awareness: editing the skill itself is gated. A human must set OCTOCODE_ALLOW_HARNESS_APPLY=1.';
   }
 
   const branch = gitBranchOf(skillRoot);
   if (branch === 'main' || branch === 'master') {
-    return `Octocode awareness blocked this edit: harness self-fix is never allowed on ${branch}. Create a dedicated branch first.`;
+    return `octocode-awareness: harness self-fix is never allowed on ${branch}. Create a dedicated branch first.`;
   }
   if (!branch || branch === 'HEAD') {
-    if (process.env.OCTOCODE_HARNESS_BRANCH_OK !== '1') {
-      return 'Octocode awareness blocked this edit: cannot confirm a dedicated git branch for the skill. Create one, or set OCTOCODE_HARNESS_BRANCH_OK=1 to acknowledge.';
+    if (env.OCTOCODE_HARNESS_BRANCH_OK !== '1') {
+      return 'octocode-awareness: cannot confirm a dedicated git branch for the skill. Create one, or set OCTOCODE_HARNESS_BRANCH_OK=1 to acknowledge.';
     }
   }
 
   return null;
 }
 
+function guardPiHarnessEdit(targetFiles: string[], ctx: PiLikeContext | undefined, skillRoot: string | null | undefined): string | null {
+  return evaluateHarnessGuard({ targetFiles, skillRoot, cwd: ctx?.cwd ?? process.cwd() });
+}
+
 export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) {
   const pendingToolFiles = options.pendingToolFiles ?? new Map<string, string[]>();
-  const pendingToolTasks = options.pendingToolTasks ?? new Map<string, string>();
+  const pendingToolRuns = options.pendingToolRuns ?? new Map<string, string>();
   const getDb = options.getDb ?? ((ctx?: PiLikeContext) => defaultGetDb(options, ctx));
   const skillRoot = options.skillRoot ?? process.env.OCTOCODE_SKILL_ROOT ?? null;
 
   return {
     pendingToolFiles,
-    pendingToolTasks,
+    pendingToolRuns,
 
     async handleToolCall(event: PiToolEvent, ctx?: PiLikeContext) {
       const targetFiles = extractPiWriteTargetPaths(event?.toolName, event?.input);
@@ -274,18 +296,24 @@ export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) 
       // missing id cannot cause a double lock-acquire. Distinct edits yield
       // distinct file sets, so this never over-dedupes real work.
       const dedupeKey = event?.toolCallId || `nofid:${[...targetFiles].sort().join('|')}`;
-      if (pendingToolTasks.has(dedupeKey)) return undefined;
+      if (pendingToolRuns.has(dedupeKey)) return undefined;
       const harnessBlockReason = guardPiHarnessEdit(targetFiles, ctx, skillRoot);
       if (harnessBlockReason) return { block: true, reason: harnessBlockReason };
 
       const agentId = getPiAwarenessAgentId(ctx);
       try {
         const db = getDb(ctx);
+        const activeClaim = activeTaskClaimForAgent(db, {
+          agentId,
+          workspacePath: ctx?.cwd ?? process.cwd(),
+          artifact: artifactFrom(ctx, event as Record<string, unknown>),
+        });
         const result = preFlightIntent(db, {
           agentId,
           sessionId: getPiAwarenessSessionId(ctx),
           workspacePath: ctx?.cwd ?? process.cwd(),
           artifact: artifactFrom(ctx, event as Record<string, unknown>),
+          runId: activeClaim?.run_id,
           rationale: 'auto: Pi write/edit tool call via octocode-awareness',
           testPlan: targetFiles.length > 0
             ? `verify edit applied to: ${targetFiles.slice(0, 3).join(', ')}${targetFiles.length > 3 ? ` + ${targetFiles.length - 3} more` : ''}`
@@ -302,7 +330,7 @@ export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) 
         }
 
         pendingToolFiles.set(dedupeKey, targetFiles);
-        pendingToolTasks.set(dedupeKey, result.task.task_id);
+        pendingToolRuns.set(dedupeKey, result.run.run_id);
         return undefined;
       } catch (error) {
         notify(ctx, `Octocode awareness warning; continuing: ${error instanceof Error ? error.message : String(error)}`, 'warning');
@@ -315,32 +343,35 @@ export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) 
       // Mirror the acquire-side key (toolCallId, else sorted target files) so the
       // release finds the task the matching handleToolCall recorded.
       const dedupeKey = event?.toolCallId || `nofid:${[...extracted].sort().join('|')}`;
-      const trackedFiles = pendingToolTasks.has(dedupeKey) ? pendingToolFiles.get(dedupeKey) : undefined;
-      const taskId = pendingToolTasks.get(dedupeKey);
+      const trackedFiles = pendingToolRuns.has(dedupeKey) ? pendingToolFiles.get(dedupeKey) : undefined;
+      const runId = pendingToolRuns.get(dedupeKey);
       const fallbackFiles = trackedFiles ?? extracted;
-      if (fallbackFiles.length === 0 && !taskId) return undefined;
+      if (fallbackFiles.length === 0 && !runId) return undefined;
 
       pendingToolFiles.delete(dedupeKey);
-      pendingToolTasks.delete(dedupeKey);
+      pendingToolRuns.delete(dedupeKey);
       try {
         const db = getDb(ctx);
         const agentId = getPiAwarenessAgentId(ctx);
         const sessionId = getPiAwarenessSessionId(ctx);
         const workspacePath = ctx?.cwd ?? process.cwd();
         const artifact = artifactFrom(ctx, event as Record<string, unknown>);
+        const linkedClaim = runId
+          ? db.prepare('SELECT 1 FROM task_claims WHERE run_id = ? LIMIT 1').get(runId)
+          : null;
         releaseFileLock(db, {
           agentId,
           sessionId,
-          taskId,
-          targetFiles: taskId ? [] : fallbackFiles,
+          runId,
+          targetFiles: runId ? [] : fallbackFiles,
           workspacePath,
           artifact,
-          status: 'PENDING',
+          status: linkedClaim ? 'ACTIVE' : 'PENDING',
         });
         for (const file of fallbackFiles) {
           insertEditLog(db, {
             sessionId,
-            taskId,
+            runId,
             agentId,
             filePath: resolvePiTargetPath(file, workspacePath),
             operation: 'update',
@@ -443,18 +474,18 @@ export function wirePiAwarenessHooks(pi: PiLikeApi, options: PiAwarenessBridgeOp
         agentId: getPiAwarenessAgentId(ctx),
         workspacePath: ctx?.cwd ?? process.cwd(),
         artifact: artifactFrom(ctx, _event),
-        taskIds: [
-          ...result.unverified.map((intent) => intent.task_id),
-          ...result.stale_active.map((intent) => intent.task_id),
+        runIds: [
+          ...result.unverified.map((intent) => intent.run_id),
+          ...result.stale_active.map((intent) => intent.run_id),
         ].sort(),
       });
       if (verifyReminderKeys.has(reminderKey)) return undefined;
       verifyReminderKeys.add(reminderKey);
       const plans = result.unverified
-        .map((intent) => `${intent.status}:${intent.task_id}: ${intent.test_plan}`)
+        .map((intent) => `${intent.status}:${intent.run_id}: ${intent.test_plan}`)
         .join('; ');
       const stale = result.stale_active
-        .map((intent) => `STALE:${intent.task_id}: ${intent.rationale}`)
+        .map((intent) => `STALE:${intent.run_id}: ${intent.rationale}`)
         .join('; ');
       pi.sendMessage?.({
         customType: 'octocode-awareness-verify-gate',
@@ -462,7 +493,7 @@ export function wirePiAwarenessHooks(pi: PiLikeApi, options: PiAwarenessBridgeOp
           'Octocode awareness verify gate: you have unverified edits before concluding.',
           plans ? `Pending: ${plans}` : '',
           stale ? `Expired active locks: ${stale}` : '',
-          'Run the stated verification, then call memory_verify or octocode-awareness verify to clear the pending tasks.',
+          'Run the stated verification, then call memory_verify or octocode-awareness verify to clear the pending runs.',
         ].filter(Boolean).join('\n'),
         display: true,
       }, { deliverAs: 'followUp', triggerTurn: true });

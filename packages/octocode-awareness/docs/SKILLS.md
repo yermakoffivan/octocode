@@ -71,7 +71,7 @@ This combination matters:
 | Piece | What it gives the agent |
 |---|---|
 | CLI package | The executable control plane for memory, locks, signals, verification, reflection, repo context, and hooks. |
-| Agent Skill | The operating loop: why and when to attend, claim, communicate, verify, reflect, refresh wiki context, housekeep, and hand off. |
+| Agent Skill | The operating loop: why and when to attend, claim, communicate, verify, reflect, refresh wiki context, bookkeep (learn), housekeep (clean), and hand off. |
 | Hooks | Optional automation so supported hosts enforce the loop at lifecycle boundaries. |
 
 The CLI and skill are meant to work together. The CLI stores facts and performs actions; the skill tells the agent how to use those actions before, during, and after repo work. Hooks are the reliability layer that make important operations happen automatically for agents that support lifecycle hooks.
@@ -155,7 +155,7 @@ Each agent has an `agent_id`. Claude Code sets it from the session. For agents w
 
 ### Locks
 
-A lock is a declaration: "I am about to edit this file." Locks live in the `locks` table tied to a `task`. When another agent tries to acquire the same file, it sees the existing lock and either waits, coordinates via signals, or picks different work.
+A lock is a declaration: "I am about to edit this exact file." Locks are tied to a `task_run`. They can be standalone for quick work or reuse the run created by a claimed plan task.
 
 Lock TTL is 10 minutes — a safety net if a session ends without releasing. `lock prune` cleans expired locks when a holder has disappeared.
 
@@ -169,11 +169,15 @@ Signals are typed messages between agents: `claim`, `handoff`, `question`, `repl
 
 ### Verification
 
-Every file edit task carries a declared `test_plan`. When the agent finishes, it must run `verify mark` to record that the declared checks actually ran. The `stop-verify` hook blocks session end until all pending verification is cleared.
+Every execution run carries a declared `test_plan`. `verify mark --run-id` records the result; a linked plan task moves from `VERIFY` to `DONE` or `FAILED`. The stop hook blocks session end while pending run verification remains.
+
+### Plans and tasks
+
+A plan owns an objective, lead agent, members, lifecycle, and narrative under `.octocode/plan/<timestamp-name>/`. Tasks are durable selectable work: each has reasoning, acceptance criteria, one or more workspace-relative paths, dependencies, and a leased claim. Readiness is derived from status + dependencies + claim state.
 
 ### Refinements
 
-Refinements store work state for the next agent or session: unfinished tasks, repo-fix proposals, handoff notes. They complement memories (which store reusable lessons) by preserving live work state.
+Refinements store session handoffs and improvement proposals. Durable work agents should choose belongs in plan tasks; memories store reusable lessons.
 
 ### Context health
 
@@ -186,7 +190,7 @@ Signals and refinements are the social part of that circulation. They bring new 
 ## The Workflow
 
 ```text
-ATTEND → CLAIM → WORK → COMMUNICATE → VERIFY → REFLECT → PROJECT → HOUSEKEEP → HAND OFF
+ATTEND → CHOOSE TASK → CLAIM FILES → WORK → COMMUNICATE → SUBMIT/VERIFY → REFLECT → HAND OFF
 ```
 
 ### 1. Attend — orient before acting
@@ -197,6 +201,9 @@ octocode-awareness attend --workspace "$PWD" --query "auth lock gotcha" --compac
 
 # See active work, verification debt, and projection health as rows
 octocode-awareness query workboard --workspace "$PWD" --format table --limit 20
+
+# Choose ready shared work when a plan exists
+octocode-awareness task ready --plan-id plan_123 --compact
 
 # Check workspace: active locks, pending verification, DB health
 octocode-awareness workspace status --workspace "$PWD"
@@ -214,7 +221,18 @@ octocode-awareness signal list --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD
 test -f .octocode/AGENTS.md && sed -n '1,160p' .octocode/AGENTS.md
 ```
 
-### 2. Claim — declare intent and lock files
+### 2. Choose and claim shared work (optional for quick edits)
+
+```bash
+octocode-awareness task claim \
+  --task-id task_123 \
+  --agent-id "$OCTOCODE_AGENT_ID" \
+  --compact
+```
+
+The result includes a `run_id`. Hooks reuse that run when this is the agent's only live task claim in the workspace.
+
+### 3. Claim exact files
 
 ```bash
 octocode-awareness lock acquire \
@@ -235,7 +253,7 @@ octocode-awareness lock wait \
   --wait-seconds 120 --retry-interval 5 --compact
 ```
 
-### 3. Work and communicate
+### 4. Work and communicate
 
 Edit files normally. If hooks are installed, `pre-edit` claims and `post-edit` releases automatically.
 
@@ -250,21 +268,26 @@ octocode-awareness signal publish \
   --body "Schema migration must run before data backfill because backfill reads the new index"
 ```
 
-### 4. Verify — record that the declared checks ran
+### 5. Submit and verify
 
 ```bash
-# Run the declared test plan first, then record it
+# For a claimed task, submit its run after edits
+octocode-awareness task submit \
+  --task-id task_123 --run-id run_123 \
+  --agent-id "$OCTOCODE_AGENT_ID" \
+  --message "implementation ready for verification"
+
+# Run acceptance checks, then record the run result
 octocode-awareness verify mark \
   --agent-id "$OCTOCODE_AGENT_ID" \
-  --workspace "$PWD" \
-  --all-pending \
+  --run-id run_123 \
   --message "yarn test passed, no type errors"
 
 # Check for any remaining unverified work
 octocode-awareness verify audit --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD"
 ```
 
-### 5. Reflect — record durable lessons
+### 6. Reflect — record durable lessons
 
 ```bash
 octocode-awareness reflect record \
@@ -286,7 +309,7 @@ octocode-awareness memory record \
   --importance 9
 ```
 
-### 6. Project and housekeep
+### 7. Project and housekeep
 
 Use live queries during active work. Refresh the generated LLM Wiki only when the update helps humans or future agents:
 
@@ -306,7 +329,7 @@ octocode-awareness maintenance digest --workspace "$PWD" --dry-run --compact
 octocode-awareness lock prune --workspace "$PWD" --expired-only --dry-run --compact
 ```
 
-### 7. Improve workflows and skills
+### 8. Improve workflows and skills
 
 If awareness shows repeated friction, turn it into a better workflow rather than only adding another memory. Ask the agent to use `octocode-skills` when installed, or use the Octocode CLI:
 
@@ -317,7 +340,7 @@ npx octocode search "<workflow or research question>" --no-color
 
 For `octocode-awareness`, install from the bundled `@octocodeai/octocode-awareness` `dist/skills/octocode-awareness` path. The user-facing Octocode guide starts at `https://octocode.ai`. `reflect export-harness` can preview guidance candidates, but a human-reviewed edit applies skill or workflow changes.
 
-### 8. Hand off — preserve state for the next session
+### 9. Hand off — preserve state for the next session
 
 ```bash
 # Send a message to another agent or broadcast
@@ -520,7 +543,7 @@ octocode-awareness query files --workspace "$PWD" --format csv
 octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
 ```
 
-Available views: `memories`, `gotchas`, `lessons`, `tasks`, `locks`, `agents`, `signals`, `refinements`, `files`, `activity`, `workboard`, `repo-profile`, `all`.
+Available views: `memories`, `gotchas`, `lessons`, `plans`, `tasks`, `runs`, `locks`, `agents`, `signals`, `refinements`, `files`, `activity`, `workboard`, `developer-review`, `repo-profile`, `all`.
 
 ### Regenerate the wiki
 
@@ -675,12 +698,27 @@ memory recall  --query <text> [--smart] [--label <L>] [--limit N] [--workspace <
 memory forget  [--memory-id <id>] [--tag <t>] [--max-importance N] [--workspace <path>] [--dry-run]
 ```
 
+### Plans and tasks
+
+```bash
+plan create --name <name> --objective <text> --lead-agent-id <id> --workspace <path>
+plan list --workspace <path>
+plan show|join|status --plan-id <id> [...]
+plan doc --plan-id <id> --agent-id <member> --path docs/<file>.md --title <text>
+
+task create --plan-id <id> --title <text> --reasoning <text> --path <relative-path>... --agent-id <id>
+task ready|list --plan-id <id>
+task claim --task-id <id> --agent-id <id>
+task heartbeat|submit|release --task-id <id> --run-id <id> --agent-id <id>
+task depend --task-id <id> --depends-on <task-id> --agent-id <id>
+```
+
 ### Locks
 
 ```bash
-lock acquire --agent-id <id> --rationale <text> --test-plan <text> --target-file <path> [--workspace <path>] [--ttl-minutes N]
+lock acquire --agent-id <id> --rationale <text> --test-plan <text> --target-file <path> [--run-id <id>] [--workspace <path>] [--ttl-minutes N]
 lock wait    --agent-id <id> --target-file <path> --wait-seconds N [--retry-interval N]
-lock release --agent-id <id> [--task-id <id>] [--target-file <path>] --status SUCCESS|FAILED|PENDING [--verified]
+lock release --agent-id <id> [--run-id <id>] [--target-file <path>] --status SUCCESS|FAILED|PENDING [--verified]
 lock prune   [--older-than-minutes N] [--expired-only] [--agent-id <id>] [--dry-run]
 ```
 
@@ -689,7 +727,7 @@ lock prune   [--older-than-minutes N] [--expired-only] [--agent-id <id>] [--dry-
 ```bash
 verify audit --agent-id <id> --workspace <path> [--artifact <name>]
 verify mark  --agent-id <id> --workspace <path> --all-pending --message <text>
-             # or: --task-id <id> --message <text>
+             # or: --run-id <id> --message <text>
 ```
 
 ### Signals
@@ -769,12 +807,18 @@ maintenance digest    --workspace <path> [--dry-run] [--compact]
 ```mermaid
 erDiagram
   agents ||--o{ sessions : "starts"
-  agents ||--o{ tasks : "owns"
+  plans ||--o{ plan_members : "has"
+  plans ||--o{ plan_docs : "documents"
+  plans ||--o{ tasks : "contains"
+  tasks ||--o{ task_paths : "scopes"
+  tasks ||--o{ task_dependencies : "waits_for"
+  tasks ||--o| task_claims : "claimed_by"
+  tasks ||--o{ task_runs : "attempted_as"
+  task_runs ||--o{ locks : "claims"
+  task_runs ||--o{ run_log : "verified_by"
   agents ||--o{ memories : "records"
   agents ||--o{ signals : "sends"
-  sessions ||--o{ tasks : "groups"
-  tasks ||--o{ locks : "claims"
-  tasks ||--o{ task_log : "verified_by"
+  sessions ||--o{ task_runs : "groups"
   memories ||--o{ memory_refs : "cites"
   signals ||--o{ signal_reads : "read_by"
   sessions ||--o{ edit_log : "records"
@@ -787,9 +831,11 @@ erDiagram
 | `sessions` | One contiguous agent work period |
 | `memories` | Durable lessons and observations with FTS5 indexing |
 | `memory_refs` | Structured provenance (URLs, files, repos) for memories |
-| `tasks` | Declared edit intent and verification plan |
-| `locks` | Per-file lock rows tied to tasks (TTL: 10 min) |
-| `task_log` | Immutable verification events |
+| `plans`, `plan_members`, `plan_docs` | Shared objectives, governance, and narrative docs |
+| `tasks`, `task_paths`, `task_dependencies`, `task_claims` | Durable selectable work and leased ownership |
+| `task_runs` | Linked attempts or standalone quick-edit runs |
+| `locks` | Exact-file rows tied to runs (TTL: 10 min) |
+| `run_log`, `task_events` | Verification and planning lifecycle events |
 | `refinements` | Live work state and handoffs for the next agent |
 | `signals` | Typed live messages, replies, threads, and ack status |
 | `signal_reads` | Idempotent per-agent acknowledgements |
@@ -833,10 +879,10 @@ Pi `file_lock` also supports `type:renew` for extending a lock without releasing
 
 | Situation | First command |
 |---|---|
-| Starting or planning work | `attend --compact`, then drill into `query workboard`, `memory recall`, `refinement get`, or `signal list` |
+| Starting or planning work | `attend --compact`, then `task ready` / `query workboard`; use memory/signals for evidence and coordination |
 | About to edit files | `lock acquire` before any write |
 | Another agent holds the file | `lock wait` or `signal publish` (kind: question or blocker) |
-| Finishing work | `verify mark`, then `reflect record` or `memory record` |
+| Finishing claimed work | `task submit`, run checks, `verify mark --run-id`, then reflect only durable learning |
 | A message appears | `signal list`, then act, then `signal ack` or `signal resolve` |
 | Old memory or refinement looks stale | `memory forget` or `refinement delete` with `--dry-run` first |
 | Patterns repeating | `reflect mine-weakness` |
@@ -857,6 +903,6 @@ Future navigation may deepen the trace and routing logic, but it should stay det
 
 ### Scope rules
 
-- Keep all commands for one task scoped to the same `--workspace`, `--artifact`, `--repo`, and `--ref`.
-- Use `verify mark --all-pending` only within the same workspace — it clears all pending tasks for this agent in that scope.
+- Keep plan, task, lock, verify, and handoff commands scoped to the same workspace/artifact.
+- Use `verify mark --all-pending` only within the same workspace — it clears all pending runs for this agent in that scope.
 - `OCTOCODE_AGENT_ID` is the identity anchor; export it once at session start so hooks and manual calls share one id.

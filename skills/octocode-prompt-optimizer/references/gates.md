@@ -1,94 +1,46 @@
-# READ and UNDERSTAND Gates
+# READ And UNDERSTAND Gates
 
-Load when starting an optimization: read the whole input, then understand what it does before rating anything.
+Load at optimization start. Read the complete input and map intent before rating or drafting.
 
-## Step 1: READ
-
-**STOP. DO NOT proceed to analysis.**
+## READ
+**STOP. DO NOT analyze or edit yet.**
 
 ### Pre-Conditions
-- [ ] User provided a prompt/file to optimize
-- [ ] Path is valid and readable
+- [ ] A readable file or inline prompt exists.
 
-### Required actions
-1. Read the input file completely.
-2. Note the document type and purpose.
-3. Note the approximate line count.
+### Required Actions
+1. Read every section.
+2. Record document type, purpose, and approximate line count.
 
 ### Gate Check
-- [ ] File read completely (no skipped sections)
-- [ ] Document type identified
-- [ ] Line count noted
+- [ ] Input is complete enough to evaluate; skipped/unreadable parts are named.
 
-### Forbidden
-- Making any changes before reading
-- Skipping sections
-
-### Allowed
-- Read-only file access
-- Text output to confirm reading
-
-### On Failure
-- **IF** file unreadable and inline content exists → **THEN** continue using the provided content.
-- **IF** file unreadable and no content exists → **THEN** ask the user for the correct path.
-- **IF** file empty → **THEN** ask the user to provide content.
-
-## Step 2: UNDERSTAND
-
-**STOP. DO NOT proceed to rating. Understand what this prompt does first.**
-
-### Pre-Conditions
-- [ ] READ gate completed
-- [ ] File content in context
-
-### Required actions
-1. Identify the **goal** — what is this prompt supposed to achieve?
-2. Identify the **logical parts** — sections, phases, or steps.
-3. Identify the **flow** — how the parts connect.
-4. Document understanding in the format below.
+## UNDERSTAND
+**STOP. Map intent before RATE.**
 
 ```markdown
 ## Understanding
-**Goal:** [What the prompt achieves]
-**Logical Parts:**
-1. [Part name] - [purpose]
-2. [Part name] - [purpose]
-**Flow:** [How parts connect]
+Goal: <intended outcome>
+Parts: <section -> purpose>
+Flow: <execution/routing order>
+Assumptions: <safe, reversible assumptions and impact if wrong>
+Unknowns: <material choices that change intent, scope, or risk>
 ```
 
-If the prompt is underspecified, also record assumptions and unknowns:
-
-```markdown
-## Assumptions & Unknowns
-**Assumptions (proceeding with these):**
-- [Assumption] - Impact if wrong: [consequence]
-**Unknowns (ask before proceeding):**
-- [Unknown] - Why critical: [reason]
-**Clarification needed:** Yes/No
-```
-
-**IF** unknowns exist → **THEN** STOP and ask the user before RATE.
+Safe, reversible assumptions may proceed when stated. Material unknowns require one focused question and a pause.
 
 ### Gate Check
-- [ ] Goal clearly stated
-- [ ] All logical parts identified
-- [ ] Flow documented
-- [ ] Understanding output produced
-
-### Reflection
-- Did I understand the intent correctly?
-- Did I identify all logical parts?
-
-**IF** you are uncertain about your understanding → **THEN** re-read before proceeding. Do not guess.
+- [ ] Goal, parts, flow, assumptions, and material unknowns are explicit.
+- [ ] Required branches and constraints remain intact.
 
 ### Forbidden
-- Proceeding without understanding the goal
-- Making changes based on assumptions
+- Editing during READ; partial-read conclusions; invented missing text.
+- Editing from unstated assumptions or unresolved material choices.
 
 ### Allowed
-- Text output (understanding summary)
-- Re-reading the file if needed
+- Read-only access, line counts, rereads, stated low-risk assumptions, and focused clarification.
 
 ### On Failure
-- **IF** intent unclear → **THEN** ask the user for clarification.
-- **IF** multiple interpretations → **THEN** present options and wait for the user's choice.
+- **IF** a path fails but inline content exists → **THEN** use the inline content.
+- **IF** no readable content exists → **THEN** ask for the correct path/content.
+- **IF** interpretations change behavior → **THEN** present options and wait.

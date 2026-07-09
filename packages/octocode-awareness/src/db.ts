@@ -140,14 +140,78 @@ const SCHEMA_DDL = `
       updated_at            TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS plans (
+      plan_id        TEXT PRIMARY KEY,
+      name           TEXT NOT NULL,
+      objective      TEXT NOT NULL,
+      lead_agent_id  TEXT NOT NULL,
+      status         TEXT NOT NULL DEFAULT 'DRAFT'
+                     CHECK(status IN ('DRAFT','ACTIVE','PAUSED','COMPLETED','CANCELLED')),
+      workspace_path TEXT NOT NULL,
+      artifact       TEXT,
+      doc_dir        TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_members (
+      plan_id    TEXT NOT NULL REFERENCES plans(plan_id) ON DELETE CASCADE,
+      agent_id   TEXT NOT NULL,
+      role       TEXT NOT NULL DEFAULT 'CONTRIBUTOR' CHECK(role IN ('LEAD','CONTRIBUTOR')),
+      joined_at  TEXT NOT NULL,
+      PRIMARY KEY(plan_id, agent_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_docs (
+      plan_id       TEXT NOT NULL REFERENCES plans(plan_id) ON DELETE CASCADE,
+      relative_path TEXT NOT NULL,
+      title         TEXT NOT NULL,
+      kind          TEXT NOT NULL DEFAULT 'SUPPORTING' CHECK(kind IN ('PRIMARY','SUPPORTING')),
+      ordinal       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(plan_id, relative_path)
+    );
+
     CREATE TABLE IF NOT EXISTS tasks (
-      task_id        TEXT PRIMARY KEY,
+      task_id      TEXT PRIMARY KEY,
+      plan_id      TEXT NOT NULL REFERENCES plans(plan_id) ON DELETE CASCADE,
+      title        TEXT NOT NULL,
+      reasoning    TEXT NOT NULL,
+      acceptance_criteria TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'OPEN'
+                   CHECK(status IN ('OPEN','IN_PROGRESS','BLOCKED','VERIFY','DONE','FAILED','CANCELLED')),
+      priority     INTEGER NOT NULL DEFAULT 0,
+      created_by   TEXT NOT NULL,
+      created_at   TEXT NOT NULL,
+      updated_at   TEXT NOT NULL,
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS task_paths (
+      task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+      path    TEXT NOT NULL,
+      ordinal INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(task_id, path)
+    );
+
+    CREATE TABLE IF NOT EXISTS task_dependencies (
+      task_id            TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+      depends_on_task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+      created_by         TEXT NOT NULL,
+      created_at         TEXT NOT NULL,
+      PRIMARY KEY(task_id, depends_on_task_id),
+      CHECK(task_id <> depends_on_task_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS task_runs (
+      run_id         TEXT PRIMARY KEY,
+      task_id        TEXT REFERENCES tasks(task_id) ON DELETE SET NULL,
       agent_id       TEXT NOT NULL,
       session_id     TEXT REFERENCES sessions(session_id) ON DELETE SET NULL,
-	      rationale      TEXT NOT NULL,
-	      test_plan      TEXT NOT NULL,
-	      plan_doc_ref   TEXT,
-	      status         TEXT NOT NULL CHECK(status IN ('PENDING','ACTIVE','SUCCESS','FAILED')) DEFAULT 'ACTIVE',
+      rationale      TEXT NOT NULL,
+      test_plan      TEXT NOT NULL,
+      context_ref    TEXT,
+      status         TEXT NOT NULL DEFAULT 'ACTIVE'
+                     CHECK(status IN ('PENDING','ACTIVE','SUCCESS','FAILED')),
       workspace_path TEXT,
       artifact       TEXT,
       files_json     TEXT NOT NULL DEFAULT '[]',
@@ -155,27 +219,46 @@ const SCHEMA_DDL = `
       updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
 
+    CREATE TABLE IF NOT EXISTS task_claims (
+      task_id      TEXT PRIMARY KEY REFERENCES tasks(task_id) ON DELETE CASCADE,
+      run_id       TEXT NOT NULL UNIQUE REFERENCES task_runs(run_id) ON DELETE CASCADE,
+      agent_id     TEXT NOT NULL,
+      claimed_at   TEXT NOT NULL,
+      heartbeat_at TEXT NOT NULL,
+      expires_at   TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS task_events (
+      event_id   TEXT PRIMARY KEY,
+      task_id    TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+      run_id     TEXT REFERENCES task_runs(run_id) ON DELETE SET NULL,
+      agent_id   TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      message    TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS locks (
       lock_id     TEXT PRIMARY KEY,
       file_path   TEXT NOT NULL,
-      task_id     TEXT NOT NULL,
+      run_id      TEXT NOT NULL,
       agent_id    TEXT NOT NULL,
       session_id  TEXT,
       lock_type   TEXT NOT NULL CHECK(lock_type IN ('SHARED','EXCLUSIVE')),
       acquired_at TEXT NOT NULL,
       expires_at  TEXT,
-      FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE,
-      UNIQUE(file_path, task_id)
+      FOREIGN KEY(run_id) REFERENCES task_runs(run_id) ON DELETE CASCADE,
+      UNIQUE(file_path, run_id)
     );
 
-    CREATE TABLE IF NOT EXISTS task_log (
+    CREATE TABLE IF NOT EXISTS run_log (
       event_id   TEXT PRIMARY KEY,
-      task_id    TEXT,
+      run_id     TEXT,
       agent_id   TEXT NOT NULL,
       event_type TEXT NOT NULL,
       message    TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE SET NULL
+      FOREIGN KEY(run_id) REFERENCES task_runs(run_id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS refinements (
@@ -248,7 +331,7 @@ const SCHEMA_DDL = `
     CREATE TABLE IF NOT EXISTS edit_log (
       edit_id        TEXT PRIMARY KEY,
       session_id     TEXT REFERENCES sessions(session_id) ON DELETE SET NULL,
-      task_id        TEXT REFERENCES tasks(task_id) ON DELETE SET NULL,
+      run_id         TEXT REFERENCES task_runs(run_id) ON DELETE SET NULL,
       agent_id       TEXT NOT NULL,
       file_path      TEXT NOT NULL,
       operation      TEXT NOT NULL CHECK(operation IN ('create','update','delete','move','rename')),
@@ -270,12 +353,73 @@ const SCHEMA_DDL = `
       event_type   TEXT NOT NULL CHECK(event_type IN ('mine','propose','validate','apply','capture','reflect')),
       payload_json TEXT,           -- JSON with event-specific data
       memory_id    TEXT REFERENCES memories(memory_id) ON DELETE SET NULL,
-      task_id      TEXT REFERENCES tasks(task_id) ON DELETE SET NULL,
+      run_id       TEXT REFERENCES task_runs(run_id) ON DELETE SET NULL,
       created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 `;
 
+function tableExists(db: DatabaseSync, table: string): boolean {
+  return Boolean(db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+  ).get(table));
+}
+
+function renameColumnIfPresent(
+  db: DatabaseSync,
+  table: string,
+  from: string,
+  to: string,
+): void {
+  if (!tableExists(db, table)) return;
+  const columns = tableColumns(db, table);
+  if (columns.has(from) && !columns.has(to)) {
+    db.exec(`ALTER TABLE ${table} RENAME COLUMN ${from} TO ${to}`);
+  }
+}
+
+/**
+ * Schema v1 used `tasks` for short-lived lock/verification attempts. Schema v2
+ * reserves `tasks` for durable plan work and gives attempts their honest name:
+ * `task_runs`. IDs are preserved so existing hooks and audit history remain
+ * connected; migrated standalone runs intentionally have task_id = NULL.
+ */
+function migrateLegacyTaskRuns(db: DatabaseSync): void {
+  if (!tableExists(db, 'tasks')) return;
+  const columns = tableColumns(db, 'tasks');
+  const isLegacyExecutionTable = columns.has('agent_id') && columns.has('test_plan') && !columns.has('plan_id');
+  if (!isLegacyExecutionTable) return;
+  if (tableExists(db, 'task_runs')) {
+    throw new Error('schema migration cannot move legacy tasks: task_runs already exists');
+  }
+
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const index of ['idx_tasks_status', 'idx_tasks_agent_status', 'idx_tasks_workspace', 'idx_tasks_scope']) {
+      db.exec(`DROP INDEX IF EXISTS ${index}`);
+    }
+    db.exec('ALTER TABLE tasks RENAME TO task_runs');
+    renameColumnIfPresent(db, 'task_runs', 'task_id', 'run_id');
+    renameColumnIfPresent(db, 'task_runs', 'plan_doc_ref', 'context_ref');
+    renameColumnIfPresent(db, 'locks', 'task_id', 'run_id');
+    if (tableExists(db, 'task_log') && !tableExists(db, 'run_log')) {
+      db.exec('ALTER TABLE task_log RENAME TO run_log');
+    }
+    renameColumnIfPresent(db, 'run_log', 'task_id', 'run_id');
+    renameColumnIfPresent(db, 'edit_log', 'task_id', 'run_id');
+    renameColumnIfPresent(db, 'harness_log', 'task_id', 'run_id');
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* transaction did not open */ }
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
 export function initDb(db: DatabaseSync): void {
+  migrateLegacyTaskRuns(db);
+
   // ── 1. All regular tables in a single exec block ───────────────────────────
   db.exec(SCHEMA_DDL);
 
@@ -304,10 +448,18 @@ export function initDb(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_memories_valid           ON memories(valid_from, valid_to);
     CREATE INDEX IF NOT EXISTS idx_memories_embedding_model ON memories(embedding_model);
 
-    CREATE INDEX IF NOT EXISTS idx_tasks_status       ON tasks(status);
-    CREATE INDEX IF NOT EXISTS idx_tasks_agent_status ON tasks(agent_id, status);
-    CREATE INDEX IF NOT EXISTS idx_tasks_workspace    ON tasks(workspace_path);
-    CREATE INDEX IF NOT EXISTS idx_tasks_scope        ON tasks(workspace_path, artifact);
+    CREATE INDEX IF NOT EXISTS idx_plans_scope          ON plans(workspace_path, artifact, status);
+    CREATE INDEX IF NOT EXISTS idx_plans_lead           ON plans(lead_agent_id, status);
+    CREATE INDEX IF NOT EXISTS idx_plan_members_agent   ON plan_members(agent_id, plan_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_plan_status    ON tasks(plan_id, status, priority DESC, created_at);
+    CREATE INDEX IF NOT EXISTS idx_task_deps_dependency ON task_dependencies(depends_on_task_id);
+    CREATE INDEX IF NOT EXISTS idx_task_claims_agent    ON task_claims(agent_id, expires_at);
+    CREATE INDEX IF NOT EXISTS idx_task_claims_expiry   ON task_claims(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_task_runs_status     ON task_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_task_runs_agent      ON task_runs(agent_id, status);
+    CREATE INDEX IF NOT EXISTS idx_task_runs_task       ON task_runs(task_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_task_runs_scope      ON task_runs(workspace_path, artifact);
+    CREATE INDEX IF NOT EXISTS idx_task_events_task     ON task_events(task_id, created_at);
 
     CREATE INDEX IF NOT EXISTS idx_locks_file_path   ON locks(file_path);
     CREATE INDEX IF NOT EXISTS idx_locks_agent_id    ON locks(agent_id);
@@ -335,7 +487,7 @@ export function initDb(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_agents_last_seen ON agents(last_seen_at DESC);
 
     CREATE INDEX IF NOT EXISTS idx_edit_log_session     ON edit_log(session_id);
-    CREATE INDEX IF NOT EXISTS idx_edit_log_task        ON edit_log(task_id);
+    CREATE INDEX IF NOT EXISTS idx_edit_log_run         ON edit_log(run_id);
     CREATE INDEX IF NOT EXISTS idx_edit_log_agent       ON edit_log(agent_id);
     CREATE INDEX IF NOT EXISTS idx_edit_log_file        ON edit_log(file_path);
     CREATE INDEX IF NOT EXISTS idx_edit_log_workspace   ON edit_log(workspace_path);
@@ -347,6 +499,7 @@ export function initDb(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_harness_log_scope      ON harness_log(workspace_path, artifact);
     CREATE INDEX IF NOT EXISTS idx_harness_log_event_type ON harness_log(event_type);
     CREATE INDEX IF NOT EXISTS idx_harness_log_memory     ON harness_log(memory_id);
+    CREATE INDEX IF NOT EXISTS idx_harness_log_run        ON harness_log(run_id);
   `);
 
   // ── 3. FTS5 virtual table (isolated try/catch — fts5 may be unavailable) ──
@@ -364,6 +517,8 @@ export function initDb(db: DatabaseSync): void {
     const row = db.prepare('SELECT COUNT(*) AS cnt FROM memories_fts').get() as { cnt: number };
     if (row.cnt === 0) rebuildFts(db);
   }
+
+  db.exec('PRAGMA user_version = 2');
 }
 
 // ─── Table introspection ──────────────────────────────────────────────────────
@@ -653,13 +808,13 @@ export function replaceMemoryReferences(db: DatabaseSync, memoryId: string, refe
 // ─── Lock maintenance ─────────────────────────────────────────────────────────
 
 /**
- * Evict expired file locks. Extracted as a named function so tasks.ts
+ * Evict expired file locks. Extracted as a named function so intents.ts
  * and maintenance.ts call it explicitly rather than duplicating the DELETE
  * as a side effect of read operations (ARCH-3).
  */
 export interface EvictExpiredLocksResult {
   pruned_locks: number;
-  updated_tasks: number;
+  updated_runs: number;
 }
 
 export function evictExpiredLocks(db: DatabaseSync): EvictExpiredLocksResult {
@@ -667,15 +822,15 @@ export function evictExpiredLocks(db: DatabaseSync): EvictExpiredLocksResult {
   const stale = db.prepare(
     'SELECT COUNT(*) AS c FROM locks WHERE expires_at IS NOT NULL AND expires_at <= ?'
   ).get(now) as { c: number };
-  if (stale.c === 0) return { pruned_locks: 0, updated_tasks: 0 };
+  if (stale.c === 0) return { pruned_locks: 0, updated_runs: 0 };
 
   db.exec('SAVEPOINT evict_expired_locks');
   try {
-    db.exec('CREATE TEMP TABLE IF NOT EXISTS temp_expired_lock_tasks(task_id TEXT PRIMARY KEY)');
-    db.exec('DELETE FROM temp_expired_lock_tasks');
+    db.exec('CREATE TEMP TABLE IF NOT EXISTS temp_expired_lock_runs(run_id TEXT PRIMARY KEY)');
+    db.exec('DELETE FROM temp_expired_lock_runs');
     db.prepare(
-      `INSERT OR IGNORE INTO temp_expired_lock_tasks(task_id)
-       SELECT task_id FROM locks WHERE expires_at IS NOT NULL AND expires_at <= ?`
+      `INSERT OR IGNORE INTO temp_expired_lock_runs(run_id)
+       SELECT run_id FROM locks WHERE expires_at IS NOT NULL AND expires_at <= ?`
     ).run(now);
 
     const deleteRes = db.prepare(
@@ -683,16 +838,16 @@ export function evictExpiredLocks(db: DatabaseSync): EvictExpiredLocksResult {
     ).run(now) as { changes: number };
 
     const updateRes = db.prepare(
-      `UPDATE tasks
+      `UPDATE task_runs
        SET status = 'PENDING', updated_at = ?
        WHERE status = 'ACTIVE'
-         AND task_id IN (SELECT task_id FROM temp_expired_lock_tasks)
-         AND NOT EXISTS (SELECT 1 FROM locks WHERE locks.task_id = tasks.task_id)`
+         AND run_id IN (SELECT run_id FROM temp_expired_lock_runs)
+         AND NOT EXISTS (SELECT 1 FROM locks WHERE locks.run_id = task_runs.run_id)`
     ).run(now) as { changes: number };
 
-    db.exec('DELETE FROM temp_expired_lock_tasks');
+    db.exec('DELETE FROM temp_expired_lock_runs');
     db.exec('RELEASE SAVEPOINT evict_expired_locks');
-    return { pruned_locks: deleteRes.changes, updated_tasks: updateRes.changes };
+    return { pruned_locks: deleteRes.changes, updated_runs: updateRes.changes };
   } catch (e) {
     try { db.exec('ROLLBACK TO SAVEPOINT evict_expired_locks'); } catch { /* already rolled back */ }
     try { db.exec('RELEASE SAVEPOINT evict_expired_locks'); } catch { /* already released */ }

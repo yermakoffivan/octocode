@@ -46,8 +46,8 @@ flowchart TD
 | `memory_reflect` | Awareness reflection: after non-trivial work with a reusable lesson, repo fix, harness fix, or failure signature. | `task`; at least one lesson/failure/fix/signature field. | Returns lean learning id; includes next-action hints only when action exists. |
 | `memory_workspace_status` | Before long edits or when checking locks/pending work. | Optional workspace/repo scope. | Returns counts and optional locks. |
 | `memory_refine_get` | At task start when previous reflections may have left actionable repo fixes. | Optional `state`, `include_handoffs`, `limit`, scope. | Returns lean refinement id/state/fix/files/repo summary. |
-| `memory_audit_unverified` | Mid-turn when unsure; final audit also runs automatically. | No params. | Returns pending tasks with test plans; non-zero exit when pending. |
-| `memory_verify` | Only after running the stated verification. | One of `task_id`, `task_ids[]`, or `allPending:true`; optional `status`. | Single result or batch result; exit fails on per-id errors. |
+| `memory_audit_unverified` | Mid-turn when unsure; final audit also runs automatically. | No params. | Returns pending runs with test plans; non-zero exit when pending. |
+| `memory_verify` | Only after running the stated verification. | One of `run_id`, `run_ids[]`, or `allPending:true`; optional `status`. | Single result or batch result; exit fails on per-id errors. |
 | `memory_notify` | Real multi-agent coordination: blocker, handoff, question, decision, or fyi. | `kind`, `subject`; optional `body`, `to_agent`, `files`, `importance`, scope. | Returns signal/thread/workspace identifiers. |
 | `memory_export_harness` | Before proposing AGENTS.md changes — human review required. | `harness_only`, `limit`, `min_importance`, scope. | Two-tier markdown block; never writes files. |
 
@@ -71,9 +71,9 @@ flowchart TD
 ## Recommended agent protocol
 
 1. **Attend:** `memory_workspace_status` → `memory_refine_get` → targeted `memory_recall` only when prior lessons can change the plan.
-2. **Act:** rely on hook-created edit tasks and locks; if blocked, inspect the conflict instead of retrying.
+2. **Choose and act:** inspect Ready/Claimed/Verify through Awareness. Claim matching plan work; otherwise let hooks create a standalone run. Locks attach to the active run.
 3. **Coordinate:** use `memory_notify` only for real multi-agent blockers, handoffs, questions, decisions, or fyi.
-4. **Verify:** run the stated checks, then clear with `memory_verify({task_ids:[...]})` or `memory_verify({allPending:true})`.
+4. **Verify:** submit claimed tasks, run the stated checks, then clear runs with `memory_verify({run_ids:[...]})` or `memory_verify({allPending:true})`.
 5. **Reflect:** use the Awareness reflection loop for post-task lessons/fix queues/failure signatures; use `memory_record` for one specific verified finding.
 6. **Maintain:** agents do not clean or delete memories; users run the maintenance commands above after preview.
 
@@ -84,9 +84,9 @@ memory_workspace_status({ workspace_path: "/repo" })
 memory_refine_get({ workspace_path: "/repo", limit: 5 })
 memory_recall({ query: "editing Pi memory tools", workspace_path: "/repo", min_importance: 6 })
 memory_record({ task_context: "Future generated-file edits", observation: "Generated files are rebuilt from sources; edit the source and rebuild", label: "GOTCHA", importance: 7, files: ["source-file"] })
-memory_reflect({ task: "fixed verify gate", outcome: "worked", lesson: "Run verification before memory_verify", fix_repo: "Add a regression test for pending tasks" })
+memory_reflect({ task: "fixed verify gate", outcome: "worked", lesson: "Run verification before memory_verify", fix_repo: "Add a regression test for pending runs" })
 memory_audit_unverified({})
-memory_verify({ task_ids: ["task_..."], status: "SUCCESS" })
+memory_verify({ run_ids: ["run_..."], status: "SUCCESS" })
 memory_notify({ kind: "blocker", subject: "File locked", files: ["source-file"], importance: 8, workspace_path: "/repo" })
 ```
 

@@ -37,7 +37,7 @@ export function insertEditLog(db: DatabaseSync, params: InsertEditLogParams): { 
   db.prepare(EDIT_LOG_INSERT).run(
     editId,
     params.sessionId ?? null,
-    params.taskId ?? null,
+    params.runId ?? null,
     params.agentId,
     params.filePath,
     params.operation,
@@ -62,9 +62,9 @@ export function queryEditLog(db: DatabaseSync, params: QueryEditLogParams): Edit
     conditions.push('session_id = ?');
     bindings.push(params.sessionId);
   }
-  if (params.taskId !== undefined) {
-    conditions.push('task_id = ?');
-    bindings.push(params.taskId);
+  if (params.runId !== undefined) {
+    conditions.push('run_id = ?');
+    bindings.push(params.runId);
   }
   if (params.agentId !== undefined) {
     conditions.push('agent_id = ?');
@@ -116,7 +116,7 @@ export function insertHarnessLog(db: DatabaseSync, params: InsertHarnessLogParam
     params.eventType,
     payloadJson,
     params.memoryId ?? null,
-    params.taskId ?? null,
+    params.runId ?? null,
     now,
   );
 

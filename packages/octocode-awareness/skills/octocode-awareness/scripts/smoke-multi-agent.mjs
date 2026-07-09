@@ -84,7 +84,7 @@ const claimA = run("agent-a", [
   "--test-plan", "smoke reads final file",
   "--ttl-minutes", "10",
 ]);
-assert(claimA.task?.task_id, "agent-a should get a task_id");
+assert(claimA.run?.run_id, "agent-a should get a standalone run_id");
 await appendFile(target, "agent-a wrote while holding the lock\n", "utf8");
 
 log("phase 2: agent-b collides on the live lock");
@@ -107,7 +107,7 @@ log("phase 3: pending verification is visible, then cleared");
 run("agent-a", [
   "lock", "release",
   "--agent-id", "agent-a",
-  "--task-id", claimA.task.task_id,
+  "--run-id", claimA.run.run_id,
   "--status", "PENDING",
 ]);
 const auditPending = run(
@@ -124,7 +124,7 @@ const verifiedA = run("verify-agent-a", [
   "--all-pending",
   "--message", "smoke read the file after agent-a edit",
 ]);
-assert(verifiedA.count === 1, "verify --all-pending should clear one task");
+assert(verifiedA.count === 1, "verify --all-pending should clear one run");
 const auditClear = run("audit-clear", ["verify", "audit", "--agent-id", "agent-a", "--workspace", workspace, "--artifact", artifact]);
 assert(auditClear.count === 0, "agent-a pending verification should be clear");
 
@@ -138,7 +138,7 @@ const signal = run("signal-publish", [
   "--subject", "smoke: shared file was edited",
   "--body", "agent-a finished its verified edit; agent-b may continue",
   "--file", target,
-  "--ref-id", claimA.task.task_id,
+  "--ref-id", claimA.run.run_id,
   "--importance", "7",
 ]);
 assert(signal.signal_id, "signal publish should create a signal id");
@@ -180,12 +180,12 @@ const claimB = run("agent-b", [
   "--target-file", target,
   "--test-plan", "smoke reads final file",
 ]);
-assert(claimB.task?.task_id, "agent-b should now get a claim");
+assert(claimB.run?.run_id, "agent-b should now get a standalone run");
 await appendFile(target, "agent-b wrote after receiving release\n", "utf8");
 run("agent-b", [
   "lock", "release",
   "--agent-id", "agent-b",
-  "--task-id", claimB.task.task_id,
+  "--run-id", claimB.run.run_id,
   "--status", "SUCCESS",
   "--verified",
   "--verified-note", "smoke read final file after agent-b edit",
@@ -202,11 +202,11 @@ const stale = run("agent-stale", [
   "--test-plan", "smoke janitor releases it",
   "--ttl-minutes", "1",
 ]);
-assert(stale.task?.task_id, "agent-stale should get a task_id");
+assert(stale.run?.run_id, "agent-stale should get a run_id");
 
 const staleDb = new DatabaseSync(db);
 const pastTime = new Date(Date.now() - 35 * 60000).toISOString().replace(/\.\d{3}Z$/, "Z");
-staleDb.prepare("UPDATE locks SET expires_at = ? WHERE task_id = ?").run(pastTime, stale.task.task_id);
+staleDb.prepare("UPDATE locks SET expires_at = ? WHERE run_id = ?").run(pastTime, stale.run.run_id);
 staleDb.close();
 console.log(`[age-stale-lock] set expires_at to ${pastTime}`);
 

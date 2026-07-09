@@ -256,8 +256,8 @@ See [`MEMORY_AGENT_FLOW.md`](https://github.com/bgauryy/octocode-mcp/blob/main/p
 | `agent_signal` | Coordination inbox — actions: `publish` · `list` · `reply` · `resolve` · `ack` |
 | `file_lock` | Explicit file locks for parallel agents — types: `lock` · `release` · `status` · `renew` |
 | `memory_refine_get` | List open repo-fix refinements |
-| `memory_audit_unverified` | List pending edit tasks needing verification |
-| `memory_verify` | Mark tasks verified/failed — prefer `allPending:true` for batch |
+| `memory_audit_unverified` | List pending execution runs needing verification |
+| `memory_verify` | Mark runs verified/failed — prefer `allPending:true` for batch |
 | `memory_export_harness` | Awareness reflection: export human-reviewed skill/harness proposals; never writes files |
 
 ### Aliases (compatibility)

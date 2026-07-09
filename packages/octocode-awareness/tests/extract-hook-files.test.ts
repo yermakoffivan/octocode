@@ -237,7 +237,7 @@ describe('hook-runner', () => {
     }
   });
 
-  it('post-edit releases only the correlated same-agent hook task', () => {
+  it('post-edit releases only the correlated same-agent hook run', () => {
     const memoryHome = mkdtempSync(join(tmpdir(), 'octocode-hook-overlap-'));
     const workspace = resolve(memoryHome, 'repo');
     mkdirSync(workspace, { recursive: true });
@@ -282,7 +282,7 @@ describe('hook-runner', () => {
     }
   });
 
-  it('stores shell hook task correlation in per-key files', () => {
+  it('stores shell hook run correlation in per-key files', () => {
     const memoryHome = mkdtempSync(join(tmpdir(), 'octocode-hook-state-'));
     const workspace = resolve(memoryHome, 'repo');
     mkdirSync(workspace, { recursive: true });
@@ -297,7 +297,7 @@ describe('hook-runner', () => {
       expect(runScript(HOOK_RUNNER, ['pre-edit'], first, env).status).toBe(0);
       expect(runScript(HOOK_RUNNER, ['pre-edit'], second, env).status).toBe(0);
 
-      const stateDir = join(memoryHome, 'hook-state', 'tasks');
+      const stateDir = join(memoryHome, 'hook-state', 'runs');
       const stateFiles = readdirSync(stateDir).filter((file) => file.endsWith('.json'));
       expect(stateFiles).toHaveLength(2);
       expect(existsSync(join(memoryHome, 'hook-state', 'shell-hook-tasks.json'))).toBe(false);

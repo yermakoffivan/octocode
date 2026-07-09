@@ -53,7 +53,7 @@ Lines added: 187 (quality > quantity)
 
 CHANGES:
 ✓ Moved credentials to environment variables
-  ⚠️ IMPORTANT: Rotate your API keys NOW — they were exposed
+  ⚠️ IMPORTANT: Rotate real API keys; this code finding alone does not prove exposure
 ✓ Refactored N+1 query to batched JOIN
 ✓ Split processUserRequest() → 6 focused functions
 

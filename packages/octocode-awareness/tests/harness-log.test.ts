@@ -4,7 +4,7 @@
  * Verifies:
  *  1. insertHarnessLog creates a row with event_type='mine' and payload
  *  2. insertHarnessLog with memory_id links to memories table
- *  3. insertHarnessLog with task_id links to tasks table
+ *  3. insertHarnessLog with run_id links to tasks table
  *  4. queryHarnessLog filters by session_id
  *  5. queryHarnessLog filters by event_type
  *  6. queryHarnessLog filters by agent_id
@@ -56,14 +56,14 @@ function insertMemoryRow(db: DatabaseSync, agentId = 'agent-test'): string {
   return memoryId;
 }
 
-/** Insert a task row and return its task_id. */
+/** Insert a task row and return its run_id. */
 function insertTaskRow(db: DatabaseSync, agentId = 'agent-test'): string {
-  const taskId = 'task_' + randomUUID().replace(/-/g, '');
+  const runId = 'task_' + randomUUID().replace(/-/g, '');
   db.prepare(`
-    INSERT INTO tasks (task_id, agent_id, rationale, test_plan, status, workspace_path, created_at, updated_at)
+    INSERT INTO task_runs (run_id, agent_id, rationale, test_plan, status, workspace_path, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    taskId,
+    runId,
     agentId,
     'test rationale',
     'yarn test',
@@ -72,7 +72,7 @@ function insertTaskRow(db: DatabaseSync, agentId = 'agent-test'): string {
     new Date().toISOString(),
     new Date().toISOString(),
   );
-  return taskId;
+  return runId;
 }
 
 // ─── 1. insertHarnessLog creates row with event_type='mine' and payload ────────
@@ -99,7 +99,7 @@ describe('insertHarnessLog — basic insert', () => {
     expect(row!.agent_id).toBe('agent-a');
     expect(row!.session_id).toBeNull();
     expect(row!.memory_id).toBeNull();
-    expect(row!.task_id).toBeNull();
+    expect(row!.run_id).toBeNull();
 
     const parsed = JSON.parse(row!.payload_json ?? 'null');
     expect(parsed).toEqual(payload);
@@ -156,35 +156,35 @@ describe('insertHarnessLog — memory_id FK', () => {
   });
 });
 
-// ─── 3. insertHarnessLog with task_id links to tasks table ───────────────────
+// ─── 3. insertHarnessLog with run_id links to tasks table ───────────────────
 
-describe('insertHarnessLog — task_id FK', () => {
-  it('stores task_id and the row is retrievable via FK join', () => {
+describe('insertHarnessLog — run_id FK', () => {
+  it('stores run_id and the row is retrievable via FK join', () => {
     const db = freshDb();
-    const taskId = insertTaskRow(db, 'agent-d');
+    const runId = insertTaskRow(db, 'agent-d');
 
     const harnessId = insertHarnessLog(db, {
       agentId: 'agent-d',
       eventType: 'apply',
-      taskId,
+      runId,
     });
 
     const row = db.prepare(
-      'SELECT h.harness_id, t.task_id FROM harness_log h JOIN tasks t ON h.task_id = t.task_id WHERE h.harness_id = ?'
-    ).get(harnessId) as { harness_id: string; task_id: string } | undefined;
+      'SELECT h.harness_id, t.run_id FROM harness_log h JOIN task_runs t ON h.run_id = t.run_id WHERE h.harness_id = ?'
+    ).get(harnessId) as { harness_id: string; run_id: string } | undefined;
 
     expect(row).toBeDefined();
-    expect(row!.task_id).toBe(taskId);
+    expect(row!.run_id).toBe(runId);
   });
 
-  it('rejects a task_id that does not exist in tasks (FK violation)', () => {
+  it('rejects a run_id that does not exist in tasks (FK violation)', () => {
     const db = freshDb();
 
     expect(() =>
       insertHarnessLog(db, {
         agentId: 'agent-d',
         eventType: 'apply',
-        taskId: 'task_nonexistent_xyz',
+        runId: 'task_nonexistent_xyz',
       })
     ).toThrow();
   });
@@ -338,7 +338,7 @@ describe('Full harness cycle: mine → propose → validate → apply', () => {
     const db = freshDb();
     const sessionId = insertSession(db, 'agent-cycle');
     const memoryId = insertMemoryRow(db, 'agent-cycle');
-    const taskId = insertTaskRow(db, 'agent-cycle');
+    const runId = insertTaskRow(db, 'agent-cycle');
 
     const mineId = insertHarnessLog(db, {
       agentId: 'agent-cycle',
@@ -358,7 +358,7 @@ describe('Full harness cycle: mine → propose → validate → apply', () => {
       agentId: 'agent-cycle',
       sessionId,
       eventType: 'validate',
-      taskId,
+      runId,
       payload: { step: 3, verdict: 'ok' },
     });
 
@@ -366,7 +366,7 @@ describe('Full harness cycle: mine → propose → validate → apply', () => {
       agentId: 'agent-cycle',
       sessionId,
       eventType: 'apply',
-      taskId,
+      runId,
       memoryId,
       payload: { step: 4, files: ['src/auth.ts'] },
     });
@@ -384,9 +384,9 @@ describe('Full harness cycle: mine → propose → validate → apply', () => {
     const eventTypes = rows.map(r => r.event_type).sort();
     expect(eventTypes).toEqual(['apply', 'mine', 'propose', 'validate']);
 
-    // Verify the apply row carries both task_id and memory_id
+    // Verify the apply row carries both run_id and memory_id
     const applyRow = rows.find(r => r.harness_id === applyId)!;
-    expect(applyRow.task_id).toBe(taskId);
+    expect(applyRow.run_id).toBe(runId);
     expect(applyRow.memory_id).toBe(memoryId);
 
     // Verify payload round-trip on the mine event

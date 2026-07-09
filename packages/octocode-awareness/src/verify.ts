@@ -1,40 +1,41 @@
 /**
  * verify.ts — Verify-gate operations for the awareness Stop hook.
  *
- * auditUnverified: returns tasks with status='PENDING' (edited but not verified)
+ * auditUnverified: returns runs with status='PENDING' (edited but not verified)
  *                  for an agent/workspace. The Stop hook (stop-verify.sh) blocks
  *                  conclude when count > 0.
  *
- * markVerified:    transitions a task PENDING → SUCCESS | FAILED so the gate
+ * markVerified:    transitions a run PENDING → SUCCESS | FAILED so the gate
  *                  clears after the agent verifies its edits. Restricted to PENDING
  *                  transitions to prevent orphaning ACTIVE locks as SUCCESS.
+ *                  A linked plan task moves VERIFY → DONE | FAILED with it.
  */
 
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeArtifact, utcNow, parseJsonList } from './helpers.js';
 import { normalizeWorkspacePath } from './git.js';
-import type { TaskStatus } from './types.js';
+import type { RunStatus } from './types.js';
 import {
-  TASKS_UPDATE_PENDING_TO_FAILED,
-  TASKS_UPDATE_ACTIVE_TO_FAILED,
-  TASK_LOG_INSERT_ABANDONED,
-  TASK_LOG_INSERT_STALE_ABANDONED,
-  TASK_LOG_INSERT_VERIFIED,
-  TASKS_UPDATE_PENDING_VERIFIED,
-  TASKS_UPDATE_PENDING_VERIFIED_BY_AGENT,
-  TASKS_SELECT_STATUS,
-  TASKS_SELECT_PENDING_IDS,
-} from './sql/tasks.js';
+  RUNS_UPDATE_PENDING_TO_FAILED,
+  RUNS_UPDATE_ACTIVE_TO_FAILED,
+  RUN_LOG_INSERT_ABANDONED,
+  RUN_LOG_INSERT_STALE_ABANDONED,
+  RUN_LOG_INSERT_VERIFIED,
+  RUNS_UPDATE_PENDING_VERIFIED,
+  RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT,
+  RUNS_SELECT_STATUS,
+  RUNS_SELECT_PENDING_IDS,
+} from './sql/runs.js';
 
 // ─── Public shapes ────────────────────────────────────────────────────────────
 
 export interface UnverifiedIntent {
-  task_id: string;
+  run_id: string;
   agent_id: string;
   status: string;
   test_plan: string;
-  plan_doc_ref: string | null;
+  context_ref: string | null;
   rationale: string;
   target_files: string[];
   workspace_path: string | null;
@@ -43,15 +44,15 @@ export interface UnverifiedIntent {
 }
 
 /**
- * VER-2: An ACTIVE task whose locks have all been evicted (expired).
+ * VER-2: An ACTIVE run whose locks have all been evicted (expired).
  * These are orphaned sessions the old audit silently missed.
  */
 export interface StaleActiveIntent {
-  task_id: string;
+  run_id: string;
   agent_id: string;
   status: 'ACTIVE';
   rationale: string;
-  plan_doc_ref: string | null;
+  context_ref: string | null;
   target_files: string[];
   workspace_path: string | null;
   artifact: string | null;
@@ -70,15 +71,15 @@ export interface AuditUnverifiedParams {
   agentId?: string | null;
   workspacePath?: string | null;
   artifact?: string | null;
-  abandon?: boolean;         // dismiss all PENDING tasks as FAILED (clear orphaned)
+  abandon?: boolean;         // dismiss all PENDING runs as FAILED (clear orphaned)
 }
 
 export type VerifyStatus = 'SUCCESS' | 'FAILED';
 
 export interface MarkVerifiedParams {
-  taskId?: string;            // verify one task; required unless allPending=true
+  runId?: string;            // verify one run; required unless allPending=true
   agentId?: string;
-  allPending?: boolean;       // verify ALL pending tasks for this agent/workspace
+  allPending?: boolean;       // verify ALL pending runs for this agent/workspace
   workspacePath?: string | null;
   artifact?: string | null;
   message?: string;           // what was verified
@@ -89,17 +90,17 @@ export interface MarkVerifiedOk {
   ok: true;
   // VER-1: null when allPending=true (no single task applies in batch mode).
   // Callers must guard for null when using allPending.
-  task_id: string | null;
-  task_ids?: string[];   // set when allPending=true
+  run_id: string | null;
+  run_ids?: string[];   // set when allPending=true
   count?: number;        // set when allPending=true
-  status: TaskStatus;
+  status: RunStatus;
   updated_at: string;
 }
 
 export interface MarkVerifiedErr {
   ok: false;
   error: string;
-  task_id: string | null;
+  run_id: string | null;
 }
 
 export type MarkVerifiedResult = MarkVerifiedOk | MarkVerifiedErr;
@@ -109,11 +110,11 @@ export type MarkVerifiedResult = MarkVerifiedOk | MarkVerifiedErr;
 const VALID_VERIFY_STATUSES = new Set<string>(['SUCCESS', 'FAILED']);
 
 interface IntentDbRow {
-  task_id: string;
+  run_id: string;
   agent_id: string;
   status: string;
   test_plan: string;
-  plan_doc_ref: string | null;
+  context_ref: string | null;
   rationale: string;
   workspace_path: string | null;
   artifact: string | null;
@@ -126,10 +127,52 @@ interface AgentStatusRow {
   status: string;
 }
 
+function finishLinkedTask(
+  db: DatabaseSync,
+  runId: string,
+  status: VerifyStatus,
+  agentId: string,
+  now: string,
+  message?: string,
+): void {
+  const linked = db.prepare('SELECT task_id FROM task_runs WHERE run_id = ?')
+    .get(runId) as { task_id: string | null } | undefined;
+  if (!linked?.task_id) return;
+  const taskStatus = status === 'SUCCESS' ? 'DONE' : 'FAILED';
+  const updated = db.prepare(`UPDATE tasks SET status = ?, updated_at = ?, completed_at = ?
+    WHERE task_id = ? AND status = 'VERIFY'`)
+    .run(taskStatus, now, now, linked.task_id);
+  if (updated.changes === 0) return;
+  db.prepare(`INSERT INTO task_events(event_id, task_id, run_id, agent_id, event_type, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(`tevt_${randomUUID().replace(/-/g, '')}`, linked.task_id, runId, agentId,
+      status === 'SUCCESS' ? 'VERIFIED' : 'VERIFICATION_FAILED', message ?? taskStatus, now);
+}
+
+function abandonLinkedTask(
+  db: DatabaseSync,
+  runId: string,
+  agentId: string,
+  now: string,
+  message: string,
+): void {
+  const linked = db.prepare('SELECT task_id FROM task_runs WHERE run_id = ?')
+    .get(runId) as { task_id: string | null } | undefined;
+  if (!linked?.task_id) return;
+  const updated = db.prepare(`UPDATE tasks SET status = 'FAILED', updated_at = ?, completed_at = ?
+    WHERE task_id = ? AND status IN ('IN_PROGRESS', 'VERIFY')`)
+    .run(now, now, linked.task_id);
+  if (updated.changes === 0) return;
+  db.prepare('DELETE FROM task_claims WHERE task_id = ?').run(linked.task_id);
+  db.prepare(`INSERT INTO task_events(event_id, task_id, run_id, agent_id, event_type, message, created_at)
+    VALUES (?, ?, ?, ?, 'ABANDONED', ?, ?)`)
+    .run(`tevt_${randomUUID().replace(/-/g, '')}`, linked.task_id, runId, agentId, message, now);
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 /**
- * Return all tasks rows with status='PENDING', optionally scoped to an
+ * Return all run rows with status='PENDING', optionally scoped to an
  * agent and/or workspace. A non-zero count means the Stop hook should block
  * conclude.
  */
@@ -160,18 +203,18 @@ export function auditUnverified(
   }
 
   const rows = db.prepare(
-    `SELECT task_id, agent_id, status, test_plan, plan_doc_ref, rationale, workspace_path, artifact, files_json, created_at
-     FROM tasks
+    `SELECT run_id, agent_id, status, test_plan, context_ref, rationale, workspace_path, artifact, files_json, created_at
+     FROM task_runs
      WHERE ${where.join(' AND ')}
      ORDER BY created_at ASC`,
   ).all(...binds) as unknown as IntentDbRow[];
 
   const unverified: UnverifiedIntent[] = rows.map(r => ({
-    task_id: r.task_id,
+    run_id: r.run_id,
     agent_id: r.agent_id,
     status: r.status,
     test_plan: r.test_plan,
-    plan_doc_ref: r.plan_doc_ref,
+    context_ref: r.context_ref,
     rationale: r.rationale,
     target_files: parseJsonList(r.files_json),
     workspace_path: r.workspace_path,
@@ -182,16 +225,19 @@ export function auditUnverified(
   if (params.abandon && unverified.length > 0) {
     const now = utcNow();
     for (const intent of unverified) {
-      db.prepare(TASKS_UPDATE_PENDING_TO_FAILED).run(now, intent.task_id);
+      db.prepare(RUNS_UPDATE_PENDING_TO_FAILED).run(now, intent.run_id);
+      abandonLinkedTask(db, intent.run_id, intent.agent_id, now, 'pending run abandoned by verification audit');
       try {
-        db.prepare(TASK_LOG_INSERT_ABANDONED).run(
-          'evt_' + randomUUID().replace(/-/g, ''), intent.task_id, intent.agent_id, now,
+        db.prepare(RUN_LOG_INSERT_ABANDONED).run(
+          'evt_' + randomUUID().replace(/-/g, ''), intent.run_id, intent.agent_id, now,
         );
       } catch { /* non-critical audit log */ }
     }
   }
 
-  // VER-2: Detect ACTIVE tasks whose locks have all expired/been evicted.
+  // VER-2: Detect standalone ACTIVE runs whose locks expired, plus task runs
+  // whose claim lease and locks both expired. A live task claim may validly
+  // have no lock between edits and must not become false verification debt.
   const staleActive: StaleActiveIntent[] = [];
   try {
     const nowIso = utcNow();
@@ -204,18 +250,22 @@ export function auditUnverified(
       "COALESCE(ai.files_json,'[]') NOT IN ('[]','null','')",
       `NOT EXISTS (
         SELECT 1 FROM locks fl
-        WHERE fl.task_id = ai.task_id
+        WHERE fl.run_id = ai.run_id
           AND (fl.expires_at IS NULL OR fl.expires_at > ?)
       )`,
+      `NOT EXISTS (
+        SELECT 1 FROM task_claims tc
+        WHERE tc.run_id = ai.run_id AND tc.expires_at > ?
+      )`,
     ];
-    const staleBinds: (string | number)[] = [nowIso];
+    const staleBinds: (string | number)[] = [nowIso, nowIso];
     if (params.agentId) { staleWhere.push('ai.agent_id = ?'); staleBinds.push(params.agentId); }
     if (workspacePath) { staleWhere.push('ai.workspace_path = ?'); staleBinds.push(workspacePath); }
     if (artifact) { staleWhere.push('(ai.artifact = ? OR ai.artifact IS NULL)'); staleBinds.push(artifact); }
 
     const staleRows = db.prepare(
-      `SELECT ai.task_id, ai.agent_id, ai.rationale, ai.plan_doc_ref, ai.workspace_path, ai.artifact, ai.files_json, ai.created_at
-       FROM tasks ai
+      `SELECT ai.run_id, ai.agent_id, ai.rationale, ai.context_ref, ai.workspace_path, ai.artifact, ai.files_json, ai.created_at
+       FROM task_runs ai
        WHERE ${staleWhere.join(' AND ')}
        ORDER BY ai.created_at ASC`
     ).all(...staleBinds) as unknown as IntentDbRow[];
@@ -223,11 +273,11 @@ export function auditUnverified(
     for (const r of staleRows) {
       const ageMs = Date.now() - new Date(r.created_at).getTime();
       staleActive.push({
-        task_id: r.task_id,
+        run_id: r.run_id,
         agent_id: r.agent_id,
         status: 'ACTIVE',
         rationale: r.rationale,
-        plan_doc_ref: r.plan_doc_ref,
+        context_ref: r.context_ref,
         target_files: parseJsonList(r.files_json),
         workspace_path: r.workspace_path,
         artifact: r.artifact,
@@ -240,10 +290,11 @@ export function auditUnverified(
   if (params.abandon && staleActive.length > 0) {
     const now = utcNow();
     for (const intent of staleActive) {
-      db.prepare(TASKS_UPDATE_ACTIVE_TO_FAILED).run(now, intent.task_id);
+      db.prepare(RUNS_UPDATE_ACTIVE_TO_FAILED).run(now, intent.run_id);
+      abandonLinkedTask(db, intent.run_id, intent.agent_id, now, 'stale task run abandoned by verification audit');
       try {
-        db.prepare(TASK_LOG_INSERT_STALE_ABANDONED).run(
-          'evt_' + randomUUID().replace(/-/g, ''), intent.task_id, intent.agent_id, now,
+        db.prepare(RUN_LOG_INSERT_STALE_ABANDONED).run(
+          'evt_' + randomUUID().replace(/-/g, ''), intent.run_id, intent.agent_id, now,
         );
       } catch { /* non-critical audit log */ }
     }
@@ -267,88 +318,91 @@ export function markVerified(
   const { agentId = 'agent', allPending = false, message } = params;
   const workspacePath = params.workspacePath ? normalizeWorkspacePath(params.workspacePath, params.workspacePath) : null;
   const artifact = normalizeArtifact(params.artifact);
-  const taskId = params.taskId ?? '';
+  const runId = params.runId ?? '';
   const status = params.status ?? 'SUCCESS';
 
   if (!VALID_VERIFY_STATUSES.has(status)) {
     return {
       ok: false,
       error: `invalid status "${status}" — must be SUCCESS or FAILED`,
-      task_id: taskId || null,
+      run_id: runId || null,
     };
   }
 
-  // --all-pending: verify every PENDING task for this agent/workspace at once
+  // --all-pending: verify every PENDING run for this agent/workspace at once
   if (allPending) {
     const dynWhere = [
       workspacePath ? ' AND workspace_path = ?' : '',
       artifact ? ' AND (artifact = ? OR artifact IS NULL)' : '',
     ].join('');
-    const selectSql = TASKS_SELECT_PENDING_IDS.replace('{DYNAMIC_WHERE}', dynWhere);
+    const selectSql = RUNS_SELECT_PENDING_IDS.replace('{DYNAMIC_WHERE}', dynWhere);
     const selectBinds: (string | number)[] = [agentId];
     if (workspacePath) selectBinds.push(workspacePath);
     if (artifact) selectBinds.push(artifact);
 
-    const rows = db.prepare(selectSql).all(...selectBinds) as unknown as Array<{ task_id: string }>;
+    const rows = db.prepare(selectSql).all(...selectBinds) as unknown as Array<{ run_id: string }>;
     const now = utcNow();
     const ids: string[] = [];
     for (const row of rows) {
-      db.prepare(TASKS_UPDATE_PENDING_VERIFIED).run(status, now, row.task_id);
-      ids.push(row.task_id);
+      db.prepare(RUNS_UPDATE_PENDING_VERIFIED).run(status, now, row.run_id);
+      finishLinkedTask(db, row.run_id, status, agentId, now, message);
+      ids.push(row.run_id);
       if (message) {
         try {
-          db.prepare(TASK_LOG_INSERT_VERIFIED).run(
-            'evt_' + randomUUID().replace(/-/g, ''), row.task_id, agentId, message, now,
+          db.prepare(RUN_LOG_INSERT_VERIFIED).run(
+            'evt_' + randomUUID().replace(/-/g, ''), row.run_id, agentId, message, now,
           );
         } catch { /* non-critical audit log */ }
       }
     }
-    // VER-1: Return null for task_id — no single task applies in allPending batch mode.
-    // Footgun guard: unscoped --all-pending verifies EVERY pending task for this
+    // VER-1: Return null for run_id — no single task applies in allPending batch mode.
+    // Footgun guard: unscoped --all-pending verifies EVERY pending run for this
     // agent across ALL workspaces. Surface it so the caller sees the blast radius.
     const warning = !workspacePath && !artifact && ids.length > 0
-      ? `marked ${ids.length} pending task(s) across ALL workspaces for agent "${agentId}" — no --workspace/--artifact scope given; pass --workspace to limit`
+      ? `marked ${ids.length} pending run(s) across ALL workspaces for agent "${agentId}" — no --workspace/--artifact scope given; pass --workspace to limit`
       : undefined;
-    return { ok: true, task_id: null, task_ids: ids, count: ids.length, status: status as TaskStatus, updated_at: now, ...(warning ? { warning } : {}) };
+    return { ok: true, run_id: null, run_ids: ids, count: ids.length, status: status as RunStatus, updated_at: now, ...(warning ? { warning } : {}) };
   }
 
-  if (!taskId) {
-    return { ok: false, error: '--task-id is required (or use --all-pending)', task_id: null };
+  if (!runId) {
+    return { ok: false, error: '--run-id is required (or use --all-pending)', run_id: null };
   }
 
   const now = utcNow();
-  const result = db.prepare(TASKS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
-    status, now, taskId, agentId,
+  const result = db.prepare(RUNS_UPDATE_PENDING_VERIFIED_BY_AGENT).run(
+    status, now, runId, agentId,
   ) as { changes: number };
 
   if (result.changes === 0) {
-    // Distinguish: no such task / wrong agent / not PENDING
-    const row = db.prepare(TASKS_SELECT_STATUS).get(taskId) as unknown as AgentStatusRow | undefined;
+    // Distinguish: no such run / wrong agent / not PENDING
+    const row = db.prepare(RUNS_SELECT_STATUS).get(runId) as unknown as AgentStatusRow | undefined;
 
     if (!row) {
-      return { ok: false, error: `no task found with task_id=${taskId}`, task_id: taskId };
+      return { ok: false, error: `no run found with run_id=${runId}`, run_id: runId };
     }
     if (row.agent_id !== agentId) {
       return {
         ok: false,
-        error: `task ${taskId} belongs to agent "${row.agent_id}", not "${agentId}"`,
-        task_id: taskId,
+        error: `run ${runId} belongs to agent "${row.agent_id}", not "${agentId}"`,
+        run_id: runId,
       };
     }
     return {
       ok: false,
-      error: `task ${taskId} has status "${row.status}" — only PENDING tasks can be verified`,
-      task_id: taskId,
+      error: `run ${runId} has status "${row.status}" — only PENDING runs can be verified`,
+      run_id: runId,
     };
   }
 
   if (message) {
     try {
-      db.prepare(TASK_LOG_INSERT_VERIFIED).run(
-        'evt_' + randomUUID().replace(/-/g, ''), taskId, agentId, message, now,
+      db.prepare(RUN_LOG_INSERT_VERIFIED).run(
+        'evt_' + randomUUID().replace(/-/g, ''), runId, agentId, message, now,
       );
     } catch { /* non-critical audit log */ }
   }
 
-  return { ok: true, task_id: taskId, status: status as TaskStatus, updated_at: now };
+  finishLinkedTask(db, runId, status, agentId, now, message);
+
+  return { ok: true, run_id: runId, status: status as RunStatus, updated_at: now };
 }

@@ -174,11 +174,11 @@ Detailed live Awareness flow and examples: [`docs/MEMORY_AGENT_FLOW.md`](docs/ME
 | `workspace_status` | Show active file locks, working agents, and memory/coordination stats for current workspace. |
 | `memory_workspace_status` | Compatibility alias for `workspace_status`. |
 | `agent_signal` | Common agent coordination inbox: publish/list/reply/resolve/ack questions, handoffs, blockers, decisions, and FYIs. |
-| `file_lock` | Stateful file lock manager for parallel agents: lock/release/status/renew by `task_id`. |
+| `file_lock` | Exact-file locks for parallel agents: attach to a claimed task `run_id`, or omit it for a standalone quick-work run; release/renew by `run_id`. |
 | `memory_file_lock` | Compatibility alias for `file_lock`. |
 | `memory_refine_get` | List open repo-fix refinements. Use after reflections may have left actionable fixes. |
-| `memory_audit_unverified` | List pending edit tasks that still need verification. Use after every edit batch. |
-| `memory_verify` | Mark a pending edit task as verified or failed. Three call forms: `{task_id}` (single), `{task_ids:[...]}` (batch array), `{allPending:true}` (clear all pending for this agent in one call). |
+| `memory_audit_unverified` | List pending execution runs that still need verification. Use after every edit batch. |
+| `memory_verify` | Mark pending runs verified or failed: `{run_id}`, `{run_ids:[...]}`, or `{allPending:true}`. A linked durable task completes with its run. |
 | `memory_export_harness` | Awareness reflection: export agent improvement proposals (fix_harness reflections + high-importance lessons) as markdown for AGENTS.md/CLAUDE.md. Never writes files — review and paste after human approval. |
 | `memory_notify` | Compatibility alias for `agent_signal({action:"publish"})`; prefer `agent_signal` for list/reply/resolve. |
 
@@ -229,8 +229,8 @@ Every memory has a label and an importance score (1–10). The agent picks these
 Awareness before work   → memory_recall({ query, smart:true })
 Awareness after edits   → memory_audit_unverified
                           → memory_verify({ allPending: true })           # clear all at once
-                          → memory_verify({ task_ids: [...] })            # clear a subset
-                          → memory_verify({ task_id, status })            # single
+                          → memory_verify({ run_ids: [...] })             # clear a subset
+                          → memory_verify({ run_id, status })             # single
 Awareness reflect after work → memory_reflect({ task, outcome, worked, lesson })
 Specific finding        → memory_record({ task_context, observation, label, importance })
 ```
@@ -644,9 +644,9 @@ Full Pi model docs: [models.md](https://github.com/earendil-works/pi/blob/main/p
 The awareness bridge runs automatically on every Pi edit/write tool call:
 
 1. **Before edit:** Claims a file lock for each target path. Other agents see the lock via `memory_workspace_status`.
-2. **After edit:** Releases locks and records a `PENDING` task in memory.
-3. **Agent duty:** The system prompt instructs the agent to run the stated verification and call `memory_verify` to clear the task. Use `{allPending:true}` to clear all pending tasks in one call, or `{task_ids:[...]}` for a subset.
-4. **Verify gate:** Pi's in-process awareness bridge sends a follow-up before conclusion while any `PENDING` task remains unverified.
+2. **After edit:** For a claimed plan task, releases the short file lock but keeps its run active until `task submit`; otherwise records the standalone run as `PENDING`.
+3. **Agent duty:** Submit claimed tasks, run the stated verification, then call `memory_verify` for the run. Use `{allPending:true}` for all pending runs or `{run_ids:[...]}` for a subset.
+4. **Verify gate:** Pi's in-process awareness bridge sends a follow-up before conclusion while any `PENDING` run remains unverified.
 
 ```bash
 node packages/octocode-awareness/skills/octocode-awareness/scripts/awareness.mjs hooks install --host codex --project-dir . --dry-run
@@ -672,8 +672,8 @@ OCTOCODE_NO_VERIFY_GATE=1 pi ...
 | Web search is weak or slow | Add `TAVILY_API_KEY` or `SERPER_API_KEY` to Octocode env. |
 | GitHub calls are unauthenticated | Run `node $OCTOCODE_CLI auth login` or export `GITHUB_TOKEN` / `GH_TOKEN` / `OCTOCODE_TOKEN` in shell env. |
 | Agent uses `grep`/`cat`/`curl` instead of native tools | Run `/octocode-harness`; remind the agent to use native Octocode tools. |
-| Verify gate blocks conclusion | Run the stated verification, then call `memory_verify({ allPending: true })` to clear all in one call (or `{ task_ids: [...] }` for a subset). If no stop hook is installed, pending tasks appear in `memory_audit_unverified` but do not block the UI. |
-| Stuck pending tasks from a dead session | Use `octocode-awareness` memory hygiene: preview the stale agent scope with `memory_audit_unverified`, then abandon only after approving that scope. |
+| Verify gate blocks conclusion | Run the stated verification, then call `memory_verify({ allPending: true })` to clear all in one call (or `{ run_ids: [...] }` for a subset). If no stop hook is installed, pending runs appear in `memory_audit_unverified` but do not block the UI. |
+| Stuck pending runs from a dead session | Use `octocode-awareness` memory hygiene: preview the stale agent scope with `memory_audit_unverified`, then abandon only after approving that scope. |
 | `ghCloneRepo` not available | Set `ENABLE_CLONE=1` in Octocode env. |
 | Local tools not available | Check `ENABLE_LOCAL` — defaults on; set `ENABLE_LOCAL=1` if overridden. |
 

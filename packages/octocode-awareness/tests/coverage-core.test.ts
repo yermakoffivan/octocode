@@ -57,9 +57,9 @@ describe('core branch coverage helpers', () => {
         ttlMs: 1000,
       });
       if (!task.ok) throw new Error('claim failed');
-      first.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(new Date(Date.now() - 1000).toISOString(), task.task.task_id);
-      expect(evictExpiredLocks(first)).toMatchObject({ pruned_locks: 1, updated_tasks: 1 });
-      expect(evictExpiredLocks(first)).toMatchObject({ pruned_locks: 0, updated_tasks: 0 });
+      first.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?').run(new Date(Date.now() - 1000).toISOString(), task.run.run_id);
+      expect(evictExpiredLocks(first)).toMatchObject({ pruned_locks: 1, updated_runs: 1 });
+      expect(evictExpiredLocks(first)).toMatchObject({ pruned_locks: 0, updated_runs: 0 });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -140,7 +140,7 @@ describe('core branch coverage helpers', () => {
       testPlan: 'test pending',
     });
     if (!pending.ok) throw new Error('pending claim failed');
-    releaseFileLock(db, { agentId: 'agent-a', taskId: pending.task.task_id, status: 'PENDING' });
+    releaseFileLock(db, { agentId: 'agent-a', runId: pending.run.run_id, status: 'PENDING' });
 
     const stale = preFlightIntent(db, {
       agentId: 'agent-a',
@@ -152,7 +152,7 @@ describe('core branch coverage helpers', () => {
       ttlMs: 1000,
     });
     if (!stale.ok) throw new Error('stale claim failed');
-    db.prepare('DELETE FROM locks WHERE task_id = ?').run(stale.task.task_id);
+    db.prepare('DELETE FROM locks WHERE run_id = ?').run(stale.run.run_id);
 
     const audit = auditUnverified(db, { agentId: 'agent-a', workspacePath: '/repo', artifact: 'svc' });
     expect(audit.count).toBe(2);
@@ -160,12 +160,12 @@ describe('core branch coverage helpers', () => {
 
     const abandoned = auditUnverified(db, { agentId: 'agent-a', workspacePath: '/repo', artifact: 'svc', abandon: true });
     expect(abandoned.count).toBe(2);
-    expect(markVerified(db, { taskId: pending.task.task_id, agentId: 'agent-a' })).toMatchObject({
+    expect(markVerified(db, { runId: pending.run.run_id, agentId: 'agent-a' })).toMatchObject({
       ok: false,
-      task_id: pending.task.task_id,
+      run_id: pending.run.run_id,
     });
-    expect(markVerified(db, { taskId: '', agentId: 'agent-a' })).toMatchObject({ ok: false, task_id: null });
-    expect(markVerified(db, { taskId: 'task_missing', agentId: 'agent-a' })).toMatchObject({ ok: false });
+    expect(markVerified(db, { runId: '', agentId: 'agent-a' })).toMatchObject({ ok: false, run_id: null });
+    expect(markVerified(db, { runId: 'task_missing', agentId: 'agent-a' })).toMatchObject({ ok: false });
   });
 
   it('stores and searches embeddings, including filtered and zero-vector cases', () => {

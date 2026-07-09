@@ -85,17 +85,37 @@ export const getAwarenessAgentId = getPiAwarenessAgentId;
 
 // ─── Awareness bridge ────────────────────────────────────────────────────────
 
+/**
+ * The octocode-awareness harness skill dir bundled with this extension. It is
+ * passed as `skillRoot` so the harness self-edit gate engages under Pi exactly
+ * as it does for the shell hosts, whose harness-guard.sh derives its own
+ * OCTOCODE_SKILL_ROOT from the script location. Without a skillRoot the Pi gate
+ * is a silent no-op. Returns undefined if the bundle is absent (dev checkouts),
+ * leaving the awareness default (env OCTOCODE_SKILL_ROOT, else disabled).
+ */
+export function bundledAwarenessSkillRoot(): string | undefined {
+  const dir = path.join(getAssetPaths().skillsDir, 'octocode-awareness');
+  return fs.existsSync(dir) ? dir : undefined;
+}
+
+function withAwarenessSkillRoot<T extends { skillRoot?: unknown }>(options: T): T {
+  if (options.skillRoot != null) return options;
+  const skillRoot = bundledAwarenessSkillRoot();
+  return skillRoot ? { ...options, skillRoot } : options;
+}
+
 export function createAwarenessBridge(
   options: Record<string, unknown> = {},
 ): ReturnType<typeof createPiAwarenessBridge> {
-  return createPiAwarenessBridge(options);
+  return createPiAwarenessBridge(withAwarenessSkillRoot(options));
 }
 
 export function createAwarenessHooksAddon(
   options: Parameters<typeof wirePiAwarenessHooks>[1] = {},
 ): (pi: PiInstance) => ReturnType<typeof wirePiAwarenessHooks> {
+  const merged = withAwarenessSkillRoot(options ?? {});
   return function octocodeAwarenessHooksAddon(pi: PiInstance): ReturnType<typeof wirePiAwarenessHooks> {
-    return wirePiAwarenessHooks(pi as unknown as Parameters<typeof wirePiAwarenessHooks>[0], options);
+    return wirePiAwarenessHooks(pi as unknown as Parameters<typeof wirePiAwarenessHooks>[0], merged);
   };
 }
 

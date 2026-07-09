@@ -1,12 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SKILL_DIR = resolve(__dirname, '..');
-const ENV_PATH = resolve(SKILL_DIR, '.env');
+import { resolve } from 'node:path';
 
 const ENDPOINT = 'https://api.tavily.com/search';
 
@@ -15,41 +9,22 @@ function die(msg, code = 1) {
   process.exitCode = code;
 }
 
-function loadEnvFile() {
-  try {
-    const lines = readFileSync(ENV_PATH, 'utf8').split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const normalized = trimmed.startsWith('export ') ? trimmed.slice('export '.length).trim() : trimmed;
-      const eqIdx = normalized.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = normalized.slice(0, eqIdx).trim();
-      const val = normalized.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
-      if (!process.env[key]) process.env[key] = val;
-    }
-  } catch { /* .env not present */ }
-}
-
 // Unified env loading via octocode-config.mjs (injected by skills/scripts/sync.mjs).
 //
 // Priority (highest → lowest):
 //   1. process.env already set (shell / MCP client / pi-extension session_start)
 //   2. <workspace>/.octocode/.env   (project-level, WORKSPACE_ROOT or cwd)
 //   3. ~/.octocode/.env             (global octocode home)
-//   4. <skill-dir>/.env             (legacy skill-local fallback, used in source/dev)
-//
 // Project env wins over global; already-set process.env vars always win over both.
 async function loadEnv() {
-  try {
-    const { propagateOctocodeEnv, getOctocodeHome } = await import(new URL('./octocode-config.mjs', import.meta.url).href);
-    propagateOctocodeEnv({
-      home: getOctocodeHome(),                               // ~/.octocode/.env
-      cwd: process.env.WORKSPACE_ROOT || process.cwd(),     // <workspace>/.octocode/.env (wins)
-      trusted: true,
-    });
-  } catch { /* octocode-config.mjs not present — local .env fallback below */ }
-  loadEnvFile(); // skill-local .env: last resort, only sets keys not already in process.env
+  const { propagateOctocodeEnv, getOctocodeHome } = await import(new URL('./octocode-config.mjs', import.meta.url).href);
+  const home = getOctocodeHome();
+  propagateOctocodeEnv({
+    home,
+    cwd: process.env.WORKSPACE_ROOT || process.cwd(),
+    trusted: true,
+  });
+  return resolve(home, '.env');
 }
 
 function splitList(v) {
@@ -169,17 +144,17 @@ Options:
   --check            Validate TAVILY_API_KEY with a live Tavily request
   --presence-only    With --check, only verify a key is present locally
 
-.env file: ${ENV_PATH}`);
+Environment: process env, then <workspace>/.octocode/.env, then <OCTOCODE_HOME>/.env`);
     return;
   }
 
-  await loadEnv();
+  const envPath = await loadEnv();
   const apiKey = normalizeApiKey(process.env.TAVILY_API_KEY || process.env.TAVILY_API_TOKEN);
 
   if (opts.check) {
     if (!apiKey) {
       console.log(`tavily: unavailable (TAVILY_API_KEY not set)`);
-      console.log(`Add TAVILY_API_KEY to: ${ENV_PATH}`);
+      console.log(`Add TAVILY_API_KEY to: ${envPath}`);
       process.exitCode = 1;
       return;
     }
@@ -195,14 +170,14 @@ Options:
     } catch (err) {
       console.log('tavily: unavailable (key failed live validation)');
       console.log(err.message || String(err));
-      console.log(`Update TAVILY_API_KEY in: ${ENV_PATH}`);
+      console.log(`Update TAVILY_API_KEY in: ${envPath}`);
       process.exitCode = 1;
     }
     return;
   }
 
   if (!apiKey) {
-    die(`TAVILY_API_KEY is not set. Add it to ${ENV_PATH} or export it in your shell.`);
+    die(`TAVILY_API_KEY is not set. Add it to ${envPath} or export it in your shell.`);
     return;
   }
   if (!opts.query) {

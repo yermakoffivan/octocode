@@ -1,59 +1,42 @@
-# Octocode Operations (via `npx octocode`)
+# Octocode Operations
 
-Use this when awareness work needs Octocode operations outside the awareness DB: code/GitHub/package/history/artifact/graph evidence, skill install/update/lint, or skill research before locking, signaling, recording memory, or reflecting.
+Use this when Awareness needs code, GitHub, package, history, artifact, graph, or skill evidence. Awareness owns coordination/memory; `npx octocode` or Octocode MCP owns research and skill management.
 
-**Do not** expect a bundled `octocode` binary inside this skill. The native engine is platform-installed; agents must call the published CLI:
+No Octocode binary is bundled in this skill. Prefer connected Octocode MCP tools; otherwise run the published CLI so the correct native engine resolves for the host:
 
 ```bash
 npx octocode <command> ... --no-color
 ```
 
-Prefer MCP `user-octocode-local` tools when already connected in the host. Fall back to `npx octocode` when MCP is unavailable. For deep research workflows, also load `octocode-research` if installed.
-
-## Why `npx octocode` (not a vendored copy)
-
-- `@octocodeai/octocode-engine` ships platform-specific native addons.
-- `npx octocode` resolves the correct engine for the host OS/arch.
-- Copying `packages/octocode/out` into awareness would break offline/wrong-platform installs.
-
-## Agent recipes (copy-runnable)
+## Research Recipes
 
 ```bash
-# Orient
+# Structure and local evidence
 npx octocode search <dir> --tree --max-depth 2 --no-color
-
-# Local text / symbols
 npx octocode search "<term>" <path> --no-color
 npx octocode search <file> --content-view symbols --no-color
-npx octocode search <file> --content-view exact --no-color
 npx octocode search <file> --op references --symbol <Name> --line <N> --no-color
-
-# Find files
 npx octocode search <dir> --search path --name "<glob>" --no-color
 
-# External
+# Repositories, packages, PRs, commits
 npx octocode search <keywords> --target repositories --no-color
 npx octocode search <pkg> --target packages --no-color
 npx octocode search owner/repo#N --target pullRequests --no-color
 npx octocode search owner/repo/path --target commits --no-color
 
-# Schema before raw OQL
+# Contract before raw OQL
 npx octocode search --scheme --compact --no-color
 ```
 
-Treat search hits as leads. Cite paths/lines/IDs in locks, signals, memories, and refinements. Zero matches ≠ absence — change scope, mode, or spelling before concluding.
+Treat hits as leads. Cite paths/lines/IDs in locks, signals, memories, and refinements. Zero matches require one scope/mode/spelling adjustment before an absence claim. Load `octocode-research` for deeper evidence workflows when available.
 
-## Skills and awareness bundle
+## Skill Management
 
 ```bash
-npx octocode skill --name octocode-research
 npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-awareness" --platform common --force
 npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-skills" --platform common --force
 ```
 
-Add `--platform <target>` (`codex`, `claude`, `cursor`, `pi`) when installing skills for a specific host. Do not install `octocode-awareness` by registry name: the `@octocodeai/octocode-awareness` package already bundles the canonical skill under `dist/skills/octocode-awareness`.
+Use host-specific `--platform` when needed. Install these two skills from the Awareness package bundle by path; do not substitute a registry copy for the package's canonical bundle.
 
-## Boundary
-
-Awareness owns coordination (attend, locks, signals, verify, reflect, wiki projections).
-Octocode owns research/search and skill management. Return evidence here only to inform awareness actions.
+Return research evidence to Awareness only when it informs a claim, decision, memory, signal, refinement, or verified reflection.

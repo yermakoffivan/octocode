@@ -4,7 +4,7 @@
 
 export const EDIT_LOG_INSERT = `
   INSERT INTO edit_log (
-    edit_id, session_id, task_id, agent_id,
+    edit_id, session_id, run_id, agent_id,
     file_path, operation, old_file_path,
     lines_added, lines_removed, content_hash,
     workspace_path, artifact, created_at
@@ -19,8 +19,8 @@ export const EDIT_LOG_SELECT_BY_SESSION = `
   SELECT * FROM edit_log WHERE session_id = ? ORDER BY created_at DESC
 `;
 
-export const EDIT_LOG_SELECT_BY_TASK = `
-  SELECT * FROM edit_log WHERE task_id = ? ORDER BY created_at DESC
+export const EDIT_LOG_SELECT_BY_RUN = `
+  SELECT * FROM edit_log WHERE run_id = ? ORDER BY created_at DESC
 `;
 
 export const EDIT_LOG_SELECT_BY_AGENT = `
@@ -48,7 +48,7 @@ export const EDIT_LOG_SELECT_SINCE = `
 export const HARNESS_LOG_INSERT = `
   INSERT INTO harness_log (
     harness_id, session_id, agent_id, workspace_path, artifact, event_type,
-    payload_json, memory_id, task_id, created_at
+    payload_json, memory_id, run_id, created_at
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
@@ -72,6 +72,6 @@ export const HARNESS_LOG_SELECT_BY_MEMORY = `
   SELECT * FROM harness_log WHERE memory_id = ? ORDER BY created_at DESC
 `;
 
-export const HARNESS_LOG_SELECT_BY_TASK = `
-  SELECT * FROM harness_log WHERE task_id = ? ORDER BY created_at DESC
+export const HARNESS_LOG_SELECT_BY_RUN = `
+  SELECT * FROM harness_log WHERE run_id = ? ORDER BY created_at DESC
 `;

@@ -1,6 +1,6 @@
 ---
 name: octocode-research
-description: "Use when researching, debugging, reviewing, or changing code with evidence-first proof. Covers local and GitHub repos, npm packages, PRs, dead code, architecture, prior art, and iterative ReAct loops."
+description: "Use when code work needs evidence-first research, debugging, change, PR/local-diff or safe-to-merge review, GitHub/npm prior art, dead code, architecture, or ReAct loops. Sole Octocode research and review skill."
 ---
 
 # Octocode Research
@@ -9,7 +9,7 @@ Evidence-first technical research and code work: `SCOPE -> SEARCH -> READ EXACT 
 
 ## Modes
 
-Investigate behavior/root cause; Review PRs/diffs; Change after evidence; Map/Validate prior art or architecture; Loop when evidence shifts.
+Investigate behavior/root cause; Review PRs (URL/#N) and local/staged diffs via `workflow-pr-review.md`; Change after evidence; Map/Validate prior art or architecture; Loop when evidence shifts.
 
 ## Rules
 

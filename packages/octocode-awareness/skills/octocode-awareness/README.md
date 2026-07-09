@@ -1,6 +1,6 @@
 # Octocode Awareness
 
-`octocode-awareness` gives the agent live workspace awareness. It lets one agent know what has happened in a workspace, what files are being touched, what another run already learned, what still needs verification, and what should be handed to the next agent.
+`octocode-awareness` gives agents live workspace awareness and a shared work plan. Agents can see ready tasks, atomically choose one, coordinate exact-file edits, inspect what another run learned, and hand work forward.
 
 The skill is especially useful when several agents work together in the same repo, even when those agents come from different vendors or hosts. They do not need to share raw chat logs to coordinate; they share a local awareness layer.
 
@@ -14,21 +14,23 @@ Coding agents are usually stateless between runs. One agent may edit a file whil
 
 Awareness is the agent's situational layer:
 
-- **Before work**: inspect repo status, other agents, active locks, pending verification, durable memories, gotchas, refinements, signals, and generated wiki context.
-- **During work**: think with current context, lock files before edits, communicate conflicts or decisions, record durable facts, and avoid clobbering another agent.
-- **After work**: run and record verification, reflect on lessons, update memories, refresh wiki projections when useful, and leave handoffs or cleanup state visible.
+- **Before work**: inspect shared plans and Ready/Claimed/Verify tasks, then choose a task or a quick taskless lock flow.
+- **During work**: heartbeat the task claim, lock exact files under its run, communicate decisions, and avoid clobbering another agent.
+- **After work**: submit and verify the task/run, reflect on durable lessons, refresh projections, and leave handoffs visible.
 - **Ongoing**: use housekeeping to prune stale state, and use skill/workflow updates when repeated patterns deserve automation.
 
 ## Capabilities
 
 - Scoped recall for reusable lessons, failure signatures, decisions, and gotchas.
 - Workspace and branch-scoped handoffs for unfinished or ongoing work.
-- File claims so agents can see overlapping edits before they collide.
-- Verification records that connect an edit task to the check that actually ran.
+- Plans with a lead agent, members, authored docs under `.octocode/plan/`, dependencies, and agent-selectable ready tasks.
+- Taskless standalone locks for simple work that should not become plan overhead.
+- File locks under execution runs so agents can see overlapping edits before they collide.
+- Verification records that connect durable tasks and execution runs to the check that actually ran.
 - Agent-to-agent signals for blockers, questions, claims, replies, and handoffs.
 - Session capture and refinements that preserve scope, decisions, and handoffs without storing raw chat logs.
 - Reflection records for durable lessons, failure signatures, cleanup decisions, and staged harness improvements.
-- A local view of active memories, locks, tasks, refinements, and signals.
+- Live views of plans, durable tasks, execution runs, locks, memories, refinements, and signals.
 - Optional workspace `.octocode/` repo context projections that act like a generated LLM Wiki over the awareness store.
 - Housekeeping commands for stale locks, redundant memories, old signals, refinements, and docs drift.
 - A path from repeated failures to better skills: mine weaknesses, export guidance candidates, then update skills with `octocode-skills` or the `npx octocode` CLI.
@@ -42,7 +44,7 @@ The skill uses a shared local SQLite store under the user's global Octocode home
 ```text
                     ┌─ notify-deliver / sessionStart (hook) ─┐
                     ▼                                         │
- IDLE ──attend──▶ ATTEND ──lock acquire / pre-edit──▶ CLAIMED
+ IDLE ──attend──▶ ATTEND ──choose task / quick flow──▶ CLAIMED
    ▲                 │                                  │
    │                 │ memory/signal/refine             │ edit (agent)
    │                 ▼                                  ▼
@@ -62,8 +64,8 @@ The skill uses a shared local SQLite store under the user's global Octocode home
 | State | Skill phase | CLI | Hook reflex |
 |---|---|---|---|
 | ATTEND | Before | `attend`, `query workboard`, `signal list` | `notify-deliver` / sessionStart briefing |
-| CLAIMED | During | `lock acquire` | `pre-edit.sh` |
-| PENDING_VERIFY | After edit | (task pending) | `post-edit.sh` |
+| CLAIMED | During | `task claim`, `lock acquire` | `pre-edit.sh` attaches the claimed run |
+| PENDING_VERIFY | After edit | `task submit` or standalone `lock release` | `post-edit.sh` keeps task runs active, standalone runs pending |
 | VERIFIED | After | `verify mark` / `verify audit` | `stop-verify.sh` blocks silent conclude |
 | REFLECT / LEARN | After | `reflect record`, `memory record` | — |
 | PROJECTED | After | `repo inject` → `.octocode/AGENTS.md` + wiki | — |

@@ -61,8 +61,8 @@ export interface EmbeddingSearchResult {
 
 export type MemoryState = 'ACTIVE' | 'SUPERSEDED';
 export type LockType = 'EXCLUSIVE' | 'SHARED';
-/** Maps to the tasks table status column. */
-export type TaskStatus = 'PENDING' | 'ACTIVE' | 'SUCCESS' | 'FAILED';
+/** Maps to the task_runs table status column. */
+export type RunStatus = 'PENDING' | 'ACTIVE' | 'SUCCESS' | 'FAILED';
 export type RefinementQuality = 'good' | 'bad' | 'handoff' | 'instructions';
 export type RefinementState = 'open' | 'ongoing' | 'done';
 export type ReflectionOutcome = 'worked' | 'partial' | 'failed';
@@ -136,18 +136,19 @@ export interface RefinementRecord {
   updated_at: string;
 }
 
-/** Maps to the tasks table. */
-export interface TaskRecord {
-  task_id: string;
+/** One standalone or task-linked execution/verification attempt. */
+export interface RunRecord {
+  run_id: string;
+  task_id: string | null;
   agent_id: string;
   session_id?: string | null;
   lock_type: LockType;
   workspace_path: string;
   artifact: string | null;
-  plan_doc_ref: string | null;
+  context_ref: string | null;
   target_files: string[];
   locks: FileLock[];
-  status: TaskStatus;
+  status: RunStatus;
   created_at: string;
 }
 
@@ -292,26 +293,27 @@ export interface GetRefinementsResult {
   instructions_count?: number;
 }
 
-/** Task pre-flight — checks for lock conflicts before acquiring. */
-export interface PreFlightTaskParams {
+/** Run pre-flight — checks for lock conflicts before acquiring. */
+export interface PreFlightRunParams {
   agentId?: string;
   sessionId?: string | null;
   workspacePath?: string | null;
   artifact?: string | null;
+  runId?: string | null;
   rationale?: string;
   testPlan?: string;
-  planDocRef?: string | null;
+  contextRef?: string | null;
   targetFiles?: string[];
   lockType?: LockType;
   ttlMs?: number | null;
 }
 
-export interface PreFlightTaskSuccess {
+export interface PreFlightRunSuccess {
   ok: true;
-  task: TaskRecord;
+  run: RunRecord;
 }
 
-export interface PreFlightTaskConflict {
+export interface PreFlightRunConflict {
   ok: false;
   conflict: true;
   conflicts: Array<{
@@ -322,7 +324,7 @@ export interface PreFlightTaskConflict {
     expires_at: string | null;
     // Who/why context so a blocked agent can decide (wait / work elsewhere /
     // signal the holder) instead of only seeing who holds the lock and until when.
-    task_id: string;
+    run_id: string;
     reasoning: string;      // the holder's rationale — WHY the file is claimed
     test_plan: string;      // what the holder intends to verify before release
     session_id: string | null;
@@ -330,45 +332,42 @@ export interface PreFlightTaskConflict {
   }>;
 }
 
-export type PreFlightTaskResult = PreFlightTaskSuccess | PreFlightTaskConflict;
+export type PreFlightRunResult = PreFlightRunSuccess | PreFlightRunConflict;
 
 export interface ReleaseFileLockParams {
   agentId?: string;
   sessionId?: string | null;
   workspacePath?: string | null;
   artifact?: string | null;
-  taskId?: string | null;
+  runId?: string | null;
   targetFiles?: string[];
-  status?: TaskStatus;
+  status?: RunStatus;
   verified?: boolean;            // record that test_plan was actually run
   verifiedNote?: string;         // what was verified (e.g. 'yarn test: 273 passed')
 }
 
-export interface TaskParams {
+export interface FileLockParams {
   type: 'lock' | 'release' | 'status' | 'renew';
   agentId?: string;
   sessionId?: string | null;
   workspacePath?: string | null;
   artifact?: string | null;
-  taskId?: string | null;
+  runId?: string | null;
   targetFiles?: string[];
   lockType?: LockType;
   ttlMs?: number | null;
   reasoning?: string | null;
-  status?: TaskStatus;
+  status?: RunStatus;
   verified?: boolean;
   verifiedNote?: string;
 }
 
-/** @deprecated Use TaskParams. */
-export type FileLockParams = TaskParams;
-
 export interface ReleaseFileLockResult {
   agent_id: string;
-  status: TaskStatus;
+  status: RunStatus;
   released: boolean;
   locks_released: number;
-  task_ids: string[];
+  run_ids: string[];
   updated_at: string;
   unverifiedConclusion?: string;
   ambiguousRelease?: string;
@@ -376,7 +375,7 @@ export interface ReleaseFileLockResult {
 
 export interface FileLockStatusEntry {
   lock_id: string;
-  task_id: string;
+  run_id: string;
   file_path: string;
   agent_id: string;
   session_id: string | null;
@@ -392,7 +391,7 @@ export interface FileLockStatusEntry {
 export interface AcquireFileLockResult {
   ok: true;
   type: 'lock';
-  taskId: string;
+  runId: string;
   files: string[];
   reasoning: string;
   acquiredAt: string | null;
@@ -402,10 +401,10 @@ export interface AcquireFileLockResult {
 
 export type FileLockResult =
   | AcquireFileLockResult
-  | { ok: false; type: 'lock'; conflict: true; conflicts: PreFlightTaskConflict['conflicts'] }
+  | { ok: false; type: 'lock'; conflict: true; conflicts: PreFlightRunConflict['conflicts'] }
   | ({ ok: boolean; type: 'release' } & ReleaseFileLockResult)
   | { ok: true; type: 'status'; locks: FileLockStatusEntry[] }
-  | { ok: true; type: 'renew'; taskId: string; renewed: boolean; locks_renewed: number; expiresAt: string | null };
+  | { ok: true; type: 'renew'; runId: string; renewed: boolean; locks_renewed: number; expiresAt: string | null };
 
 /** One failed binary-eval question, treated as a diagnostic packet. */
 export interface EvalFailure {
@@ -574,13 +573,13 @@ export interface RefinementRow {
 export interface FileLockRow {
   lock_id: string;
   file_path: string;
-  task_id: string;
+  run_id: string;
   agent_id: string;
   session_id?: string | null;
   lock_type: string;
   acquired_at: string;
   expires_at: string | null;
-  task_agent_id?: string;
+  run_agent_id?: string;
   reasoning?: string;
   test_plan?: string;
 }
@@ -611,8 +610,8 @@ export interface FtsRow {
   memory_id: string;
 }
 
-export interface TaskIdRow {
-  task_id: string;
+export interface RunIdRow {
+  run_id: string;
 }
 
 export interface RunResult {
@@ -674,7 +673,7 @@ export interface PruneStaleParams {
 
 export interface PruneStaleResult {
   pruned_locks: number;
-  updated_tasks: number;
+  updated_runs: number;
   dry_run?: true;
   would_prune?: number;
 }
@@ -682,9 +681,9 @@ export interface PruneStaleResult {
 // ─── Verify ───────────────────────────────────────────────────────────────────
 
 export interface MarkVerifiedParams {
-  taskId?: string;               // verify one task by id
+  runId?: string;                // verify one execution run by id
   agentId?: string;
-  allPending?: boolean;          // verify all pending tasks for this agent/workspace
+  allPending?: boolean;          // verify all pending runs for this agent/workspace
   workspacePath?: string;        // scope for allPending
   artifact?: string | null;
   message?: string;              // what was verified
@@ -693,8 +692,8 @@ export interface MarkVerifiedParams {
 
 export interface MarkVerifiedResult {
   ok: boolean;
-  task_id?: string;
-  task_ids?: string[];           // when allPending=true
+  run_id?: string;
+  run_ids?: string[];            // when allPending=true
   status?: string;
   count?: number;
   error?: string;
@@ -707,7 +706,7 @@ export interface AuditUnverifiedParams {
   agentId?: string | null;
   workspacePath?: string;
   artifact?: string | null;
-  abandon?: boolean;             // dismiss all found PENDING tasks as orphaned
+  abandon?: boolean;             // dismiss all found PENDING runs as orphaned
 }
 
 // ─── Delete refinement ───────────────────────────────────────────────────────
@@ -901,7 +900,7 @@ export type EditOperation = 'create' | 'update' | 'delete' | 'move' | 'rename';
 export interface EditLogRow {
   edit_id: string;
   session_id: string | null;
-  task_id: string | null;
+  run_id: string | null;
   agent_id: string;
   file_path: string;
   operation: EditOperation;
@@ -917,7 +916,7 @@ export interface EditLogRow {
 export interface InsertEditLogParams {
   agentId: string;
   sessionId?: string | null;
-  taskId?: string | null;
+  runId?: string | null;
   filePath: string;
   operation: EditOperation;
   oldFilePath?: string | null;
@@ -930,7 +929,7 @@ export interface InsertEditLogParams {
 
 export interface QueryEditLogParams {
   sessionId?: string;
-  taskId?: string;
+  runId?: string;
   agentId?: string;
   filePath?: string;
   workspacePath?: string;
@@ -953,7 +952,7 @@ export interface HarnessLogRow {
   event_type: HarnessEventType;
   payload_json: string | null;
   memory_id: string | null;
-  task_id: string | null;
+  run_id: string | null;
   created_at: string;
 }
 
@@ -965,7 +964,7 @@ export interface InsertHarnessLogParams {
   eventType: HarnessEventType;
   payload?: Record<string, unknown>;
   memoryId?: string | null;
-  taskId?: string | null;
+  runId?: string | null;
 }
 
 // ─── Doc staleness ─────────────────────────────────────────────────────────────

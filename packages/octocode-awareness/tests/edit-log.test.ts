@@ -29,11 +29,11 @@ function seedSession(db: DatabaseSync, sessionId: string, agentId = 'agent-test'
 }
 
 /** Insert a minimal task row so FK constraints are satisfied. */
-function seedTask(db: DatabaseSync, taskId: string, agentId = 'agent-test'): void {
+function seedTask(db: DatabaseSync, runId: string, agentId = 'agent-test'): void {
   db.prepare(`
-    INSERT INTO tasks(task_id, agent_id, rationale, test_plan, status, created_at, updated_at)
+    INSERT INTO task_runs(run_id, agent_id, rationale, test_plan, status, created_at, updated_at)
     VALUES (?, ?, 'test rationale', 'test plan', 'ACTIVE', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
-  `).run(taskId, agentId);
+  `).run(runId, agentId);
 }
 
 // ─── 1. insertEditLog creates a row with correct fields (required + optional) ──
@@ -66,7 +66,7 @@ describe('insertEditLog — creates a row with correct fields', () => {
     const result = insertEditLog(db, {
       agentId: 'agent-a',
       sessionId: 'sess-1',
-      taskId: 'task-1',
+      runId: 'task-1',
       filePath: '/workspace/src/db.ts',
       operation: 'update',
       linesAdded: 42,
@@ -77,7 +77,7 @@ describe('insertEditLog — creates a row with correct fields', () => {
 
     const row = db.prepare('SELECT * FROM edit_log WHERE edit_id = ?').get(result.editId) as unknown as EditLogRow;
     expect(row.session_id).toBe('sess-1');
-    expect(row.task_id).toBe('task-1');
+    expect(row.run_id).toBe('task-1');
     expect(row.lines_added).toBe(42);
     expect(row.lines_removed).toBe(10);
     expect(row.content_hash).toBe('abc123def456');
@@ -94,7 +94,7 @@ describe('insertEditLog — creates a row with correct fields', () => {
 
     const row = db.prepare('SELECT * FROM edit_log WHERE edit_id = ?').get(result.editId) as unknown as EditLogRow;
     expect(row.session_id).toBeNull();
-    expect(row.task_id).toBeNull();
+    expect(row.run_id).toBeNull();
     expect(row.old_file_path).toBeNull();
     expect(row.lines_added).toBeNull();
     expect(row.lines_removed).toBeNull();
@@ -342,31 +342,31 @@ describe('edit_log FK — session_id becomes NULL when session is deleted', () =
   });
 });
 
-// ─── 9. edit_log.task_id → tasks CASCADE SET NULL ────────────────────────────
+// ─── 9. edit_log.run_id → tasks CASCADE SET NULL ────────────────────────────
 
-describe('edit_log FK — task_id becomes NULL when task is deleted', () => {
-  it('sets task_id to NULL when the referenced task is deleted', () => {
+describe('edit_log FK — run_id becomes NULL when task is deleted', () => {
+  it('sets run_id to NULL when the referenced task is deleted', () => {
     const db = freshDb();
     seedTask(db, 'task-to-delete');
 
     const result = insertEditLog(db, {
       agentId: 'agent-x',
-      taskId: 'task-to-delete',
+      runId: 'task-to-delete',
       filePath: '/workspace/component.ts',
       operation: 'update',
     });
 
     // Verify FK is set before deletion
-    const before = db.prepare('SELECT task_id FROM edit_log WHERE edit_id = ?').get(result.editId) as { task_id: string | null };
-    expect(before.task_id).toBe('task-to-delete');
+    const before = db.prepare('SELECT run_id FROM edit_log WHERE edit_id = ?').get(result.editId) as { run_id: string | null };
+    expect(before.run_id).toBe('task-to-delete');
 
     // Delete the task
-    db.prepare('DELETE FROM tasks WHERE task_id = ?').run('task-to-delete');
+    db.prepare('DELETE FROM task_runs WHERE run_id = ?').run('task-to-delete');
 
-    // The edit_log row must still exist with task_id = NULL
+    // The edit_log row must still exist with run_id = NULL
     const after = db.prepare('SELECT * FROM edit_log WHERE edit_id = ?').get(result.editId) as EditLogRow | undefined;
     expect(after).toBeDefined();
-    expect(after!.task_id).toBeNull();
+    expect(after!.run_id).toBeNull();
     expect(after!.file_path).toBe('/workspace/component.ts');
     expect(after!.agent_id).toBe('agent-x');
   });
@@ -377,17 +377,17 @@ describe('edit_log FK — task_id becomes NULL when task is deleted', () => {
 
     const result = insertEditLog(db, {
       agentId: 'agent-y',
-      taskId: 'task-ephemeral',
+      runId: 'task-ephemeral',
       filePath: '/module/api.ts',
       operation: 'create',
     });
 
-    db.prepare('DELETE FROM tasks WHERE task_id = ?').run('task-ephemeral');
+    db.prepare('DELETE FROM task_runs WHERE run_id = ?').run('task-ephemeral');
 
     const rows = queryEditLog(db, { filePath: '/module/api.ts' });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.edit_id).toBe(result.editId);
-    expect(rows[0]!.task_id).toBeNull();
+    expect(rows[0]!.run_id).toBeNull();
   });
 });
 

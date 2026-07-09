@@ -25,6 +25,15 @@ export type { DeleteRefinementResult } from './refinements.js';
 // Intents / file locks
 export { preFlightIntent, releaseFileLock, fileLock } from './intents.js';
 
+// Collaborative plans and durable plan tasks
+export { createPlan, getPlan, listPlans, joinPlan, registerPlanDocument, updatePlanStatus } from './plans.js';
+export type { PlanStatus, PlanRecord, PlanDetail, PlanMemberRecord, PlanDocRecord, CreatePlanParams, JoinPlanParams, RegisterPlanDocParams } from './plans.js';
+export {
+  createTask, getTask, listTasks, listReadyTasks, activeTaskClaimForAgent, addTaskDependency,
+  claimTask, heartbeatTaskClaim, submitTask, releaseTaskClaim,
+} from './tasks.js';
+export type { PlanTaskStatus, PlanTaskRecord, TaskClaimRecord, TaskRunRecord, CreateTaskParams, ClaimTaskResult } from './tasks.js';
+
 // Reflection
 export { reflect } from './reflect.js';
 
@@ -127,11 +136,11 @@ export type {
   GetMemoryParams, GetMemoryResult,
   InsertRefinementParams, InsertRefinementResult,
   GetRefinementsParams, GetRefinementsResult,
-  PreFlightTaskParams, PreFlightTaskResult, PreFlightTaskSuccess, PreFlightTaskConflict,
-  ReleaseFileLockParams, ReleaseFileLockResult, TaskParams, FileLockParams, FileLockResult, FileLockStatusEntry,
+  PreFlightRunParams, PreFlightRunResult, PreFlightRunSuccess, PreFlightRunConflict,
+  ReleaseFileLockParams, ReleaseFileLockResult, FileLockParams, FileLockResult, FileLockStatusEntry,
   ReflectParams, ReflectResult,
   Scope, ScopePartial,
-  MemoryState, LockType, TaskStatus, RefinementQuality, RefinementState, ReflectionOutcome,
+  MemoryState, LockType, RunStatus, RefinementQuality, RefinementState, ReflectionOutcome,
   // New types
   ForgetMemoryParams, ForgetMemoryResult,
   WaitForLockParams,

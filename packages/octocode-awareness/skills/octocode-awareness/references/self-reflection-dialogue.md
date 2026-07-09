@@ -1,101 +1,43 @@
 # Self-Reflection Dialogue
 
-Use role dialogue when an idea is important, fuzzy, risky, or creative enough that one straight-line answer may miss perspective.
-Skip routine edits, simple status checks, and obvious verification. The goal is better thinking, not role-play.
+Use role dialogue when an important, fuzzy, risky, or creative idea needs challenge.
+Skip routine edits, status checks, and obvious verification.
+Use `references/subagent-rubber-duck.md` for a real second agent; loop closure lives in `references/learning-loop.md`.
 
 ## Pattern
 
-Role dialogue is a bounded self-review loop:
-
 ```text
-QUESTION -> ROLE A view -> ROLE B challenge -> SYNTHESIS -> VERIFY -> CAPTURE
+QUESTION -> ROLE A -> ROLE B CHALLENGE -> SYNTHESIS -> VERIFY -> CAPTURE
 ```
 
-Role dialogue can run with real subagents when the host and user allow delegation.
-When subagents are unavailable, one agent can use named perspectives internally.
-The output is one synthesized recommendation with dissent, evidence, and next checks.
+Use two temporary lenses. Add a third only for a distinct user-approved job such as security or migration.
 
-## Good Role Pairs
-
-| Pair | Use when | Expected tension |
+| Pair | Use when | Tension |
 |---|---|---|
-| Tutor / Student | Learning, onboarding, explaining a new approach | clarity vs. confusion |
-| Builder / Tester | Designing a feature or workflow | capability vs. failure modes |
-| Supporter / Skeptic | Post-task reflection or ambiguous tradeoff | what worked vs. what is unverified |
-| Historian / Futurist | Changing long-lived docs or memory | precedent vs. future fit |
-| User Advocate / Maintainer | UX, docs, or agent workflow | usefulness vs. maintainability |
-| Compression / Recall | Context-heavy tasks | brevity vs. missing evidence |
+| Tutor / Student | Teaching/onboarding | clarity vs confusion |
+| Builder / Tester | Designing behavior | capability vs failure modes |
+| Supporter / Skeptic | Post-task lesson/tradeoff | value vs unverified claims |
+| Historian / Futurist | Long-lived docs/memory | precedent vs future fit |
+| User Advocate / Maintainer | UX/workflow | usefulness vs maintenance |
+| Compression / Recall | Context-heavy work | brevity vs missing evidence |
 
-Use two roles by default. Add a third only when the user explicitly asks or the third role has a distinct job, such as security, migration, or evaluation.
+## Awareness Form
 
-## Awareness Surfaces
+Run `attend` before a hard judgment. For post-task learning, `reflect record --duo` returns advisory supporter/skeptic prompts; it does not spawn a subagent, store role output, or score it.
 
-Before role dialogue:
+Use internal roles for a quick bounded challenge. Use a real rubber-duck subagent when independent source inspection, restatement, or assumption checking materially reduces risk.
 
-```bash
-octocode-awareness attend --workspace "$PWD" --query "<idea or risk>" --compact
-octocode-awareness query workboard --workspace "$PWD" --format table --limit 20
-```
+Use the prompts for one pass: name what improved, one remaining uncertainty, and one concrete check. Structured eval failures belong in `--eval-failure-json` with a stable `failure_signature`; recurring patterns belong in `reflect mine-weakness`.
 
-During role dialogue, use signals or refinements only when another run needs to see the discussion:
-
-```bash
-octocode-awareness signal publish --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --kind question --subject "<question>"
-octocode-awareness refinement set --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --quality handoff --reasoning "<why unresolved>" --remember "<next role to consult>"
-```
-
-For post-task learning, prefer the built-in advisory duo. It returns supporter/skeptic prompts but does not store, score, or enforce the extra role output:
-
-```bash
-octocode-awareness reflect record \
-  --agent-id "$OCTOCODE_AGENT_ID" \
-  --workspace "$PWD" \
-  --task "<task>" \
-  --outcome partial \
-  --lesson "<short reusable lesson>" \
-  --judgment-note "<evidence checked + remaining uncertainty>" \
-  --duo \
-  --compact
-```
-
-Use the returned prompts as an optional one-pass self-eval: note one thing that improved the work, one remaining uncertainty, and one concrete verification check.
-
-## Self-Eval Approaches
-
-- **After reflection**: run `reflect record --duo` or a Supporter / Skeptic pass only for non-obvious lessons. Capture the synthesis, dissent, and next check.
-- **Eval-backed learning**: when a test, benchmark, or rubric failed, pass structured rows with `--eval-failure-json '[...]'` and a `failure_signature`; later use `reflect mine-weakness` to find repeated patterns.
-- **Later weakness review**: mine clusters first, then use one or two subagents as bounded reviewers, such as Tester / Maintainer or Evidence Checker / Product. The main agent chooses one fix and one verification.
-- **Subagent challenge**: delegate disjoint questions, require `claim -> evidence -> risk -> next check`, preserve dissent, and treat agreement as a signal to verify rather than proof.
-
-After role dialogue:
-
-- Record a durable memory only if the synthesis is reusable, evidence-backed, and scoped.
-- Record a refinement if action remains.
-- Keep raw debate out of long Markdown docs; summarize the conclusion and point to row IDs or files.
+Publish a signal/refinement only when another run needs the unresolved question. Record memory only after synthesis is reusable, scoped, and verified.
 
 ## Guardrails
 
-- Do not invent a permanent persona. Roles are temporary thinking lenses.
-- Do not treat agreement between roles as proof. Verify against code, tests, docs, command output, or user feedback.
-- Do not store every dialogue turn. Capture the synthesis, open question, or verified lesson.
-- Do not spawn subagents unless the user or host policy allows it; use an internal two-column review instead.
-- Do not claim fake consensus. Preserve unresolved dissent when evidence is missing.
-- Keep the packet small: one question, two roles, one pass, three to five bullets per role, one synthesis, one next check.
-- Do not refresh `.octocode/` projections for ordinary brainstorms; publish only verified guidance that helps a future run.
+- Roles are temporary thinking lenses, not a persistent persona.
+- Agreement is not proof; verify against source, tests, commands, or user feedback.
+- Preserve dissent when evidence is missing; never claim fake consensus.
+- Capture synthesis and next check, not raw dialogue.
+- Keep one question, two roles, one pass, and one next action.
+- Do not inject projections for ordinary brainstorming.
 
-## Output Shape
-
-```text
-Question: <idea/risk>
-Roles: <A> vs <B>
-Role A: <best argument, 2-4 bullets>
-Role B: <challenge, 2-4 bullets>
-Synthesis: <decision or sharpened hypothesis>
-Dissent: <remaining objection or missing evidence>
-Evidence to verify: <files/commands/memory ids>
-Next: <one action>
-Memory candidate: no | yes, after <verification>
-Capture: none | reflect | memory | refinement | signal
-```
-
-Self-reflection dialogue turns "talking to yourself" into a useful social-intelligence loop: more perspective, less bloat, clearer verification.
+Output: question, roles, best arguments, synthesis, dissent, evidence/check, next action, and capture choice (`none|memory|refinement|signal`). Then follow `references/learning-loop.md` until the chosen output is applied, verified, and closed.

@@ -6,7 +6,7 @@ import { join } from 'node:path';
  * maintenance.test.ts — Behavioural tests for maintenance functions against the current schema.
  *
  * Core tables: memories, tasks, locks.
- * Core columns: importance, task_id, tags_json, memory_refs.
+ * Core columns: importance, run_id, tags_json, memory_refs.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -66,34 +66,34 @@ function insertMem(
   return memoryId;
 }
 
-/** Insert an ACTIVE task and return its task_id. */
+/** Insert an ACTIVE task and return its run_id. */
 function insertTask(
   db: DatabaseSync,
   opts: { agentId?: string; workspacePath?: string; sessionId?: string | null; planDocRef?: string | null } = {},
 ): string {
-  const taskId = 'task_' + randomUUID().replace(/-/g, '');
+  const runId = 'task_' + randomUUID().replace(/-/g, '');
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO tasks (task_id, agent_id, rationale, test_plan, plan_doc_ref, status, workspace_path, files_json, created_at, updated_at)
+    INSERT INTO task_runs (run_id, agent_id, rationale, test_plan, context_ref, status, workspace_path, files_json, created_at, updated_at)
     VALUES (?, ?, 'test rationale', 'yarn test', ?, 'ACTIVE', ?, '[]', ?, ?)
-  `).run(taskId, opts.agentId ?? 'agent-test', opts.planDocRef ?? null, opts.workspacePath ?? '/ws', now, now);
-  return taskId;
+  `).run(runId, opts.agentId ?? 'agent-test', opts.planDocRef ?? null, opts.workspacePath ?? '/ws', now, now);
+  return runId;
 }
 
 /** Insert a lock for a task. */
 function insertLock(
   db: DatabaseSync,
-  opts: { taskId: string; filePath?: string; agentId?: string; expiresAt?: string | null },
+  opts: { runId: string; filePath?: string; agentId?: string; expiresAt?: string | null },
 ): string {
   const lockId = 'lock_' + randomUUID().replace(/-/g, '');
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO locks (lock_id, file_path, task_id, agent_id, lock_type, acquired_at, expires_at)
+    INSERT INTO locks (lock_id, file_path, run_id, agent_id, lock_type, acquired_at, expires_at)
     VALUES (?, ?, ?, ?, 'EXCLUSIVE', ?, ?)
   `).run(
     lockId,
     opts.filePath ?? '/ws/a.ts',
-    opts.taskId,
+    opts.runId,
     opts.agentId ?? 'agent-test',
     now,
     opts.expiresAt ?? null,
@@ -106,9 +106,9 @@ function insertLock(
 describe('pruneStale — locks + tasks', () => {
   it('dry_run returns would_prune without deleting', () => {
     const db = freshDb();
-    const taskId = insertTask(db);
+    const runId = insertTask(db);
     const past = new Date(Date.now() - 5 * 60_000).toISOString();
-    insertLock(db, { taskId, expiresAt: past });
+    insertLock(db, { runId, expiresAt: past });
 
     const res = pruneStale(db, { dry_run: true });
     expect(res.dry_run).toBe(true);
@@ -122,9 +122,9 @@ describe('pruneStale — locks + tasks', () => {
 
   it('prunes expired locks from the locks table', () => {
     const db = freshDb();
-    const taskId = insertTask(db);
+    const runId = insertTask(db);
     const past = new Date(Date.now() - 5 * 60_000).toISOString();
-    insertLock(db, { taskId, expiresAt: past });
+    insertLock(db, { runId, expiresAt: past });
 
     const res = pruneStale(db, {});
     expect(res.pruned_locks).toBeGreaterThanOrEqual(1);
@@ -135,38 +135,38 @@ describe('pruneStale — locks + tasks', () => {
 
   it('updates task status to PENDING in the tasks table when its last lock is pruned', () => {
     const db = freshDb();
-    const taskId = insertTask(db);
+    const runId = insertTask(db);
     const past = new Date(Date.now() - 5 * 60_000).toISOString();
-    insertLock(db, { taskId, expiresAt: past });
+    insertLock(db, { runId, expiresAt: past });
 
     pruneStale(db, {});
 
     const task = db.prepare(
-      'SELECT status FROM tasks WHERE task_id = ?'
-    ).get(taskId) as { status: string } | undefined;
+      'SELECT status FROM task_runs WHERE run_id = ?'
+    ).get(runId) as { status: string } | undefined;
     expect(task?.status).toBe('PENDING');
   });
 
   it('normalizes relative target_file filters against workspace', () => {
     const db = freshDb();
-    const taskId = insertTask(db, { workspacePath: '/repo' });
+    const runId = insertTask(db, { workspacePath: '/repo' });
     const past = new Date(Date.now() - 5 * 60_000).toISOString();
-    insertLock(db, { taskId, filePath: '/repo/src/a.ts', expiresAt: past });
+    insertLock(db, { runId, filePath: '/repo/src/a.ts', expiresAt: past });
 
     const dry = pruneStale(db, { workspace: '/repo', target_file: 'src/a.ts', dry_run: true });
     expect(dry.would_prune).toBe(1);
 
     const res = pruneStale(db, { workspace: '/repo', target_file: 'src/a.ts' });
     expect(res.pruned_locks).toBe(1);
-    const task = db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(taskId) as { status: string };
+    const task = db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(runId) as { status: string };
     expect(task.status).toBe('PENDING');
   });
 
   it('does not prune non-expired locks', () => {
     const db = freshDb();
-    const taskId = insertTask(db);
+    const runId = insertTask(db);
     const future = new Date(Date.now() + 10 * 60_000).toISOString();
-    insertLock(db, { taskId, expiresAt: future });
+    insertLock(db, { runId, expiresAt: future });
 
     const res = pruneStale(db, {});
     expect(res.pruned_locks).toBe(0);
@@ -189,28 +189,28 @@ describe('getWorkspaceStatus — current schema', () => {
     expect(status.active_memories).toBeGreaterThanOrEqual(2);
   });
 
-  it('returns pending_tasks count from the tasks table', () => {
+  it('returns pending_runs count from the tasks table', () => {
     const db = freshDb();
-    const taskId = insertTask(db);
-    db.prepare("UPDATE tasks SET status = 'PENDING' WHERE task_id = ?").run(taskId);
+    const runId = insertTask(db);
+    db.prepare("UPDATE task_runs SET status = 'PENDING' WHERE run_id = ?").run(runId);
 
     const status = getWorkspaceStatus(db, {});
-    expect(status.pending_tasks).toBeGreaterThanOrEqual(1);
+    expect(status.pending_runs).toBeGreaterThanOrEqual(1);
   });
 
-  it('returns active_tasks count from the tasks table', () => {
+  it('returns active_runs count from the tasks table', () => {
     const db = freshDb();
     insertTask(db);
 
     const status = getWorkspaceStatus(db, {});
-    expect(status.active_tasks).toBeGreaterThanOrEqual(1);
+    expect(status.active_runs).toBeGreaterThanOrEqual(1);
   });
 
   it('returns active locks from locks table', () => {
     const db = freshDb();
-    const taskId = insertTask(db);
+    const runId = insertTask(db);
     const future = new Date(Date.now() + 10 * 60_000).toISOString();
-    insertLock(db, { taskId, expiresAt: future });
+    insertLock(db, { runId, expiresAt: future });
 
     const status = getWorkspaceStatus(db, {});
     expect(status.locks.length).toBeGreaterThanOrEqual(1);
@@ -220,15 +220,15 @@ describe('getWorkspaceStatus — current schema', () => {
 
   it('evicts expired locks and marks affected active tasks pending before reporting status', () => {
     const db = freshDb();
-    const taskId = insertTask(db);
+    const runId = insertTask(db);
     const past = new Date(Date.now() - 5 * 60_000).toISOString();
-    insertLock(db, { taskId, expiresAt: past });
+    insertLock(db, { runId, expiresAt: past });
 
     const status = getWorkspaceStatus(db, {});
     expect(status.locks).toHaveLength(0);
-    expect(status.pending_tasks).toBeGreaterThanOrEqual(1);
-    expect(status.active_tasks).toBe(0);
-    const task = db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(taskId) as { status: string };
+    expect(status.pending_runs).toBeGreaterThanOrEqual(1);
+    expect(status.active_runs).toBe(0);
+    const task = db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(runId) as { status: string };
     expect(task.status).toBe('PENDING');
   });
 });
@@ -288,6 +288,8 @@ describe('exportHarness — tag matching', () => {
     const res = exportHarness(db, {});
     expect(res.count).toBeGreaterThanOrEqual(1);
     expect(res.memories.some(m => m.tier === 'harness')).toBe(true);
+    expect(res.next).toContain('Human review required');
+    expect(res.next).toContain('octocode-awareness reflect record');
   });
 
   it('does not include non-harness memories in tier-1', () => {
@@ -323,6 +325,7 @@ describe('exportHarness — tag matching', () => {
     const res = exportHarness(db, {});
     expect(res.count).toBe(0);
     expect(res.markdown).toContain('No harness');
+    expect(res.next).toContain('octocode-awareness reflect record --fix-harness');
   });
 });
 
@@ -344,7 +347,7 @@ describe('sessionCapture — tasks table', () => {
     const res = sessionCapture(db, { agent_id: 'agent-cap', workspace: '/ws' });
     expect(res.ok).toBe(true);
     expect(res.captured).toBe(true);
-    expect(res.active_tasks).toBeGreaterThanOrEqual(1);
+    expect(res.active_runs).toBeGreaterThanOrEqual(1);
     expect(res.refinement_id).toBeTruthy();
 
     // Verify the refinement was written to the refinements table
@@ -355,7 +358,7 @@ describe('sessionCapture — tasks table', () => {
     expect(ref?.state).toBe('open');
   });
 
-  it('includes plan_doc_ref in handoff task details', () => {
+  it('includes context_ref in handoff task details', () => {
     const db = freshDb();
     insertTask(db, {
       agentId: 'agent-cap',
@@ -374,13 +377,13 @@ describe('sessionCapture — tasks table', () => {
 
   it('bounds handoff file arrays and visible task text', () => {
     const db = freshDb();
-    const taskId = insertTask(db, { agentId: 'agent-cap', workspacePath: '/ws' });
+    const runId = insertTask(db, { agentId: 'agent-cap', workspacePath: '/ws' });
     const files = Array.from({ length: 60 }, (_, i) => `/ws/src/file-${i}.ts`);
     db.prepare(
-      `UPDATE tasks
+      `UPDATE task_runs
        SET rationale = ?, test_plan = ?, files_json = ?
-       WHERE task_id = ?`
-    ).run('rationale '.repeat(80), 'test plan '.repeat(80), JSON.stringify(files), taskId);
+       WHERE run_id = ?`
+    ).run('rationale '.repeat(80), 'test plan '.repeat(80), JSON.stringify(files), runId);
 
     const res = sessionCapture(db, { agent_id: 'agent-cap', workspace: '/ws' });
     expect(res.captured).toBe(true);

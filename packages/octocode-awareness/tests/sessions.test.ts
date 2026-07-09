@@ -41,18 +41,18 @@ function freshDb(): DatabaseSync {
 /** Insert a minimal task row optionally linked to a session. */
 function insertTask(
   db: DatabaseSync,
-  taskId: string,
+  runId: string,
   agentId: string,
   sessionId: string | null,
 ): void {
   db.prepare(`
-    INSERT INTO tasks(task_id, agent_id, session_id, rationale, test_plan, status,
+    INSERT INTO task_runs(run_id, agent_id, session_id, rationale, test_plan, status,
                       workspace_path, files_json, created_at, updated_at)
     VALUES (?, ?, ?, 'rationale', 'test_plan', 'ACTIVE',
             '/workspace', '[]',
             strftime('%Y-%m-%dT%H:%M:%fZ','now'),
             strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-  `).run(taskId, agentId, sessionId);
+  `).run(runId, agentId, sessionId);
 }
 
 /**
@@ -291,11 +291,11 @@ describe('session_id links correctly to tasks', () => {
     insertTask(db, 'task-linked', 'agent-1', session.session_id);
 
     const row = db
-      .prepare('SELECT task_id, session_id FROM tasks WHERE session_id = ?')
-      .get(session.session_id) as { task_id: string; session_id: string } | undefined;
+      .prepare('SELECT run_id, session_id FROM task_runs WHERE session_id = ?')
+      .get(session.session_id) as { run_id: string; session_id: string } | undefined;
 
     expect(row).toBeDefined();
-    expect(row!.task_id).toBe('task-linked');
+    expect(row!.run_id).toBe('task-linked');
     expect(row!.session_id).toBe(session.session_id);
   });
 
@@ -304,7 +304,7 @@ describe('session_id links correctly to tasks', () => {
     insertTask(db, 'task-no-session', 'agent-1', null);
 
     const row = db
-      .prepare('SELECT session_id FROM tasks WHERE task_id = ?')
+      .prepare('SELECT session_id FROM task_runs WHERE run_id = ?')
       .get('task-no-session') as { session_id: string | null } | undefined;
 
     expect(row).toBeDefined();
@@ -323,11 +323,11 @@ describe('session_id links correctly to tasks', () => {
     insertTask(db, 'task-b', 'agent-1', session_id);
 
     const rows = db
-      .prepare('SELECT task_id FROM tasks WHERE session_id = ?')
-      .all(session_id) as { task_id: string }[];
+      .prepare('SELECT run_id FROM task_runs WHERE session_id = ?')
+      .all(session_id) as { run_id: string }[];
 
     expect(rows).toHaveLength(2);
-    expect(rows.map(r => r.task_id).sort()).toEqual(['task-a', 'task-b']);
+    expect(rows.map(r => r.run_id).sort()).toEqual(['task-a', 'task-b']);
   });
 });
 
@@ -369,7 +369,7 @@ describe('deleting a session sets memory.session_id = NULL (ON DELETE SET NULL)'
 
     // Sanity-check the FK is in place before deletion.
     const before = db
-      .prepare('SELECT session_id FROM tasks WHERE task_id = ?')
+      .prepare('SELECT session_id FROM task_runs WHERE run_id = ?')
       .get('task-cascade') as { session_id: string | null };
     expect(before.session_id).toBe(session_id);
 
@@ -378,10 +378,10 @@ describe('deleting a session sets memory.session_id = NULL (ON DELETE SET NULL)'
 
     // task.session_id must be NULL — the task row itself must survive.
     const after = db
-      .prepare('SELECT task_id, session_id FROM tasks WHERE task_id = ?')
-      .get('task-cascade') as { task_id: string; session_id: string | null } | undefined;
+      .prepare('SELECT run_id, session_id FROM task_runs WHERE run_id = ?')
+      .get('task-cascade') as { run_id: string; session_id: string | null } | undefined;
     expect(after).toBeDefined();
-    expect(after!.task_id).toBe('task-cascade');
+    expect(after!.run_id).toBe('task-cascade');
     expect(after!.session_id).toBeNull();
   });
 
@@ -395,9 +395,9 @@ describe('deleting a session sets memory.session_id = NULL (ON DELETE SET NULL)'
     db.prepare('DELETE FROM sessions WHERE session_id = ?').run(s1.session_id);
 
     // task-s1 must be NULL; task-s2 must still point at s2.
-    const r1 = db.prepare('SELECT session_id FROM tasks WHERE task_id = ?').get('task-s1') as
+    const r1 = db.prepare('SELECT session_id FROM task_runs WHERE run_id = ?').get('task-s1') as
       { session_id: string | null };
-    const r2 = db.prepare('SELECT session_id FROM tasks WHERE task_id = ?').get('task-s2') as
+    const r2 = db.prepare('SELECT session_id FROM task_runs WHERE run_id = ?').get('task-s2') as
       { session_id: string | null };
 
     expect(r1.session_id).toBeNull();

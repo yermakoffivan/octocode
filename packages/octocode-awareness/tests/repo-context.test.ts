@@ -29,12 +29,12 @@ function freshDb(): DatabaseSync {
 
 function seedPendingTasks(db: DatabaseSync, workspace: string, file: string): void {
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-  for (const taskId of ['task_pending_a', 'task_pending_b']) {
+  for (const runId of ['run_pending_a', 'run_pending_b']) {
     db.prepare(
-      `INSERT INTO tasks (task_id, agent_id, rationale, test_plan, status, workspace_path, artifact, files_json, created_at, updated_at)
+      `INSERT INTO task_runs (run_id, agent_id, rationale, test_plan, status, workspace_path, artifact, files_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?)`
     ).run(
-      taskId,
+      runId,
       'agent-a',
       'verify auth file',
       'vitest auth',
@@ -128,7 +128,7 @@ describe('repo context query and projections', () => {
       const { db, file } = seededDb(dir);
       const base = { workspacePath: dir, artifact: 'svc', limit: 20 };
 
-      for (const view of ['repo-profile', 'memories', 'gotchas', 'lessons', 'tasks', 'locks', 'agents', 'signals', 'refinements', 'files', 'activity', 'workboard'] as const) {
+      for (const view of ['repo-profile', 'memories', 'gotchas', 'lessons', 'plans', 'tasks', 'runs', 'locks', 'agents', 'signals', 'refinements', 'files', 'activity', 'workboard'] as const) {
         const result = queryAwareness(db, { ...base, view, includeBodies: true });
         expect(result.ok).toBe(true);
         expect(result.view).toBe(view);
@@ -136,9 +136,10 @@ describe('repo context query and projections', () => {
       }
 
       const workboard = queryAwareness(db, { ...base, view: 'workboard', limit: 10 });
-      const verify = workboard.rows.find(row => row.column === 'Verify');
-      expect(verify?.count).toBe(2);
-      expect(verify?.raw_ids).toEqual(expect.arrayContaining(['task_pending_a', 'task_pending_b']));
+      const verify = workboard.rows.filter(row => row.column === 'Verify');
+      expect(verify).toHaveLength(2);
+      expect(verify.flatMap(row => row.raw_ids as string[]))
+        .toEqual(expect.arrayContaining(['run_pending_a', 'run_pending_b']));
       expect(workboard.rows.some(row => row.column === 'Inbox' && row.item_type === 'signal')).toBe(true);
       expect(workboard.rows.some(row => row.column === 'Claimed' && row.item_type === 'lock')).toBe(true);
 
@@ -172,7 +173,8 @@ describe('repo context query and projections', () => {
 
       expect(result.ok).toBe(true);
       expect(result.profile.active_memories).toBeGreaterThanOrEqual(2);
-      expect(result.workboard.Verify?.[0]?.raw_ids).toEqual(expect.arrayContaining(['task_pending_a', 'task_pending_b']));
+      expect(result.workboard.Verify?.flatMap(row => row.raw_ids as string[]))
+        .toEqual(expect.arrayContaining(['run_pending_a']));
       expect(result.evidence[0]?.why_selected.join(' ')).toContain('auth');
       expect(result.organ_state).toHaveProperty('attention');
       expect(result.drive_state).toMatchObject({
@@ -197,7 +199,7 @@ describe('repo context query and projections', () => {
       writeFileSync(join(dir, '.octocode', 'GOTCHAS.md'), `${'y\n'.repeat(250)}`, 'utf8');
       writeFileSync(join(dir, '.octocode', 'LEARN.md'), `${'z\n'.repeat(250)}`, 'utf8');
       // Mark pending tasks verified so bloat drives next.
-      db.prepare(`UPDATE tasks SET status = 'SUCCESS' WHERE status = 'PENDING'`).run();
+      db.prepare(`UPDATE task_runs SET status = 'SUCCESS' WHERE status = 'PENDING'`).run();
       const result = attendAwareness(db, {
         workspacePath: dir,
         query: 'projection bloat hygiene',

@@ -1,58 +1,38 @@
-# Perspective Review — evidence challenge
+# Perspective Review
 
-Load at the converge step (Workflow step 5), after research and cross-pollination.
-The goal is to clarify the idea, pressure-test the evidence, and output the strongest defensible decision — not to produce a transcript. The main agent is referee.
+Load after research/cross-pollination to challenge the evidence and select the strongest defensible decision. Return synthesis, not a transcript; the main agent is referee.
 
 ## Inputs
 
-Before dispatch or sequential lenses, provide:
+Provide one packet: `user + painful situation + desired outcome + success signal + assumptions`, chosen framings, hypothesis/claim ledger, evidence anchors, and research limits. If audience, problem, or success is missing, stop at Clarify.
 
-- Clarified idea: `user + painful situation + desired outcome + success signal + core assumptions`.
-- Chosen framing(s), hypothesis map, claim ledger, and research limits.
-- Prior-art evidence with URLs or local `file:line` anchors.
+## Lenses
 
-If the clarified idea is missing audience, problem, or success criterion, stop at Clarify. Do not spend workers to ask three versions of the same question.
+Run together only when the worker budget permits; otherwise run sequentially. Each returns at most three rows: `claim -> because -> evidence -> decision impact -> confidence`.
 
-## Roles
+| Lens | Challenge |
+|---|---|
+| Critical Architect | feasibility, integration/blast radius, security/performance/maintenance, hardest technical unknown |
+| Visionary Entrepreneur | urgency, wedge, strategic value, differentiation, distribution, upside |
+| Product | workflow, adoption friction, scope razor, retention/value signal, smallest decision-changing test |
 
-Dispatch together when worker budget allows; otherwise run them sequentially with these labels. Each role returns at most 3 claims in this shape: `claim -> because -> evidence -> decision impact -> confidence`.
+## Evidence And Cross-Exam
 
-> **Critical Architect** — feasibility and architecture risk. Test integration complexity, blast radius, security/performance/maintenance risk, hidden constraints, and the hardest technical unknown to prove.
+- Drop or mark `weak` every uncited new claim, including market/user claims.
+- Use ledger evidence instead of raw snippets. State assumptions when a follow-up would leave the decision unchanged.
+- Pick the 1-2 claims most likely to flip the verdict. Ask only relevant lenses for new evidence; repeating a citation is not rebuttal.
+- Every rebuttal states its concessions. If budget ends, run a short referee pass and report the shortened review.
 
-> **Visionary Entrepreneur** — opportunity and wedge. Test why now, who urgently cares, strategic value, differentiation, distribution path, and what winning would unlock.
+## Referee
 
-> **Product** — workflow and MVP. Test target workflow, adoption friction, scope razor, retention/value metric, and the smallest prototype or research step that changes the decision.
+Keep claims that survived, remove concessions, and mark unresolved claims as decision points. Record the decision delta: what flipped, stayed contested, had stronger evidence, and changed the verdict.
 
-## Evidence rules
+| Decision | Meaning |
+|---|---|
+| Build RFC | ready for design tradeoffs and a bounded RFC handoff |
+| Prototype First | prove one hard unknown before design |
+| Narrow | choose a tighter user/problem/framing |
+| Park | timing or evidence is weak |
+| Do Not Build | solutions or risks dominate |
 
-- No uncited new claims. Persona output without evidence is dropped or marked `weak`.
-- Market/user claims from Visionary/Product still need sources or explicit `weak` markers.
-- Use the claim ledger; do not repeat raw search snippets.
-- A role may ask one targeted follow-up only if it changes the decision and the user is reachable; otherwise state the assumption.
-
-## Cross-exam
-
-After openings, the main agent picks the 1-2 claims most likely to flip the verdict.
-If budget remains, ask only the relevant role(s) to rebut those claims with new evidence.
-If budget is gone, rebut in a short main-agent pass and note `perspective review shortened (budget)`.
-
-Rebuttal must concede what it cannot refute. Repeating the same citation is not a rebuttal.
-
-## Referee / best-of-panel
-
-Keep every claim that survived challenge, remove conceded claims, and mark unresolved claims as decision points. Record the **decision delta**: what flipped, what was conceded, what stayed contested, and which perspective had the strongest evidence.
-
-Decision labels:
-
-- `Build RFC` — idea is worth planning; prepare `octocode/octocode-rfc-generator` handoff.
-- `Prototype First` — prove one hard unknown before design work.
-- `Narrow` — choose a tighter user/problem/framing.
-- `Park` — evidence is thin or timing is wrong.
-- `Do Not Build` — existing solutions or risks dominate.
-
-RFC handoff is ready only when all of these hold:
-- verdict is `worth-prototyping` or clearly `underserved`;
-- user, problem, and success signal are specific;
-- prior art and differentiation are grounded;
-- the panel agrees on a bounded MVP or first implementation slice;
-- the biggest unknown is now an implementation/design tradeoff rather than demand.
+An RFC handoff needs a worth-prototyping/underserved verdict; specific user, problem, and success; grounded prior art; and a bounded first slice. The largest unknown must be a design tradeoff rather than demand.

@@ -96,6 +96,8 @@ Ask for the full inventory if you want all 27; this pass keeps the signal high.
    ```
    Treat as a rotation and removal trigger. Incident claims require evidence.
 
+## ⚖️ FELONIES
+
 2. **N+1 Query Bonanza** — `src/api/users.ts:89`
    ```ts
    users.forEach(async user => {
@@ -104,13 +106,11 @@ Ask for the full inventory if you want all 27; this pass keeps the signal high.
    ```
    This is user-visible latency wearing a fake moustache.
 
-## ⚖️ FELONIES
-
 3. **`any` epidemic** — 12 instances (`src/api.ts:34`, `src/utils.ts:89`,
    `src/types.ts:12` — yes, in your TYPES file; the irony is palpable).
 
 ─────────────────────────────────
-DAMAGE REPORT: 2 CAPITAL | 3 FELONIES | 5 CRIMES | 17 MORE...
+DAMAGE REPORT: 1 CAPITAL | 4 FELONIES | 5 CRIMES | 17 MORE...
 ─────────────────────────────────
 ```
 

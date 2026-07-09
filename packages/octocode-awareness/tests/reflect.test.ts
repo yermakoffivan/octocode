@@ -170,10 +170,14 @@ describe('reflect', () => {
     expect(second.novelty_score).toBeLessThan(0.75);
   });
 
-  it('next message is non-empty', () => {
+  it('next message closes repo, weakness, and harness loops with canonical commands', () => {
     const db = freshDb();
     const result = reflect(db, { task: 't', outcome: 'worked' });
-    expect(result.next.length).toBeGreaterThan(10);
+    expect(result.next).toContain('octocode-awareness refinement get');
+    expect(result.next).toContain('octocode-awareness refinement set');
+    expect(result.next).toContain('octocode-awareness reflect mine-weakness');
+    expect(result.next).toContain('octocode-awareness reflect export-harness');
+    expect(result.next).not.toContain('memory_refine_get');
   });
 
   it('custom importance overrides the default', () => {

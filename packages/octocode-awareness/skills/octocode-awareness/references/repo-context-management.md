@@ -1,115 +1,44 @@
-# Repo Context Management
+# Repo Context Publication
 
-Use this when a task involves workspace `.octocode/` generated repo context, repo-level AGENTS guidance, memory indexes, CSV exports, a human-readable awareness view, or the awareness LLM Wiki workflow.
+Use this when publishing, sharing, debugging, or linking workspace `.octocode/` context. For which live/durable/generated output to choose, read `references/output-routing.md`.
 
-## Model
+Canonical data lives in global `~/.octocode/memory/awareness.sqlite3`. `query <view>` is the live read API; `repo inject` publishes selected DB state as bounded Markdown, CSV, HTML, manifest, and references under the workspace.
 
-The SQLite awareness DB in the global Octocode home is canonical. Files under the workspace `.octocode/` folder are generated projections for agents, scripts, and humans:
+Do not hand-edit generated files. Correct the DB/source, then regenerate.
 
-- global home: `~/.octocode/` stores config and durable Awareness data such as `memory/awareness.sqlite3`.
-- workspace projection: `<repo>/.octocode/` stores generated repo context and memories-about-this-repo as Markdown, CSV, HTML, manifest, and references.
+## When To Inject
 
-`.octocode/MEMORY.md` is not where memories live. It is a generated readable index of selected `memories` rows from the global DB.
+Run `repo inject` when a high-value gotcha/decision/lesson/handoff should be discoverable from files, a human requests an inspectable snapshot, or stale projection health could mislead the next agent.
 
-Generated files include:
-
-- `.octocode/AGENTS.md` - concise generated repo context for agents.
-- `.octocode/MEMORY.md` - active memory index.
-- `.octocode/GOTCHAS.md` - repo traps, failures, and failure signatures.
-- `.octocode/LEARN.md` - decisions, architecture notes, workflows, and opportunities.
-- `.octocode/BOOKMARKS.md` - learnable resource leads from memory references: URLs, repos, file paths, docs, papers, skills, and other URIs.
-- `.octocode/DEVELOPER_REVIEW.md` - agent feedback to the human who authored the instructions (from `reflect record --fix-instructions`), grouped Open/Resolved.
-- `.octocode/awareness/csv/*.csv` - filterable/sortable data for scripts and agents, including `files.csv` with `file_exists` / `missing_file`.
-- `.octocode/awareness/index.html` - browser view with row search, section filter, missing-file filter, and sortable columns.
-- `.octocode/awareness/manifest.json` - generation metadata and share/local policy warnings.
-- `.octocode/references/` - compact generated reference notes to avoid context bloat.
-
-Do not hand-edit generated projections when a DB update or regeneration is the right fix.
-
-The repo context projection is wiki-like by design:
-
-- `query <view>` is the live read API for agents and scripts.
-- `repo inject` is the publication step that turns selected DB state into repo-local Markdown, CSV, HTML, manifest, and reference files.
-- `BOOKMARKS.md` is the resource index projection. Add learnable URLs, repo paths, file paths, papers, skills, and other URIs as memory references, then regenerate.
-- `DEVELOPER_REVIEW.md` is the instruction-feedback projection: what agents report about the instructions themselves. Feed it with `reflect record --fix-instructions`; read it with `reflect developer-review`. `AGENTS.md` indexes it under the Retro Files Map.
-- Markdown files are capped readable projections, not unlimited storage. When rows exceed the projection budget, `repo inject` omits overflow rows and points agents toward CSV, HTML, or query views for the full sortable/filterable data.
-- `reflect record`, `memory record`, signals, locks, verification, and refinements all feed the same DB, so the generated docs can summarize work without storing raw chat logs.
-- Generated files are leads, not proof. Agents must validate them against current files, tests, and command output.
-
-Use the projection as a smart wiki, not as a write target. Query live data before/during work; regenerate `.octocode/` after recording important gotchas, decisions, handoffs, or lessons that future agents should see without querying SQLite.
-
-## Commands
-
-Prefer live DB reads when freshness matters:
-
-```bash
-octocode-awareness query all --workspace "$PWD" --format json --limit 20 --compact
-octocode-awareness query gotchas --workspace "$PWD" --format table
-octocode-awareness query files --workspace "$PWD" --format table --limit 50
-octocode-awareness query files --workspace "$PWD" --format csv --out .octocode/awareness/csv/files.csv
-```
-
-Relative `.octocode/...` output paths are resolved against `--workspace`, not the caller's process cwd. Use absolute `--out` only when intentionally writing somewhere else.
-
-Write a human HTML view through the query command:
-
-```bash
-octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
-```
-
-Use `query files` before trusting old bookmarks or memory references. Missing local paths are exposed as `missing_file=true`; memory rows expose `missing_references`, and `query workboard` raises `stale_file_refs` under `MemoryReview`.
-
-Regenerate repo projections:
+Skip inject for routine edits, transient locks, or every signal. Active work should use `attend` and `query`.
 
 ```bash
 octocode-awareness repo inject --workspace "$PWD" --out .octocode --mode local --compact
 ```
 
-Here `--out .octocode` means `<workspace>/.octocode/` when the command runs from the repo root.
-
-## Smart Wiki Updates
-
-Refresh the wiki when one of these changes would help the next agent:
-
-- a high-importance memory, gotcha, decision, or architecture note was recorded,
-- a handoff/refinement should be visible from files rather than only the DB,
-- a repeated failure was reflected and should become repo guidance,
-- humans asked for an inspectable snapshot, CSV, or HTML view,
-- stale generated context could mislead an agent.
-
-Do not refresh the projection for routine edits, transient locks, or every signal. `query <view>` is cheaper and fresher for active work; `repo inject` is the publication step.
+Relative output paths resolve under `--workspace`. Markdown is capped; overflow points to full CSV/HTML/query rows. Use `query files` before trusting old file/bookmark references.
 
 ## Share Policy
 
 `repo inject` never edits `.gitignore`.
 
-- Use `--mode local` when the workspace `.octocode/` projection is personal or machine-local.
-- Use `--mode share` when the repo owner intentionally wants to commit the generated projections.
-- If `--mode share` is requested while `.octocode/` is ignored, the command reports a warning. The user decides whether to remove the ignore rule.
+- `--mode local`: personal/machine-local projection; default for this monorepo.
+- `--mode share`: owner intentionally plans to review/commit projections.
+- Share mode plus an ignored `.octocode/` produces a warning; the user decides policy.
 
-In this monorepo, keep workspace `.octocode/` ignored unless the user explicitly changes that policy.
+Review machine-local absolute paths before committing any generated file.
 
-## Operating Rules
+## Root Discovery Pointer
 
-- Read workspace `AGENTS.md` first, then `<repo>/.octocode/AGENTS.md` if it exists.
-- After `repo inject` creates or refreshes `.octocode/AGENTS.md`, ensure the workspace root `AGENTS.md` has a short pointer to it. Agents load root `AGENTS.md` by default; without the pointer they miss the awareness map.
-- Treat generated memories as leads. Verify current files and command output before relying on them.
-- Record durable new facts with `memory record` or `reflect record`, then regenerate projections if the repo context should reflect them.
-- Prefer `query <view>` for agent automation and ad hoc exports; use `query all --format html --out ...` for humans; prefer `repo inject` only when the repo projection should be created or refreshed.
-- Keep self-improvement separate from publication: `reflect mine-weakness` and `reflect export-harness` can propose harness guidance, but a human-reviewed edit changes skills or repo docs.
-- If the projection reveals a repeated workflow gap, use `octocode-skills` or `npx octocode skill ...` to update/install/create the relevant skill after user approval. For `octocode-awareness` itself, install from the bundled `@octocodeai/octocode-awareness` `dist/skills/octocode-awareness` path.
+Agents load root `AGENTS.md`, while inject writes only `.octocode/AGENTS.md`. After inject:
 
-## Root AGENTS.md Pointer (agent action)
-
-`repo inject` writes `.octocode/AGENTS.md` only. It does not edit root `AGENTS.md`. Agents must do the discovery link:
-
-1. After inject (or when `.octocode/AGENTS.md` exists and root has no pointer), open workspace root `AGENTS.md`.
-2. If it already mentions `.octocode/AGENTS.md`, stop.
-3. Otherwise append once (create the file if missing). Leave existing root content unchanged; keep gotchas/lessons/wiki content in `.octocode/` only.
+1. Read root `AGENTS.md`; stop if it already mentions `.octocode/AGENTS.md`.
+2. If it is hand-authored, ask before appending unless the user already approved.
+3. Append one short pointer; preserve all existing content.
 
 ```markdown
 ## Octocode Awareness
 For shared-repo memory, locks, gotchas, and live context, read `.octocode/AGENTS.md` (generated by `octocode-awareness repo inject`). Prefer `attend` / `query` when freshness matters.
 ```
 
-Gate: if root `AGENTS.md` is already a hand-authored harness file, ask the user before appending unless they already asked for this pointer.
+Publication closes when generated files match the intended DB scope, manifest warnings are reviewed, root discovery works, and current source/tests still confirm the projected claims.

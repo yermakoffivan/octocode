@@ -20,7 +20,9 @@ export const AWARENESS_QUERY_VIEWS = [
   'memories',
   'gotchas',
   'lessons',
+  'plans',
   'tasks',
+  'runs',
   'locks',
   'agents',
   'signals',
@@ -128,7 +130,7 @@ interface MemoryDbRow {
 }
 
 const VIEW_SET = new Set<string>(AWARENESS_QUERY_VIEWS);
-const CSV_VIEWS = ['memories', 'gotchas', 'lessons', 'agents', 'tasks', 'locks', 'signals', 'refinements', 'files', 'activity', 'workboard'] as const;
+const CSV_VIEWS = ['memories', 'gotchas', 'lessons', 'plans', 'tasks', 'runs', 'agents', 'locks', 'signals', 'refinements', 'files', 'activity', 'workboard'] as const;
 interface ProjectionMarkdownBudget {
   max_lines: number;
   role: string;
@@ -453,12 +455,12 @@ function memoryRows(
   });
 }
 
-function taskRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQueryRow[] {
+function planRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQueryRow[] {
   const scope = scopeFromParams(params);
   const where: string[] = [];
   const binds: BindValue[] = [];
   addExactScope(where, binds, scope);
-  addTextFilter(where, binds, params.query, ['rationale', 'test_plan', 'plan_doc_ref', 'files_json', 'agent_id']);
+  addTextFilter(where, binds, params.query, ['plan_id', 'name', 'objective', 'lead_agent_id', 'doc_dir']);
   addStateFilter(where, binds, stringList(params.state), 'status', state => state.toUpperCase());
   const since = params.since?.trim();
   if (since) {
@@ -467,21 +469,115 @@ function taskRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQuer
   }
   const sqlWhere = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const rows = db.prepare(
-    `SELECT task_id, agent_id, session_id, rationale, test_plan, plan_doc_ref, status,
-            workspace_path, artifact, files_json, created_at, updated_at
-       FROM tasks
+    `SELECT plan_id, name, objective, lead_agent_id, status, workspace_path, artifact,
+            doc_dir, created_at, updated_at,
+            (SELECT COUNT(*) FROM plan_members pm WHERE pm.plan_id = plans.plan_id) AS member_count,
+            (SELECT COUNT(*) FROM tasks t WHERE t.plan_id = plans.plan_id) AS task_count
+       FROM plans
        ${sqlWhere}
-      ORDER BY datetime(created_at) DESC
+      ORDER BY datetime(updated_at) DESC
       LIMIT ?`
-  ).all(...binds, limitOf(params.limit)) as unknown as Array<Record<string, string | null>>;
+  ).all(...binds, limitOf(params.limit)) as unknown as Array<Record<string, string | number | null>>;
+
+  return rows.map(row => ({
+    plan_id: String(row['plan_id']),
+    name: String(row['name']),
+    objective: String(row['objective']),
+    lead_agent_id: String(row['lead_agent_id']),
+    status: String(row['status']),
+    doc_dir: String(row['doc_dir']),
+    member_count: Number(row['member_count']),
+    task_count: Number(row['task_count']),
+    workspace_path: row['workspace_path'] ?? null,
+    artifact: row['artifact'] ?? null,
+    created_at: String(row['created_at']),
+    updated_at: String(row['updated_at']),
+  }));
+}
+
+function taskRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQueryRow[] {
+  const scope = scopeFromParams(params);
+  const where: string[] = [];
+  const binds: BindValue[] = [];
+  addExactScope(where, binds, scope, 'p');
+  addTextFilter(where, binds, params.query, ['t.task_id', 't.title', 't.reasoning', 't.acceptance_criteria', 't.created_by', 'p.name']);
+  addStateFilter(where, binds, stringList(params.state), 't.status', state => state.toUpperCase());
+  const agentId = params.agentId ?? params.agent_id;
+  if (agentId) { where.push('(t.created_by = ? OR c.agent_id = ?)'); binds.push(agentId, agentId); }
+  const since = params.since?.trim();
+  if (since) { where.push('t.created_at >= ?'); binds.push(since); }
+  const sqlWhere = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = db.prepare(
+    `SELECT t.*, p.name AS plan_name, p.status AS plan_status, p.workspace_path, p.artifact,
+            c.agent_id AS claimed_by, c.run_id, c.expires_at AS claim_expires_at,
+            COALESCE((SELECT json_group_array(tp.path) FROM task_paths tp WHERE tp.task_id = t.task_id), '[]') AS paths_json,
+            COALESCE((SELECT json_group_array(td.depends_on_task_id) FROM task_dependencies td WHERE td.task_id = t.task_id), '[]') AS dependencies_json,
+            CASE WHEN t.status = 'OPEN'
+              AND c.task_id IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM task_dependencies td
+                JOIN tasks dependency ON dependency.task_id = td.depends_on_task_id
+                WHERE td.task_id = t.task_id AND dependency.status <> 'DONE'
+              ) THEN 1 ELSE 0 END AS ready
+       FROM tasks t
+       JOIN plans p ON p.plan_id = t.plan_id
+       LEFT JOIN task_claims c ON c.task_id = t.task_id AND c.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       ${sqlWhere}
+      ORDER BY t.priority DESC, datetime(t.created_at), t.task_id
+      LIMIT ?`
+  ).all(...binds, limitOf(params.limit)) as unknown as Array<Record<string, string | number | null>>;
 
   return rows.map(row => ({
     task_id: String(row['task_id']),
+    plan_id: String(row['plan_id']),
+    plan_name: String(row['plan_name']),
+    plan_status: String(row['plan_status']),
+    title: String(row['title']),
+    reasoning: String(row['reasoning']),
+    acceptance_criteria: String(row['acceptance_criteria']),
+    status: String(row['status']),
+    priority: Number(row['priority']),
+    created_by: String(row['created_by']),
+    paths: parseJsonList(row['paths_json']),
+    dependencies: parseJsonList(row['dependencies_json']),
+    ready: Number(row['ready']) === 1,
+    claimed_by: row['claimed_by'] ?? null,
+    run_id: row['run_id'] ?? null,
+    claim_expires_at: row['claim_expires_at'] ?? null,
+    workspace_path: row['workspace_path'] ?? null,
+    artifact: row['artifact'] ?? null,
+    created_at: String(row['created_at']),
+    updated_at: String(row['updated_at']),
+    completed_at: row['completed_at'] ?? null,
+  }));
+}
+
+function runRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQueryRow[] {
+  const scope = scopeFromParams(params);
+  const where: string[] = [];
+  const binds: BindValue[] = [];
+  addExactScope(where, binds, scope);
+  addTextFilter(where, binds, params.query, ['run_id', 'rationale', 'test_plan', 'context_ref', 'files_json', 'agent_id']);
+  addStateFilter(where, binds, stringList(params.state), 'status', state => state.toUpperCase());
+  const agentId = params.agentId ?? params.agent_id;
+  if (agentId) { where.push('agent_id = ?'); binds.push(agentId); }
+  const since = params.since?.trim();
+  if (since) { where.push('created_at >= ?'); binds.push(since); }
+  const sqlWhere = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = db.prepare(
+    `SELECT run_id, task_id, agent_id, session_id, rationale, test_plan, context_ref, status,
+            workspace_path, artifact, files_json, created_at, updated_at
+       FROM task_runs ${sqlWhere}
+      ORDER BY datetime(created_at) DESC LIMIT ?`
+  ).all(...binds, limitOf(params.limit)) as unknown as Array<Record<string, string | null>>;
+  return rows.map(row => ({
+    run_id: String(row['run_id']),
+    task_id: row['task_id'] ?? null,
     agent_id: String(row['agent_id']),
     status: String(row['status']),
     rationale: String(row['rationale']),
     test_plan: String(row['test_plan']),
-    plan_doc_ref: row['plan_doc_ref'] ?? null,
+    context_ref: row['context_ref'] ?? null,
     files: parseJsonList(row['files_json']),
     workspace_path: row['workspace_path'] ?? null,
     artifact: row['artifact'] ?? null,
@@ -503,10 +599,10 @@ function lockRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQuer
   }
   const sqlWhere = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   const rows = db.prepare(
-    `SELECT l.lock_id, l.file_path, l.task_id, l.agent_id, l.session_id, l.lock_type,
-            l.acquired_at, l.expires_at, t.workspace_path, t.artifact, t.status
+    `SELECT l.lock_id, l.file_path, l.run_id, l.agent_id, l.session_id, l.lock_type,
+            l.acquired_at, l.expires_at, t.task_id, t.workspace_path, t.artifact, t.status
        FROM locks l
-       JOIN tasks t ON t.task_id = l.task_id
+       JOIN task_runs t ON t.run_id = l.run_id
        ${sqlWhere}
       ORDER BY datetime(l.acquired_at) DESC
       LIMIT ?`
@@ -515,10 +611,11 @@ function lockRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQuer
   return rows.map(row => ({
     lock_id: String(row['lock_id']),
     file_path: String(row['file_path']),
-    task_id: String(row['task_id']),
+    run_id: String(row['run_id']),
+    task_id: row['task_id'] ?? null,
     agent_id: String(row['agent_id']),
     lock_type: String(row['lock_type']),
-    task_status: String(row['status']),
+    run_status: String(row['status']),
     acquired_at: String(row['acquired_at']),
     expires_at: row['expires_at'] ?? null,
     workspace_path: row['workspace_path'] ?? null,
@@ -744,6 +841,7 @@ function trackFile(
     memories: 0,
     gotchas: 0,
     tasks: 0,
+    runs: 0,
     locks: 0,
     refinements: 0,
     signals: 0,
@@ -781,7 +879,10 @@ function fileRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQuer
   }
 
   for (const row of taskRows(db, { ...params, limit: 500 })) {
-    for (const file of row['files'] as string[]) trackFile(files, file, 'tasks', String(row['created_at']), scope.workspacePath);
+    for (const file of row['paths'] as string[]) trackFile(files, file, 'tasks', String(row['created_at']), scope.workspacePath);
+  }
+  for (const row of runRows(db, { ...params, limit: 500 })) {
+    for (const file of row['files'] as string[]) trackFile(files, file, 'runs', String(row['created_at']), scope.workspacePath);
   }
   for (const row of lockRows(db, { ...params, limit: 500 })) {
     trackFile(files, String(row['file_path']), 'locks', String(row['acquired_at']), scope.workspacePath);
@@ -812,8 +913,8 @@ function fileRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQuer
 
   return [...files.values()]
     .sort((a, b) => {
-      const scoreA = (a['missing_file'] ? 20 : 0) + Number(a['locks'] ?? 0) * 10 + Number(a['gotchas'] ?? 0) * 6 + Number(a['memories'] ?? 0) * 4 + Number(a['tasks'] ?? 0) * 3 + Number(a['edits'] ?? 0);
-      const scoreB = (b['missing_file'] ? 20 : 0) + Number(b['locks'] ?? 0) * 10 + Number(b['gotchas'] ?? 0) * 6 + Number(b['memories'] ?? 0) * 4 + Number(b['tasks'] ?? 0) * 3 + Number(b['edits'] ?? 0);
+      const scoreA = (a['missing_file'] ? 20 : 0) + Number(a['locks'] ?? 0) * 10 + Number(a['gotchas'] ?? 0) * 6 + Number(a['memories'] ?? 0) * 4 + Number(a['tasks'] ?? 0) * 3 + Number(a['runs'] ?? 0) + Number(a['edits'] ?? 0);
+      const scoreB = (b['missing_file'] ? 20 : 0) + Number(b['locks'] ?? 0) * 10 + Number(b['gotchas'] ?? 0) * 6 + Number(b['memories'] ?? 0) * 4 + Number(b['tasks'] ?? 0) * 3 + Number(b['runs'] ?? 0) + Number(b['edits'] ?? 0);
       return scoreB - scoreA || String(b['last_seen_at'] ?? '').localeCompare(String(a['last_seen_at'] ?? ''));
     })
     .slice(0, limit);
@@ -833,7 +934,15 @@ function repoProfileRows(db: DatabaseSync, params: AwarenessQueryParams): Awaren
 
   const taskWhere: string[] = [];
   const taskBinds: BindValue[] = [];
-  addExactScope(taskWhere, taskBinds, scope);
+  addExactScope(taskWhere, taskBinds, scope, 'p');
+
+  const planWhere: string[] = [];
+  const planBinds: BindValue[] = [];
+  addExactScope(planWhere, planBinds, scope);
+
+  const runWhere: string[] = [];
+  const runBinds: BindValue[] = [];
+  addExactScope(runWhere, runBinds, scope);
 
   const lockWhere: string[] = [];
   const lockBinds: BindValue[] = [];
@@ -852,8 +961,10 @@ function repoProfileRows(db: DatabaseSync, params: AwarenessQueryParams): Awaren
     { metric: 'active_memories', count: countWhere(db, 'memories', memWhere, memBinds) },
     { metric: 'gotchas', count: memoryRows(db, { ...params, view: 'gotchas', limit: 500 }, { gotchas: true }).length },
     { metric: 'lessons', count: memoryRows(db, { ...params, view: 'lessons', limit: 500 }, { lessons: true }).length },
-    { metric: 'tasks', count: countWhere(db, 'tasks', taskWhere, taskBinds) },
-    { metric: 'active_locks', count: countWhere(db, 'locks l JOIN tasks t ON t.task_id = l.task_id', lockWhere, lockBinds) },
+    { metric: 'plans', count: countWhere(db, 'plans', planWhere, planBinds) },
+    { metric: 'tasks', count: countWhere(db, 'tasks t JOIN plans p ON p.plan_id = t.plan_id', taskWhere, taskBinds) },
+    { metric: 'runs', count: countWhere(db, 'task_runs', runWhere, runBinds) },
+    { metric: 'active_locks', count: countWhere(db, 'locks l JOIN task_runs t ON t.run_id = l.run_id', lockWhere, lockBinds) },
     { metric: 'open_refinements', count: countWhere(db, 'refinements', refinementWhere, refinementBinds) },
     { metric: 'open_signals', count: countWhere(db, 'signals', signalWhere, signalBinds) },
     { metric: 'known_agents', count: agentRows(db, { ...params, limit: 500 }).length },
@@ -880,6 +991,16 @@ function activityRows(db: DatabaseSync, params: AwarenessQueryParams): Awareness
     rows.push({
       kind: 'task',
       id: String(row['task_id']),
+      title: `${row['status']}: ${summarize(String(row['title']), 100)}`,
+      detail: summarize(String(row['reasoning']), 180),
+      agent_id: String(row['claimed_by'] ?? row['created_by']),
+      created_at: String(row['created_at']),
+    });
+  }
+  for (const row of runRows(db, { ...params, limit })) {
+    rows.push({
+      kind: 'run',
+      id: String(row['run_id']),
       title: `${row['status']}: ${summarize(String(row['rationale']), 100)}`,
       detail: summarize(String(row['test_plan']), 180),
       agent_id: String(row['agent_id']),
@@ -912,14 +1033,8 @@ function activityRows(db: DatabaseSync, params: AwarenessQueryParams): Awareness
 }
 
 function rowFiles(row: AwarenessQueryRow): string[] {
-  const raw = row['files'];
+  const raw = row['files'] ?? row['paths'];
   return Array.isArray(raw) ? raw.map(String) : [];
-}
-
-function groupKey(parts: Array<string | number | boolean | null | undefined>): string {
-  return parts
-    .map(part => String(part ?? '').trim().toLowerCase().replace(/\s+/g, ' '))
-    .join('|');
 }
 
 function pushLimited(
@@ -935,18 +1050,6 @@ function pushLimited(
     rows.push({ column, ...row });
     columns[column] = rows;
   }
-}
-
-function compactIds(rows: AwarenessQueryRow[], key: string): string[] {
-  return rows.map(row => String(row[key] ?? '')).filter(Boolean);
-}
-
-function representativeDate(rows: AwarenessQueryRow[]): string | null {
-  return rows
-    .map(row => String(row['updated_at'] ?? row['created_at'] ?? row['acquired_at'] ?? ''))
-    .filter(Boolean)
-    .sort()
-    .at(-1) ?? null;
 }
 
 function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQueryRow[] {
@@ -996,76 +1099,100 @@ function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): Awarenes
     }, limit);
   }
 
-  const pendingTasks = taskRows(db, { ...params, state: ['PENDING'], limit: 500 });
-  const taskGroups = new Map<string, AwarenessQueryRow[]>();
-  for (const row of pendingTasks) {
-    const key = groupKey([
-      String(row['status']),
-      String(row['rationale']),
-      String(row['test_plan']),
-      rowFiles(row).sort().join(','),
-      String(row['agent_id']),
-    ]);
-    const list = taskGroups.get(key) ?? [];
-    list.push(row);
-    taskGroups.set(key, list);
-  }
-  for (const group of [...taskGroups.values()].sort((a, b) => String(representativeDate(b) ?? '').localeCompare(String(representativeDate(a) ?? '')))) {
-    const row = group[0]!;
+  for (const row of taskRows(db, { ...params, state: ['VERIFY'], limit: 500 })) {
     pushLimited(columns, counts, 'Verify', {
       item_type: 'task',
       id: String(row['task_id']),
-      title: summarize(String(row['rationale']), 120),
-      detail: summarize(String(row['test_plan']), 180),
-      agent_id: String(row['agent_id']),
+      title: summarize(String(row['title']), 120),
+      detail: summarize(String(row['acceptance_criteria']), 180),
+      plan_id: String(row['plan_id']),
+      agent_id: String(row['claimed_by'] ?? row['created_by']),
       status: String(row['status']),
-      count: group.length,
-      raw_ids: compactIds(group, 'task_id'),
-      files: rowFiles(row),
-      created_at: String(row['created_at']),
-      updated_at: representativeDate(group),
-    }, limit);
-  }
-
-  for (const row of refinementRows(db, { ...params, state: ['open', 'ongoing'], limit: 200 })
-    .filter(row => String(row['quality']) !== 'handoff')) {
-    pushLimited(columns, counts, 'Ready', {
-      item_type: 'refinement',
-      id: String(row['refinement_id']),
-      title: summarize(String(row['remember']), 120),
-      detail: summarize(String(row['reasoning']), 180),
-      agent_id: String(row['agent_id']),
-      status: String(row['state']),
-      quality: String(row['quality']),
-      raw_ids: [String(row['refinement_id'])],
+      raw_ids: [String(row['task_id']), ...(row['run_id'] ? [String(row['run_id'])] : [])],
       files: rowFiles(row),
       created_at: String(row['created_at']),
       updated_at: String(row['updated_at']),
     }, limit);
   }
 
-  for (const row of lockRows(db, { ...params, limit: 200 })) {
+  // Quick lock-only flows have no plan task; they still owe verification.
+  for (const row of runRows(db, { ...params, state: ['PENDING'], limit: 500 })
+    .filter(row => row['task_id'] == null)) {
+    pushLimited(columns, counts, 'Verify', {
+      item_type: 'run',
+      id: String(row['run_id']),
+      title: summarize(String(row['rationale']), 120),
+      detail: summarize(String(row['test_plan']), 180),
+      agent_id: String(row['agent_id']),
+      status: String(row['status']),
+      raw_ids: [String(row['run_id'])],
+      files: rowFiles(row),
+      created_at: String(row['created_at']),
+      updated_at: String(row['updated_at']),
+    }, limit);
+  }
+
+  for (const row of taskRows(db, { ...params, state: ['OPEN'], limit: 500 })
+    .filter(row => row['ready'] === true)) {
+    pushLimited(columns, counts, 'Ready', {
+      item_type: 'task',
+      id: String(row['task_id']),
+      title: summarize(String(row['title']), 120),
+      detail: summarize(String(row['reasoning']), 180),
+      plan_id: String(row['plan_id']),
+      agent_id: String(row['created_by']),
+      status: String(row['status']),
+      priority: Number(row['priority']),
+      raw_ids: [String(row['task_id'])],
+      files: rowFiles(row),
+      created_at: String(row['created_at']),
+      updated_at: String(row['updated_at']),
+    }, limit);
+  }
+
+  for (const row of taskRows(db, { ...params, state: ['IN_PROGRESS'], limit: 500 })) {
+    pushLimited(columns, counts, 'Claimed', {
+      item_type: 'task',
+      id: String(row['task_id']),
+      title: summarize(String(row['title']), 120),
+      detail: summarize(String(row['reasoning']), 180),
+      plan_id: String(row['plan_id']),
+      agent_id: String(row['claimed_by']),
+      status: String(row['status']),
+      raw_ids: [String(row['task_id']), ...(row['run_id'] ? [String(row['run_id'])] : [])],
+      files: rowFiles(row),
+      created_at: String(row['created_at']),
+      updated_at: String(row['updated_at']),
+      expires_at: row['claim_expires_at'] ?? null,
+    }, limit);
+  }
+
+  // Standalone file locks are shown only when no collaborative task already
+  // represents the same work.
+  for (const row of lockRows(db, { ...params, limit: 200 })
+    .filter(row => row['task_id'] == null)) {
     pushLimited(columns, counts, 'Claimed', {
       item_type: 'lock',
       id: String(row['lock_id']),
       title: String(row['file_path']),
-      detail: `task=${row['task_id']} ${row['lock_type']}`,
+      detail: `run=${row['run_id']} ${row['lock_type']}`,
       agent_id: String(row['agent_id']),
-      status: String(row['task_status']),
-      raw_ids: [String(row['lock_id']), String(row['task_id'])],
+      status: String(row['run_status']),
+      raw_ids: [String(row['lock_id']), String(row['run_id'])],
       files: [String(row['file_path'])],
       created_at: String(row['acquired_at']),
       expires_at: row['expires_at'] ?? null,
     }, limit);
   }
 
-  for (const row of taskRows(db, { ...params, state: ['SUCCESS', 'FAILED'], limit: 200 })) {
+  for (const row of taskRows(db, { ...params, state: ['DONE', 'FAILED', 'CANCELLED'], limit: 200 })) {
     pushLimited(columns, counts, 'RecentDone', {
       item_type: 'task',
       id: String(row['task_id']),
-      title: `${row['status']}: ${summarize(String(row['rationale']), 100)}`,
-      detail: summarize(String(row['test_plan']), 180),
-      agent_id: String(row['agent_id']),
+      title: `${row['status']}: ${summarize(String(row['title']), 100)}`,
+      detail: summarize(String(row['acceptance_criteria']), 180),
+      plan_id: String(row['plan_id']),
+      agent_id: String(row['created_by']),
       status: String(row['status']),
       raw_ids: [String(row['task_id'])],
       files: rowFiles(row),
@@ -1163,7 +1290,9 @@ function rowsForView(db: DatabaseSync, view: AwarenessQueryView, params: Awarene
     case 'memories': return memoryRows(db, params);
     case 'gotchas': return memoryRows(db, params, { gotchas: true });
     case 'lessons': return memoryRows(db, params, { lessons: true });
+    case 'plans': return planRows(db, params);
     case 'tasks': return taskRows(db, params);
+    case 'runs': return runRows(db, params);
     case 'locks': return lockRows(db, params);
     case 'agents': return agentRows(db, params);
     case 'signals': return signalRows(db, params);
@@ -1584,7 +1713,8 @@ function renderRowsDoc(title: string, rows: AwarenessQueryRow[], description: st
   const ranked = [...rows].sort((a, b) => {
     const imp = Number(b['importance'] ?? 0) - Number(a['importance'] ?? 0);
     if (imp !== 0) return imp;
-    return String(a['memory_id'] ?? a['task_id'] ?? '').localeCompare(String(b['memory_id'] ?? b['task_id'] ?? ''));
+    return String(a['memory_id'] ?? a['plan_id'] ?? a['task_id'] ?? a['run_id'] ?? '')
+      .localeCompare(String(b['memory_id'] ?? b['plan_id'] ?? b['task_id'] ?? b['run_id'] ?? ''));
   });
   const lines = [
     `# ${title}`,
@@ -1598,9 +1728,9 @@ function renderRowsDoc(title: string, rows: AwarenessQueryRow[], description: st
   ];
   let omitted = 0;
   for (const row of ranked) {
-    const id = String(row['memory_id'] ?? row['refinement_id'] ?? row['task_id'] ?? row['signal_id'] ?? row['file_path'] ?? 'item');
+    const id = String(row['memory_id'] ?? row['refinement_id'] ?? row['plan_id'] ?? row['task_id'] ?? row['run_id'] ?? row['signal_id'] ?? row['file_path'] ?? 'item');
     const label = row['label'] ? `[${row['label']}:${row['importance'] ?? ''}] ` : '';
-    const titleText = row['task_context'] ?? row['subject'] ?? row['remember'] ?? row['rationale'] ?? row['file_path'] ?? id;
+    const titleText = row['task_context'] ?? row['subject'] ?? row['remember'] ?? row['name'] ?? row['title'] ?? row['rationale'] ?? row['file_path'] ?? id;
     const block = [`## ${label}${summarize(String(titleText), 100)}`];
     if (row['observation']) block.push('', summarize(String(row['observation']), 500));
     if (row['failure_signature']) block.push('', `Failure signature: \`${row['failure_signature']}\``);
@@ -1833,10 +1963,10 @@ function toMarkdown(result: AwarenessQueryResult): string {
 function markdownRows(rows: AwarenessQueryRow[]): string {
   if (rows.length === 0) return '_No rows._';
   return rows.map(row => {
-    const id = row['memory_id'] ?? row['task_id'] ?? row['signal_id'] ?? row['refinement_id'] ?? row['file_path'] ?? row['metric'] ?? 'row';
+    const id = row['memory_id'] ?? row['plan_id'] ?? row['task_id'] ?? row['run_id'] ?? row['signal_id'] ?? row['refinement_id'] ?? row['file_path'] ?? row['metric'] ?? 'row';
     const label = row['label'] ? `[${cellToString(row['label'])}:${cellToString(row['importance'])}] ` : '';
-    const title = row['task_context'] ?? row['subject'] ?? row['remember'] ?? row['rationale'] ?? row['metric'] ?? '';
-    const text = row['observation'] ?? row['count'] ?? '';
+    const title = row['task_context'] ?? row['subject'] ?? row['remember'] ?? row['name'] ?? row['title'] ?? row['rationale'] ?? row['metric'] ?? '';
+    const text = row['observation'] ?? row['objective'] ?? row['reasoning'] ?? row['count'] ?? '';
     const extras: string[] = [];
     if (row['failure_signature']) extras.push(`failure=${cellToString(row['failure_signature'])}`);
   if (Array.isArray(row['references']) && row['references'].length > 0) extras.push(`refs=${(row['references'] as string[]).join(', ')}`);

@@ -42,7 +42,7 @@ export interface AttendEvidence {
 
 export interface AttendResult {
   ok: true;
-  schema_version: 1;
+  schema_version: 2;
   generated_at: string;
   workspace_path: string;
   artifact: string | null;
@@ -98,7 +98,7 @@ const ORGAN_REFERENCE = [
   {
     organ: 'corpus_bridge',
     role: 'coordinate agents',
-    commands: ['signal publish', 'refinement set', 'lock acquire', 'verify audit'],
+    commands: ['plan list', 'task ready', 'task claim', 'signal publish', 'lock acquire', 'verify audit'],
     guardrail: 'SQLite is canonical.',
   },
   {
@@ -143,7 +143,7 @@ function groupWorkboard(rows: AwarenessQueryRow[]): Record<string, AwarenessQuer
 
 function compactRow(row: AwarenessQueryRow): AwarenessQueryRow {
   const next: AwarenessQueryRow = {};
-  for (const key of ['column', 'item_type', 'id', 'status', 'agent_id', 'quality', 'count', 'column_total', 'omitted_count', 'active_memories', 'missing_file_refs', 'missing_reference_count', 'tasks', 'open_refinements', 'open_signals']) {
+  for (const key of ['column', 'item_type', 'id', 'plan_id', 'status', 'agent_id', 'priority', 'quality', 'count', 'column_total', 'omitted_count', 'active_memories', 'missing_file_refs', 'missing_reference_count', 'plans', 'tasks', 'runs', 'open_refinements', 'open_signals']) {
     const value = row[key];
     if (value != null) next[key] = value;
   }
@@ -339,6 +339,8 @@ export function attendAwareness(db: DatabaseSync, params: AttendParams = {}): At
     .map(row => compact ? compactRow(row) : row);
   const workboard = compact ? compactWorkboard(rawWorkboard, packetLimit) : rawWorkboard;
   const verificationTargets = (rawWorkboard['Verify'] ?? []).slice(0, packetLimit).map(row => compact ? compactVerificationTarget(row) : row);
+  const readyTasks = rawWorkboard['Ready'] ?? [];
+  const claimedTasks = (rawWorkboard['Claimed'] ?? []).filter(row => row['item_type'] === 'task');
   const projectionHealth = projectionStats(workspacePath);
   const bloatWarnings = projectionWarnings(workspacePath, projectionHealth);
   const outputBloatWarnings = compact
@@ -427,6 +429,8 @@ export function attendAwareness(db: DatabaseSync, params: AttendParams = {}): At
     attention: {
       selected_evidence: evidence.length,
       workboard_items: workboardResult.count,
+      ready_tasks: readyTasks.length,
+      claimed_tasks: claimedTasks.length,
       compact_budget: compact ? '<=8KB JSON' : 'unbounded caller output',
     },
     memory: {
@@ -448,6 +452,8 @@ export function attendAwareness(db: DatabaseSync, params: AttendParams = {}): At
       handoffs: handoffRows.length,
       open_refinements: profile['open_refinements'] ?? 0,
       open_signals: profile['open_signals'] ?? 0,
+      plans: profile['plans'] ?? 0,
+      tasks: profile['tasks'] ?? 0,
     },
     projection: {
       warnings: outputBloatWarnings,
@@ -467,6 +473,8 @@ export function attendAwareness(db: DatabaseSync, params: AttendParams = {}): At
     alternatives,
     team_norms: TEAM_NORMS,
     transactive_map: {
+      ready_task_ids: readyTasks.map(row => String(row['id'])).slice(0, compact ? 3 : 12),
+      claimed_task_ids: claimedTasks.map(row => String(row['id'])).slice(0, compact ? 3 : 12),
       memory_ids: evidence.map(item => item.id),
       signal_ids: signalIds.slice(0, compact ? 3 : 12),
       signal_id_count: signalIds.length,
@@ -483,7 +491,7 @@ export function attendAwareness(db: DatabaseSync, params: AttendParams = {}): At
 
   const result: AttendResult = {
     ok: true,
-    schema_version: 1,
+    schema_version: 2,
     generated_at: profileResult.generated_at,
     workspace_path: workspacePath,
     artifact: params.artifact ?? null,
@@ -506,6 +514,8 @@ export function attendAwareness(db: DatabaseSync, params: AttendParams = {}): At
     ],
     next: verificationTargets.length > 0
       ? 'octocode-awareness verify audit --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --compact; then verify mark --all-pending after the declared test plan'
+      : readyTasks.length > 0
+        ? `octocode-awareness task claim --task-id ${String(readyTasks[0]?.['id'])} --agent-id "$OCTOCODE_AGENT_ID" --compact`
       : bloatWarnings.length > 0
         ? 'octocode-awareness memory forget --workspace "$PWD" --dry-run --compact; then repo inject --workspace "$PWD" --compact to regenerate capped projections (digest does not shrink markdown)'
         : evidence.length > 0

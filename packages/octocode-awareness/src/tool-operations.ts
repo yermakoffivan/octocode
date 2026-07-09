@@ -21,7 +21,7 @@ import type {
   InsertMemoryResult,
   LockType,
   NotificationKind,
-  TaskStatus,
+  RunStatus,
 } from './types.js';
 import { auditUnverified, markVerified, type MarkVerifiedResult } from './verify.js';
 
@@ -191,7 +191,11 @@ export function runAwarenessToolOperation(
       const observation = requireText(request, 'observation', operation);
       const label = ((request['label'] as string | undefined)?.toUpperCase()) ?? 'OTHER';
       const supersedes = normalizeSupersedes(request['supersedes']);
-      const similar = findSimilarMemories(db, `${taskContext} ${observation}`, 5);
+      const memoryWorkspace = (request['workspace_path'] as string | undefined) ?? cwd;
+      const similar = findSimilarMemories(db, `${taskContext} ${observation}`, 5, null, {
+        workspacePath: memoryWorkspace,
+        cwd,
+      });
       const unsupersededSimilar = (similar as Array<{ memory_id: string; similarity: number }>)
         .filter((m) => !supersedes.includes(m.memory_id));
       if (unsupersededSimilar.length > 0 && request['allow_similar'] !== true) {
@@ -220,7 +224,7 @@ export function runAwarenessToolOperation(
         failureSignature: (request['failure_signature'] as string | undefined) ?? null,
         validFrom: (request['valid_from'] as string | undefined) ?? null,
         validTo: (request['valid_to'] as string | undefined) ?? null,
-        workspacePath: request['workspace_path'] as string | undefined,
+        workspacePath: memoryWorkspace,
         repo: request['repo'] as string | undefined,
         ref: request['ref'] as string | undefined,
         cwd,
@@ -245,10 +249,11 @@ export function runAwarenessToolOperation(
         !request['didnt_work'] &&
         !request['fix_repo'] &&
         !request['fix_harness'] &&
+        !request['fix_instructions'] &&
         !request['failure_signature']
       ) {
         throw new Error(
-          'memory reflect needs a reusable lesson, failure, fix_repo, fix_harness, or failure_signature; skip routine status',
+          'reflect needs a reusable lesson, failure, fix_repo, fix_harness, fix_instructions, or failure_signature; skip routine status',
         );
       }
       const rawOutcome = request['outcome'];
@@ -265,6 +270,7 @@ export function runAwarenessToolOperation(
         didntWork: request['didnt_work'] as string | undefined,
         fixRepo: request['fix_repo'] as string | undefined,
         fixHarness: request['fix_harness'] as string | undefined,
+        fixInstructions: request['fix_instructions'] as string | undefined,
         failureSignature: request['failure_signature'] as string | undefined,
         importance: request['importance'] as number | undefined,
         judgmentNote: request['judgment_note'] as string | undefined,
@@ -289,9 +295,12 @@ export function runAwarenessToolOperation(
         similar_memory_ids?: string[];
         repo_fix_refinement_id?: string;
         harness_fix?: boolean;
+        instructions_feedback?: boolean;
+        developer_review_refinement_id?: string;
         eval_failure_count?: number;
         eval_failure_ids?: string[];
         reflection_duo?: unknown;
+        next: string;
       };
       const payload: Record<string, unknown> = {
         outcome: result.outcome,
@@ -306,16 +315,17 @@ export function runAwarenessToolOperation(
         payload['eval_failure_ids'] = result.eval_failure_ids;
       }
       if (result.reflection_duo) payload['reflection_duo'] = result.reflection_duo;
-      const actions: string[] = [];
       if (result.repo_fix_refinement_id) {
         payload['refinement_id'] = result.repo_fix_refinement_id;
-        actions.push('memory_refine_get -> repo fixes for the next agent');
       }
       if (result.harness_fix) {
         payload['harness_fix'] = true;
-        actions.push('harness improvement (a human merges)');
       }
-      if (actions.length) payload['next'] = actions.join(' | ');
+      if (result.instructions_feedback) {
+        payload['instructions_feedback'] = true;
+        payload['developer_review_refinement_id'] = result.developer_review_refinement_id;
+      }
+      payload['next'] = result.next;
       return { payload, exitCode: 0 };
     }
 
@@ -328,14 +338,14 @@ export function runAwarenessToolOperation(
       });
       const payload: Record<string, unknown> = {
         active_memories: result.active_memories,
-        pending_tasks: result.pending_tasks,
-        active_tasks: result.active_tasks,
+        pending_runs: result.pending_runs,
+        active_runs: result.active_runs,
         open_refinements: result.open_refinements,
       };
       if (result.locks.length > 0) {
         payload['locks'] = result.locks.map((l) => ({
           file: l.file_path,
-          task_id: l.task_id,
+          run_id: l.run_id,
           agent: l.agent_id,
           type: l.lock_type,
           since: l.acquired_at,
@@ -380,21 +390,21 @@ export function runAwarenessToolOperation(
         agentId,
         workspacePath: cwd,
       }) as unknown as {
-        unverified: Array<{ task_id: string; test_plan: string; target_files?: string[] }>;
-        stale_active: Array<{ task_id: string; agent_id: string; age_hours: number; rationale: string; target_files?: string[] }>;
+        unverified: Array<{ run_id: string; test_plan: string; target_files?: string[] }>;
+        stale_active: Array<{ run_id: string; agent_id: string; age_hours: number; rationale: string; target_files?: string[] }>;
         count: number;
       };
       const pending = result.unverified.map((i) => {
-        const lean: Record<string, unknown> = { task_id: i.task_id, test_plan: i.test_plan };
+        const lean: Record<string, unknown> = { run_id: i.run_id, test_plan: i.test_plan };
         if (i.target_files?.length) lean['files'] = i.target_files;
         return lean;
       });
       const stale = (result.stale_active ?? []).map((i) => {
         const lean: Record<string, unknown> = {
-          task_id: i.task_id,
+          run_id: i.run_id,
           agent_id: i.agent_id,
           age_hours: i.age_hours,
-          reason: `ACTIVE task with no live locks (orphaned session) - ${i.rationale}`,
+          reason: `ACTIVE run with no live locks or task claim (orphaned session) - ${i.rationale}`,
         };
         if (i.target_files?.length) lean['files'] = i.target_files;
         return lean;
@@ -405,17 +415,17 @@ export function runAwarenessToolOperation(
     }
 
     case 'verify': {
-      const singleId = request['task_id'] as string | undefined;
-      const batchIds = Array.isArray(request['task_ids']) ? (request['task_ids'] as unknown[]).map(String) : [];
+      const singleId = request['run_id'] as string | undefined;
+      const batchIds = Array.isArray(request['run_ids']) ? (request['run_ids'] as unknown[]).map(String) : [];
       const allPending = Boolean(request['allPending']);
       const verifyStatus = ((request['status'] as string | undefined) ?? 'SUCCESS') as 'SUCCESS' | 'FAILED';
 
       if (allPending && !singleId && batchIds.length === 0) {
         const r = markVerified(db, { allPending: true, agentId, workspacePath: cwd, status: verifyStatus }) as MarkVerifiedResult;
         if (!r.ok) {
-          return { payload: { task_id: r.task_id, error: r.error }, exitCode: 1 };
+          return { payload: { run_id: r.run_id, error: r.error }, exitCode: 1 };
         }
-        return { payload: { count: r.count, task_ids: r.task_ids ?? [], status: r.status }, exitCode: 0 };
+        return { payload: { count: r.count, run_ids: r.run_ids ?? [], status: r.status }, exitCode: 0 };
       }
 
       const ids: string[] = [];
@@ -423,20 +433,20 @@ export function runAwarenessToolOperation(
       for (const id of batchIds) if (id && !ids.includes(id)) ids.push(id);
       if (allPending) {
         const pending = auditUnverified(db, { agentId, workspacePath: cwd }) as unknown as {
-          unverified: Array<{ task_id: string }>;
+          unverified: Array<{ run_id: string }>;
         };
-        for (const i of pending.unverified) if (!ids.includes(i.task_id)) ids.push(i.task_id);
+        for (const i of pending.unverified) if (!ids.includes(i.run_id)) ids.push(i.run_id);
       }
 
       if (ids.length === 0) {
-        throw new Error('memory_verify requires task_id, task_ids[], or allPending:true');
+        throw new Error('memory_verify requires run_id, run_ids[], or allPending:true');
       }
 
-      const verifyResults = ids.map((taskId) => {
-        const r = markVerified(db, { taskId, agentId, status: verifyStatus }) as MarkVerifiedResult;
+      const verifyResults = ids.map((runId) => {
+        const r = markVerified(db, { runId, agentId, status: verifyStatus }) as MarkVerifiedResult;
         return r.ok
-          ? { task_id: r.task_id, status: r.status }
-          : { task_id: r.task_id, error: r.error };
+          ? { run_id: r.run_id, status: r.status }
+          : { run_id: r.run_id, error: r.error };
       });
 
       const allOk = verifyResults.every((r) => !('error' in r));
@@ -531,9 +541,7 @@ export function runAwarenessToolOperation(
           total_memories: result.total_memories,
           count: clusters.length,
           clusters,
-          next: clusters.length > 0
-            ? 'Use failure_signature values with memory_reflect to route lessons into fix_repo or fix_harness.'
-            : 'No recurring failure patterns found. Record failures with failure_signature to build the cluster.',
+          next: result.next,
         },
         exitCode: 0,
       };
@@ -545,7 +553,7 @@ export function runAwarenessToolOperation(
         min_importance: (request['min_importance'] as number | undefined) ?? 7,
         workspace_path: (request['workspace_path'] as string | undefined) ?? cwd,
         harness_only: Boolean(request['harness_only']),
-      }) as unknown as { count: number; harness_count?: number; markdown: string; memories: Array<{ memory_id: string; label: string; importance: number; tier?: number; observation: string }> };
+      }) as unknown as { count: number; harness_count?: number; markdown: string; memories: Array<{ memory_id: string; label: string; importance: number; tier?: number; observation: string }>; next: string };
       const payload: Record<string, unknown> = {
         count: result.count,
         harness_count: result.harness_count,
@@ -557,12 +565,8 @@ export function runAwarenessToolOperation(
           observation: m.observation.slice(0, 200),
         })),
         markdown: result.markdown,
+        next: result.next,
       };
-      if (result.count === 0) {
-        payload['next'] = 'No harness proposals yet. Use memory_reflect with fix_harness: to propose skill improvements.';
-      } else {
-        payload['next'] = 'Review the markdown block, then paste harness-tier entries into AGENTS.md or CLAUDE.md after human approval.';
-      }
       return { payload, exitCode: 0 };
     }
 
@@ -704,11 +708,11 @@ export function runAwarenessToolOperation(
         agentId: lockAgentId,
         sessionId: (request['sessionId'] as string | undefined) ?? (request['session_id'] as string | undefined) ?? context.sessionId ?? null,
         workspacePath,
-        taskId: (request['taskId'] as string | undefined) ?? (request['task_id'] as string | undefined) ?? null,
+        runId: (request['runId'] as string | undefined) ?? (request['run_id'] as string | undefined) ?? null,
         targetFiles,
         lockType: (request['lockType'] as LockType | undefined) ?? (request['lock_type'] as LockType | undefined),
         ttlMs: (request['ttlMs'] as number | undefined) ?? (request['ttl_ms'] as number | undefined) ?? null,
-        status: request['status'] as TaskStatus | undefined,
+        status: request['status'] as RunStatus | undefined,
         verified: request['verified'] as boolean | undefined,
         verifiedNote: (request['verifiedNote'] as string | undefined) ?? (request['verified_note'] as string | undefined),
         reasoning: request['reasoning'] as string | undefined,

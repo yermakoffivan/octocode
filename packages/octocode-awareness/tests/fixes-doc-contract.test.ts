@@ -111,16 +111,17 @@ describe('pruneStale — documented filters', () => {
       const claim = preFlightIntent(db, {
         agentId: agent, workspacePath: '/tmp/ws', rationale: 'r', testPlan: 't', targetFiles: [file],
       });
-      return (claim as { task: { task_id: string } }).task.task_id;
+      if (!claim.ok) throw new Error('claim failed');
+      return claim.run.run_id;
     });
   }
-  function age(db: DatabaseSync, taskId: string, minutesOld: number, expired: boolean) {
+  function age(db: DatabaseSync, runId: string, minutesOld: number, expired: boolean) {
     const acquired = new Date(Date.now() - minutesOld * 60000).toISOString().replace(/\.\d{3}Z$/, 'Z');
     const expires = expired
       ? new Date(Date.now() - 60000).toISOString().replace(/\.\d{3}Z$/, 'Z')
       : new Date(Date.now() + 3600000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-    db.prepare('UPDATE locks SET acquired_at = ?, expires_at = ? WHERE task_id = ?')
-      .run(acquired, expires, taskId);
+    db.prepare('UPDATE locks SET acquired_at = ?, expires_at = ? WHERE run_id = ?')
+      .run(acquired, expires, runId);
   }
 
   it('older-than-minutes also prunes old live locks; dry-run matches the real prune', () => {

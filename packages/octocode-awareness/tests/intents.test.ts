@@ -23,15 +23,15 @@ function tempFile(): { dir: string; path: string; cleanup: () => void } {
 }
 
 describe('preFlightIntent', () => {
-  it('returns ok=true with a task_id', () => {
+  it('returns ok=true with a run_id', () => {
     const db = freshDb();
     const { path, cleanup } = tempFile();
     try {
       const result = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.task.task_id).toMatch(/^task_/);
-        expect(result.task.target_files).toContain(path);
+        expect(result.run.run_id).toMatch(/^run_/);
+        expect(result.run.target_files).toContain(path);
       }
     } finally { cleanup(); }
   });
@@ -62,8 +62,8 @@ describe('preFlightIntent', () => {
       });
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.task.target_files).toEqual([join(dir, 'src/a.ts')]);
-        expect(result.task.locks[0]!.file_path).toBe(join(dir, 'src/a.ts'));
+        expect(result.run.target_files).toEqual([join(dir, 'src/a.ts')]);
+        expect(result.run.locks[0]!.file_path).toBe(join(dir, 'src/a.ts'));
       }
     } finally { cleanup(); }
   });
@@ -86,10 +86,10 @@ describe('preFlightIntent', () => {
       });
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.task.workspace_path).toBe(expectedRoot);
-        expect(result.task.target_files).toEqual([join(pkg, 'src/a.ts')]);
-        const stored = db.prepare('SELECT workspace_path, files_json FROM tasks WHERE task_id = ?')
-          .get(result.task.task_id) as { workspace_path: string; files_json: string };
+        expect(result.run.workspace_path).toBe(expectedRoot);
+        expect(result.run.target_files).toEqual([join(pkg, 'src/a.ts')]);
+        const stored = db.prepare('SELECT workspace_path, files_json FROM task_runs WHERE run_id = ?')
+          .get(result.run.run_id) as { workspace_path: string; files_json: string };
         expect(stored.workspace_path).toBe(expectedRoot);
         expect(JSON.parse(stored.files_json)).toEqual([join(pkg, 'src/a.ts')]);
       }
@@ -119,7 +119,7 @@ describe('preFlightIntent', () => {
         ttlMs: 60 * 60_000,
       });
       if (result.ok) {
-        const expiresAt = result.task.locks[0]!.expires_at;
+        const expiresAt = result.run.locks[0]!.expires_at;
         expect(expiresAt).not.toBeNull();
         const ttl = Date.parse(expiresAt!) - before;
         expect(ttl).toBeGreaterThan(0);
@@ -135,7 +135,7 @@ describe('preFlightIntent', () => {
       const first = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path], ttlMs: 1000 });
       if (!first.ok) throw new Error('first claim failed');
       const past = new Date(Date.now() - 5000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(past, first.task.task_id);
+      db.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?').run(past, first.run.run_id);
       const second = preFlightIntent(db, { agentId: 'agent-b', targetFiles: [path] });
       expect(second.ok).toBe(true);
     } finally { cleanup(); }
@@ -146,13 +146,13 @@ describe('preFlightIntent', () => {
     const result = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [] });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.task.target_files).toHaveLength(0);
+      expect(result.run.target_files).toHaveLength(0);
     }
   });
 });
 
 describe('releaseFileLock', () => {
-  it('releases by task_id and returns released=true', () => {
+  it('releases by run_id and returns released=true', () => {
     const db = freshDb();
     const { path, cleanup } = tempFile();
     try {
@@ -161,7 +161,7 @@ describe('releaseFileLock', () => {
 
       const release = releaseFileLock(db, {
         agentId: 'agent-a',
-        taskId: claim.task.task_id,
+        runId: claim.run.run_id,
         status: 'SUCCESS',
       });
       expect(release.released).toBe(true);
@@ -177,7 +177,7 @@ describe('releaseFileLock', () => {
     try {
       const a = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
       if (!a.ok) throw new Error('a claim failed');
-      releaseFileLock(db, { agentId: 'agent-a', taskId: a.task.task_id });
+      releaseFileLock(db, { agentId: 'agent-a', runId: a.run.run_id });
       const b = preFlightIntent(db, { agentId: 'agent-b', targetFiles: [path] });
       expect(b.ok).toBe(true);
     } finally { cleanup(); }
@@ -191,10 +191,10 @@ describe('releaseFileLock', () => {
       const second = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
       if (!first.ok || !second.ok) throw new Error('claims failed');
 
-      const release = releaseFileLock(db, { agentId: 'agent-a', taskId: first.task.task_id });
+      const release = releaseFileLock(db, { agentId: 'agent-a', runId: first.run.run_id });
       expect(release.locks_released).toBe(1);
-      const locks = db.prepare('SELECT task_id FROM locks WHERE file_path = ? ORDER BY acquired_at').all(path) as Array<{ task_id: string }>;
-      expect(locks.map((l) => l.task_id)).toEqual([second.task.task_id]);
+      const locks = db.prepare('SELECT run_id FROM locks WHERE file_path = ? ORDER BY acquired_at').all(path) as Array<{ run_id: string }>;
+      expect(locks.map((l) => l.run_id)).toEqual([second.run.run_id]);
 
       const other = preFlightIntent(db, { agentId: 'agent-b', targetFiles: [path] });
       expect(other.ok).toBe(false);
@@ -229,8 +229,8 @@ describe('releaseFileLock', () => {
       });
       expect(release.released).toBe(false);
       expect(release.locks_released).toBe(0);
-      expect(release.task_ids.sort()).toEqual([first.task.task_id, second.task.task_id].sort());
-      expect(release.ambiguousRelease).toContain('pass --task-id');
+      expect(release.run_ids.sort()).toEqual([first.run.run_id, second.run.run_id].sort());
+      expect(release.ambiguousRelease).toContain('pass --run-id');
       const lockCount = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE file_path = ?').get(path) as { c: number };
       expect(lockCount.c).toBe(2);
     } finally { cleanup(); }
@@ -256,13 +256,13 @@ describe('releaseFileLock', () => {
       const a = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
       if (!a.ok) throw new Error('claim failed');
       const release = releaseFileLock(db, {
-        agentId: 'agent-a', taskId: a.task.task_id, status: 'PENDING',
+        agentId: 'agent-a', runId: a.run.run_id, status: 'PENDING',
       });
       expect(release.status).toBe('PENDING');
     } finally { cleanup(); }
   });
 
-  it('rejects invalid release statuses before mutating tasks', () => {
+  it('rejects invalid release statuses before mutating runs', () => {
     const db = freshDb();
     const { path, cleanup } = tempFile();
     try {
@@ -270,12 +270,12 @@ describe('releaseFileLock', () => {
       if (!claim.ok) throw new Error('claim failed');
       expect(() => releaseFileLock(db, {
         agentId: 'agent-a',
-        taskId: claim.task.task_id,
-        status: 'ACTIVE' as 'SUCCESS',
-      })).toThrow(/status must be PENDING, SUCCESS, or FAILED/);
-      const task = db.prepare('SELECT status FROM tasks WHERE task_id = ?')
-        .get(claim.task.task_id) as { status: string };
-      expect(task.status).toBe('ACTIVE');
+        runId: claim.run.run_id,
+        status: 'NOPE' as 'SUCCESS',
+      })).toThrow(/status must be ACTIVE, PENDING, SUCCESS, or FAILED/);
+      const run = db.prepare('SELECT status FROM task_runs WHERE run_id = ?')
+        .get(claim.run.run_id) as { status: string };
+      expect(run.status).toBe('ACTIVE');
     } finally { cleanup(); }
   });
 
@@ -285,9 +285,9 @@ describe('releaseFileLock', () => {
     try {
       const a = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
       if (!a.ok) throw new Error('claim failed');
-      const release = releaseFileLock(db, { agentId: 'agent-a', taskId: a.task.task_id, status: 'SUCCESS' });
-      const task = db.prepare('SELECT status FROM tasks WHERE task_id = ?')
-        .get(a.task.task_id) as { status: string };
+      const release = releaseFileLock(db, { agentId: 'agent-a', runId: a.run.run_id, status: 'SUCCESS' });
+      const task = db.prepare('SELECT status FROM task_runs WHERE run_id = ?')
+        .get(a.run.run_id) as { status: string };
       expect(release.status).toBe('PENDING');
       expect(task.status).toBe('PENDING');
     } finally { cleanup(); }
@@ -301,13 +301,13 @@ describe('releaseFileLock', () => {
       if (!a.ok) throw new Error('claim failed');
       releaseFileLock(db, {
         agentId: 'agent-a',
-        taskId: a.task.task_id,
+        runId: a.run.run_id,
         status: 'SUCCESS',
         verified: true,
         verifiedNote: 'test passed',
       });
-      const task = db.prepare('SELECT status FROM tasks WHERE task_id = ?')
-        .get(a.task.task_id) as { status: string };
+      const task = db.prepare('SELECT status FROM task_runs WHERE run_id = ?')
+        .get(a.run.run_id) as { status: string };
       expect(task.status).toBe('SUCCESS');
     } finally { cleanup(); }
   });
@@ -318,22 +318,22 @@ describe('releaseFileLock', () => {
     try {
       const claim = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
       if (!claim.ok) throw new Error('claim failed');
-      const taskId = claim.task.task_id;
+      const runId = claim.run.run_id;
 
       // Pre-conditions: one lock row, task ACTIVE
-      const locksBefore = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE task_id = ?').get(taskId) as { c: number };
+      const locksBefore = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE run_id = ?').get(runId) as { c: number };
       expect(locksBefore.c).toBe(1);
-      const taskBefore = db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(taskId) as { status: string };
+      const taskBefore = db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(runId) as { status: string };
       expect(taskBefore.status).toBe('ACTIVE');
 
       // Release (no verification so status becomes PENDING)
-      const release = releaseFileLock(db, { agentId: 'agent-a', taskId, status: 'PENDING' });
+      const release = releaseFileLock(db, { agentId: 'agent-a', runId, status: 'PENDING' });
       expect(release.released).toBe(true);
 
       // Both mutations must be visible together — locks gone, task updated
-      const locksAfter = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE task_id = ?').get(taskId) as { c: number };
+      const locksAfter = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE run_id = ?').get(runId) as { c: number };
       expect(locksAfter.c).toBe(0);
-      const taskAfter = db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(taskId) as { status: string };
+      const taskAfter = db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(runId) as { status: string };
       expect(taskAfter.status).toBe('PENDING');
     } finally { cleanup(); }
   });
@@ -346,28 +346,28 @@ describe('pruneStale', () => {
     try {
       const claim = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path], ttlMs: 1000 });
       if (!claim.ok) throw new Error('claim failed');
-      const taskId = claim.task.task_id;
+      const runId = claim.run.run_id;
 
       // Force-expire the lock so pruneStale will pick it up
       const past = new Date(Date.now() - 5000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(past, taskId);
+      db.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?').run(past, runId);
 
       // Verify preconditions
-      const locksBefore = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE task_id = ?').get(taskId) as { c: number };
+      const locksBefore = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE run_id = ?').get(runId) as { c: number };
       expect(locksBefore.c).toBe(1);
-      const taskBefore = db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(taskId) as { status: string };
+      const taskBefore = db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(runId) as { status: string };
       expect(taskBefore.status).toBe('ACTIVE');
 
       const result = pruneStale(db);
 
       // Both mutations reflected in the return value
       expect(result.pruned_locks).toBeGreaterThan(0);
-      expect(result.updated_tasks).toBeGreaterThan(0);
+      expect(result.updated_runs).toBeGreaterThan(0);
 
       // Both mutations visible in the DB simultaneously
-      const locksAfter = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE task_id = ?').get(taskId) as { c: number };
+      const locksAfter = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE run_id = ?').get(runId) as { c: number };
       expect(locksAfter.c).toBe(0);
-      const taskAfter = db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(taskId) as { status: string };
+      const taskAfter = db.prepare('SELECT status FROM task_runs WHERE run_id = ?').get(runId) as { status: string };
       expect(taskAfter.status).toBe('PENDING');
     } finally { cleanup(); }
   });
@@ -378,16 +378,16 @@ describe('pruneStale', () => {
     try {
       const claim = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path], ttlMs: 1000 });
       if (!claim.ok) throw new Error('claim failed');
-      const taskId = claim.task.task_id;
+      const runId = claim.run.run_id;
       const past = new Date(Date.now() - 5000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(past, taskId);
+      db.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?').run(past, runId);
       expect(pruneStale(db, { dry_run: true }).would_prune).toBe(1);
 
       const future = new Date(Date.now() + 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(future, taskId);
+      db.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?').run(future, runId);
       const result = pruneStale(db);
       expect(result.pruned_locks).toBe(0);
-      const lockCount = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE task_id = ?').get(taskId) as { c: number };
+      const lockCount = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE run_id = ?').get(runId) as { c: number };
       expect(lockCount.c).toBe(1);
     } finally { cleanup(); }
   });
@@ -398,10 +398,10 @@ describe('pruneStale', () => {
     try {
       const claim = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path], ttlMs: 1000 });
       if (!claim.ok) throw new Error('claim failed');
-      const taskId = claim.task.task_id;
+      const runId = claim.run.run_id;
 
       const past = new Date(Date.now() - 5000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(past, taskId);
+      db.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?').run(past, runId);
 
       const result = pruneStale(db, { dryRun: true });
       expect(result.dry_run).toBe(true);
@@ -409,7 +409,7 @@ describe('pruneStale', () => {
       expect(result.pruned_locks).toBe(0);
 
       // Lock must still exist after dry run
-      const locksAfter = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE task_id = ?').get(taskId) as { c: number };
+      const locksAfter = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE run_id = ?').get(runId) as { c: number };
       expect(locksAfter.c).toBe(1);
     } finally { cleanup(); }
   });
@@ -431,7 +431,7 @@ describe('fileLock', () => {
       expect(locked.ok).toBe(true);
       expect(locked.type).toBe('lock');
       if (!locked.ok || locked.type !== 'lock') throw new Error('lock failed');
-      expect(locked.taskId).toMatch(/^task_/);
+      expect(locked.runId).toMatch(/^run_/);
       expect(locked.files).toEqual([join(dir, 'src/a.ts')]);
       expect(locked.expiresAt).toBeTruthy();
 
@@ -439,15 +439,15 @@ describe('fileLock', () => {
       expect(status.type).toBe('status');
       if (status.type !== 'status') throw new Error('status failed');
       expect(status.locks).toHaveLength(1);
-      expect(status.locks[0]!.task_id).toBe(locked.taskId);
+      expect(status.locks[0]!.run_id).toBe(locked.runId);
 
-      const renewed = fileLock(db, { type: 'renew', agentId: 'agent-a', taskId: locked.taskId, ttlMs: 60 * 60_000 });
+      const renewed = fileLock(db, { type: 'renew', agentId: 'agent-a', runId: locked.runId, ttlMs: 60 * 60_000 });
       expect(renewed.type).toBe('renew');
       if (renewed.type !== 'renew') throw new Error('renew failed');
       expect(renewed.renewed).toBe(true);
       expect(Date.parse(renewed.expiresAt!)).toBeGreaterThanOrEqual(Date.parse(locked.expiresAt!));
 
-      const released = fileLock(db, { type: 'release', agentId: 'agent-a', taskId: locked.taskId, status: 'PENDING' });
+      const released = fileLock(db, { type: 'release', agentId: 'agent-a', runId: locked.runId, status: 'PENDING' });
       expect(released.type).toBe('release');
       if (released.type !== 'release') throw new Error('release failed');
       expect(released.released).toBe(true);

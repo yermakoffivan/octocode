@@ -19,7 +19,15 @@ import {
   rmSync,
   symlinkSync,
 } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
@@ -122,6 +130,7 @@ Options:
   --approve            human approved — perform symlink writes
   --force              replace existing destination (only with --approve)
   --list-vendors       print vendor map and exit
+  --self-test          run path-safety regression checks and exit
   --json               machine-readable plan/result
   --help, -h           this help
 
@@ -141,6 +150,7 @@ function parseArgs(argv) {
     approve: false,
     force: false,
     listVendors: false,
+    selfTest: false,
     json: false,
     help: false,
   };
@@ -151,6 +161,7 @@ function parseArgs(argv) {
     else if (a === '--approve') out.approve = true;
     else if (a === '--force') out.force = true;
     else if (a === '--list-vendors') out.listVendors = true;
+    else if (a === '--self-test') out.selfTest = true;
     else if (a === '--json') out.json = true;
     else if (a === '--platforms') out.platforms = argv[++i] || '';
     else if (a === '--project-root') out.projectRoot = argv[++i] || '';
@@ -187,6 +198,67 @@ function readFrontmatterName(skillMdPath) {
   return name ? name[1].trim().replace(/^["']|["']$/g, '') : null;
 }
 
+function assertSafeSkillName(value) {
+  const name = String(value || '').trim();
+  if (
+    !name ||
+    name === '.' ||
+    name === '..' ||
+    name.length > 128 ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)
+  ) {
+    throw new Error(
+      `Unsafe skill name: ${name || '(empty)'}. Use one path segment containing only letters, numbers, dot, underscore, or hyphen.`
+    );
+  }
+  return name;
+}
+
+function assertDestinationWithin(destDir, destPath) {
+  const root = resolve(destDir);
+  const candidate = resolve(destPath);
+  const rel = relative(root, candidate);
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error(`Unsafe destination outside vendor skill root: ${candidate}`);
+  }
+  return candidate;
+}
+
+function destinationPath(destDir, skillName) {
+  return assertDestinationWithin(destDir, join(destDir, skillName));
+}
+
+function runSelfTest() {
+  const failures = [];
+  const expectThrow = (label, fn) => {
+    try {
+      fn();
+      failures.push(`${label}: expected rejection`);
+    } catch {
+      // Expected.
+    }
+  };
+
+  for (const name of ['', '.', '..', '../escape', 'nested/escape', 'nested\\escape', '\0']) {
+    expectThrow(`unsafe name ${JSON.stringify(name)}`, () => assertSafeSkillName(name));
+  }
+  for (const name of ['safe-skill', 'safe_skill', 'safe.skill', 'Skill2']) {
+    try {
+      if (assertSafeSkillName(name) !== name) failures.push(`valid name changed: ${name}`);
+    } catch (err) {
+      failures.push(`valid name rejected (${name}): ${err.message}`);
+    }
+  }
+
+  const root = resolve(HERE, '.self-test-vendor', 'skills');
+  const safe = destinationPath(root, 'safe-skill');
+  if (safe !== join(root, 'safe-skill')) failures.push('safe destination resolved incorrectly');
+  expectThrow('parent destination', () => assertDestinationWithin(root, resolve(root, '..')));
+  expectThrow('root destination', () => assertDestinationWithin(root, root));
+
+  return { ok: failures.length === 0, checks: 14, failures };
+}
+
 function inspectDest(destPath) {
   if (!existsSync(destPath)) return { state: 'missing' };
   const st = lstatSync(destPath);
@@ -220,7 +292,7 @@ function planRows(sourcePath, skillName, platformIds, projectRoot) {
       scopes.push({ scope: 'project', destDir: join(resolve(projectRoot), v.project) });
     }
     for (const { scope, destDir } of scopes) {
-      const destPath = join(destDir, skillName);
+      const destPath = destinationPath(destDir, skillName);
       const existing = inspectDest(destPath);
       const dupOf = seenDest.get(destPath);
       seenDest.set(destPath, seenDest.get(destPath) || id);
@@ -289,19 +361,20 @@ function atomicSymlink(sourcePath, destPath) {
 }
 
 function applyRow(row, sourcePath, { force }) {
+  const destPath = assertDestinationWithin(row.destDir, row.destPath);
   if (row.action === 'ok' || row.action === 'skip-dup-path') {
     return { ...row, result: 'skipped', detail: row.reason };
   }
   if (row.action === 'symlink') {
-    atomicSymlink(sourcePath, row.destPath);
+    atomicSymlink(sourcePath, destPath);
     return { ...row, result: 'linked', detail: 'created' };
   }
   if (row.action.startsWith('conflict-')) {
     if (!force) {
       return { ...row, result: 'blocked', detail: `${row.reason} (pass --force with --approve)` };
     }
-    rmSync(row.destPath, { recursive: true, force: true });
-    atomicSymlink(sourcePath, row.destPath);
+    rmSync(destPath, { recursive: true, force: true });
+    atomicSymlink(sourcePath, destPath);
     return { ...row, result: 'replaced', detail: 'force replaced with symlink' };
   }
   return { ...row, result: 'skipped', detail: row.reason };
@@ -346,6 +419,11 @@ function main() {
     printVendors(args.json);
     process.exit(0);
   }
+  if (args.selfTest) {
+    const result = runSelfTest();
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(result.ok ? 0 : 1);
+  }
   if (!args.skillDir) {
     console.error('Missing <skill-dir>.\n');
     console.error(usage());
@@ -364,9 +442,11 @@ function main() {
   }
 
   const fmName = readFrontmatterName(skillMd);
-  const skillName = (args.name || basename(sourcePath)).trim();
-  if (!skillName || skillName.includes('/') || skillName.includes('\\') || skillName.includes('\0')) {
-    console.error(`Unsafe skill name: ${skillName}`);
+  let skillName;
+  try {
+    skillName = assertSafeSkillName(args.name || basename(sourcePath));
+  } catch (err) {
+    console.error(err.message || String(err));
     process.exit(1);
   }
 
@@ -408,16 +488,14 @@ function main() {
 
   // APPLY
   const results = [];
-  let failed = 0;
   for (const row of rows) {
     try {
       results.push(applyRow(row, sourcePath, { force: args.force }));
     } catch (err) {
-      failed++;
       results.push({ ...row, result: 'error', detail: err.message || String(err) });
     }
   }
-  failed += results.filter((r) => r.result === 'error' || r.result === 'blocked').length;
+  const failed = results.filter((r) => r.result === 'error' || r.result === 'blocked').length;
 
   if (args.json) {
     console.log(JSON.stringify({ ok: failed === 0, mode: 'apply', sourcePath, skillName, results }, null, 2));

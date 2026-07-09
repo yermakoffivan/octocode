@@ -1,7 +1,7 @@
 /**
  * maintenance.ts — Background maintenance, smart briefing, and session lifecycle operations.
  *
- * pruneStale:          deletes expired file locks, sets affected tasks to PENDING.
+ * pruneStale:          deletes expired file locks, sets affected runs to PENDING.
  * notifyGet:           returns a smart workspace briefing (top memories + weakness + refinements).
  * digest:              archives expired memories, prunes stale rows/locks, rebuilds FTS.
  * getWorkspaceStatus:  returns active locks, agents, and memory store stats.
@@ -22,8 +22,8 @@ import { getNotifications } from './notifications.js';
 
 const SESSION_CAPTURE_FILE_LIMIT = 40;
 const SESSION_CAPTURE_VISIBLE_FILE_LIMIT = 20;
-const SESSION_CAPTURE_TASK_DETAIL_LIMIT = 8;
-const SESSION_CAPTURE_TASK_FILE_LIMIT = 8;
+const SESSION_CAPTURE_RUN_DETAIL_LIMIT = 8;
+const SESSION_CAPTURE_RUN_FILE_LIMIT = 8;
 const SESSION_CAPTURE_TEXT_LIMIT = 180;
 const MAX_WAIT_MS = 3600_000;
 const MAX_RETRY_MS = 300_000;
@@ -32,7 +32,7 @@ const DEFAULT_RETRY_MS = 5_000;
 
 export interface PruneStaleResult {
   pruned_locks: number;
-  updated_tasks: number;
+  updated_runs: number;
   dry_run?: true;
   would_prune?: number;
 }
@@ -47,8 +47,8 @@ export interface SessionCaptureResult {
   ok: true;
   captured: boolean;
   refinement_id: string | null;
-  pending_tasks: number;
-  active_tasks: number;
+  pending_runs: number;
+  active_runs: number;
   files: string[];
   dirty_files: string[];
   file_count?: number;
@@ -131,23 +131,23 @@ export function pruneStale(db: DatabaseSync, params: Record<string, unknown> = {
   if (workspacePath) { conditions.push('t.workspace_path = ?'); binds.push(workspacePath); }
   if (artifact) { conditions.push('(t.artifact = ? OR t.artifact IS NULL)'); binds.push(artifact); }
   const where = conditions.join(' AND ');
-  const from = scopedByTask ? 'locks l JOIN tasks t ON t.task_id = l.task_id' : 'locks l';
+  const from = scopedByTask ? 'locks l JOIN task_runs t ON t.run_id = l.run_id' : 'locks l';
 
-  let staleLocks: Array<{ lock_id: string; task_id: string }> = [];
+  let staleLocks: Array<{ lock_id: string; run_id: string }> = [];
   try {
     staleLocks = db.prepare(
-      `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
-    ).all(...binds) as Array<{ lock_id: string; task_id: string }>;
+      `SELECT l.lock_id, l.run_id FROM ${from} WHERE ${where}`
+    ).all(...binds) as Array<{ lock_id: string; run_id: string }>;
   } catch { /* non-critical stale-lock scan */ }
 
   if (dryRun) {
-    return { pruned_locks: 0, updated_tasks: 0, dry_run: true, would_prune: staleLocks.length };
+    return { pruned_locks: 0, updated_runs: 0, dry_run: true, would_prune: staleLocks.length };
   }
   if (staleLocks.length === 0) {
-    return { pruned_locks: 0, updated_tasks: 0 };
+    return { pruned_locks: 0, updated_runs: 0 };
   }
 
-  let updatedTasks = 0;
+  let updatedRuns = 0;
 
   // FIX #2 (P0): lock DELETE and task status UPDATE combined in one atomic transaction.
   // Previously the UPDATE loop ran outside the BEGIN/COMMIT block, creating a window
@@ -155,23 +155,23 @@ export function pruneStale(db: DatabaseSync, params: Record<string, unknown> = {
   db.exec('BEGIN IMMEDIATE');
   try {
     staleLocks = db.prepare(
-      `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
-    ).all(...binds) as Array<{ lock_id: string; task_id: string }>;
+      `SELECT l.lock_id, l.run_id FROM ${from} WHERE ${where}`
+    ).all(...binds) as Array<{ lock_id: string; run_id: string }>;
     if (staleLocks.length === 0) {
       db.exec('COMMIT');
-      return { pruned_locks: 0, updated_tasks: 0 };
+      return { pruned_locks: 0, updated_runs: 0 };
     }
-    const affectedTaskIds = [...new Set(staleLocks.map(l => l.task_id))];
+    const affectedRunIds = [...new Set(staleLocks.map(l => l.run_id))];
     const ph = staleLocks.map(() => '?').join(',');
     db.prepare(`DELETE FROM locks WHERE lock_id IN (${ph})`).run(...staleLocks.map(l => l.lock_id));
 
-    for (const tid of affectedTaskIds) {
-      const remaining = db.prepare('SELECT 1 FROM locks WHERE task_id = ? LIMIT 1').get(tid);
+    for (const tid of affectedRunIds) {
+      const remaining = db.prepare('SELECT 1 FROM locks WHERE run_id = ? LIMIT 1').get(tid);
       if (!remaining) {
         const r = db.prepare(
-          "UPDATE tasks SET status = 'PENDING', updated_at = ? WHERE task_id = ? AND status = 'ACTIVE'"
+          "UPDATE task_runs SET status = 'PENDING', updated_at = ? WHERE run_id = ? AND status = 'ACTIVE'"
         ).run(now, tid) as { changes: number };
-        if (r.changes) updatedTasks++;
+        if (r.changes) updatedRuns++;
       }
     }
     db.exec('COMMIT');
@@ -180,7 +180,7 @@ export function pruneStale(db: DatabaseSync, params: Record<string, unknown> = {
     throw e;
   }
 
-  return { pruned_locks: staleLocks.length, updated_tasks: updatedTasks };
+  return { pruned_locks: staleLocks.length, updated_runs: updatedRuns };
 }
 
 // ─── Smart briefing ─────────────────────────────────────────────────────────
@@ -438,34 +438,34 @@ export function sessionCapture(
     (params.cwd as string | undefined) ?? process.cwd(),
   );
   const workspacePath = scope.workspace_path ?? rawWorkspacePath ?? process.cwd();
-  const taskWorkspaceCandidates = [...new Set([workspacePath, rawWorkspacePath].filter((value): value is string => Boolean(value)))];
+  const runWorkspaceCandidates = [...new Set([workspacePath, rawWorkspacePath].filter((value): value is string => Boolean(value)))];
   const artifact = scope.artifact;
-  const workspacePlaceholders = taskWorkspaceCandidates.map(() => '?').join(',');
+  const workspacePlaceholders = runWorkspaceCandidates.map(() => '?').join(',');
 
-  const taskRows = db.prepare(
-    `SELECT task_id, rationale, test_plan, plan_doc_ref, status, files_json, created_at, updated_at
-     FROM tasks
+  const runRows = db.prepare(
+    `SELECT run_id, rationale, test_plan, context_ref, status, files_json, created_at, updated_at
+     FROM task_runs
      WHERE agent_id = ?
        AND status IN ('ACTIVE', 'PENDING')
        AND (workspace_path IN (${workspacePlaceholders}) OR workspace_path IS NULL)
        AND (? IS NULL OR artifact = ? OR artifact IS NULL)
      ORDER BY updated_at DESC, created_at DESC
      LIMIT 20`
-  ).all(agentId, ...taskWorkspaceCandidates, artifact, artifact) as Array<{
-    task_id: string;
+  ).all(agentId, ...runWorkspaceCandidates, artifact, artifact) as Array<{
+    run_id: string;
     rationale: string;
     test_plan: string;
-    plan_doc_ref: string | null;
+    context_ref: string | null;
     status: string;
     files_json: string;
     created_at: string;
     updated_at: string;
   }>;
 
-  const files = [...new Set(taskRows.flatMap(row => parseJsonList(row.files_json)))];
+  const files = [...new Set(runRows.flatMap(row => parseJsonList(row.files_json)))];
   const dirtyFiles = gitDirtyFiles(workspacePath);
-  const activeTasks = taskRows.filter(row => row.status === 'ACTIVE').length;
-  const pendingTasks = taskRows.filter(row => row.status === 'PENDING').length;
+  const activeRuns = runRows.filter(row => row.status === 'ACTIVE').length;
+  const pendingRuns = runRows.filter(row => row.status === 'PENDING').length;
 
   // Count memories with low novelty (< 0.2) that are candidates for supersede/consolidation.
   // This is a hint to the agent that memory_digest or manual supersede may be overdue.
@@ -480,13 +480,13 @@ export function sessionCapture(
     ).get(...cBinds) as { c: number }).c;
   } catch { /* non-fatal */ }
 
-  if (taskRows.length === 0 && dirtyFiles.length === 0) {
+  if (runRows.length === 0 && dirtyFiles.length === 0) {
     return {
       ok: true,
       captured: false,
       refinement_id: null,
-      pending_tasks: 0,
-      active_tasks: 0,
+      pending_runs: 0,
+      active_runs: 0,
       files: [],
       dirty_files: [],
       reason,
@@ -499,30 +499,30 @@ export function sessionCapture(
   const allCapturedFiles = [...new Set([...files, ...dirtyFiles])];
   const capturedFiles = allCapturedFiles.slice(0, SESSION_CAPTURE_FILE_LIMIT);
   const capturedDirtyFiles = dirtyFiles.slice(0, SESSION_CAPTURE_FILE_LIMIT);
-  const statusSummary = taskRows.slice(0, SESSION_CAPTURE_TASK_DETAIL_LIMIT).map(row => {
+  const statusSummary = runRows.slice(0, SESSION_CAPTURE_RUN_DETAIL_LIMIT).map(row => {
     const rowFiles = parseJsonList(row.files_json);
-    const shownFiles = rowFiles.slice(0, SESSION_CAPTURE_TASK_FILE_LIMIT);
+    const shownFiles = rowFiles.slice(0, SESSION_CAPTURE_RUN_FILE_LIMIT);
     const omittedFiles = rowFiles.length - shownFiles.length;
     const fileSuffix = rowFiles.length > 0
       ? ` files=${shownFiles.join(', ')}${omittedFiles > 0 ? ` (+${omittedFiles} more)` : ''}`
       : '';
-    const planSuffix = row.plan_doc_ref ? ` plan=${row.plan_doc_ref}` : '';
-    return `${row.status} ${row.task_id}: ${compactText(row.rationale)}; verify=${compactText(row.test_plan)}${planSuffix}${fileSuffix}`;
+    const planSuffix = row.context_ref ? ` plan=${row.context_ref}` : '';
+    return `${row.status} ${row.run_id}: ${compactText(row.rationale)}; verify=${compactText(row.test_plan)}${planSuffix}${fileSuffix}`;
   });
-  const omittedTaskDetails = taskRows.length - statusSummary.length;
+  const omittedRunDetails = runRows.length - statusSummary.length;
   const reasoning = [
     `Session capture for ${agentId}${reason ? ` (${reason})` : ''}.`,
-    `Unresolved tasks: ${taskRows.length} (${activeTasks} active, ${pendingTasks} pending).`,
+    `Unresolved runs: ${runRows.length} (${activeRuns} active, ${pendingRuns} pending).`,
     listSummary('Dirty files', dirtyFiles),
     statusSummary.length > 0
-      ? `Task details: ${statusSummary.join(' | ')}${omittedTaskDetails > 0 ? ` | ${omittedTaskDetails} more tasks omitted` : ''}`
+      ? `Run details: ${statusSummary.join(' | ')}${omittedRunDetails > 0 ? ` | ${omittedRunDetails} more runs omitted` : ''}`
       : null,
   ].filter(Boolean).join(' ');
   const remember = [
-    `Review session handoff for ${agentId}: ${activeTasks} active and ${pendingTasks} pending tasks remain.`,
+    `Review session handoff for ${agentId}: ${activeRuns} active and ${pendingRuns} pending runs remain.`,
     listSummary('Touched files', allCapturedFiles),
     dirtyFiles.length > 0 ? 'Check dirty git state before continuing.' : null,
-    pendingTasks > 0 ? 'Run the recorded verification before claiming completion.' : null,
+    pendingRuns > 0 ? 'Run the recorded verification before claiming completion.' : null,
   ].filter(Boolean).join(' ');
 
   db.prepare(
@@ -548,8 +548,8 @@ export function sessionCapture(
     ok: true,
     captured: true,
     refinement_id: refinementId,
-    pending_tasks: pendingTasks,
-    active_tasks: activeTasks,
+    pending_runs: pendingRuns,
+    active_runs: activeRuns,
     files: capturedFiles,
     dirty_files: capturedDirtyFiles,
     file_count: allCapturedFiles.length,
@@ -604,7 +604,7 @@ export function waitForLock(
   const lockStmt = db.prepare(
     `SELECT fl.file_path, ai.agent_id, fl.expires_at
      FROM locks fl
-     JOIN tasks ai ON ai.task_id = fl.task_id
+     JOIN task_runs ai ON ai.run_id = fl.run_id
      WHERE fl.file_path IN (${ph})
        AND ai.agent_id <> ?
        AND ai.status = 'ACTIVE'
@@ -793,7 +793,7 @@ export interface WorkspaceLockEntry {
   session_id: string | null;
   workspace_path: string | null;
   artifact: string | null;
-  task_id: string;
+  run_id: string;
   lock_type: string;
   acquired_at: string;
   expires_at: string | null;
@@ -802,14 +802,18 @@ export interface WorkspaceLockEntry {
 export interface WorkspaceStatusResult {
   ok: true;
   active_memories: number;
-  pending_tasks: number;
-  active_tasks: number;
+  pending_runs: number;
+  active_runs: number;
+  active_plans: number;
+  ready_tasks: number;
+  in_progress_tasks: number;
+  verify_tasks: number;
   open_refinements: number;
   locks: WorkspaceLockEntry[];
 }
 
 /**
- * Returns a snapshot of active file locks, agent tasks, and memory store stats.
+ * Returns a snapshot of plans, durable tasks, execution runs, locks, and memory stats.
  * Prunes expired locks first so stale entries don't pollute the view.
  */
 export function getWorkspaceStatus(
@@ -832,19 +836,41 @@ export function getWorkspaceStatus(
     `SELECT COUNT(*) AS c FROM memories WHERE ${memoryScope.join(' AND ')}`
   ).get(...memoryScopeParams) as { c: number }).c;
 
-  const taskScopeParts: string[] = [];
-  const taskScopeParams: (string | number)[] = [];
-  if (wsPath) { taskScopeParts.push('workspace_path = ?'); taskScopeParams.push(wsPath); }
-  if (artifact) { taskScopeParts.push('(artifact = ? OR artifact IS NULL)'); taskScopeParams.push(artifact); }
-  const taskScope = taskScopeParts.length > 0 ? ` AND ${taskScopeParts.join(' AND ')}` : '';
+  const runScopeParts: string[] = [];
+  const runScopeParams: (string | number)[] = [];
+  if (wsPath) { runScopeParts.push('workspace_path = ?'); runScopeParams.push(wsPath); }
+  if (artifact) { runScopeParts.push('(artifact = ? OR artifact IS NULL)'); runScopeParams.push(artifact); }
+  const runScope = runScopeParts.length > 0 ? ` AND ${runScopeParts.join(' AND ')}` : '';
 
-  const pendingTasks = (db.prepare(
-    `SELECT COUNT(*) AS c FROM tasks WHERE status = 'PENDING'${taskScope}`
-  ).get(...taskScopeParams) as { c: number }).c;
+  const pendingRuns = (db.prepare(
+    `SELECT COUNT(*) AS c FROM task_runs WHERE status = 'PENDING'${runScope}`
+  ).get(...runScopeParams) as { c: number }).c;
 
-  const activeTasks = (db.prepare(
-    `SELECT COUNT(*) AS c FROM tasks WHERE status = 'ACTIVE'${taskScope}`
-  ).get(...taskScopeParams) as { c: number }).c;
+  const activeRuns = (db.prepare(
+    `SELECT COUNT(*) AS c FROM task_runs WHERE status = 'ACTIVE'${runScope}`
+  ).get(...runScopeParams) as { c: number }).c;
+
+  const planScopeParts: string[] = [];
+  const planScopeParams: (string | number)[] = [];
+  if (wsPath) { planScopeParts.push('p.workspace_path = ?'); planScopeParams.push(wsPath); }
+  if (artifact) { planScopeParts.push('(p.artifact = ? OR p.artifact IS NULL)'); planScopeParams.push(artifact); }
+  const planScope = planScopeParts.length > 0 ? ` AND ${planScopeParts.join(' AND ')}` : '';
+  const activePlans = (db.prepare(
+    `SELECT COUNT(*) AS c FROM plans p WHERE p.status IN ('DRAFT','ACTIVE','PAUSED')${planScope}`,
+  ).get(...planScopeParams) as { c: number }).c;
+  const readyTasks = (db.prepare(`SELECT COUNT(*) AS c FROM tasks t JOIN plans p ON p.plan_id = t.plan_id
+    WHERE t.status = 'OPEN'${planScope}
+      AND NOT EXISTS (SELECT 1 FROM task_claims c WHERE c.task_id = t.task_id AND c.expires_at > ?)
+      AND NOT EXISTS (
+        SELECT 1 FROM task_dependencies td JOIN tasks dependency ON dependency.task_id = td.depends_on_task_id
+        WHERE td.task_id = t.task_id AND dependency.status <> 'DONE'
+      )`).get(...planScopeParams, utcNow()) as { c: number }).c;
+  const inProgressTasks = (db.prepare(
+    `SELECT COUNT(*) AS c FROM tasks t JOIN plans p ON p.plan_id = t.plan_id WHERE t.status = 'IN_PROGRESS'${planScope}`,
+  ).get(...planScopeParams) as { c: number }).c;
+  const verifyTasks = (db.prepare(
+    `SELECT COUNT(*) AS c FROM tasks t JOIN plans p ON p.plan_id = t.plan_id WHERE t.status = 'VERIFY'${planScope}`,
+  ).get(...planScopeParams) as { c: number }).c;
 
   const openRefinements = openRefinementCount(db, {
     workspacePath: wsPath,
@@ -853,17 +879,17 @@ export function getWorkspaceStatus(
     cwd: params.cwd as string | undefined,
   });
 
-  type LockRow = { file_path: string; agent_id: string; session_id: string | null; workspace_path: string | null; artifact: string | null; task_id: string; lock_type: string; acquired_at: string; expires_at: string | null };
+  type LockRow = { file_path: string; agent_id: string; session_id: string | null; workspace_path: string | null; artifact: string | null; run_id: string; lock_type: string; acquired_at: string; expires_at: string | null };
   const lockWhereParts: string[] = [];
   const lockParams: (string | number)[] = [];
   if (wsPath) { lockWhereParts.push('ai.workspace_path = ?'); lockParams.push(wsPath); }
   if (artifact) { lockWhereParts.push('(ai.artifact = ? OR ai.artifact IS NULL)'); lockParams.push(artifact); }
   const lockWhere = lockWhereParts.length > 0 ? `WHERE ${lockWhereParts.join(' AND ')}` : '';
   const locks = db.prepare(
-    `SELECT fl.file_path, ai.agent_id, ai.session_id, ai.workspace_path, ai.artifact, fl.task_id,
+    `SELECT fl.file_path, ai.agent_id, ai.session_id, ai.workspace_path, ai.artifact, fl.run_id,
             fl.lock_type, fl.acquired_at, fl.expires_at
      FROM locks fl
-     JOIN tasks ai ON ai.task_id = fl.task_id
+     JOIN task_runs ai ON ai.run_id = fl.run_id
      ${lockWhere}
      ORDER BY fl.acquired_at DESC
      LIMIT 50`
@@ -872,8 +898,12 @@ export function getWorkspaceStatus(
   return {
     ok: true,
     active_memories: activeMemories,
-    pending_tasks: pendingTasks,
-    active_tasks: activeTasks,
+    pending_runs: pendingRuns,
+    active_runs: activeRuns,
+    active_plans: activePlans,
+    ready_tasks: readyTasks,
+    in_progress_tasks: inProgressTasks,
+    verify_tasks: verifyTasks,
     open_refinements: openRefinements,
     locks,
   };
@@ -983,7 +1013,7 @@ export function exportMemoryDoc(
 export function exportHarness(
   db: DatabaseSync,
   params: Record<string, unknown> = {},
-): { count: number; markdown: string; harness_count: number; memories: Array<{ memory_id: string; label: string; importance: number; observation: string; tier: 'harness' | 'general' }> } {
+): { count: number; markdown: string; harness_count: number; memories: Array<{ memory_id: string; label: string; importance: number; observation: string; tier: 'harness' | 'general' }>; next: string } {
   const limit = Number(params.limit ?? 10);
   const minImportance = Number(params.min_importance ?? params.minImportance ?? 7);
   const rawWsPath = (params.workspace_path as string | undefined) ?? null;
@@ -1040,14 +1070,20 @@ export function exportHarness(
   }
 
   if (memories.length === 0) {
-    return { count: 0, harness_count: 0, markdown: '<!-- No harness or high-importance memories to export -->', memories: [] };
+    return {
+      count: 0,
+      harness_count: 0,
+      markdown: '<!-- No harness or high-importance memories to export -->',
+      memories: [],
+      next: 'No harness proposals yet. Use octocode-awareness reflect record --fix-harness "<proposal>" after evidence shows a reusable harness gap.',
+    };
   }
 
   const harnessCount = memories.filter(m => m.tier === 'harness').length;
   const lines = [
     '## Agent lessons (generated by octocode-awareness · reflect export-harness)',
     '',
-    '<!-- Tier 1: harness proposals from memory_reflect fix_harness: -->',
+    '<!-- Tier 1: harness proposals from reflect record --fix-harness: -->',
     '',
   ];
 
@@ -1065,5 +1101,11 @@ export function exportHarness(
   }
   lines.push('');
 
-  return { count: memories.length, harness_count: harnessCount, markdown: lines.join('\n'), memories };
+  return {
+    count: memories.length,
+    harness_count: harnessCount,
+    markdown: lines.join('\n'),
+    memories,
+    next: 'Human review required: apply approved guidance to its owning AGENTS.md, SKILL.md, or doc; run that surface\'s verification and skill review; then record the outcome with octocode-awareness reflect record. Run repo inject only when workspace projections should refresh.',
+  };
 }

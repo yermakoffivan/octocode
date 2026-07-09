@@ -557,13 +557,13 @@ test(
       );
       assert.equal(result, undefined);
       assert.deepEqual(bridge.pendingToolFiles.get('tool-1'), ['src/a.js']);
-      assert.match(bridge.pendingToolTasks.get('tool-1')!, /^task_/);
+      assert.match(bridge.pendingToolRuns.get('tool-1')!, /^run_/);
 
       assert.equal(fs.existsSync(ctx.dbPath), true);
       const { DatabaseSync } = await import('node:sqlite');
       const db = new DatabaseSync(ctx.dbPath);
       const active = db
-        .prepare("SELECT COUNT(*) AS c FROM tasks WHERE status='ACTIVE'")
+        .prepare("SELECT COUNT(*) AS c FROM task_runs WHERE status='ACTIVE'")
         .get() as { c: number };
       assert.equal(active.c, 1);
       const locks = db.prepare('SELECT COUNT(*) AS c FROM locks').get() as {
@@ -577,12 +577,12 @@ test(
 
       const db2 = new DatabaseSync(ctx.dbPath);
       const pending = db2
-        .prepare("SELECT COUNT(*) AS c FROM tasks WHERE status='PENDING'")
+        .prepare("SELECT COUNT(*) AS c FROM task_runs WHERE status='PENDING'")
         .get() as { c: number };
       assert.equal(
         pending.c,
         1,
-        'release sets task status PENDING (verification still owed)'
+        'release sets run status PENDING (verification still owed)'
       );
       const noLocks = db2.prepare('SELECT COUNT(*) AS c FROM locks').get() as {
         c: number;
@@ -808,20 +808,20 @@ test(
         ctx
       );
       const locked = JSON.parse(lockedResult.content[0]!.text) as {
-        taskId: string;
+        runId: string;
         files: string[];
         reasoning: string;
         acquiredAt: string;
         expiresAt: string;
         locks: Array<{
-          task_id: string;
+          run_id: string;
           file_path: string;
           reasoning: string;
           acquired_at: string;
           expires_at: string;
         }>;
       };
-      assert.match(locked.taskId, /^task_/);
+      assert.match(locked.runId, /^run_/);
       assert.deepEqual(locked.files, [path.join(ctx.cwd, 'src/tool-lock.js')]);
       assert.equal(locked.reasoning, 'coordinate test edit');
       assert.ok(locked.acquiredAt);
@@ -842,10 +842,10 @@ test(
         ctx
       );
       const status = JSON.parse(statusResult.content[0]!.text) as {
-        locks: Array<{ task_id: string; reasoning: string }>;
+        locks: Array<{ run_id: string; reasoning: string }>;
       };
       assert.equal(status.locks.length, 1);
-      assert.equal(status.locks[0]!.task_id, locked.taskId);
+      assert.equal(status.locks[0]!.run_id, locked.runId);
       assert.equal(status.locks[0]!.reasoning, 'coordinate test edit');
 
       const workspaceResult = await workspaceTool.execute(
@@ -903,7 +903,7 @@ test(
         'release-1',
         {
           type: 'release',
-          task_id: locked.taskId,
+          run_id: locked.runId,
           status: 'PENDING',
         },
         undefined,
@@ -2338,7 +2338,7 @@ test(
       getAgentId,
       dbCtx
     );
-    assert.match(reflectError.content[0]!.text, /memory reflect needs/);
+    assert.match(reflectError.content[0]!.text, /reflect needs/);
     assert.equal((reflectError.details as { exit: number }).exit, 1);
 
     const verifyError = executeMemoryOperation('verify', {}, getAgentId, dbCtx);
@@ -2356,7 +2356,7 @@ test(
     );
     assert.match(
       weakness.content[0]!.text,
-      /No recurring failure patterns found/
+      /No recurring failure cluster met the threshold/
     );
 
     const harness = executeMemoryOperation(
@@ -2504,9 +2504,9 @@ test('registers split typed memory support tools with strict schemas', async () 
     required?: string[];
     properties: Record<string, Record<string, unknown>>;
   };
-  // All inputs are optional in schema — task_id | task_ids[] | allPending:true; runtime enforces at least one.
+  // All inputs are optional in schema — run_id | run_ids[] | allPending:true; runtime enforces at least one.
   assert.deepEqual(verifyParams.required, undefined);
-  assert.equal(verifyParams.properties['task_id']?.['minLength'], 1);
+  assert.equal(verifyParams.properties['run_id']?.['minLength'], 1);
   assert.deepEqual(verifyParams.properties['status']?.['enum'], [
     'SUCCESS',
     'FAILED',
@@ -3268,7 +3268,7 @@ test(
 );
 
 test(
-  'memory_audit_unverified and memory_verify clear pending edit tasks',
+  'memory_audit_unverified and memory_verify clear pending execution runs',
   withIsolatedDb(async ctx => {
     await withAgentId('pi-test-agent', async () => {
       const tools = await captureMemoryTools();
@@ -3291,7 +3291,7 @@ test(
       const auditPayload = JSON.parse(audit.content[0]!.text) as {
         count: number;
         pending: Array<{
-          task_id: string;
+          run_id: string;
           test_plan: string;
           files?: string[];
         }>;
@@ -3302,14 +3302,14 @@ test(
         'pending edits make audit exit non-zero'
       );
       assert.equal(auditPayload.count, 1);
-      assert.match(auditPayload.pending[0]!.task_id, /^task_/);
+      assert.match(auditPayload.pending[0]!.run_id, /^run_/);
       assert.equal(auditPayload.pending[0]!.files?.length, 1);
       assert.ok(auditPayload.pending[0]!.files![0]!.endsWith('/src/a.js'));
 
       const verify = await invokeExecute(
         tools.get('memory_verify')!,
         {
-          task_id: auditPayload.pending[0]!.task_id,
+          run_id: auditPayload.pending[0]!.run_id,
           status: 'SUCCESS',
         },
         ctx
@@ -3335,7 +3335,7 @@ test(
 );
 
 test(
-  'memory_reflect output drops stub fields and only hints next when an action is pending',
+  'memory_reflect output drops stub fields and always returns an actionable next step',
   withIsolatedDb(async ctx => {
     const tools = await captureMemoryTools();
     const bare = await invokeExecute(
@@ -3351,9 +3351,9 @@ test(
       string,
       unknown
     >;
-    assert.deepEqual(Object.keys(barePayload).sort(), ['memory_id', 'outcome']);
+    assert.deepEqual(Object.keys(barePayload).sort(), ['memory_id', 'next', 'outcome']);
     assert.equal(barePayload['outcome'], 'worked');
-    assert.ok(!('next' in barePayload), 'no next hint when nothing actionable');
+    assert.match(String(barePayload['next']), /octocode-awareness/);
     assert.ok(
       !('eval_failure_count' in barePayload) &&
         !('eval_failure_ids' in barePayload)
@@ -3378,7 +3378,7 @@ test(
       'next' in fixPayload,
       'next hint present when a refinement is created'
     );
-    assert.match(fixPayload.next ?? '', /memory_refine_get/);
+    assert.match(fixPayload.next ?? '', /octocode-awareness refinement get/);
   })
 );
 
@@ -3414,8 +3414,8 @@ test(
         .content[0]!.text
     ) as {
       active_memories: number;
-      pending_tasks: number;
-      active_tasks: number;
+      pending_runs: number;
+      active_runs: number;
       open_refinements: number;
     };
     assert.ok(

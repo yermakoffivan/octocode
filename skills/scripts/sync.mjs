@@ -9,11 +9,13 @@
  * standalone lets you iterate on skills without a full extension rebuild.
  *
  * Flags:
- *   --clean     Wipe the destination directory and exit.
+ *   --clean     Remove root-managed copies, preserve separately managed skills, and exit.
  *   --dry-run   Print what would be copied without touching the filesystem.
+ *   --self-test Run destination-cleanup regression checks and exit.
  */
 
 import fs from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,6 +47,13 @@ const SKIPPED_SKILLS = new Set([
   'octocode-awareness',
   'octocode-agent-communication',
   'octocode-reflection',
+]);
+
+// These destination entries have independent owners. Root sync must never remove them.
+const PRESERVED_DEST_SKILLS = new Set([
+  'octocode',
+  'octocode-stats',
+  'octocode-awareness',
 ]);
 
 // Directories that are never copied (build artefacts, VCS internals).
@@ -154,20 +163,81 @@ function copyDir(src, dst, dryRun) {
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has('--dry-run');
 const clean = args.has('--clean');
+const selfTest = args.has('--self-test');
 
-/** Remove every generated skill copy from DEST. */
-function clearDest(dryRun) {
-  if (!fs.existsSync(DEST) || dryRun) return;
-  for (const entry of fs.readdirSync(DEST, { withFileTypes: true })) {
-    fs.rmSync(path.join(DEST, entry.name), { recursive: true, force: true });
+/** Remove root-managed copies while retaining destination entries with independent owners. */
+function clearDest(destRoot, isDryRun) {
+  const plan = { removed: [], preserved: [] };
+  if (!fs.existsSync(destRoot)) return plan;
+  for (const entry of fs.readdirSync(destRoot, { withFileTypes: true })) {
+    if (PRESERVED_DEST_SKILLS.has(entry.name)) {
+      plan.preserved.push(entry.name);
+      continue;
+    }
+    plan.removed.push(entry.name);
+    if (!isDryRun) {
+      fs.rmSync(path.join(destRoot, entry.name), { recursive: true, force: true });
+    }
   }
+  return plan;
+}
+
+function printCleanupPlan(plan, isDryRun) {
+  const removal = isDryRun ? 'would remove' : 'removed';
+  for (const name of plan.removed) console.log(`  ${removal}: ${name}`);
+  for (const name of plan.preserved) console.log(`  preserved (separately managed): ${name}`);
+  if (plan.removed.length === 0 && plan.preserved.length === 0) console.log('  (destination empty)');
+}
+
+function runSelfTest() {
+  const root = fs.mkdtempSync(path.join(tmpdir(), 'octocode-skill-sync-'));
+  const preserved = [...PRESERVED_DEST_SKILLS];
+  const removable = ['octocode-brainstorming', 'octocode-reflection'];
+  const failures = [];
+  try {
+    for (const name of [...preserved, ...removable]) {
+      fs.mkdirSync(path.join(root, name), { recursive: true });
+    }
+
+    const dryPlan = clearDest(root, true);
+    for (const name of [...preserved, ...removable]) {
+      if (!fs.existsSync(path.join(root, name))) failures.push(`dry-run mutated ${name}`);
+    }
+    if (!preserved.every(name => dryPlan.preserved.includes(name))) {
+      failures.push('dry-run omitted a separately managed skill');
+    }
+    if (!removable.every(name => dryPlan.removed.includes(name))) {
+      failures.push('dry-run omitted a planned removal');
+    }
+
+    const applyPlan = clearDest(root, false);
+    for (const name of preserved) {
+      if (!fs.existsSync(path.join(root, name))) failures.push(`deleted preserved skill ${name}`);
+    }
+    for (const name of removable) {
+      if (fs.existsSync(path.join(root, name))) failures.push(`failed to remove ${name}`);
+    }
+    if (!preserved.every(name => applyPlan.preserved.includes(name))) {
+      failures.push('apply omitted a separately managed skill');
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+  return { ok: failures.length === 0, checks: 6, failures };
+}
+
+if (selfTest) {
+  const result = runSelfTest();
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(result.ok ? 0 : 1);
 }
 
 // ── clean ────────────────────────────────────────────────────────────────────
 if (clean) {
-  clearDest(dryRun);
+  const cleanupPlan = clearDest(DEST, dryRun);
+  printCleanupPlan(cleanupPlan, dryRun);
   console.log(
-    `${dryRun ? '[dry-run] would clean' : 'Cleaned'} ${path.relative(process.cwd(), DEST)}`
+    `${dryRun ? '[dry-run] would clean root-managed copies from' : 'Cleaned root-managed copies from'} ${path.relative(process.cwd(), DEST)}`
   );
   process.exit(0);
 }
@@ -185,8 +255,10 @@ if (skills.length === 0) {
 }
 
 // ── sync ─────────────────────────────────────────────────────────────────────
+const cleanupPlan = clearDest(DEST, dryRun);
+console.log(`${dryRun ? '[dry-run] destination cleanup plan' : 'Destination cleanup'}:`);
+printCleanupPlan(cleanupPlan, dryRun);
 if (!dryRun) {
-  clearDest(false);
   fs.mkdirSync(DEST, { recursive: true });
   for (const skill of skills) {
     copyDir(

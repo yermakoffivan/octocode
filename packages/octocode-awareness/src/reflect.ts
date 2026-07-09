@@ -12,7 +12,11 @@ import { insertRefinement } from './refinements.js';
 import { insertHarnessLog } from './audit.js';
 import type { ReflectParams, ReflectResult, ReflectionOutcome } from './types.js';
 
-const NEXT_MSG = 'memory_refine_get → repo fixes for the next agent · octocode-awareness reflect mine-weakness/maintenance digest → recurring failures and harness previews. A human merges.';
+const NEXT_MSG = [
+  'Next: inspect created fixes with octocode-awareness refinement get --state open.',
+  'After applying and verifying a fix, close it with octocode-awareness refinement set --refinement-id <id> --state done.',
+  'Use octocode-awareness reflect mine-weakness for recurring failures and octocode-awareness reflect export-harness for human-reviewed harness proposals.',
+].join(' ');
 
 function normalizeScopePaths(paths: string[] = [], prefix: 'file' | 'dir', baseCwd?: string): string[] {
   // RFLX-1: Resolve relative paths against the caller-supplied cwd, not process.cwd().

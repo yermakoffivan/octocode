@@ -31,7 +31,7 @@ describe('pruneStale', () => {
     const db = freshDb();
     const result = pruneStale(db, {});
     expect(result.pruned_locks).toBe(0);
-    expect(result.updated_tasks).toBe(0);
+    expect(result.updated_runs).toBe(0);
   });
 
   it('prunes expired locks', () => {
@@ -44,8 +44,8 @@ describe('pruneStale', () => {
       if (!result.ok) throw new Error('claim failed');
       // Age the lock to the past
       const past = new Date(Date.now() - 5000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?')
-        .run(past, result.task.task_id);
+      db.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?')
+        .run(past, result.run.run_id);
 
       const pruned = pruneStale(db, {});
       expect(pruned.pruned_locks).toBeGreaterThanOrEqual(1);
@@ -61,12 +61,12 @@ describe('pruneStale', () => {
       });
       if (!claim.ok) throw new Error('claim failed');
       const past = new Date(Date.now() - 5000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?')
-        .run(past, claim.task.task_id);
+      db.prepare('UPDATE locks SET expires_at = ? WHERE run_id = ?')
+        .run(past, claim.run.run_id);
 
       pruneStale(db, {});
-      const intent = db.prepare('SELECT status FROM tasks WHERE task_id = ?')
-        .get(claim.task.task_id) as { status: string };
+      const intent = db.prepare('SELECT status FROM task_runs WHERE run_id = ?')
+        .get(claim.run.run_id) as { status: string };
       expect(intent.status).toBe('PENDING');
     } finally { cleanup(); }
   });
@@ -217,8 +217,8 @@ describe('getWorkspaceStatus', () => {
     const result = getWorkspaceStatus(db, {});
     expect(result.ok).toBe(true);
     expect(typeof result.active_memories).toBe('number');
-    expect(typeof result.pending_tasks).toBe('number');
-    expect(typeof result.active_tasks).toBe('number');
+    expect(typeof result.pending_runs).toBe('number');
+    expect(typeof result.active_runs).toBe('number');
     expect(typeof result.open_refinements).toBe('number');
     expect(Array.isArray(result.locks)).toBe(true);
   });
@@ -332,7 +332,7 @@ describe('sessionCapture', () => {
       expect(result.ok).toBe(true);
       expect(result.captured).toBe(true);
       expect(result.refinement_id).toMatch(/^ref_/);
-      expect(result.active_tasks).toBe(1);
+      expect(result.active_runs).toBe(1);
       expect(result.files).toContain(path);
 
       const refinement = db.prepare(

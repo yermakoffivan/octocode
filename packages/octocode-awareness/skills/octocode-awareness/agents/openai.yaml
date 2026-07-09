@@ -1,4 +1,4 @@
 interface:
   display_name: "Octocode Awareness"
-  short_description: "Single CLI-first skill for workspace memory, locks, signals, verification, reflection, hooks, and repo context."
-  default_prompt: "Use octocode-awareness before, during, and after shared-repo work: first run attend --workspace \"$PWD\" --query \"<current task>\" --compact, then drill with workspace status / memory recall / refinements / signals as needed; claim files before edits, coordinate conflicts, handle messages, run and mark declared verification, clear pending tasks, record durable lessons, capture handoffs, refresh repo context when useful, and check/install host hooks when automation matters."
+  short_description: "Shared plans, agent-selectable tasks, locks, runs, memory, and handoffs."
+  default_prompt: "Use octocode-awareness before, during, and after shared-repo work. First run attend --workspace \"$PWD\" --query \"<current task>\" --compact and inspect workboard Ready/Claimed/Verify. Claim a matching plan task and use its run_id for file locks; for a quick independent edit, acquire a standalone lock without task_id. Submit shared tasks, verify runs, coordinate conflicts and signals, record only durable lessons, capture handoffs, and refresh repo context when useful."

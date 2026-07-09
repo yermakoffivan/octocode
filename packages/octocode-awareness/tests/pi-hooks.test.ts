@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connectDb } from '../src/db.js';
-import { createPiAwarenessBridge, extractPiWriteTargetPaths, wirePiAwarenessHooks } from '../src/pi-hooks.js';
+import { createPiAwarenessBridge, evaluateHarnessGuard, extractPiWriteTargetPaths, wirePiAwarenessHooks } from '../src/pi-hooks.js';
 import { preFlightIntent } from '../src/intents.js';
 import { insertNotification } from '../src/notifications.js';
 
@@ -11,6 +12,68 @@ function tempDb() {
   const dir = mkdtempSync(join(tmpdir(), 'oc-pi-hooks-'));
   return { dir, dbPath: join(dir, 'awareness.sqlite3'), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
+
+function gitRepoOnBranch(branch: string) {
+  const dir = mkdtempSync(join(tmpdir(), 'oc-guard-repo-'));
+  const git = (...args: string[]) => spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@t');
+  git('config', 'user.name', 't');
+  git('commit', '-q', '--allow-empty', '-m', 'init');
+  git('branch', '-M', branch);
+  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+// evaluateHarnessGuard is the single source of truth shared by the Pi bridge and
+// the shell hook runner (bin/hook-runner.ts), so both vendors gate identically.
+describe('evaluateHarnessGuard', () => {
+  const base = { env: {} as NodeJS.ProcessEnv };
+
+  it('is a no-op when skillRoot is unset', () => {
+    expect(evaluateHarnessGuard({ targetFiles: ['a.ts'], skillRoot: null, cwd: '/tmp', ...base })).toBeNull();
+  });
+
+  it('is a no-op for a target resolving outside the skill root', () => {
+    const repo = gitRepoOnBranch('feature-x');
+    try {
+      expect(evaluateHarnessGuard({ targetFiles: ['/tmp/elsewhere.ts'], skillRoot: repo.dir, cwd: '/tmp', ...base })).toBeNull();
+    } finally { repo.cleanup(); }
+  });
+
+  it('blocks an in-skill edit without OCTOCODE_ALLOW_HARNESS_APPLY', () => {
+    const repo = gitRepoOnBranch('feature-x');
+    try {
+      const reason = evaluateHarnessGuard({ targetFiles: [join(repo.dir, 'SKILL.md')], skillRoot: repo.dir, cwd: repo.dir, env: {} });
+      expect(reason).toContain('editing the skill itself is gated');
+    } finally { repo.cleanup(); }
+  });
+
+  it('allows an approved in-skill edit on a dedicated branch', () => {
+    const repo = gitRepoOnBranch('feature-x');
+    try {
+      const reason = evaluateHarnessGuard({ targetFiles: [join(repo.dir, 'SKILL.md')], skillRoot: repo.dir, cwd: repo.dir, env: { OCTOCODE_ALLOW_HARNESS_APPLY: '1' } });
+      expect(reason).toBeNull();
+    } finally { repo.cleanup(); }
+  });
+
+  it('blocks even when approved if the skill root is on main/master', () => {
+    const repo = gitRepoOnBranch('main');
+    try {
+      const reason = evaluateHarnessGuard({ targetFiles: [join(repo.dir, 'SKILL.md')], skillRoot: repo.dir, cwd: repo.dir, env: { OCTOCODE_ALLOW_HARNESS_APPLY: '1' } });
+      expect(reason).toContain('never allowed on main');
+    } finally { repo.cleanup(); }
+  });
+
+  it('requires OCTOCODE_HARNESS_BRANCH_OK for a non-repo skill root', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-guard-norepo-'));
+    try {
+      const blocked = evaluateHarnessGuard({ targetFiles: [join(dir, 'SKILL.md')], skillRoot: dir, cwd: dir, env: { OCTOCODE_ALLOW_HARNESS_APPLY: '1' } });
+      expect(blocked).toContain('cannot confirm a dedicated git branch');
+      const allowed = evaluateHarnessGuard({ targetFiles: [join(dir, 'SKILL.md')], skillRoot: dir, cwd: dir, env: { OCTOCODE_ALLOW_HARNESS_APPLY: '1', OCTOCODE_HARNESS_BRANCH_OK: '1' } });
+      expect(allowed).toBeNull();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
 
 describe('extractPiWriteTargetPaths', () => {
   it('extracts Pi write/edit tool input shapes', () => {
@@ -44,12 +107,12 @@ describe('createPiAwarenessBridge', () => {
 
       await bridge.handleToolCall({ toolName: 'write', toolCallId: 'tool-1', input: { path: 'src/a.ts' } }, ctx);
       expect(bridge.pendingToolFiles.get('tool-1')).toEqual(['src/a.ts']);
-      expect(bridge.pendingToolTasks.get('tool-1')).toMatch(/^task_/);
-      expect((db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status='ACTIVE'").get() as { c: number }).c).toBe(1);
+      expect(bridge.pendingToolRuns.get('tool-1')).toMatch(/^run_/);
+      expect((db.prepare("SELECT COUNT(*) AS c FROM task_runs WHERE status='ACTIVE'").get() as { c: number }).c).toBe(1);
 
       await bridge.handleToolResult({ toolCallId: 'tool-1' }, ctx);
       expect(bridge.pendingToolFiles.has('tool-1')).toBe(false);
-      expect((db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status='PENDING'").get() as { c: number }).c).toBe(1);
+      expect((db.prepare("SELECT COUNT(*) AS c FROM task_runs WHERE status='PENDING'").get() as { c: number }).c).toBe(1);
       expect((db.prepare('SELECT COUNT(*) AS c FROM locks').get() as { c: number }).c).toBe(0);
       expect((db.prepare('SELECT COUNT(*) AS c FROM edit_log').get() as { c: number }).c).toBe(1);
       db.close();
@@ -78,7 +141,7 @@ describe('createPiAwarenessBridge', () => {
     }
   });
 
-  it('releases only the matching task for overlapping same-agent tool calls', async () => {
+  it('releases only the matching run for overlapping same-agent tool calls', async () => {
     const tmp = tempDb();
     try {
       const db = connectDb(tmp.dbPath);
@@ -87,13 +150,13 @@ describe('createPiAwarenessBridge', () => {
 
       await bridge.handleToolCall({ toolName: 'write', toolCallId: 'tool-1', input: { path: 'src/a.ts' } }, ctx);
       await bridge.handleToolCall({ toolName: 'write', toolCallId: 'tool-2', input: { path: 'src/a.ts' } }, ctx);
-      const secondTask = bridge.pendingToolTasks.get('tool-2');
+      const secondRun = bridge.pendingToolRuns.get('tool-2');
       expect((db.prepare('SELECT COUNT(*) AS c FROM locks').get() as { c: number }).c).toBe(2);
 
       await bridge.handleToolResult({ toolCallId: 'tool-1' }, ctx);
       expect((db.prepare('SELECT COUNT(*) AS c FROM locks').get() as { c: number }).c).toBe(1);
-      const remaining = db.prepare('SELECT task_id FROM locks').get() as { task_id: string };
-      expect(remaining.task_id).toBe(secondTask);
+      const remaining = db.prepare('SELECT run_id FROM locks').get() as { run_id: string };
+      expect(remaining.run_id).toBe(secondRun);
 
       const blocked = await createPiAwarenessBridge({ getDb: () => db }).handleToolCall(
         { toolName: 'edit', toolCallId: 'tool-3', input: { path: 'src/a.ts' } },
@@ -125,7 +188,7 @@ describe('createPiAwarenessBridge', () => {
       );
       expect(blocked).toMatchObject({ block: true });
       expect(blocked?.reason).toContain('editing the skill itself is gated');
-      expect((db.prepare('SELECT COUNT(*) AS c FROM tasks').get() as { c: number }).c).toBe(0);
+      expect((db.prepare('SELECT COUNT(*) AS c FROM task_runs').get() as { c: number }).c).toBe(0);
 
       process.env.OCTOCODE_ALLOW_HARNESS_APPLY = '1';
       process.env.OCTOCODE_HARNESS_BRANCH_OK = '1';
@@ -135,7 +198,7 @@ describe('createPiAwarenessBridge', () => {
         ctx,
       );
       expect(allowed).toBeUndefined();
-      expect((db.prepare('SELECT COUNT(*) AS c FROM tasks').get() as { c: number }).c).toBe(1);
+      expect((db.prepare('SELECT COUNT(*) AS c FROM task_runs').get() as { c: number }).c).toBe(1);
       db.close();
     } finally {
       if (previousAllow === undefined) delete process.env.OCTOCODE_ALLOW_HARNESS_APPLY;
@@ -199,7 +262,7 @@ describe('wirePiAwarenessHooks', () => {
     }
   });
 
-  it('sends a verify-gate follow-up message when pending tasks remain', async () => {
+  it('sends a verify-gate follow-up message when pending runs remain', async () => {
     const tmp = tempDb();
     try {
       const db = connectDb(tmp.dbPath);

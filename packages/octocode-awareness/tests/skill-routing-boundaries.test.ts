@@ -20,14 +20,15 @@ describe('skill routing boundaries', () => {
   it('makes awareness the primary workflow skill', () => {
     const text = skill('octocode-awareness');
     const desc = description(text);
-    expect(desc).toContain('shared repo work needs awareness');
-    expect(desc).toContain('before planning');
-    expect(desc).toContain('during edits');
-    expect(desc).toContain('after verification');
+    expect(desc).toContain('shared-repo coordination');
+    expect(desc).toContain('packages/octocode-awareness');
+    expect(desc).toContain('dogfood');
+    expect(desc).toContain('reviewing or editing this package');
+    expect(desc).toContain('multi-agent');
     expect(desc).toContain('hooks');
     expect(desc).toContain('locks/signals');
     expect(desc).toContain('reflection');
-    expect(text).toMatch(/Use for shared-repo awareness|Trigger this skill for shared repo work/);
+    expect(text).toMatch(/Use for shared-repo (awareness|coordination)/);
     expect(text).toContain('schema commands --compact');
     expect(text).toContain('signal publish|reply|ack|resolve');
     expect(text).toContain('Installation / Init Flow');

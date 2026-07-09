@@ -1,41 +1,34 @@
 # File Locks And Verification
 
-**Audience**: agents and maintainers who need to understand edit coordination.
+File locks prevent overlapping agents from silently editing the same exact file. Locks belong to execution runs, not directly to durable plan tasks.
 
-File locks prevent overlapping agents from silently editing the same files. A lock is not just a mutex; it is tied to a `task` with a rationale and a declared verification plan.
+## Two Valid Flows
 
-## Mental Model
+Quick edit—no plan or task required:
 
 ```text
-claim intent -> hold file locks -> edit -> release as pending -> verify -> mark success/failure
+lock acquire -> standalone task_run -> edit -> lock release PENDING -> verify mark
 ```
 
-Tables involved:
+Collaborative task:
 
-| Table | Role |
-|---|---|
-| `tasks` | One claimed unit of work, including rationale, files, test plan, and status. |
-| `locks` | One active row per file claimed by the task. |
-| `task_log` | Verification/audit events. |
-| `sessions` | Optional grouping if the host supplies a session id. |
+```text
+task claim -> linked ACTIVE task_run -> lock/edit/release locks as needed
+           -> task submit -> run PENDING + task VERIFY -> verify mark -> task DONE|FAILED
+```
 
-## Task State Machine
+Task paths communicate a broad ownership boundary. File locks remain the exact collision authority.
+
+## Run State
 
 ```text
 ACTIVE -> PENDING -> SUCCESS
               \----> FAILED
 ```
 
-| State | Meaning |
-|---|---|
-| `ACTIVE` | Agent owns active locks and is expected to edit or release. |
-| `PENDING` | Locks were released, but verification is still owed. |
-| `SUCCESS` | The declared verification was recorded as passing. |
-| `FAILED` | Verification was recorded as failing or the task was released failed. |
+Unverified `SUCCESS` is downgraded to `PENDING`. “I stopped editing” and “I ran the promised check” are separate facts.
 
-The important rule: unverified `SUCCESS` is downgraded to `PENDING`. This keeps "I am done" separate from "I ran the promised check."
-
-## Acquire
+## Standalone Acquire
 
 ```bash
 octocode-awareness lock acquire \
@@ -43,138 +36,111 @@ octocode-awareness lock acquire \
   --workspace "$PWD" \
   --rationale "Edit awareness docs" \
   --test-plan "git diff --check && yarn workspace @octocodeai/octocode-awareness build" \
-  --target-file "$PWD/packages/octocode-awareness/docs/DB.md"
+  --target-file packages/octocode-awareness/docs/DB.md \
+  --compact
 ```
 
-Acquire does three things atomically:
+This atomically evicts expired locks, checks conflicts, creates a standalone `task_runs` row (`task_id = NULL`), and inserts one lock per target file under `BEGIN IMMEDIATE`.
 
-1. Evicts expired locks.
-2. Checks for conflicts from other agents.
-3. Inserts one `tasks` row and one `locks` row per target file inside `BEGIN IMMEDIATE`.
+At least one target is required. `EXCLUSIVE` conflicts with every other agent's live lock on that file; `SHARED` conflicts with `EXCLUSIVE`.
 
-`EXCLUSIVE` locks conflict with any other active lock on the same file. `SHARED` locks conflict only with active `EXCLUSIVE` locks.
+## Attach To A Claimed Task
 
-At least one `--target-file` is required; acquiring with no target is rejected (exit `1`) so a claim never creates a task that locks nothing.
+`task claim` returns a `run_id`. Explicit callers can attach edits:
 
-## Wait
+```bash
+octocode-awareness lock acquire \
+  --agent-id "$OCTOCODE_AGENT_ID" \
+  --run-id run_abc \
+  --target-file src/a.ts \
+  --compact
+```
+
+Installed hooks do this automatically when the same agent has exactly one live task claim in the workspace. Post-edit releases the exact locks but keeps the linked run `ACTIVE`; `task submit` creates the verification obligation. If zero or multiple task claims match, hooks avoid guessing.
+
+## Wait And Release
 
 ```bash
 octocode-awareness lock wait \
   --agent-id "$OCTOCODE_AGENT_ID" \
-  --target-file "$PWD/packages/foo/src/index.ts" \
-  --wait-seconds 120 \
-  --retry-interval 5 \
-  --compact
+  --target-file src/index.ts \
+  --wait-seconds 120 --retry-interval 5 --compact
 ```
 
-Use wait when another agent has the exact file. If the conflict is conceptual rather than mechanical, publish a signal instead of waiting silently.
-
-## Release
+Wait checks only; it does not claim. Acquire immediately after a clear result.
 
 ```bash
 octocode-awareness lock release \
   --agent-id "$OCTOCODE_AGENT_ID" \
-  --task-id task_abc \
+  --run-id run_abc \
   --status PENDING \
   --compact
 ```
 
-Release deletes matching `locks` rows. If all locks for the task are gone, it updates the task status.
+Target-file release is allowed, but overlapping runs from the same agent can make it ambiguous. Prefer `--run-id`.
 
-To mark verified success during release:
+For a verified standalone edit, release can close directly:
 
 ```bash
 octocode-awareness lock release \
   --agent-id "$OCTOCODE_AGENT_ID" \
-  --task-id task_abc \
-  --status SUCCESS \
-  --verified \
-  --verified-note "markdown checks passed" \
-  --compact
+  --run-id run_abc \
+  --status SUCCESS --verified \
+  --verified-note "markdown checks passed" --compact
 ```
-
-Without `--verified`, a requested `SUCCESS` is stored as `PENDING`.
 
 ## Verify
 
 ```bash
 octocode-awareness verify audit \
-  --agent-id "$OCTOCODE_AGENT_ID" \
-  --workspace "$PWD" \
-  --compact
-```
+  --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --compact
 
-```bash
 octocode-awareness verify mark \
-  --agent-id "$OCTOCODE_AGENT_ID" \
-  --workspace "$PWD" \
-  --all-pending \
-  --message "git diff --check and build passed" \
-  --compact
+  --agent-id "$OCTOCODE_AGENT_ID" --run-id run_abc \
+  --message "focused tests passed" --compact
 ```
 
-`verify mark` updates matching pending tasks to `SUCCESS` or `FAILED` and writes `task_log` events. Scope it to the same workspace/artifact used during acquire. `--all-pending` with **no** `--workspace`/`--artifact` verifies every pending task for the agent across **all** workspaces and returns a `warning` naming the blast radius — pass `--workspace` to limit it.
+`verify mark` updates a pending run and writes `run_log`. If the run is linked to a task in `VERIFY`, it also writes `task_events` and moves that task to `DONE` or `FAILED`.
 
-## TTL, Prune, And Renew
+Scoped `--all-pending` closes this agent's pending runs in the workspace. Unscoped `--all-pending` spans all workspaces and emits a warning.
 
-Default lock TTL is 10 minutes and is hard-capped at 10 minutes. TTL exists to recover from crashed agents; it is not a substitute for releasing locks.
+## TTL And Prune
+
+File-lock TTL is hard-capped at 10 minutes. It recovers from crashes; it does not prove work ended.
 
 ```bash
 octocode-awareness lock prune \
-  --workspace "$PWD" \
-  --expired-only \
-  --dry-run \
-  --compact
+  --workspace "$PWD" --expired-only --dry-run --compact
 ```
 
-Pi and the library API also support `renew` for long-running tasks. Renew extends lock expiration but does not remove the verification obligation.
+Pruning removes locks and moves an orphaned `ACTIVE` run to `PENDING`; it never manufactures success. Task claim leases are separate (default 30 minutes, max 60) and use `task heartbeat`.
 
-## Hook Automation
+## Conflict Packet
 
-When hooks are installed:
-
-| Hook | Effect |
-|---|---|
-| `pre-edit.sh` | Claims files before a write tool runs. |
-| `post-edit.sh` | Releases the claim as `PENDING`. |
-| `stop-verify.sh` | Blocks session end while pending verification remains. |
-| `session-end.sh` | Captures handoff/refinement state from locks and git state. |
-
-Manual CLI calls and hooks use the same tables and state machine. See [HOOKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOOKS.md) for host setup and hook behavior.
-
-## Conflict Response
-
-On conflict, acquire rolls back and returns `{ ok: false, conflict: true, conflicts: [...] }` (exit `2`). Each entry carries enough who/why context to decide without a second lookup:
+Acquire conflict exits `2` and returns:
 
 ```json
 {
   "file_path": "/repo/src/auth.ts",
   "lock_type": "EXCLUSIVE",
-  "agent_id": "agent-a",              // who holds it
-  "reasoning": "refactoring auth token flow",  // WHY it is claimed (holder's rationale)
-  "test_plan": "yarn test auth",      // what the holder verifies before release
-  "task_id": "task_…",                // reference it in a signal
-  "session_id": "sess-…",             // which run holds it (null if none)
-  "acquired_at": "…", "expires_at": "…",
-  "holder_session_active": false       // false = holder's session ended → lock likely abandoned
+  "agent_id": "agent-a",
+  "reasoning": "refactoring auth token flow",
+  "test_plan": "yarn test auth",
+  "run_id": "run_...",
+  "session_id": "sess-...",
+  "holder_session_active": true,
+  "acquired_at": "...",
+  "expires_at": "..."
 }
 ```
 
-When acquire reports a conflict:
+Read the holder's reason, then wait, signal the holder with the `run_id`, switch to another ready task/file, or prune only after expiry. Do not bypass a live lock.
 
-1. Read `reasoning` / `test_plan` — is the holder's work related to yours or independent?
-2. If `holder_session_active` is `false`, the lock is likely abandoned (session ended before TTL); it is safe to `lock prune --expired-only` once it expires, or coordinate a reclaim.
-3. If the lock is recent and active, wait, or send a targeted `signal reply`/`signal publish --kind question` referencing the `task_id`.
-4. If the lock is expired, use `lock prune --expired-only`.
-5. If you can make progress elsewhere, switch to non-overlapping files.
-6. Do not overwrite the file just because the user asked for speed; the lock is the shared workspace contract.
+## Hook Effects
 
-## Common Failure Modes
-
-| Symptom | Likely cause | Fix |
+| Hook | Standalone flow | Claimed-task flow |
 |---|---|---|
-| `verify audit` still shows work after release | Task is `PENDING` | Run the declared test plan, then `verify mark`. |
-| Another agent cannot acquire a file | Active unexpired lock | Wait, signal, or ask holder to release. |
-| Locks keep appearing from hooks | Host hook is installed and sees write tools | This is expected; complete verification or tune hook config. |
-| Docs staleness has no edit data | No bundled post-edit hook/Pi bridge ran, path extraction failed, or the host needs richer edit metadata | Install/check hooks with `--strict`, or use library `insertEditLog()` from host integration. |
-| Locks look cross-project | Commands used different `--workspace` values | Keep one canonical workspace path per task. |
+| pre-edit | Creates run + locks | Reuses claimed run + adds locks |
+| post-edit | Removes locks; run becomes `PENDING` | Removes locks; run stays `ACTIVE` |
+| stop-verify | Blocks on pending/stale runs | Blocks after task submission until verify |
+| session-end | Captures active/pending runs and dirty files | Same, retaining linked task/run ids |

@@ -2,7 +2,7 @@
 
 **Audience**: agents, maintainers, and technical users who want readable repo context from awareness data.
 
-The LLM Wiki is the generated workspace `.octocode/` projection over the awareness database. It makes selected memory, task, signal, refinement, and activity data readable as Markdown, CSV, HTML, and JSON manifest files.
+The LLM Wiki is the generated part of workspace `.octocode/`. It makes selected plan, task, run, memory, signal, refinement, and activity data readable as Markdown, CSV, HTML, and JSON manifest files.
 
 The SQLite DB in the global Octocode home remains canonical. The wiki is a repo-local projection.
 
@@ -28,7 +28,7 @@ Social context is also part of the health model. Signals, refinements, handoffs,
 | Location | Role |
 |---|---|
 | `~/.octocode/memory/awareness.sqlite3` | Canonical global awareness DB, shared across local agents and scoped by workspace. |
-| `<repo>/.octocode/` | Generated LLM Wiki for one repo/workspace. It contains memories-about-the-repo as Markdown/CSV/HTML projections, not the canonical DB rows. |
+| `<repo>/.octocode/` | Generated LLM Wiki plus managed `.octocode/plan/**` narrative docs. Live task state remains in SQLite. |
 
 Use `query <view>` for live DB reads. Use `repo inject --workspace <repo> --out <repo>/.octocode` to publish a refreshed repo view.
 
@@ -74,7 +74,9 @@ Available views:
 | `memories` | Active memory rows. |
 | `gotchas` | `GOTCHA` memories. |
 | `lessons` | Decisions, architecture, workflows, improvements, docs, tests, and related labels. |
-| `tasks` | Claimed and verified work. |
+| `plans` | Shared objectives, leads, lifecycle, and managed doc folders. |
+| `tasks` | Durable plan work with reasoning, paths, dependencies, readiness, and claims. |
+| `runs` | Task attempts and standalone lock/verification runs. |
 | `locks` | Active lock state. |
 | `agents` | Agent registry and last-seen data. |
 | `signals` | Messages and handoff threads. |
@@ -105,7 +107,7 @@ Modes:
 | `local` | Generate for local agent use. Usually keep uncommitted or gitignored. |
 | `share` | Generate with the intent that repo owners may commit the projection. |
 
-`repo inject` reports gitignore/share-policy warnings but never edits `.gitignore`. The default output is `<workspace>/.octocode`.
+`repo inject` reports gitignore/share-policy warnings but never edits `.gitignore`. The default output is `<workspace>/.octocode`; existing `.octocode/plan/**` folders are preserved.
 
 ## Generated Files
 

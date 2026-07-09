@@ -32,9 +32,17 @@ describe('initDb creates all required tables', () => {
     'memories',
     'memories_fts',
     'memory_refs',
+    'plans',
+    'plan_members',
+    'plan_docs',
     'tasks',
+    'task_paths',
+    'task_dependencies',
+    'task_claims',
+    'task_events',
+    'task_runs',
     'locks',
-    'task_log',
+    'run_log',
     'signals',
     'signal_reads',
     'agents',
@@ -64,9 +72,17 @@ describe('initDb table set', () => {
     const allowed = new Set([
       'sessions',
       'memories',
+      'plans',
+      'plan_members',
+      'plan_docs',
       'tasks',
+      'task_paths',
+      'task_dependencies',
+      'task_claims',
+      'task_events',
+      'task_runs',
       'locks',
-      'task_log',
+      'run_log',
       'refinements',
       'signals',
       'signal_reads',
@@ -131,12 +147,34 @@ describe('tasks table column names', () => {
 
   it('matches the current task column set', () => {
     expect(cols).toEqual([
+      'acceptance_criteria',
+      'completed_at',
+      'created_at',
+      'created_by',
+      'plan_id',
+      'priority',
+      'reasoning',
+      'status',
+      'task_id',
+      'title',
+      'updated_at',
+    ]);
+  });
+});
+
+describe('task_runs table column names', () => {
+  const db = freshDb();
+  const cols = [...tableColumns(db, 'task_runs')].sort();
+
+  it('keeps execution attempts separate from durable tasks', () => {
+    expect(cols).toEqual([
       'agent_id',
       'artifact',
+      'context_ref',
       'created_at',
       'files_json',
-      'plan_doc_ref',
       'rationale',
+      'run_id',
       'session_id',
       'status',
       'task_id',
@@ -161,8 +199,8 @@ describe('locks table column names', () => {
       'file_path',
       'lock_id',
       'lock_type',
+      'run_id',
       'session_id',
-      'task_id',
     ]);
   });
 });

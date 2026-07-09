@@ -85,9 +85,10 @@ describe('legacy store migration', () => {
     ]) {
       expect(memories.has(col), `memories.${col}`).toBe(true);
     }
-    expect(tableColumns(db, 'tasks').has('session_id')).toBe(true);
-    expect(tableColumns(db, 'tasks').has('artifact')).toBe(true);
-    expect(tableColumns(db, 'tasks').has('plan_doc_ref')).toBe(true);
+    expect(tableColumns(db, 'task_runs').has('session_id')).toBe(true);
+    expect(tableColumns(db, 'task_runs').has('artifact')).toBe(true);
+    expect(tableColumns(db, 'task_runs').has('context_ref')).toBe(true);
+    expect(tableColumns(db, 'tasks').has('plan_id')).toBe(true);
     expect(tableColumns(db, 'locks').has('session_id')).toBe(true);
     expect(tableColumns(db, 'sessions').has('artifact')).toBe(true);
     expect(tableColumns(db, 'sessions').has('repo')).toBe(true);
@@ -124,6 +125,21 @@ describe('legacy store migration', () => {
     const db = legacyDb();
     initDb(db);
     expect(() => initDb(db)).not.toThrow();
+  });
+
+  it('moves legacy edit tasks to task_runs without inventing plan tasks', () => {
+    const db = legacyDb();
+    db.prepare(`INSERT INTO tasks
+      (task_id, agent_id, rationale, test_plan, status, workspace_path, files_json)
+      VALUES ('task_legacy', 'agent-old', 'edit a file', 'run tests', 'PENDING', '/repo', '["/repo/a.ts"]')`)
+      .run();
+
+    initDb(db);
+
+    expect(db.prepare('SELECT run_id, task_id, status FROM task_runs WHERE run_id = ?')
+      .get('task_legacy')).toEqual({ run_id: 'task_legacy', task_id: null, status: 'PENDING' });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM tasks').get()).toEqual({ count: 0 });
+    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
   });
 
   it('widens legacy refinement quality checks for instructions feedback', () => {

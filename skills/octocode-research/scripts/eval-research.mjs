@@ -281,7 +281,9 @@ Evidence: exact read shows the parameter is passed to a SQL query unescaped; LSP
 Impact: caller/user data path is exposed to injection.
 Fix: validate/sanitize the token parameter before use, mirroring the existing pattern in src/auth/session.ts:20.
 No existing PR comments to reconcile locally; findings deduped by root cause and capped to the highest-impact issue.
-Next: run the project's auth test suite before opening the PR.`,
+Verification: auth tests passed; typecheck passed.
+Recommendation: APPROVE
+Next: open the PR with the verification receipts.`,
   };
   return base[caseId] || '';
 }
@@ -292,6 +294,12 @@ function weakSample() {
 
 function selfTest() {
   const data = loadCases();
+  const prWorkflow = readFileSync(resolve(SKILL_DIR, 'references', 'workflow-pr-review.md'), 'utf8');
+  const prReport = readFileSync(resolve(SKILL_DIR, 'references', 'workflow-pr-review-report.md'), 'utf8');
+  const contractChecks = {
+    fileScopeAllowsCleanTree: /File Scope[^\n]*does not require staged, unstaged, or untracked changes/i.test(prWorkflow),
+    approveRequiresVerification: /APPROVE[^\n]*(?:requires|only when)[^\n]*(?:test|verification)[^\n]*(?:pass|succeed)/i.test(`${prWorkflow}\n${prReport}`),
+  };
   const results = data.cases.map(testCase => {
     const strong = evaluateCase(testCase, strongSample(testCase.id), { agentic: true });
     const weak = evaluateCase(testCase, weakSample(), { agentic: true });
@@ -305,8 +313,9 @@ function selfTest() {
       weak,
     };
   });
-  const ok = results.every(r => r.strongPassed && r.strongBinaryClean && r.strongAgenticQuestions >= 3 && !r.weakPassed);
-  return { ok, casesPath: CASES_PATH, results };
+  const ok = Object.values(contractChecks).every(Boolean) &&
+    results.every(r => r.strongPassed && r.strongBinaryClean && r.strongAgenticQuestions >= 3 && !r.weakPassed);
+  return { ok, casesPath: CASES_PATH, contractChecks, results };
 }
 
 function usage() {

@@ -1,65 +1,46 @@
 # OUTPUT Gate
 
-Load when formatting the final document and change report, after VALIDATE passes.
-
-**STOP. DO NOT proceed. Verify the VALIDATE gate passed before outputting.**
+Load after VALIDATE passes. Write only when the request authorizes a file change; otherwise present the deliverable in chat.
 
 ### Pre-Conditions
-- [ ] VALIDATE gate completed
-- [ ] All required checks passed
-- [ ] No intent changes confirmed
+- [ ] VALIDATE passed and write authority is known.
 
-### Choosing the variant
-- **IF** the user wants a complete rewritten document → **THEN** use Variant A.
-- **IF** the user wants minimal edits/delta only → **THEN** use Variant B.
-- **IF** the user wants review-only, or the runtime cannot write safely → **THEN** use Variant B unless a full rewrite was explicitly requested.
-- **IF** the user did not specify → **THEN** default to Variant A.
+## Choose A Variant
 
-### Report header (both variants)
+- Full optimized document when the user requests a rewrite or leaves format unspecified.
+- Patch-style delta for minimal edits, review-only work, or unsafe/unavailable writes.
+
 ```markdown
 # Optimization Complete
 ## Summary
-- Issues Found: [N]
-- Fixes Applied: [N]
-- Intent Preserved: Yes
-- Best-Practices Grade: [before] → [after]
-## Changes Made
-| Category | Count | Examples |
-|----------|-------|----------|
-| Command Strengthening | [N] | [Brief example] |
-| Gates Added/Fixed | [N] | [Brief example] |
-| Redundancy Removed | [N] | [Brief example] |
-```
+- Issues: <N>; fixes: <N>; intent preserved: Yes
+- Grade: <before> → <after>
+- Files changed: <paths or none>
 
-### Variant A — full document (default)
-```markdown
+## Changes
+| Category | Count | Example / reason |
+|---|---:|---|
+| <category> | <N> | <bounded description> |
+
 ## Optimized Document
-[Full optimized content]
-```
+<full content; omit for delta mode>
 
-### Variant B — patch-style delta (minimal edits)
-```markdown
 ## Patch-Style Delta
 | Section | Before | After | Why |
-|---------|--------|-------|-----|
-| [Section name] | [Old text] | [New text] | [Reason] |
+|---|---|---|---|
+| <section> | <old> | <new> | <reason> |
 ```
 
 ### Gate Check
-- [ ] Selected variant matches user intent
-- [ ] Report header included
-- [ ] Deliverable present (full document for A, delta table for B)
+- [ ] Variant matches the request; summary and required deliverable are present.
+- [ ] File-change claims match writes that actually succeeded.
 
 ### Forbidden
-- Deviating from the selected output variant
-- Outputting without a validation pass
-- Omitting the required deliverable
-- Claiming a file was updated when the write policy prevented edits
+- Output before validation, omitted deliverable, or false write claims.
 
 ### Allowed
-- Safe file edit/write to save the optimized content
-- Text output (summary plus document)
+- Safe approved write, complete chat rewrite, or concise delta.
 
 ### On Failure
-- **IF** the format deviates → **THEN** regenerate the output.
-- **IF** the user requests changes → **THEN** return to the FIX gate.
+- **IF** format alone is wrong → **THEN** regenerate OUTPUT.
+- **IF** requested changes alter the fix → **THEN** return to FIX and revalidate.

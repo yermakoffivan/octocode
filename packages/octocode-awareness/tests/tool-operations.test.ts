@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initDb } from '../src/db.js';
@@ -34,10 +34,11 @@ describe('runAwarenessToolOperation', () => {
         label: 'GOTCHA',
         tags: ['auth'],
         files: ['src/auth.ts'],
-        workspace_path: dir,
       }, dir);
       expect(recorded.exitCode).toBe(0);
       const memoryId = (recorded.payload as { memory_id: string }).memory_id;
+      expect(db.prepare('SELECT workspace_path FROM memories WHERE memory_id = ?').get(memoryId))
+        .toEqual({ workspace_path: realpathSync(dir) });
 
       const duplicate = run(db, 'record', {
         task_context: 'auth migration',
@@ -57,20 +58,27 @@ describe('runAwarenessToolOperation', () => {
         failure_signature: 'mechanism:auth|cause:order',
         fix_repo: 'Document auth migration order',
         fix_harness: 'Remind agents to check migration order',
+        fix_instructions: 'Explain the migration-order precondition',
         eval_failures: [{ id: 'eval-auth', failure_signature: 'mechanism:auth|cause:order' }],
         workspace_path: dir,
       }, dir);
       expect(reflected.exitCode).toBe(0);
-      expect(reflected.payload).toMatchObject({ outcome: 'failed' });
+      expect(reflected.payload).toMatchObject({
+        outcome: 'failed',
+        instructions_feedback: true,
+      });
+      expect(String((reflected.payload as { next: string }).next)).toContain('octocode-awareness refinement get');
 
       const refinements = run(db, 'refine_get', { workspace_path: dir, include_handoffs: true }, dir);
       expect((refinements.payload as { count: number }).count).toBeGreaterThanOrEqual(1);
 
       const weakness = run(db, 'mine_weakness', { workspace_path: dir, min_count: 1 }, dir);
       expect((weakness.payload as { total_memories: number }).total_memories).toBeGreaterThanOrEqual(1);
+      expect(String((weakness.payload as { next: string }).next)).toContain('octocode-awareness reflect record');
 
       const harness = run(db, 'export_harness', { workspace_path: dir, min_importance: 1, limit: 5 }, dir);
       expect(String((harness.payload as { markdown: string }).markdown)).toContain('auth');
+      expect(String((harness.payload as { next: string }).next)).toContain('Human review required');
       const emptyHarness = run(freshDb(), 'export_harness', { workspace_path: dir, min_importance: 10, limit: 1 }, dir);
       expect(String((emptyHarness.payload as { next: string }).next)).toContain('No harness proposals');
 
@@ -109,8 +117,8 @@ describe('runAwarenessToolOperation', () => {
         ttl_ms: 60_000,
       }, dir);
       expect(lock.exitCode).toBe(0);
-      const taskId = (lock.payload as { taskId: string }).taskId;
-      expect(taskId).toMatch(/^task_/);
+      const runId = (lock.payload as { runId: string }).runId;
+      expect(runId).toMatch(/^run_/);
 
       const status = run(db, 'file_lock', { type: 'status', target_files: [file] }, dir);
       expect(status.exitCode).toBe(0);
@@ -124,7 +132,7 @@ describe('runAwarenessToolOperation', () => {
 
       const pending = run(db, 'file_lock', {
         type: 'release',
-        task_id: taskId,
+        run_id: runId,
         status: 'PENDING',
       }, dir);
       expect(pending.exitCode).toBe(0);
@@ -138,20 +146,20 @@ describe('runAwarenessToolOperation', () => {
 
       const first = run(db, 'file_lock', { type: 'lock', target_files: [join(dir, 'b.ts')], reasoning: 'batch 1' }, dir);
       const second = run(db, 'file_lock', { type: 'lock', target_files: [join(dir, 'c.ts')], reasoning: 'batch 2' }, dir);
-      const firstTask = (first.payload as { taskId: string }).taskId;
-      const secondTask = (second.payload as { taskId: string }).taskId;
-      run(db, 'file_lock', { type: 'release', task_id: firstTask, status: 'PENDING' }, dir);
-      run(db, 'file_lock', { type: 'release', task_id: secondTask, status: 'PENDING' }, dir);
-      const batch = run(db, 'verify', { task_ids: [firstTask, secondTask, firstTask], status: 'FAILED' }, dir);
+      const firstTask = (first.payload as { runId: string }).runId;
+      const secondTask = (second.payload as { runId: string }).runId;
+      run(db, 'file_lock', { type: 'release', run_id: firstTask, status: 'PENDING' }, dir);
+      run(db, 'file_lock', { type: 'release', run_id: secondTask, status: 'PENDING' }, dir);
+      const batch = run(db, 'verify', { run_ids: [firstTask, secondTask, firstTask], status: 'FAILED' }, dir);
       expect(batch.payload).toMatchObject({ count: 2 });
 
       const third = run(db, 'file_lock', { type: 'lock', target_files: [join(dir, 'd.ts')], reasoning: 'mixed pending' }, dir);
       const fourth = run(db, 'file_lock', { type: 'lock', target_files: [join(dir, 'e.ts')], reasoning: 'mixed pending two' }, dir);
-      const thirdTask = (third.payload as { taskId: string }).taskId;
-      const fourthTask = (fourth.payload as { taskId: string }).taskId;
-      run(db, 'file_lock', { type: 'release', task_id: thirdTask, status: 'PENDING' }, dir);
-      run(db, 'file_lock', { type: 'release', task_id: fourthTask, status: 'PENDING' }, dir);
-      const mixed = run(db, 'verify', { task_id: thirdTask, allPending: true, status: 'SUCCESS' }, dir);
+      const thirdTask = (third.payload as { runId: string }).runId;
+      const fourthTask = (fourth.payload as { runId: string }).runId;
+      run(db, 'file_lock', { type: 'release', run_id: thirdTask, status: 'PENDING' }, dir);
+      run(db, 'file_lock', { type: 'release', run_id: fourthTask, status: 'PENDING' }, dir);
+      const mixed = run(db, 'verify', { run_id: thirdTask, allPending: true, status: 'SUCCESS' }, dir);
       expect(mixed.exitCode).toBe(0);
 
       const published = run(db, 'agent_signal', {
@@ -194,11 +202,11 @@ describe('runAwarenessToolOperation', () => {
 
       const workspace = run(db, 'workspace_status', { workspace_path: dir }, dir);
       expect(workspace.exitCode).toBe(0);
-      expect(workspace.payload).toHaveProperty('active_tasks');
+      expect(workspace.payload).toHaveProperty('active_runs');
 
       const stale = run(db, 'file_lock', { type: 'lock', target_files: [join(dir, 'stale.ts')], reasoning: 'stale active' }, dir);
-      const staleTask = (stale.payload as { taskId: string }).taskId;
-      db.prepare('DELETE FROM locks WHERE task_id = ?').run(staleTask);
+      const staleTask = (stale.payload as { runId: string }).runId;
+      db.prepare('DELETE FROM locks WHERE run_id = ?').run(staleTask);
       const staleAudit = run(db, 'audit_unverified', {}, dir);
       expect(staleAudit.exitCode).toBe(1);
       expect(staleAudit.payload).toHaveProperty('stale_active');

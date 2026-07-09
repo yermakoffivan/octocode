@@ -73,7 +73,9 @@ const awarenessQueryView = z
     "memories",
     "gotchas",
     "lessons",
+    "plans",
     "tasks",
+    "runs",
     "locks",
     "agents",
     "signals",
@@ -81,6 +83,7 @@ const awarenessQueryView = z
     "files",
     "activity",
     "workboard",
+    "developer-review",
   ])
   .default("all")
   .describe("Awareness read view.");
@@ -346,7 +349,8 @@ export const schemas = {
       agent_id: agentId,
       workspace: z.string().trim().min(1).max(1024).optional().describe("Workspace scope."),
       artifact: artifactScope.optional(),
-      plan_doc_ref: z.string().trim().min(1).max(1024).optional(),
+      run_id: z.string().trim().min(1).max(128).optional().describe("Existing claimed run to attach locks to."),
+      context_ref: z.string().trim().min(1).max(1024).optional(),
       rationale: nonEmptyText("Why edit.", 2000),
       target_files: targetFiles,
       test_plan: nonEmptyText("Verification plan.", 2000),
@@ -360,6 +364,72 @@ export const schemas = {
     })
     .strict()
     .describe("Claim file locks."),
+
+  plan: z
+    .object({
+      action: z.enum(["create", "list", "show", "join", "doc", "status"]),
+      plan_id: z.string().trim().min(1).max(128).optional(),
+      name: nonEmptyText("Plan name.", 200).optional(),
+      objective: nonEmptyText("Plan objective.", 4000).optional(),
+      lead_agent_id: agentId.optional(),
+      agent_id: agentId.optional(),
+      workspace: workspacePath.optional(),
+      artifact: artifactScope.optional(),
+      status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"]).optional(),
+      path: z.string().trim().min(1).max(1024).optional(),
+      title: nonEmptyText("Supporting document title.", 300).optional(),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      const required = (field) => {
+        if (value[field] === undefined) ctx.addIssue({ code: "custom", path: [field], message: `${field} is required for ${value.action}` });
+      };
+      if (value.action === "create") for (const field of ["name", "objective", "lead_agent_id", "workspace"]) required(field);
+      if (["show", "join", "doc", "status"].includes(value.action)) required("plan_id");
+      if (["join", "doc", "status"].includes(value.action)) required("agent_id");
+      if (value.action === "doc") for (const field of ["path", "title"]) required(field);
+      if (value.action === "status") required("status");
+    })
+    .describe("Create, inspect, join, or transition a collaborative plan."),
+
+  task: z
+    .object({
+      action: z.enum(["create", "list", "ready", "show", "claim", "heartbeat", "submit", "release", "depend"]),
+      task_id: z.string().trim().min(1).max(128).optional(),
+      plan_id: z.string().trim().min(1).max(128).optional(),
+      run_id: z.string().trim().min(1).max(128).optional(),
+      title: nonEmptyText("Task title.", 300).optional(),
+      reasoning: nonEmptyText("Why this work exists and what decisions constrain it.", 4000).optional(),
+      acceptance: nonEmptyText("Done/verification criteria.", 4000).optional(),
+      path: z.array(z.string().trim().min(1).max(1024)).max(200).default([]),
+      depends_on: z.array(z.string().trim().min(1).max(128)).max(200).default([]),
+      created_by: agentId.optional(),
+      agent_id: agentId.optional(),
+      priority: z.number().int().min(-1000).max(1000).default(0),
+      lease_minutes: z.number().int().min(1).max(60).default(30),
+      test_plan: nonEmptyText("Run verification plan.", 4000).optional(),
+      message: nonEmptyText("Submission message.", 2000).optional(),
+      blocked_reason: nonEmptyText("Why the task is blocked.", 2000).optional(),
+      status: z.enum(["OPEN", "IN_PROGRESS", "BLOCKED", "VERIFY", "DONE", "FAILED", "CANCELLED"]).optional(),
+      next: z.boolean().default(false),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      const required = (field) => {
+        if (value[field] === undefined || value[field] === "") ctx.addIssue({ code: "custom", path: [field], message: `${field} is required for ${value.action}` });
+      };
+      if (value.action === "create") {
+        for (const field of ["plan_id", "title", "reasoning", "agent_id"]) required(field);
+        if (value.path.length === 0) ctx.addIssue({ code: "custom", path: ["path"], message: "at least one path is required for create" });
+      }
+      if (["show", "heartbeat", "submit", "release", "depend"].includes(value.action)) required("task_id");
+      if (value.action === "claim" && !value.next) required("task_id");
+      if (value.action === "claim" && value.next) required("plan_id");
+      if (["claim", "heartbeat", "submit", "release", "depend"].includes(value.action)) required("agent_id");
+      if (["heartbeat", "submit", "release"].includes(value.action)) required("run_id");
+      if (value.action === "depend" && value.depends_on.length === 0) ctx.addIssue({ code: "custom", path: ["depends_on"], message: "at least one dependency is required" });
+    })
+    .describe("Create, choose, claim, and complete durable plan tasks."),
 
   wait_for_lock: z
     .object({
@@ -443,7 +513,7 @@ export const schemas = {
   release_file_lock: z
     .object({
       agent_id: agentId,
-      task_id: z.string().trim().min(1).max(128).optional(),
+      run_id: z.string().trim().min(1).max(128).optional(),
       workspace: workspacePath.optional(),
       artifact: artifactScope.optional(),
       target_files: z.array(z.string().trim().min(1).max(1024)).max(200).optional(),
@@ -455,6 +525,9 @@ export const schemas = {
       verified_note: z.string().trim().min(1).max(2000).optional().describe("Verification note."),
     })
     .strict()
+    .refine((value) => value.run_id !== undefined || (value.target_files?.length ?? 0) > 0, {
+      message: "run_id or target_files is required.",
+    })
     .describe("Release locks."),
 
   verify: z
@@ -462,16 +535,19 @@ export const schemas = {
       agent_id: agentId,
       workspace: z.string().trim().min(1).max(1024).optional().describe("Workspace filter."),
       artifact: artifactScope.optional(),
-      task_id: z
+      run_id: z
         .array(z.string().trim().min(1).max(128))
         .max(200)
         .default([])
-        .describe("Task ids."),
-      all_pending: z.boolean().default(false).describe("All pending tasks."),
+        .describe("Run ids."),
+      all_pending: z.boolean().default(false).describe("All pending runs."),
       status: z.enum(["SUCCESS", "FAILED"]).default("SUCCESS").describe("Verification status."),
       message: z.string().trim().min(1).max(2000).optional().describe("Verification note."),
     })
     .strict()
+    .refine((value) => value.all_pending || value.run_id.length > 0, {
+      message: "run_id or all_pending is required.",
+    })
     .describe("Mark verified."),
 
   audit_unverified: z
@@ -479,10 +555,10 @@ export const schemas = {
       agent_id: agentId,
       workspace: workspacePath.optional(),
       artifact: artifactScope.optional(),
-      abandon: z.boolean().default(false).describe("Mark pending tasks FAILED instead of only listing."),
+      abandon: z.boolean().default(false).describe("Mark pending runs FAILED instead of only listing."),
     })
     .strict()
-    .describe("List or abandon unverified tasks."),
+    .describe("List or abandon unverified runs."),
 
   forget_memory: z
     .object({
@@ -775,13 +851,30 @@ export const examples = {
     agent_id: "agent",
     workspace: "/repo",
     artifact: "pkg",
-    plan_doc_ref: "docs/plan.md",
+    context_ref: "docs/decision.md",
     rationale: "edit",
     target_files: ["src/file.ts", "src/file.test.ts"],
     test_plan: "test passed",
     lock_type: "EXCLUSIVE",
     retry_interval: 5,
     ttl_seconds: 600,
+  },
+  plan: {
+    action: "create",
+    name: "Release readiness",
+    objective: "Coordinate the remaining release work.",
+    lead_agent_id: "agent-lead",
+    workspace: "/repo",
+  },
+  task: {
+    action: "create",
+    plan_id: "plan_abc123",
+    title: "Add schema migration",
+    reasoning: "Consumers need the new storage contract first.",
+    acceptance: "Migration and focused tests pass.",
+    path: ["src/db.ts", "tests/migration.test.ts"],
+    agent_id: "agent-lead",
+    priority: 10,
   },
   wait_for_lock: {
     agent_id: "agent",
@@ -828,7 +921,7 @@ export const examples = {
   },
   release_file_lock: {
     agent_id: "agent",
-    task_id: "task_abc123",
+    run_id: "run_abc123",
     workspace: "/repo",
     artifact: "pkg",
     status: "SUCCESS",
@@ -839,7 +932,7 @@ export const examples = {
     agent_id: "agent",
     workspace: "/repo",
     artifact: "pkg",
-    task_id: ["task_abc123"],
+    run_id: ["run_abc123"],
     all_pending: false,
     status: "SUCCESS",
     message: "test passed",
@@ -933,7 +1026,7 @@ const listableSchemas = [
   "tell_memory", "get_memory",
   "attend", "query", "repo_inject",
   "workspace_status", "export_harness", "session_capture",
-  "pre_flight_intent", "wait_for_lock", "prune_stale_locks", "release_file_lock", "verify", "audit_unverified",
+  "plan", "task", "pre_flight_intent", "wait_for_lock", "prune_stale_locks", "release_file_lock", "verify", "audit_unverified",
   "forget_memory", "refinement", "refine_query", "refine_delete",
   "agent_registry", "agent_signal", "signal_prune",
   "mine_weakness", "developer_review", "doc_staleness", "docs_catalog", "digest", "reflect",
@@ -942,6 +1035,21 @@ const listableSchemas = [
 const commandIndex = [
   { command: "attend", schema: "attend", use: "Build one compact start packet with profile, workboard, evidence, gaps, organ_state, and drive_state.", example: 'octocode-awareness attend --query "current task" --workspace "$PWD" --compact' },
   { command: "workspace status", schema: "workspace_status", use: "Check DB health, locks, pending verification, memory counts.", example: 'octocode-awareness workspace status --workspace "$PWD" --compact' },
+  { command: "plan create", schema: "plan", use: "Create a shared plan and its managed narrative document folder.", example: 'octocode-awareness plan create --name "Release" --objective "Ship safely" --lead-agent-id agent --workspace "$PWD" --compact' },
+  { command: "plan list", schema: "plan", use: "List plans in the current workspace scope.", example: 'octocode-awareness plan list --workspace "$PWD" --compact' },
+  { command: "plan show", schema: "plan", use: "Inspect one plan, its docs, and participating agents.", example: "octocode-awareness plan show --plan-id plan_123 --compact" },
+  { command: "plan join", schema: "plan", use: "Join an agent to a shared plan.", example: "octocode-awareness plan join --plan-id plan_123 --agent-id agent --compact" },
+  { command: "plan doc", schema: "plan", use: "Register a supporting document inside the managed plan folder.", example: "octocode-awareness plan doc --plan-id plan_123 --agent-id agent --path docs/DESIGN.md --title Design --compact" },
+  { command: "plan status", schema: "plan", use: "Let the lead transition the plan lifecycle.", example: "octocode-awareness plan status --plan-id plan_123 --agent-id lead --status ACTIVE --compact" },
+  { command: "task create", schema: "task", use: "Create dependency-aware plan work with reasoning and paths.", example: 'octocode-awareness task create --plan-id plan_123 --title "Schema" --reasoning "Consumers need it first" --path src/db.ts --agent-id lead --compact' },
+  { command: "task list", schema: "task", use: "List durable tasks and current claim state.", example: "octocode-awareness task list --plan-id plan_123 --compact" },
+  { command: "task ready", schema: "task", use: "List unblocked, unclaimed tasks agents may choose.", example: "octocode-awareness task ready --plan-id plan_123 --compact" },
+  { command: "task show", schema: "task", use: "Inspect task reasoning, paths, dependencies, and claim.", example: "octocode-awareness task show --task-id task_123 --compact" },
+  { command: "task claim", schema: "task", use: "Atomically claim one task and create its execution run.", example: "octocode-awareness task claim --task-id task_123 --agent-id agent --compact" },
+  { command: "task heartbeat", schema: "task", use: "Extend an active task claim lease.", example: "octocode-awareness task heartbeat --task-id task_123 --run-id run_123 --agent-id agent --compact" },
+  { command: "task submit", schema: "task", use: "Submit claimed work to the verification lane.", example: 'octocode-awareness task submit --task-id task_123 --run-id run_123 --agent-id agent --message "tests pass" --compact' },
+  { command: "task release", schema: "task", use: "Release or block claimed work without declaring success.", example: "octocode-awareness task release --task-id task_123 --run-id run_123 --agent-id agent --compact" },
+  { command: "task depend", schema: "task", use: "Add dependency edges within one plan.", example: "octocode-awareness task depend --task-id task_2 --depends-on task_1 --agent-id lead --compact" },
   { command: "memory recall", schema: "get_memory", use: "Recall repo lessons before planning or editing.", example: 'octocode-awareness memory recall --query "current task" --workspace "$PWD" --compact' },
   { command: "memory record", schema: "tell_memory", use: "Store durable lessons, decisions, gotchas, or observations.", example: 'octocode-awareness memory record --agent-id agent --task-context "task" --observation "lesson" --importance 7 --workspace "$PWD" --compact' },
   { command: "memory forget", schema: "forget_memory", use: "Delete selected stale memories; dry-run first.", example: "octocode-awareness memory forget --memory-id mem_123 --dry-run --compact" },
@@ -950,7 +1058,7 @@ const commandIndex = [
   { command: "refinement delete", schema: "refine_delete", use: "Delete stale refinement rows; dry-run first.", example: "octocode-awareness refinement delete --refinement-id ref_123 --dry-run --compact" },
   { command: "lock acquire", schema: "pre_flight_intent", use: "Claim files before edits; exit 2 means conflict.", example: 'octocode-awareness lock acquire --agent-id agent --target-file src/file.ts --rationale "edit" --test-plan "yarn test" --compact' },
   { command: "lock wait", schema: "wait_for_lock", use: "Wait for existing file locks without claiming.", example: "octocode-awareness lock wait --agent-id agent --target-file src/file.ts --wait-seconds 60 --compact" },
-  { command: "lock release", schema: "release_file_lock", use: "Release file claims as SUCCESS, FAILED, or PENDING.", example: "octocode-awareness lock release --agent-id agent --task-id task_123 --status SUCCESS --verified --compact" },
+  { command: "lock release", schema: "release_file_lock", use: "Release file claims as SUCCESS, FAILED, or PENDING.", example: "octocode-awareness lock release --agent-id agent --run-id run_123 --status SUCCESS --verified --compact" },
   { command: "lock prune", schema: "prune_stale_locks", use: "Clean expired/stale locks; never marks success.", example: 'octocode-awareness lock prune --workspace "$PWD" --expired-only --dry-run --compact' },
   { command: "verify audit", schema: "audit_unverified", use: "Find pending or stale work before finishing.", example: 'octocode-awareness verify audit --agent-id agent --workspace "$PWD" --compact' },
   { command: "verify mark", schema: "verify", use: "Mark declared verification as run.", example: 'octocode-awareness verify mark --agent-id agent --all-pending --message "yarn test passed" --workspace "$PWD" --compact' },

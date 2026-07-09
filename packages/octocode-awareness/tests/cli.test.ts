@@ -518,10 +518,12 @@ describe('reflect', () => {
     expect(result['developer_review_refinement_id']).toMatch(/^ref_/);
   });
 
-  it('includes next field as non-empty string', () => {
+  it('includes canonical next commands that close the reflection loop', () => {
     const result = ok(db, ['reflect', 'record', '--agent-id', 'a', '--task', 't', '--outcome', 'worked']);
     expect(typeof result['next']).toBe('string');
-    expect((result['next'] as string).length).toBeGreaterThan(10);
+    expect(result['next']).toContain('octocode-awareness refinement get');
+    expect(result['next']).toContain('octocode-awareness reflect mine-weakness');
+    expect(result['next']).not.toContain('memory_refine_get');
   });
 
   it('missing --task exits 1', () => {
@@ -646,16 +648,16 @@ describe('lock acquire', () => {
   });
   afterAll(() => rmSync(dir, { recursive: true }));
 
-  it('acquires lock and returns task shape', () => {
+  it('acquires lock and returns run shape', () => {
     const result = ok(db, [
       'lock', 'acquire', '--agent-id', 'agent-a', '--workspace', dir,
       '--rationale', 'test write', '--test-plan', 'verify afterwards',
       '--target-file', targetFile,
     ]);
-    const task = result['task'] as Record<string, unknown>;
-    expect(task['task_id']).toMatch(/^task_/);
-    expect(task['status']).toBe('ACTIVE');
-    expect(task['target_files']).toContain(targetFile);
+    const executionRun = result['run'] as Record<string, unknown>;
+    expect(executionRun['run_id']).toMatch(/^run_/);
+    expect(executionRun['status']).toBe('ACTIVE');
+    expect(executionRun['target_files']).toContain(targetFile);
   });
 
   it('second agent blocked with exit 2', () => {
@@ -705,29 +707,29 @@ describe('lock acquire', () => {
     expect(nonIntegerWait.parsed?.['error']).toContain('--wait-seconds must be an integer');
   });
 
-  it('accepts retry interval and persists plan_doc_ref', () => {
+  it('accepts retry interval and persists context_ref', () => {
     const plannedFile = join(dir, 'planned.txt');
     writeFileSync(plannedFile, 'planned');
     const result = ok(db, [
       'lock', 'acquire', '--agent-id', 'agent-plan', '--workspace', dir,
       '--rationale', 'planned edit', '--test-plan', 'planned test',
-      '--plan-doc-ref', 'docs/plans/awareness.md',
+      '--context-ref', 'docs/plans/awareness.md',
       '--target-file', plannedFile,
       '--retry-interval', '1',
     ]);
-    const task = result['task'] as Record<string, unknown>;
-    expect(task['plan_doc_ref']).toBe('docs/plans/awareness.md');
+    const executionRun = result['run'] as Record<string, unknown>;
+    expect(executionRun['context_ref']).toBe('docs/plans/awareness.md');
 
     ok(db, [
       'lock', 'release', '--agent-id', 'agent-plan',
-      '--task-id', task['task_id'] as string,
+      '--run-id', executionRun['run_id'] as string,
       '--status', 'PENDING',
     ]);
     const auditResult = run(db, [
       'verify', 'audit', '--agent-id', 'agent-plan', '--workspace', dir,
     ]);
     expect(auditResult.status).toBe(1);
-    expect((auditResult.parsed?.['unverified'] as Record<string, unknown>[])[0]?.['plan_doc_ref']).toBe('docs/plans/awareness.md');
+    expect((auditResult.parsed?.['unverified'] as Record<string, unknown>[])[0]?.['context_ref']).toBe('docs/plans/awareness.md');
   });
 
   it('rejects ttl-minutes above the runtime cap', () => {
@@ -751,14 +753,14 @@ describe('lock release', () => {
   });
   afterAll(() => rmSync(dir, { recursive: true }));
 
-  it('releases by task_id, then allows re-claim', () => {
+  it('releases by run_id, then allows re-claim', () => {
     const claim = ok(db, [
       'lock', 'acquire', '--agent-id', 'agent-a', '--target-file', targetFile,
     ]);
-    const taskId = (claim['task'] as Record<string, unknown>)['task_id'] as string;
+    const runId = (claim['run'] as Record<string, unknown>)['run_id'] as string;
 
     const releaseAttempt = run(db, [
-      'lock', 'release', '--agent-id', 'agent-a', '--task-id', taskId, '--status', 'SUCCESS',
+      'lock', 'release', '--agent-id', 'agent-a', '--run-id', runId, '--status', 'SUCCESS',
     ]);
     expect(releaseAttempt.status).toBe(2);
     const rel = releaseAttempt.parsed!;
@@ -770,27 +772,27 @@ describe('lock release', () => {
 
     // Should now be claimable by agent-b
     const b = ok(db, ['lock', 'acquire', '--agent-id', 'agent-b', '--target-file', targetFile]);
-    expect((b['task'] as Record<string, unknown>)['agent_id']).toBe('agent-b');
+    expect((b['run'] as Record<string, unknown>)['agent_id']).toBe('agent-b');
   });
 
   it('PENDING and FAILED statuses accepted', () => {
     // Release agent-b's lock from the previous test first
     ok(db, ['lock', 'release', '--agent-id', 'agent-b', '--target-file', targetFile, '--status', 'PENDING']);
     const claim = ok(db, ['lock', 'acquire', '--agent-id', 'agent-x', '--target-file', targetFile]);
-    const taskId = (claim['task'] as Record<string, unknown>)['task_id'] as string;
+    const runId = (claim['run'] as Record<string, unknown>)['run_id'] as string;
     const rel = ok(db, [
-      'lock', 'release', '--agent-id', 'agent-x', '--task-id', taskId, '--status', 'PENDING',
+      'lock', 'release', '--agent-id', 'agent-x', '--run-id', runId, '--status', 'PENDING',
     ]);
     expect(rel['status']).toBe('PENDING');
   });
 
-  it('no --task-id and no --target-file exits 1', () => {
+  it('no --run-id and no --target-file exits 1', () => {
     fail(db, ['lock', 'release', '--agent-id', 'a']);
   });
 
-  it('no matching task-id exits 1 instead of pretending release succeeded', () => {
+  it('no matching run-id exits 1 instead of pretending release succeeded', () => {
     const rel = run(db, [
-      'lock', 'release', '--agent-id', 'agent-missing', '--task-id', 'task_missing', '--status', 'PENDING',
+      'lock', 'release', '--agent-id', 'agent-missing', '--run-id', 'run_missing', '--status', 'PENDING',
     ]);
     expect(rel.status).toBe(1);
     expect(rel.parsed?.['ok']).toBe(false);
@@ -805,8 +807,8 @@ describe('verify', () => {
   beforeAll(() => { dir = mktemp(); db = join(dir, 'test.sqlite3'); });
   afterAll(() => rmSync(dir, { recursive: true }));
 
-  it('verifies repeated explicit task ids in one command', () => {
-    const taskIds: string[] = [];
+  it('verifies repeated explicit run ids in one command', () => {
+    const runIds: string[] = [];
     for (const name of ['one.txt', 'two.txt']) {
       const filePath = join(dir, name);
       writeFileSync(filePath, name);
@@ -818,9 +820,9 @@ describe('verify', () => {
         '--rationale', `edit ${name}`,
         '--test-plan', 'run focused verification',
       ]);
-      const taskId = (claim['task'] as Record<string, unknown>)['task_id'] as string;
-      taskIds.push(taskId);
-      ok(db, ['lock', 'release', '--agent-id', 'agent-v', '--task-id', taskId, '--status', 'PENDING']);
+      const runId = (claim['run'] as Record<string, unknown>)['run_id'] as string;
+      runIds.push(runId);
+      ok(db, ['lock', 'release', '--agent-id', 'agent-v', '--run-id', runId, '--status', 'PENDING']);
     }
 
     const before = run(db, ['verify', 'audit', '--agent-id', 'agent-v', '--workspace', dir]);
@@ -831,12 +833,12 @@ describe('verify', () => {
       'verify', 'mark',
       '--agent-id', 'agent-v',
       '--workspace', dir,
-      '--task-id', taskIds[0]!,
-      '--task-id', taskIds[1]!,
+      '--run-id', runIds[0]!,
+      '--run-id', runIds[1]!,
       '--message', 'run focused verification passed',
     ]);
-    expect(verified['task_id']).toBeNull();
-    expect(verified['task_ids']).toEqual(taskIds);
+    expect(verified['run_id']).toBeNull();
+    expect(verified['run_ids']).toEqual(runIds);
     expect(verified['count']).toBe(2);
 
     const after = ok(db, ['verify', 'audit', '--agent-id', 'agent-v', '--workspace', dir]);
@@ -906,9 +908,9 @@ describe('workspace status', () => {
         '--rationale', 'scope normalization',
         '--test-plan', 'focused cli test',
       ]);
-      const task = claimed['task'] as Record<string, unknown>;
-      expect(task['workspace_path']).toBe(expectedRoot);
-      expect(task['target_files']).toEqual([join(pkg, 'src/a.ts')]);
+      const executionRun = claimed['run'] as Record<string, unknown>;
+      expect(executionRun['workspace_path']).toBe(expectedRoot);
+      expect(executionRun['target_files']).toEqual([join(pkg, 'src/a.ts')]);
 
       const status = ok(dbPath, ['workspace', 'status', '--workspace', pkg]);
       expect(status['workspace_path']).toBe(expectedRoot);
@@ -1123,6 +1125,8 @@ describe('CLI', () => {
       attend: 'attend',
       query: 'query',
       repo_inject: 'repo inject',
+      plan: 'plan create',
+      task: 'task create',
     };
     const unsupported = ['stats', 'embed_index', 'harness_apply', 'memory_export', 'memory_import', 'memory_index', 'view', 'notify', 'notify_query', 'notify_resolve', 'notify_prune', 'status'];
     expect(listed).not.toEqual(expect.arrayContaining(unsupported));
@@ -1388,7 +1392,7 @@ describe('repo context projections', () => {
       const workboard = ok(db, ['query', 'workboard', '--workspace', dir, '--limit', '10']);
       expect(workboard['view']).toBe('workboard');
       expect(workboard['rows']).toEqual(expect.arrayContaining([
-        expect.objectContaining({ column: 'Verify', item_type: 'task' }),
+        expect.objectContaining({ column: 'Verify', item_type: 'run' }),
       ]));
     } finally { rmSync(dir, { recursive: true }); }
   });
@@ -1425,7 +1429,7 @@ describe('repo context projections', () => {
         '--explain-organ',
         '--compact',
       ]);
-      expect(result['schema_version']).toBe(1);
+      expect(result['schema_version']).toBe(2);
       expect(result['profile']).toMatchObject({ active_memories: 1 });
       expect(result['workboard']).toMatchObject({ Inbox: expect.any(Array) });
       expect(result['evidence']).toEqual(expect.arrayContaining([
@@ -1749,6 +1753,38 @@ describe('signal', () => {
 // ─── integration: full round-trip ────────────────────────────────────────────
 
 describe('integration: full round-trip', () => {
+  it('creates a plan, chooses a ready task, claims, submits, and verifies it', () => {
+    const dir = mktemp();
+    const db = join(dir, 'test.sqlite3');
+    try {
+      const createdPlan = ok(db, [
+        'plan', 'create', '--name', 'Release readiness', '--objective', 'Coordinate remaining release work',
+        '--lead-agent-id', 'lead', '--workspace', dir,
+      ]);
+      const plan = createdPlan['plan'] as Record<string, unknown>;
+      const planId = String(plan['plan_id']);
+      expect(existsSync(join(dir, String(plan['doc_dir']), 'PLAN.md'))).toBe(true);
+
+      const createdTask = ok(db, [
+        'task', 'create', '--plan-id', planId, '--title', 'Schema migration',
+        '--reasoning', 'Consumers need the storage contract first', '--acceptance', 'Focused tests pass',
+        '--path', 'src/db.ts', '--agent-id', 'lead', '--priority', '10',
+      ]);
+      const taskId = String((createdTask['task'] as Record<string, unknown>)['task_id']);
+      const ready = ok(db, ['task', 'ready', '--plan-id', planId]);
+      expect((ready['tasks'] as Record<string, unknown>[]).map((task) => task['task_id'])).toContain(taskId);
+
+      const claimed = ok(db, ['task', 'claim', '--task-id', taskId, '--agent-id', 'worker']);
+      const runId = String((claimed['run'] as Record<string, unknown>)['run_id']);
+      expect(runId).toMatch(/^run_/);
+
+      ok(db, ['task', 'submit', '--task-id', taskId, '--run-id', runId, '--agent-id', 'worker', '--message', 'focused tests pass']);
+      ok(db, ['verify', 'mark', '--run-id', runId, '--agent-id', 'worker', '--message', 'focused tests pass']);
+      const shown = ok(db, ['task', 'show', '--task-id', taskId]);
+      expect((shown['task'] as Record<string, unknown>)['status']).toBe('DONE');
+    } finally { rmSync(dir, { recursive: true }); }
+  });
+
   it('two-agent claim → conflict → release → reclaim cycle', () => {
     const dir = mktemp();
     const db = join(dir, 'test.sqlite3');
@@ -1756,14 +1792,14 @@ describe('integration: full round-trip', () => {
     writeFileSync(tf, 'seed');
     try {
       const a = ok(db, ['lock', 'acquire', '--agent-id', 'agent-a', '--target-file', tf]);
-      const taskId = (a['task'] as Record<string, unknown>)['task_id'] as string;
+      const runId = (a['run'] as Record<string, unknown>)['run_id'] as string;
 
       const blocked = run(db, ['lock', 'acquire', '--agent-id', 'agent-b', '--target-file', tf]);
       expect(blocked.status).toBe(2);
 
-      ok(db, ['lock', 'release', '--agent-id', 'agent-a', '--task-id', taskId, '--status', 'PENDING']);
+      ok(db, ['lock', 'release', '--agent-id', 'agent-a', '--run-id', runId, '--status', 'PENDING']);
       const reclaim = ok(db, ['lock', 'acquire', '--agent-id', 'agent-b', '--target-file', tf]);
-      expect((reclaim['task'] as Record<string, unknown>)['agent_id']).toBe('agent-b');
+      expect((reclaim['run'] as Record<string, unknown>)['agent_id']).toBe('agent-b');
     } finally { rmSync(dir, { recursive: true }); }
   });
 

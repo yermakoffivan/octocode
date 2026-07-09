@@ -1,74 +1,43 @@
-# Hook Communication And Eval Harness
+# Run Ledger, Hooks, And Evaluation
 
-Load when a brainstorm is substantial, uses subagents, spans turns, or needs a high-confidence final answer. The harness is optional for quick answers.
+Load for substantial, multi-surface, multi-turn, subagent, saved-brief, or high-confidence work. Quick answers do not need the harness.
 
-## Run ledger
+## Run Ledger
 
-Start a ledger when the user asks for best results, RFC follow-up, multiple perspectives, or a saved brief, or when the run spans multiple active surfaces.
-The ledger is the durable claim record: every material claim should appear as a checkpoint with source and confidence, especially when evidence conflicts.
-
-```bash
-node skills/octocode-brainstorming/scripts/brainstorm-run.mjs start \
-  --idea "<user idea>" --mode Validate \
-  --surface-plan '{"local":"active if repo-relevant","githubPackages":"active","web":"active"}'
-```
-
-Record checkpoints at the three communication points and whenever a material claim changes confidence:
+Start only when local writes are acceptable. Default storage is `.octocode/brainstorming/runs/`; tests may set `OCTOCODE_BRAINSTORM_RUN_DIR`.
 
 ```bash
-node skills/octocode-brainstorming/scripts/brainstorm-run.mjs checkpoint \
-  --run-id <id> --stage research --summary "what changed" \
-  --claim "claim -> source -> confidence" --source "path-or-url"
+node skills/octocode-brainstorming/scripts/brainstorm-run.mjs start --idea "<idea>" --mode Validate --surface-plan '{"local":"active","web":"active"}'
+node skills/octocode-brainstorming/scripts/brainstorm-run.mjs checkpoint --run-id <id> --stage research --summary "<delta>" --claim "claim -> source -> confidence" --source "<path-or-url>"
+node skills/octocode-brainstorming/scripts/brainstorm-run.mjs finish --run-id <id> --verdict worth-prototyping --decision "Build RFC" --summary "<result>"
 ```
 
-Finish only after the final answer has verdict, decision, and next step:
+Checkpoint at surface-plan, decisive evidence, confidence changes, and final synthesis. Record both sides of conflicts and the final concession.
+Capture at most one durable awareness lesson from the surviving verdict. Never create one memory per checkpoint.
 
-```bash
-node skills/octocode-brainstorming/scripts/brainstorm-run.mjs finish \
-  --run-id <id> --verdict worth-prototyping --decision "Build RFC" \
-  --summary "one-sentence result"
-```
+## Hook Entrypoint
 
-At finish, produce one awareness capture packet from the final surviving verdict, or record a
-`doNotCaptureReason` when nothing durable survived. For packet fields and reference grammar, use the
-`octocode-awareness` skill's capture documentation when that skill is installed; otherwise keep the
-packet fields self-describing in the run file. Do not write one memory per checkpoint.
+`scripts/brainstorm-run.mjs hook` reads JSON on stdin. `hooks/hooks.json` wires these Claude-compatible events; Pi uses its extension adapter and other hosts need their native hook surface.
 
-Run files live in `.octocode/brainstorming/runs/` by default, so start a ledger only when local writes are acceptable. Override with `OCTOCODE_BRAINSTORM_RUN_DIR` for tests.
+| Event | Behavior with a matching active workspace run |
+|---|---|
+| UserPromptSubmit | emits bounded context: run, stage, latest summary, missing pieces |
+| Stop | exits 2 until finish; `OCTOCODE_BRAINSTORM_NO_STOP_GATE=1` bypasses |
+| SubagentStop | records completion; the main agent still checkpoints useful claims |
+| SessionEnd | records an unfinished session |
 
-When evidence conflicts, record both sides as separate checkpoints and add a final checkpoint naming the concession or unresolved decision point.
-Separate checkpoints keep the perspective review honest: the final answer must point back to the ledger entries that survived and the ones that were dropped.
+Hooks stay fast, deterministic, workspace-scoped, and fail-open except the deliberate Stop reminder. They never search, call models, or inspect secrets.
 
-## Hook entrypoint
-
-`scripts/brainstorm-run.mjs hook` is designed for hook systems that pass JSON on stdin. `hooks/hooks.json` contains optional hook wiring for `UserPromptSubmit`, `Stop`, `SubagentStop`, and `SessionEnd`; all events are no-ops unless a run ledger exists.
-
-- `UserPromptSubmit`: if an active run exists, emits bounded `additionalContext` with run id, stage, latest summary, and missing final-answer pieces.
-- `Stop`: if an active run exists and no finish was recorded, exits `2` once to remind the agent to finish or explicitly bypass with `OCTOCODE_BRAINSTORM_NO_STOP_GATE=1`.
-- `SubagentStop`: records that a subagent finished; the agent must still summarize useful claims into a checkpoint.
-- `SessionEnd`: records that a session ended with an active run.
-
-Keep hook scripts deterministic, fast, and fail-open except the deliberate Stop reminder. Do not make hooks search the web, call models, or inspect secrets.
-
-## Eval harness
-
-Evaluate final answers against structured cases:
+## Eval Harness
 
 ```bash
 node skills/octocode-brainstorming/scripts/eval-brainstorm.mjs --list
-node skills/octocode-brainstorming/scripts/eval-brainstorm.mjs \
-  --case idea-validation --input /tmp/answer.md --json
+node skills/octocode-brainstorming/scripts/eval-brainstorm.mjs --case idea-validation --input /tmp/answer.md --json
+node skills/octocode-brainstorming/scripts/brainstorm-run.mjs --self-test
 ```
 
-The evaluator checks observable answer behavior: mode, surface plan, citations, perspective review, decision label, next step, and forbidden failure modes.
-The evaluator does not prove the market or technical judgment is correct — human review still judges substance.
+The evaluator checks observable structure and failure modes, not whether market or technical judgment is true.
 
-## Communication protocol
+## User Communication
 
-Use only three user-visible progress notes:
-
-1. **Surface Plan**: active/skipped surfaces and why.
-2. **Research Checkpoint**: strongest new evidence, weakest claim, and whether a gate fired.
-3. **Final Decision**: verdict, decision label, confidence, next proof or RFC handoff.
-
-Do not paste raw subagent transcripts. Summarize what survived review and cite the evidence.
+Use only three progress notes: **Surface Plan**, **Research Checkpoint** (strongest evidence, weakest claim, gate), and **Final Decision** (verdict, confidence, next proof/RFC handoff). Summarize subagents; never paste transcripts.

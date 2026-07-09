@@ -41,8 +41,16 @@ function makeRunId(idea) {
   return `br_${stamp}_${slug(idea)}`;
 }
 
+function validateRunId(runId) {
+  const value = String(runId || '');
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)) {
+    throw new Error('Run id must be 1-128 letters, numbers, underscores, or hyphens');
+  }
+  return value;
+}
+
 function runPath(runId) {
-  return join(ensureRunDir(), `${runId}.json`);
+  return join(ensureRunDir(), `${validateRunId(runId)}.json`);
 }
 
 function readJson(path) {
@@ -73,8 +81,9 @@ function findRun(runId = '', cwd = '') {
     return readJson(path);
   }
   const runs = listRuns();
-  const active = runs.find(row => row.record.status === 'active' && (!cwd || row.record.cwd === cwd));
-  if (active) return active.record;
+  if (cwd) {
+    return runs.find(row => row.record.status === 'active' && row.record.cwd === cwd)?.record || null;
+  }
   const anyActive = runs.find(row => row.record.status === 'active');
   if (anyActive) return anyActive.record;
   return runs[0]?.record || null;
@@ -289,6 +298,16 @@ function runSelfTest() {
   process.env.OCTOCODE_BRAINSTORM_RUN_DIR = mkdtempSync(join(tmpdir(), 'brainstorm-run-'));
   try {
     const started = startRun({ idea: 'Test idea', mode: 'Validate', surfacePlan: '{"local":"active"}', claim: [], source: [] });
+    let unsafeRunIdRejected = false;
+    try {
+      startRun({ idea: 'Unsafe id', runId: '../escaped', claim: [], source: [] });
+    } catch {
+      unsafeRunIdRejected = true;
+    }
+    if (!unsafeRunIdRejected) throw new Error('unsafe run id was accepted');
+    if (findRun('', join(process.cwd(), 'different-workspace')) !== null) {
+      throw new Error('active run leaked across workspaces');
+    }
     checkpointRun({ runId: started.runId, stage: 'research', summary: 'Found evidence', claim: ['claim one'], source: ['skills/octocode-brainstorming/SKILL.md:57'] });
     const active = compactStatus(findRun(started.runId));
     if (!active.active || active.claims !== 1 || active.sources !== 1) throw new Error('active status mismatch');

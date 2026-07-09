@@ -77,24 +77,36 @@ Surfaces over one store:
 
 | Piece | Job |
 |---|---|
-| **CLI** (`octocode-awareness` / `npx @octocodeai/octocode-awareness`) | Execute operations: attend, lock, signal, verify, reflect, query, inject, digest. |
+| **CLI** (`octocode-awareness` / `npx @octocodeai/octocode-awareness`) | Execute operations: attend, plan, task, lock, signal, verify, reflect, query, inject, digest. |
 | **Skill** (`skills/octocode-awareness`) | Teach the agent *when* to call the CLI (before / during / after), with recipes and hooks. |
 | **Hooks** (host lifecycle) | Reflexes on the same CLI/runtime: claim, pending verify, stop gate, briefing, session capture. |
 | **Skill** (`skills/octocode-skills`) | Install, update, lint, rate, and improve Agent Skills (vendored at build from repo-root `skills/octocode-skills`). |
 
-Canonical data lives in **`~/.octocode/memory/awareness.sqlite3`** (override dir with `OCTOCODE_MEMORY_HOME`). Workspace path scopes rows so projects stay isolated. WAL mode lets concurrent agents read/write safely.
+Canonical data lives in **`~/.octocode/memory/awareness.sqlite3`** (override dir with `OCTOCODE_MEMORY_HOME`). Rows are scoped first by `workspace_path`, with optional `artifact`, `repo`, and `ref` scopes when one workspace needs finer isolation. WAL mode lets concurrent agents read/write safely.
 
-**`<repo>/.octocode/` is not the DB.** `repo inject` publishes capped Markdown / CSV / HTML projections for humans and LLMs. `.octocode/AGENTS.md` is the digested awareness map; root `AGENTS.md` should point there. Regenerate projections; do not treat them as source of truth.
+**`<repo>/.octocode/` is not the DB.** `repo inject` publishes capped Markdown / CSV / HTML projections for humans and LLMs. `.octocode/plan/<timestamp-name>/` is the managed exception: it stores plan narrative and supporting docs while SQLite stores live task/claim state. `repo inject` preserves plan folders.
+
+Memories, signals, and generated wiki pages are leads, not authority. User instructions, current source, tests, and fresh verification win when remembered context disagrees.
 
 ```text
 Agent A ──┐
-Agent B ──┼──▶  SQLite (canonical)  ──▶  attend / workboard / signals / locks
+Agent B ──┼──▶  SQLite (canonical)  ──▶  plans / tasks / runs / signals / locks
 Agent C ──┘              │
                          └──▶  .octocode/ wiki (projection, optional)
                                     └── AGENTS.md = map → MEMORY/GOTCHAS/LEARN/…
 ```
 
 ### State machine (skill + CLI + hooks)
+
+Collaborative work uses three non-overlapping entities:
+
+```text
+Plan (objective + lead + docs)
+  └── Task (reasoning + acceptance + paths + dependencies)
+        └── TaskRun (one attempt; owns exact file locks and verification)
+```
+
+Agents may skip Plan/Task for a quick edit: `lock acquire` creates a standalone TaskRun. A claimed task instead reuses one linked run across hook-driven edits.
 
 ```text
                     ┌─ notify-deliver / sessionStart (hook) ─┐
@@ -120,12 +132,12 @@ Agent C ──┘              │
 |---|---|---|
 | ATTEND | Skill (before) + optional briefing hook | `attend`, `query workboard`, `signal list` / `notify-deliver` |
 | CLAIMED | Skill (during) + pre-edit hook | `lock acquire` / `pre-edit.sh` |
-| PENDING_VERIFY | Post-edit hook (or manual) | `post-edit.sh` → task stays pending |
+| PENDING_VERIFY | `task submit`, or standalone post-edit/release | linked task → `VERIFY`; run → `PENDING` |
 | VERIFIED | Skill (after) + stop gate | `verify mark`; `stop-verify.sh` blocks silent conclude |
-| REFLECT / LEARN | Skill (after) | `reflect record`, `memory record` |
+| REFLECT / LEARN (bookkeep) | Skill (after) | `reflect record`, `memory record` |
 | PROJECTED | Skill (after) | `repo inject` → `.octocode/AGENTS.md` + wiki |
 | HAND_OFF | Session-end hook or manual | `session capture`, `refinement *`, `signal publish` |
-| IDLE / clean | Housekeep | `maintenance digest --dry-run`, prune |
+| IDLE / clean (housekeep) | Housekeep | `maintenance digest --dry-run`, prune |
 
 Manual CLI works without hooks. Hooks only automate the same transitions.
 
@@ -196,13 +208,15 @@ That is human-grade situational awareness — for machines that share your repo.
 | Feature | Commands | One-liner |
 |---|---|---|
 | Start packet | `attend` | Compact profile + workboard + evidence + gaps + drive/organ state. |
-| Status | `workspace status` | DB health, locks, pending verify, memory counts. |
+| Status | `workspace status` | Active plans, ready/claimed/verify tasks, runs, locks, and memory counts. |
+| Plans | `plan create\|list\|show\|join\|doc\|status` | Shared objective, lead agent, members, lifecycle, and `.octocode/plan/**` documents. |
+| Tasks | `task create\|list\|ready\|show\|claim\|heartbeat\|submit\|release\|depend` | Agents choose dependency-ready work and coordinate through leased claims. |
 | Memory | `memory record\|recall\|forget` | Durable lessons; lexical FTS by default; `--semantic` only with `OCTOCODE_EMBED_CMD`; recall returns few rows by default — raise `--limit` when you need more; `--explain` shows the scoring. |
 | File claims | `lock acquire\|wait\|release\|prune` | Visible concurrency; exit `2` = conflict. |
 | Verification debt | `verify audit\|mark` | Released ≠ success until the declared check ran. |
 | Signals | `signal publish\|list\|reply\|ack\|resolve\|prune` | Blockers, questions, decisions, handoffs; thread replies with `--in-reply-to`. |
 | Agents | `agent register\|list` | Who is active in this workspace. |
-| Handoffs | `refinement *`, `session capture` | Backlog outside chat history. Session-captured handoffs are `quality=handoff`; read them back with `refinement get --include-handoffs`. |
+| Handoffs | `refinement *`, `session capture` | Session continuity outside chat history; durable selectable work belongs in plan tasks. |
 | Reflection | `reflect record\|mine-weakness\|export-harness` | Lessons + weakness clusters; outcomes are `worked\|partial\|failed`; three feedback targets `--fix-repo\|--fix-harness\|--fix-instructions`; record `--failure-signature` on failures or mine-weakness has nothing to cluster; harness preview is human-gated. |
 | Developer review | `reflect developer-review` | Agent feedback to the human who authored the instructions (`--fix-instructions`); grouped Open/Resolved; regenerated into `.octocode/DEVELOPER_REVIEW.md`. |
 | Workboard / views | `query <view>` | JSON / table / CSV / Markdown / HTML over live rows. |
@@ -223,6 +237,8 @@ Source of truth: `octocode-awareness schema commands --compact`. The groups belo
 | Orientation | `attend` | Start a run with a compact packet: profile, workboard, evidence, gaps, organ state, and drive state. |
 | Orientation | `workspace status` | Check DB health, locks, pending verification, and memory counts before work. |
 | Orientation | `query` | Read live DB views as JSON, table, CSV, Markdown, or HTML. |
+| Planning | `plan create\|list\|show\|join\|doc\|status` | Create/govern shared objectives and register narrative docs. |
+| Planning | `task create\|list\|ready\|show\|claim\|heartbeat\|submit\|release\|depend` | Define, choose, lease, and complete collaborative work. |
 | Memory | `memory recall` | Bring back relevant lessons before planning or editing. |
 | Memory | `memory record` | Save durable lessons, decisions, gotchas, or observations for future agents. |
 | Memory | `memory forget` | Remove selected stale memories; dry-run first. |
@@ -276,13 +292,27 @@ Code search is **not** bundled here — use `npx octocode search …` or Octocod
 npx @octocodeai/octocode-awareness attend --workspace "$PWD" --query "current task" --compact
 npx @octocodeai/octocode-awareness query workboard --workspace "$PWD" --format table
 
-# Claim → edit → verify
+# Collaborative flow: choose a ready task, then use its run id for submit/verify
+npx @octocodeai/octocode-awareness task ready --plan-id plan_123 --compact
+npx @octocodeai/octocode-awareness task claim --task-id task_123 \
+  --agent-id "$OCTOCODE_AGENT_ID" --compact
+# hooks attach edits to the claimed run; when ready:
+npx @octocodeai/octocode-awareness task submit --task-id task_123 --run-id run_123 \
+  --agent-id "$OCTOCODE_AGENT_ID" --message "tests passed" --compact
+npx @octocodeai/octocode-awareness verify mark --run-id run_123 \
+  --agent-id "$OCTOCODE_AGENT_ID" --message "tests passed" --compact
+
+# Quick-edit flow: no plan/task required
 npx @octocodeai/octocode-awareness lock acquire --agent-id "$OCTOCODE_AGENT_ID" \
   --workspace "$PWD" --target-file src/file.ts --rationale "why" --test-plan "yarn test" --compact
 # …edit…
+# Hooks often release as PENDING after edits; do the same manually when hooks are off:
+npx @octocodeai/octocode-awareness lock release --agent-id "$OCTOCODE_AGENT_ID" \
+  --workspace "$PWD" --target-file src/file.ts --status PENDING --compact
 npx @octocodeai/octocode-awareness verify mark --agent-id "$OCTOCODE_AGENT_ID" \
   --workspace "$PWD" --all-pending --message "tests passed" --compact
-npx @octocodeai/octocode-awareness lock release --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --target-file src/file.ts --compact
+npx @octocodeai/octocode-awareness lock release --agent-id "$OCTOCODE_AGENT_ID" \
+  --workspace "$PWD" --target-file src/file.ts --status SUCCESS --verified --compact
 
 # Learn → project → housekeep
 npx @octocodeai/octocode-awareness reflect record --agent-id "$OCTOCODE_AGENT_ID" \
@@ -304,7 +334,7 @@ Exit codes: **0** success, **1** usage/validation error, **2** lock conflict / w
 | Location | Scope | Contents |
 |---|---|---|
 | `~/.octocode/` (global home) | Machine / user | Config + **canonical** `memory/awareness.sqlite3` |
-| `<repo>/.octocode/` | One workspace | Generated wiki / CSV / HTML from `repo inject` |
+| `<repo>/.octocode/` | One workspace | Generated wiki/CSV/HTML plus managed `.octocode/plan/**` narrative docs |
 
 Rule: **global home stores; repo folder publishes.** Stale projection → fix facts in the DB → `repo inject` again.
 
@@ -321,7 +351,7 @@ Rule: **global home stores; repo folder publishes.** Stale projection → fix fa
 
 ## Package boundaries
 
-**Owns:** memory, locks, signals, refinements, verify, reflection, sessions, hooks runtime, CLI, skill sources, Pi awareness bridge.
+**Owns:** plans, tasks, task runs/claims/dependencies, memory, locks, signals, refinements, verify, reflection, sessions, hooks runtime, CLI, skill sources, Pi awareness bridge.
 
 **Does not own:** Octocode research tools / MCP brain, `octocode` skill installer packaging, Pi system prompt, `@octocodeai/config` env loading.
 
@@ -332,10 +362,11 @@ Rule: **global home stores; repo folder publishes.** Stale projection → fix fa
 | Doc | For |
 |---|---|
 | [docs/README.md](docs/README.md) | Feature → doc map |
+| [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | CLI + bundled skills + hooks + shared-store concept map |
 | [docs/SKILLS.md](docs/SKILLS.md) | User / agent install recipes |
 | [docs/DB.md](docs/DB.md) | Schema & entities |
 | [docs/WIKI.md](docs/WIKI.md) | Projections & workboard |
-| [docs/LOCKS.md](docs/LOCKS.md) | File claims, task states & verification |
+| [docs/LOCKS.md](docs/LOCKS.md) | File claims, execution runs & verification |
 | [docs/MEMORY_NAVIGATION.md](docs/MEMORY_NAVIGATION.md) | Attend packet & active memory routing |
 | [docs/HOOKS.md](docs/HOOKS.md) | Host hooks & Pi bridge |
 | [docs/HARNESS.md](docs/HARNESS.md) / [REFLECTION.md](docs/REFLECTION.md) | Self-improvement loop |
