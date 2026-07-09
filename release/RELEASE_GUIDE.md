@@ -28,7 +28,7 @@ npm install graph (what a user gets)              publish? build input?
        typescript, typescript-language-server,
        vscode-langservers-extracted, yaml-language-server
 
-@octocodeai/mcp (octocode-mcp)                    ✅ publish
+octocode-mcp (octocode-mcp)                    ✅ publish
   ├─ @octocodeai/octocode-engine  ──▶  platform .node
   ├─ @octocodeai/octocode-core    (external, sibling repo ^16.1.1)
   ├─ @modelcontextprotocol/sdk
@@ -77,7 +77,7 @@ Must exist on npm **before** dependents. Publish in this order:
 ```
 1. @octocodeai/octocode-engine-{platform}  × 6          (platform .node files)
 2. @octocodeai/octocode-engine                           (root loader)
-3. @octocodeai/mcp                                       (MCP server)
+3. octocode-mcp                                       (MCP server)
 4. octocode                                              (CLI)
 5. @octocodeai/pi-extension                              (Pi harness)
 6. octocode-mcp-vscode                                   (VS Code — separate release)
@@ -125,7 +125,7 @@ yarn workspaces foreach -pt run build:dev
 
 # Or per-package:
 yarn workspace @octocodeai/octocode-tools-core build:dev
-yarn workspace @octocodeai/mcp                 build:dev   # rebuilds tools-core first
+yarn workspace octocode-mcp                 build:dev   # rebuilds tools-core first
 yarn workspace octocode                        build:dev   # rebuilds tools-core first
 ```
 
@@ -149,7 +149,7 @@ yarn workspace @octocodeai/pi-extension build      # runs scripts/build.mjs
 | `dist/bin/` | `octocode`'s `out/` | bundled CLI |
 | `dist/awareness/scripts/` + `schema.json` | root awareness scripts | memory tools + file-lock hooks |
 
-**Key point — `@octocodeai/config` is a build-time (dev) dependency only.** The build inlines it into `dist/env.js` and injects `octocode-config.mjs` into skill `scripts/` dirs, so nothing resolves `@octocodeai/config` from npm at runtime and it need not be published *for pi-extension*. (It is still published for `octocode`/`@octocodeai/mcp`, which externalize declared deps — see Publish Order step 1.)
+**Key point — `@octocodeai/config` is a build-time (dev) dependency only.** The build inlines it into `dist/env.js` and injects `octocode-config.mjs` into skill `scripts/` dirs, so nothing resolves `@octocodeai/config` from npm at runtime and it need not be published *for pi-extension*. (It is still published for `octocode`/`octocode-mcp`, which externalize declared deps — see Publish Order step 1.)
 
 - **Which skills use it:** only `octocode-brainstorming` (its `serper-search.mjs` / `tavily-search.mjs`) imports `./octocode-config.mjs` (with a local `.env` fallback). The other skills receive the copy but don't import it — harmless and future-proof.
 - Build fails loudly if the config-loader source, bundled CLI, prompt, or any skill is missing.
@@ -260,7 +260,7 @@ yarn install
 
 ```bash
 tmp=$(mktemp -d) && cd "$tmp" && npm init -y >/dev/null
-npm install octocode @octocodeai/mcp
+npm install octocode octocode-mcp
 
 # Engine resolves + loads:
 node --input-type=module -e "
@@ -282,12 +282,12 @@ npx octocode-mcp --help
 Compiled with Bun; the native `.node` is copied next to the executable (not npm-installed).
 
 ```bash
-yarn workspace @octocodeai/mcp build:bin:darwin-arm64
-yarn workspace @octocodeai/mcp build:bin:darwin-x64
-yarn workspace @octocodeai/mcp build:bin:linux-arm64
-yarn workspace @octocodeai/mcp build:bin:linux-x64
-yarn workspace @octocodeai/mcp build:bin:linux-x64-musl
-yarn workspace @octocodeai/mcp build:bin:windows-x64
+yarn workspace octocode-mcp build:bin:darwin-arm64
+yarn workspace octocode-mcp build:bin:darwin-x64
+yarn workspace octocode-mcp build:bin:linux-arm64
+yarn workspace octocode-mcp build:bin:linux-x64
+yarn workspace octocode-mcp build:bin:linux-x64-musl
+yarn workspace octocode-mcp build:bin:windows-x64
 
 cd packages/octocode-mcp/dist
 shasum -a 256 octocode-mcp-* > checksums-sha256.txt

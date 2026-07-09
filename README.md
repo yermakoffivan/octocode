@@ -74,7 +74,7 @@ npx octocode
 **Claude Code:**
 
 ```bash
-claude mcp add-json octocode --scope user '{"command":"npx","type":"stdio","args":["@octocodeai/mcp@latest"]}'
+claude mcp add-json octocode --scope user '{"command":"npx","type":"stdio","args":["octocode-mcp@latest"]}'
 ```
 
 **Any other client:** `npx octocode install`
@@ -173,7 +173,7 @@ https://github.com/user-attachments/assets/de8d14c0-2ead-46ed-895e-09144c9b5071
 
 Add to your MCP client config. Pick the package that matches the version you want:
 
-**New Octocode (Rust-powered engine)** — use `@octocodeai/mcp`:
+**New Octocode (Rust-powered engine)** — use `octocode-mcp`:
 
 ```json
 {
@@ -181,7 +181,7 @@ Add to your MCP client config. Pick the package that matches the version you wan
     "command": "npx",
     "type": "stdio",
     "args": [
-      "@octocodeai/mcp@latest"
+      "octocode-mcp@latest"
     ]
   }
 }
@@ -432,7 +432,7 @@ client → sanitize inputs (Rust) → run tool (GitHub / FS / LSP) → sanitize 
 | Directory | npm package | Role |
 |-----------|-------------|------|
 | [`packages/octocode`](https://github.com/bgauryy/octocode/tree/main/packages/octocode) | `octocode` | CLI: quick commands, raw tool runner, skill installs, auth/login/logout, install, status, context. |
-| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp) | `@octocodeai/mcp` | MCP server (stdio) that registers the tool catalog for AI assistants. |
+| [`packages/octocode-mcp`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-mcp) | `octocode-mcp` | MCP server (stdio) that registers the tool catalog for AI assistants. |
 | [`packages/octocode-tools-core`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-tools-core) | `@octocodeai/octocode-tools-core` | Shared tool core: implementations, GitHub client, credentials and token resolution, session, pagination, security bridge. |
 | [`packages/octocode-engine`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-engine) | `@octocodeai/octocode-engine` | Rust/napi native engine: security scanning, minification, signatures, structural AST, ripgrep/diff/YAML, LSP. |
 | [`packages/octocode-config`](https://github.com/bgauryy/octocode/tree/main/packages/octocode-config) | `@octocodeai/config` | Zero-dep env + config loader: `getOctocodeHome`, `.env` parsing, `.octocoderc` reading. Single source used by every package and skill. |

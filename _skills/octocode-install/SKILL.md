@@ -175,7 +175,7 @@ The CLI writes the config file automatically. Then confirm the result:
   "mcpServers": {
     "octocode": {
       "command": "npx",
-      "args": ["@octocodeai/mcp@latest"]
+      "args": ["octocode-mcp@latest"]
     }
   }
 }
@@ -196,7 +196,7 @@ The CLI writes the config file automatically. Then confirm the result:
   "mcpServers": {
     "octocode": {
       "command": "npx",
-      "args": ["@octocodeai/mcp@latest"],
+      "args": ["octocode-mcp@latest"],
       "env": {
         "GITHUB_TOKEN": "ghp_xxxx",
         "ENABLE_LOCAL": "true"

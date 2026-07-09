@@ -4,7 +4,7 @@ import { getOctocodeServerConfig } from '../src/utils/mcp-config.js';
 
 const EXPECTED_OCTOCODE_CONFIG = {
   command: 'npx',
-  args: ['-y', '@octocodeai/mcp@latest'],
+  args: ['-y', 'octocode-mcp@latest'],
 } as const;
 
 const jsonOutput = process.argv.includes('--json');

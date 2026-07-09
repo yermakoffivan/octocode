@@ -22,22 +22,7 @@ Install through the CLI helper when possible:
 npx octocode install --ide cursor
 ```
 
-Or configure an MCP client directly. Pick the package that matches the version you want:
-
-**New Octocode (Rust-powered engine)** — use `@octocodeai/mcp`:
-
-```json
-{
-  "mcpServers": {
-    "octocode": {
-      "command": "npx",
-      "args": ["-y", "@octocodeai/mcp@latest"]
-    }
-  }
-}
-```
-
-**Classic octocode-mcp** — use `octocode-mcp`:
+Or configure an MCP client directly:
 
 ```json
 {
@@ -49,6 +34,8 @@ Or configure an MCP client directly. Pick the package that matches the version y
   }
 }
 ```
+
+To pin a specific version, replace `latest` with the version number (e.g. `octocode-mcp@16.0.0`).
 
 Set tokens through environment variables or run `npx octocode auth login`. Do not put tokens in `.octocoderc`; see [Authentication](https://github.com/bgauryy/octocode/blob/main/docs/CONFIGURATION.md).
 

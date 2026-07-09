@@ -49,7 +49,7 @@ Install via the CLI or add to your MCP config:
   "mcpServers": {
     "octocode": {
       "command": "npx",
-      "args": ["-y", "@octocodeai/mcp"],
+      "args": ["-y", "octocode-mcp"],
       "env": { "ENABLE_LOCAL": "true" }
     }
   }

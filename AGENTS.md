@@ -86,7 +86,7 @@ Internal deps are version pins resolving to npm. To consume local source:
 
 ```bash
 yarn local:fix                                               # switch internal deps → workspace:*
-yarn workspace @octocodeai/mcp build:dev                     # builds tools-core then MCP server
+yarn workspace octocode-mcp build:dev                     # builds tools-core then MCP server
 yarn workspace octocode build:dev                            # builds tools-core then CLI
 yarn workspace @octocodeai/octocode-engine build:dev         # Rust debug build + TS wrappers
 node packages/octocode/out/octocode.js --help                # drive end-to-end
