@@ -79,9 +79,6 @@ export function printLightInstructions(options: { full?: boolean } = {}): void {
   console.log('   context --json  # machine-readable context wrapper');
   console.log('4. Use auth status for read-only token/auth state:');
   console.log('   auth status --json');
-  console.log(
-    '5. Read YAML output directly; use --json only when you need the envelope.'
-  );
   console.log();
   showLightAvailableTools();
   if (options.full) {

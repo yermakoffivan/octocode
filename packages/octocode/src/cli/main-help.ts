@@ -30,14 +30,13 @@ const QUICK_COMMAND_NAMES = new Set(['search', 'unzip', 'clone', 'cache']);
  */
 function buildAgentInstructionsBlock(): string[] {
   const body = [
-    'search = read-only research. Pick a SOURCE (local path · owner/repo[/path]',
-    '· npm name · --query <oql>), then a LANE: text · --tree · --search path',
-    '· --op (LSP) · --target repositories|packages|pullRequests|commits|artifacts|diff.',
-    'Loop: orient cheap (tree/discovery) → narrow → read exact',
-    '(--content-view exact) → prove. Snippets are discovery, not proof;',
-    'status:empty is a real run, not absence — follow next.* continuations.',
-    'Before any raw `tools` call read `tools <name> --scheme` (never guess',
-    'fields). Full protocol + playbook: `context`.',
+    'MUST: read `tools <name> --scheme` before any raw `tools` call — never guess fields.',
+    'Full protocol + playbook: `context`.',
+    'search = read-only research. SOURCE: local path · owner/repo[/path] · npm name · --query <oql>.',
+    'LANE: text · --tree · --content-view exact|compact|symbols · --op (LSP)',
+    '· --search path · --target repositories|packages|pullRequests|commits|artifacts|diff.',
+    'Loop: orient cheap (--tree/discovery) → narrow → read exact → prove.',
+    'Snippets are discovery, not proof. Empty result ≠ absence — follow next.* continuations.',
   ];
   return [
     `  ${dim('<AGENT_INSTRUCTIONS>')}`,
@@ -136,8 +135,8 @@ const COMMAND_INDEX: Record<string, { label?: string; desc: string }> = {
   },
   install: { desc: 'add Octocode to an IDE / MCP client' },
   auth: { desc: 'GitHub auth (login · logout · refresh · status)' },
-  login: { desc: 'authenticate with GitHub' },
-  logout: { desc: 'sign out of GitHub' },
+  login: { desc: 'alias → auth login' },
+  logout: { desc: 'alias → auth logout' },
   status: { desc: 'auth + cache + MCP-client health' },
   'lsp-server': { desc: 'language servers (list · install · status)' },
 };
@@ -185,7 +184,7 @@ export async function showHelp(): Promise<void> {
     quick(
       'search',
       '<text> <path|repo> · --scheme',
-      'read-only research; --scheme first'
+      'read-only research; --scheme reads schema before running'
     ),
     quick('unzip', '<archive>', 'unpack an archive, then search it'),
     quick(
