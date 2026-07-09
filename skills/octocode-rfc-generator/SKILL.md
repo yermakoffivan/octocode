@@ -5,15 +5,13 @@ description: "Use when the user needs an RFC, design doc, architecture proposal,
 
 # Octocode RFC Generator
 
-For a change that needs **thinking before coding** — or to **improve an existing RFC/plan** (close gaps, research open questions, add verification). Output is evidence-backed and actionable, not a brainstorm.
+For a change that needs **thinking before coding** — or to **improve an existing RFC/plan** (close gaps, research open questions, add resources/refs, add verification). Output is evidence-backed and actionable, not a brainstorm.
 
 ```text
 UNDERSTAND → RESEARCH (octocode-research) → PREREQUISITES? → COMPARE OPTIONS → WRITE RFC → CLOSE OPEN QUESTIONS → DERIVE KPIs → VALIDATE → DELIVER
 ```
 
-For trivial one-file edits with no design choice, skip RFC mode and route to `octocode-research` Change mode.
-Read `references/octocode.md` before evidence gathering; it delegates Octocode research rules to `octocode-research`.
-Avoid one-shot RFCs: if the problem, output mode, decision flow, or tradeoff priority is unclear, ask one focused question before drafting.
+Skip RFC mode for trivial one-file edits. Read `references/octocode.md` before evidence gathering, and ask one focused question when the problem/output/decision flow is unclear.
 
 ## Output: a folder, not a file
 
@@ -25,8 +23,9 @@ When a save is approved, write a folder `<workspace>/.octocode/rfc/{name}/` cont
 | `PREREQUISITES.md` | **Ready** — existing-code RFCs only. **Written before the plan.** Preconditions, baseline evidence, blockers, owners, and setup needed before implementation. |
 | `IMPLEMENTATION.md` | **Build** — implementer-facing. **Live.** Every RFC open question is closed here with `octocode-research` evidence. |
 | `KPI.md` | **Verify** — outlives the ship date. Acceptance criteria + measurable success signals + how to check the RFC *and* its implementation post-ship. |
+| `RESOURCES.md` | **Refs** — source appendix. Local refs, external prior art, papers, packages, research artifacts, and search prompts; not a substitute for inline citations. |
 
-**Small-feature mode:** for a small, reversible, single-package change, produce **only `RFC.md`** (plan + acceptance criteria inline) and say so. The full folder is the default for anything irreversible, cross-package, or public-contract/data/security impact.
+**Small-feature mode:** for a small, reversible, single-package change, produce **only `RFC.md`** (plan + acceptance criteria + references inline) and say so. The full folder is the default for anything irreversible, cross-package, public-contract/data/security impact, or prior-art-heavy.
 
 ## Reference Map
 
@@ -36,6 +35,7 @@ When a save is approved, write a folder `<workspace>/.octocode/rfc/{name}/` cont
 - `references/rfc-prerequisites.md` — when an RFC changes existing code and must produce `PREREQUISITES.md` before the implementation plan.
 - `references/rfc-implementation.md` — when producing `IMPLEMENTATION.md` (open questions closed via research, dependency-ordered steps, V&V test plan, rollout/rollback).
 - `references/rfc-kpi.md` — when producing `KPI.md` (user stories, Gherkin acceptance, success metrics, decision rule, traceability matrix).
+- `references/rfc-resources.md` — when producing `RESOURCES.md` (source inventory, local refs, prior art, papers, research artifacts, search prompts).
 
 ## Non-negotiables
 
@@ -45,4 +45,5 @@ When a save is approved, write a folder `<workspace>/.octocode/rfc/{name}/` cont
 - **SSOT rule:** `RFC.md` owns goals, scope, and the decision. `IMPLEMENTATION.md` and `KPI.md` **reference RFC section anchors — never restate them**, so the files cannot drift apart.
 - **Close open questions in `IMPLEMENTATION.md`:** every `Unresolved Question` in `RFC.md` must be resolved with an `octocode-research` citation, or explicitly deferred with a reason. No recommendation may rest on an `uncertain` claim.
 - **Bind the files with a traceability matrix** in `KPI.md`: `RFC requirement → user story → acceptance criteria → verification method → post-ship status`.
+- **Use `RESOURCES.md` for refs, not claims:** store source inventories and research trails there, but cite decisive claims in the RFC section where the claim appears.
 - Order implementation steps by dependency, not preference; avoid time estimates. Generate the document set in **one pass from one claim ledger**, then self-check with `scripts/eval-rfc.mjs --case <id>` before delivery.

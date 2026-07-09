@@ -400,6 +400,7 @@ export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) 
 export function wirePiAwarenessHooks(pi: PiLikeApi, options: PiAwarenessBridgeOptions = {}) {
   if (!pi?.on) return null;
   const bridge = createPiAwarenessBridge(options);
+  const verifyReminderKeys = new Set<string>();
 
   pi.on('tool_call', async (event, ctx) => bridge.handleToolCall(event as PiToolEvent, ctx));
   pi.on('tool_result', async (event, ctx) => bridge.handleToolResult(event as PiToolEvent, ctx));
@@ -422,7 +423,21 @@ export function wirePiAwarenessHooks(pi: PiLikeApi, options: PiAwarenessBridgeOp
         workspacePath: ctx?.cwd ?? process.cwd(),
         artifact: artifactFrom(ctx, _event),
       });
-      if (result.count === 0) return undefined;
+      if (result.count === 0) {
+        verifyReminderKeys.clear();
+        return undefined;
+      }
+      const reminderKey = JSON.stringify({
+        agentId: getPiAwarenessAgentId(ctx),
+        workspacePath: ctx?.cwd ?? process.cwd(),
+        artifact: artifactFrom(ctx, _event),
+        taskIds: [
+          ...result.unverified.map((intent) => intent.task_id),
+          ...result.stale_active.map((intent) => intent.task_id),
+        ].sort(),
+      });
+      if (verifyReminderKeys.has(reminderKey)) return undefined;
+      verifyReminderKeys.add(reminderKey);
       const plans = result.unverified
         .map((intent) => `${intent.status}:${intent.task_id}: ${intent.test_plan}`)
         .join('; ');

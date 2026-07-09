@@ -55,6 +55,7 @@ describe('install-hooks', () => {
       const help = runHooksInstall(['--help'], { cwd: projectDir, hookDir });
       expect(help.exitCode).toBe(0);
       expect(help.text).toContain('--host codex');
+      expect(help.text).toContain('wirePiAwarenessHooks');
 
       const dryRun = runHooksInstall(['--host', 'codex', '--project-dir', projectDir, '--dry-run'], { cwd: projectDir, hookDir });
       expect(dryRun.exitCode).toBe(0);
@@ -125,9 +126,15 @@ describe('install-hooks', () => {
       commands: Record<string, string>;
       next_steps: string[];
     };
+    expect(parsed.commands.hooks_preview_claude).toContain('hooks install --host claude');
+    expect(parsed.commands.hooks_check_claude).toContain('hooks check --host claude');
     expect(parsed.commands.hooks_preview_codex).toContain('hooks install --host codex');
+    expect(parsed.commands.hooks_check_codex).toContain('hooks check --host codex');
     expect(parsed.commands.hooks_install_cursor).toContain('hooks install --host cursor');
-    expect(parsed.next_steps.join('\n')).toContain('SKILL.md frontmatter is not enough');
+    expect(parsed.commands.hooks_check_cursor).toContain('hooks check --host cursor');
+    expect(parsed.commands.pi_bridge).toContain('wirePiAwarenessHooks');
+    expect(parsed.next_steps.join('\n')).toContain('Claude, Codex, and Cursor project hooks');
+    expect(parsed.next_steps.join('\n')).toContain('For Pi: do not run shell hook install');
   });
 
   it('skill smoke script help is quiet about node:sqlite ExperimentalWarning', () => {
@@ -309,6 +316,42 @@ describe('install-hooks', () => {
         matcher: 'Write|Edit|MultiEdit|NotebookEdit|apply_patch|ApplyPatch',
       });
       expect(JSON.stringify(preEditEntries[0])).toContain('"timeout":20');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it('strict check reports a stale awareness hook root as drifted', () => {
+    const projectDir = mkdtempSync(resolve(tmpdir(), 'octocode-codex-stale-root-'));
+    const stalePreEdit = resolve(
+      REPO_ROOT,
+      'packages/octocode-awareness/skills/octocode-awareness/scripts/hooks/pre-edit.sh',
+    );
+    try {
+      mkdirSync(resolve(projectDir, '.codex'), { recursive: true });
+      writeFileSync(
+        resolve(projectDir, '.codex/hooks.json'),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Write|Edit|MultiEdit|NotebookEdit|apply_patch|ApplyPatch',
+                hooks: [{ type: 'command', command: stalePreEdit, timeout: 20 }],
+              },
+            ],
+          },
+        }, null, 2),
+      );
+
+      const check = runInstallHooksRaw(['hooks', 'check', '--host', 'codex', '--project-dir', projectDir, '--strict', '--compact']);
+      expect(check.status).toBe(2);
+      const parsed = JSON.parse(check.stdout) as {
+        ok: boolean;
+        installed: { hooks: Record<string, boolean>; drifted: string[] };
+      };
+      expect(parsed.ok).toBe(false);
+      expect(parsed.installed.hooks['PreToolUse:pre-edit.sh']).toBe(false);
+      expect(parsed.installed.drifted).toContain('PreToolUse:pre-edit.sh');
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

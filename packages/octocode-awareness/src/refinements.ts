@@ -10,7 +10,7 @@ import { REFINEMENTS_INSERT, REFINEMENTS_DELETE } from './sql/refinements.js';
 import type {
   InsertRefinementParams, InsertRefinementResult,
   GetRefinementsParams, GetRefinementsResult,
-  RefinementRow,
+  RefinementRow, RefinementQuality,
 } from './types.js';
 
 /**
@@ -107,7 +107,10 @@ export function getRefinements(
     sql += ' AND quality = ?';
     queryParams.push(quality);
   } else if (!includeHandoffs) {
-    sql += " AND quality <> 'handoff'";
+    // Default coding queue excludes handoffs (surfaced via --include-handoffs)
+    // and instructions-feedback (surfaced via `reflect developer-review`), which
+    // are addressed to the human operator, not the next coding agent.
+    sql += " AND quality NOT IN ('handoff', 'instructions')";
   }
 
   if (scope.workspace_path) {
@@ -130,6 +133,27 @@ export function getRefinements(
   sql += ` ORDER BY CASE state WHEN 'ongoing' THEN 0 ELSE 1 END, updated_at DESC LIMIT ?`;
   queryParams.push(limit);
 
+  // When the default queue hides handoff/instructions rows, report how many were
+  // hidden so callers know to look via --include-handoffs / `reflect developer-review`.
+  let handoffCount: number | undefined;
+  let instructionsCount: number | undefined;
+  if (!quality && !includeHandoffs) {
+    const countParams: (string | number)[] = [...states];
+    let scopeSql = '';
+    if (scope.workspace_path) { scopeSql += ' AND (workspace_path = ? OR workspace_path IS NULL)'; countParams.push(scope.workspace_path); }
+    if (scope.artifact) { scopeSql += ' AND (artifact = ? OR artifact IS NULL)'; countParams.push(scope.artifact); }
+    if (scope.repo) { scopeSql += ' AND (repo = ? OR repo IS NULL)'; countParams.push(scope.repo); }
+    if (scope.ref) { scopeSql += ' AND (ref = ? OR ref IS NULL)'; countParams.push(scope.ref); }
+    const rows = db.prepare(
+      `SELECT quality, COUNT(*) AS c FROM refinements
+        WHERE ${stateFilter} AND quality IN ('handoff', 'instructions') ${scopeSql}
+        GROUP BY quality`
+    ).all(...countParams) as unknown as Array<{ quality: string; c: number }>;
+    const byQuality = new Map(rows.map(r => [r.quality, Number(r.c)]));
+    handoffCount = byQuality.get('handoff') ?? 0;
+    instructionsCount = byQuality.get('instructions') ?? 0;
+  }
+
   const rows = db.prepare(sql).all(...queryParams) as unknown as RefinementRow[];
   const refinements = rows.map(r => ({
     refinement_id: r.refinement_id,
@@ -141,13 +165,18 @@ export function getRefinements(
     files: parseJsonList(r.files_json),
     reasoning: r.reasoning,
     remember: r.remember,
-    quality: r.quality as 'good' | 'bad' | 'handoff',
+    quality: r.quality as RefinementQuality,
     state: r.state as 'open' | 'ongoing' | 'done',
     created_at: r.created_at,
     updated_at: r.updated_at,
   }));
 
-  return { count: refinements.length, refinements };
+  return {
+    count: refinements.length,
+    refinements,
+    ...(handoffCount !== undefined ? { handoff_count: handoffCount } : {}),
+    ...(instructionsCount !== undefined ? { instructions_count: instructionsCount } : {}),
+  };
 }
 
 // ─── updateRefinement ─────────────────────────────────────────────────────────
@@ -166,7 +195,7 @@ export function updateRefinement(
   params: {
     refinementId: string;
     state?: 'open' | 'ongoing' | 'done';
-    quality?: 'good' | 'bad' | 'handoff';
+    quality?: RefinementQuality;
     reasoning?: string;
     remember?: string;
     files?: string[];
@@ -206,7 +235,7 @@ export function updateRefinement(
       files: parseJsonList(row.files_json),
       reasoning: row.reasoning,
       remember: row.remember,
-      quality: row.quality as 'good' | 'bad' | 'handoff',
+      quality: row.quality as RefinementQuality,
       state: row.state as 'open' | 'ongoing' | 'done',
       created_at: row.created_at,
       updated_at: row.updated_at,

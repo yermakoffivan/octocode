@@ -299,7 +299,12 @@ export function markVerified(
       }
     }
     // VER-1: Return null for task_id — no single task applies in allPending batch mode.
-    return { ok: true, task_id: null, task_ids: ids, count: ids.length, status: status as TaskStatus, updated_at: now };
+    // Footgun guard: unscoped --all-pending verifies EVERY pending task for this
+    // agent across ALL workspaces. Surface it so the caller sees the blast radius.
+    const warning = !workspacePath && !artifact && ids.length > 0
+      ? `marked ${ids.length} pending task(s) across ALL workspaces for agent "${agentId}" — no --workspace/--artifact scope given; pass --workspace to limit`
+      : undefined;
+    return { ok: true, task_id: null, task_ids: ids, count: ids.length, status: status as TaskStatus, updated_at: now, ...(warning ? { warning } : {}) };
   }
 
   if (!taskId) {

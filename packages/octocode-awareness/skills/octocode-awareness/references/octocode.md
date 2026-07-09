@@ -1,6 +1,6 @@
-# Octocode Search (via `npx octocode`)
+# Octocode Operations (via `npx octocode`)
 
-Use this when awareness work needs code, GitHub, package, history, artifact, or graph evidence before locking, signaling, recording memory, or reflecting.
+Use this when awareness work needs Octocode operations outside the awareness DB: code/GitHub/package/history/artifact/graph evidence, skill install/update/lint, or skill research before locking, signaling, recording memory, or reflecting.
 
 **Do not** expect a bundled `octocode` binary inside this skill. The native engine is platform-installed; agents must call the published CLI:
 
@@ -43,16 +43,17 @@ npx octocode search --scheme --compact --no-color
 
 Treat search hits as leads. Cite paths/lines/IDs in locks, signals, memories, and refinements. Zero matches ≠ absence — change scope, mode, or spelling before concluding.
 
-## Skill install (separate from search)
+## Skills and awareness bundle
 
 ```bash
 npx octocode skill --name octocode-research
-npx octocode skill --add --path "{{path_to_skills_location}}/octocode-awareness" --platform common
+npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-awareness" --platform common --force
+npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-skills" --platform common --force
 ```
 
-Add `--platform <target>` (`codex`, `claude`, `cursor`, `pi`) when installing skills for a specific host.
+Add `--platform <target>` (`codex`, `claude`, `cursor`, `pi`) when installing skills for a specific host. Do not install `octocode-awareness` by registry name: the `@octocodeai/octocode-awareness` package already bundles the canonical skill under `dist/skills/octocode-awareness`.
 
 ## Boundary
 
 Awareness owns coordination (attend, locks, signals, verify, reflect, wiki projections).
-Octocode owns research/search. Return evidence here only to inform awareness actions.
+Octocode owns research/search and skill management. Return evidence here only to inform awareness actions.

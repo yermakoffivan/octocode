@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 /**
  * maintenance.test.ts — Behavioural tests for maintenance functions against the current schema.
  *
@@ -16,6 +20,7 @@ import {
   exportMemoryDoc,
   getWorkspaceStatus,
   sessionCapture,
+  parseGitStatusShortLines,
   digest,
 } from '../src/maintenance.js';
 
@@ -453,5 +458,44 @@ describe('digest — dry_run with new schema', () => {
     expect(res.pruned_old).toBe(1);
     const remaining = db.prepare('SELECT memory_id FROM memories ORDER BY memory_id').all() as Array<{ memory_id: string }>;
     expect(remaining.map(row => row.memory_id)).toEqual(['mem_ws_b_old']);
+  });
+});
+
+describe('parseGitStatusShortLines', () => {
+  it('keeps leading-space modified paths intact', () => {
+    expect(parseGitStatusShortLines(' M file1.txt\n')).toEqual(['file1.txt']);
+  });
+  it('parses untracked and deleted', () => {
+    expect(parseGitStatusShortLines('?? new.ts\nD  gone.ts\n')).toEqual(['new.ts', 'gone.ts']);
+  });
+  it('keeps rename destination', () => {
+    expect(parseGitStatusShortLines('R  old.ts -> new.ts\n')).toEqual(['new.ts']);
+  });
+});
+
+describe('sessionCapture dirty git paths', () => {
+  it('captures dirty git paths without truncating porcelain columns', () => {
+    const db = freshDb();
+    const dir = mkdtempSync(join(tmpdir(), 'oc-session-dirty-'));
+    try {
+      execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.name', 'test'], { cwd: dir, stdio: 'ignore' });
+      const tracked = join(dir, 'tracked.txt');
+      writeFileSync(tracked, 'v1\n');
+      execFileSync('git', ['add', 'tracked.txt'], { cwd: dir, stdio: 'ignore' });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: dir, stdio: 'ignore' });
+      writeFileSync(tracked, 'v2\n'); // unstaged modify → " M tracked.txt"
+      writeFileSync(join(dir, 'fresh.txt'), 'new\n'); // untracked
+
+      const res = sessionCapture(db, { agent_id: 'agent-cap', workspace: dir });
+      expect(res.ok).toBe(true);
+      expect(res.captured).toBe(true);
+      expect(res.dirty_files).toEqual(expect.arrayContaining(['tracked.txt', 'fresh.txt']));
+      expect(res.dirty_files?.some((f) => f.includes('racked.txt') && !f.startsWith('t'))).toBe(false);
+      expect(res.dirty_files).not.toContain('racked.txt');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

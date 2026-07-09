@@ -183,10 +183,17 @@ describe('memory record', () => {
     expect(memories.map(m => m['memory_id'])).toEqual([memoryId]);
   });
 
-  it('unknown label defaults to OTHER', () => {
-    const result = ok(db, [
+  it('unknown label hard-errors', () => {
+    fail(db, [
       'memory', 'record', '--agent-id', 'a', '--task-context', 'ctx', '--observation', 'obs',
       '--importance', '5', '--label', 'NOTAREAL',
+    ]);
+  });
+
+  it('unknown label coerces with --compat-coerce', () => {
+    const result = ok(db, [
+      'memory', 'record', '--agent-id', 'a', '--task-context', 'ctx', '--observation', 'obs',
+      '--importance', '5', '--label', 'NOTAREAL', '--compat-coerce',
     ]);
     expect((result['memory'] as Record<string, unknown>)['label']).toBe('OTHER');
   });
@@ -471,9 +478,27 @@ describe('reflect', () => {
     expect(result['repo_fix_refinement_id']).toBeNull();
   });
 
-  it('invalid outcome coerces to partial', () => {
-    const result = ok(db, ['reflect', 'record', '--agent-id', 'a', '--task', 'task', '--outcome', 'INVALID']);
+  it('invalid outcome hard-errors', () => {
+    fail(db, ['reflect', 'record', '--agent-id', 'a', '--task', 'task', '--outcome', 'INVALID']);
+  });
+
+  it('invalid outcome coerces with --compat-coerce', () => {
+    const result = ok(db, ['reflect', 'record', '--agent-id', 'a', '--task', 'task', '--outcome', 'INVALID', '--compat-coerce']);
     expect(result['outcome']).toBe('partial');
+  });
+
+  it('invalid memory label hard-errors', () => {
+    fail(db, [
+      'memory', 'record', '--agent-id', 'a', '--task-context', 't', '--observation', 'o',
+      '--importance', '5', '--label', 'BOGUSLABEL',
+    ]);
+  });
+
+  it('invalid signal kind hard-errors', () => {
+    fail(db, [
+      'signal', 'publish', '--agent-id', 'a', '--kind', 'not-a-kind', '--subject', 's', '--body', 'b',
+      '--workspace', process.cwd(),
+    ]);
   });
 
   it('fix_harness sets harness_fix=true', () => {
@@ -482,6 +507,15 @@ describe('reflect', () => {
       '--fix-harness', 'improve retry logic',
     ]);
     expect(result['harness_fix']).toBe(true);
+  });
+
+  it('fix-instructions creates developer-review feedback', () => {
+    const result = ok(db, [
+      'reflect', 'record', '--agent-id', 'a', '--task', 'instructions', '--outcome', 'partial',
+      '--fix-instructions', 'clarify hook install flow',
+    ]);
+    expect(result['instructions_feedback']).toBe(true);
+    expect(result['developer_review_refinement_id']).toMatch(/^ref_/);
   });
 
   it('includes next field as non-empty string', () => {
@@ -651,6 +685,26 @@ describe('lock acquire', () => {
     expect(r.parsed?.['error']).toContain('--ttl-minutes must be >= 1');
   });
 
+  it('rejects wait and retry values outside the schema/runtime bounds', () => {
+    const tooLongWait = run(db, [
+      'lock', 'wait', '--agent-id', 'agent-z', '--target-file', targetFile, '--wait-seconds', '3601',
+    ]);
+    expect(tooLongWait.status).toBe(1);
+    expect(tooLongWait.parsed?.['error']).toContain('--wait-seconds must be <= 3600');
+
+    const tooSlowRetry = run(db, [
+      'lock', 'acquire', '--agent-id', 'agent-z', '--target-file', targetFile, '--retry-interval', '301',
+    ]);
+    expect(tooSlowRetry.status).toBe(1);
+    expect(tooSlowRetry.parsed?.['error']).toContain('--retry-interval must be <= 300');
+
+    const nonIntegerWait = run(db, [
+      'lock', 'wait', '--agent-id', 'agent-z', '--target-file', targetFile, '--wait-seconds', '1.5',
+    ]);
+    expect(nonIntegerWait.status).toBe(1);
+    expect(nonIntegerWait.parsed?.['error']).toContain('--wait-seconds must be an integer');
+  });
+
   it('accepts retry interval and persists plan_doc_ref', () => {
     const plannedFile = join(dir, 'planned.txt');
     writeFileSync(plannedFile, 'planned');
@@ -732,6 +786,16 @@ describe('lock release', () => {
 
   it('no --task-id and no --target-file exits 1', () => {
     fail(db, ['lock', 'release', '--agent-id', 'a']);
+  });
+
+  it('no matching task-id exits 1 instead of pretending release succeeded', () => {
+    const rel = run(db, [
+      'lock', 'release', '--agent-id', 'agent-missing', '--task-id', 'task_missing', '--status', 'PENDING',
+    ]);
+    expect(rel.status).toBe(1);
+    expect(rel.parsed?.['ok']).toBe(false);
+    expect(rel.parsed?.['released']).toBe(false);
+    expect(rel.parsed?.['locks_released']).toBe(0);
   });
 });
 
@@ -933,7 +997,9 @@ describe('CLI', () => {
     expect(r.stdout).toContain('memory record');
     expect(r.stdout).toContain('local-first: use octocode-awareness or a bundled local node path when present');
     expect(r.stdout).toContain('fallback: npx @octocodeai/octocode-awareness <command>');
-    expect(r.stdout).toContain('npx octocode skill --add --path {{path_to_skills_location}}/octocode-awareness --platform common');
+    expect(r.stdout).toContain('The Agent Skill is bundled with this package under dist/skills/');
+    expect(r.stdout).toContain('npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common');
+    expect(r.stdout).toContain('do not install awareness by registry name');
     expect(r.stdout).toContain('octocode-awareness schema commands --compact');
     expect(r.stdout).not.toContain('tell-memory');
     expect(r.stdout).not.toContain('get-memory');
@@ -944,8 +1010,8 @@ describe('CLI', () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('easy install:');
     expect(r.stdout).toContain('If the CLI is bundled locally, tell your agent to run that local CLI');
-    expect(r.stdout).toContain('Registry fallback only when no local CLI exists');
-    expect(r.stdout).toContain('npx octocode skill --add --path {{path_to_skills_location}}/octocode-awareness --platform common');
+    expect(r.stdout).toContain('Package fallback only when no local CLI exists');
+    expect(r.stdout).toContain('npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common');
   });
 
   it('--help --compact returns a short agent guide', () => {
@@ -962,7 +1028,8 @@ describe('CLI', () => {
     const r = spawnSync(NODE, [SCRIPT, '--compact'], { encoding: 'utf8', timeout: 5000 });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('canonical noun/verb CLI');
-    expect(r.stdout).toContain('skill: npx octocode skill --add --path {{path_to_skills_location}}/octocode-awareness --platform common');
+    expect(r.stdout).toContain('bundled skill path: <awareness-package>/dist/skills/octocode-awareness');
+    expect(r.stdout).toContain('Octocode ops: npx octocode skill|search');
     expect(r.stdout).not.toContain('unknown command');
   });
 
@@ -1046,6 +1113,7 @@ describe('CLI', () => {
       signal_prune: 'signal prune',
       workspace_status: 'workspace status',
       export_harness: 'reflect export-harness',
+      developer_review: 'reflect developer-review',
       session_capture: 'session capture',
       mine_weakness: 'reflect mine-weakness',
       doc_staleness: 'docs staleness',
@@ -1174,14 +1242,18 @@ describe('CLI', () => {
     const parsed = JSON.parse(schema.stdout) as { properties: Record<string, Record<string, unknown>> };
     const ttlSchema = parsed.properties['ttl_minutes'];
     const ttlSecondsSchema = parsed.properties['ttl_seconds'];
+    const waitSchema = parsed.properties['wait_seconds'];
     const retrySchema = parsed.properties['retry_interval'];
     expect(ttlSchema).toBeDefined();
     expect(ttlSecondsSchema).toBeDefined();
+    expect(waitSchema).toBeDefined();
     expect(retrySchema).toBeDefined();
     expect(ttlSchema?.['default']).toBe(10);
     expect(ttlSchema?.['maximum']).toBe(10);
     expect(ttlSecondsSchema?.['maximum']).toBe(600);
+    expect(waitSchema?.['maximum']).toBe(3600);
     expect(retrySchema?.['default']).toBe(5);
+    expect(retrySchema?.['maximum']).toBe(300);
   });
 
   it('schema covers runtime drift cases for verify, audit, and handoff refinements', () => {
@@ -1200,7 +1272,7 @@ describe('CLI', () => {
     const refinement = spawnSync(NODE, [schemaScript, 'json-schema', 'refinement'], { encoding: 'utf8', timeout: 5000 });
     expect(refinement.status).toBe(0);
     const refinementSchema = JSON.parse(refinement.stdout) as { properties: Record<string, Record<string, unknown>> };
-    expect(refinementSchema.properties['quality']?.['enum']).toEqual(['good', 'bad', 'handoff']);
+    expect(refinementSchema.properties['quality']?.['enum']).toEqual(['good', 'bad', 'handoff', 'instructions']);
   });
 
   it('schema exposes implemented forget scope filters', () => {
@@ -1455,7 +1527,6 @@ describe('repo context projections', () => {
       ]));
       expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('.octocode\n');
       expect(readFileSync(join(dir, '.octocode', 'AGENTS.md'), 'utf8')).toContain('Octocode Awareness Map');
-      expect(readFileSync(join(dir, '.octocode', 'AGENTS.md'), 'utf8')).toContain('Wiki And Memory Map');
       expect(readFileSync(join(dir, '.octocode', 'AGENTS.md'), 'utf8')).toContain('Projection Health');
       expect(readFileSync(join(dir, '.octocode', 'BOOKMARKS.md'), 'utf8')).toContain('https://example.com/inject-guide');
       expect(readFileSync(join(dir, '.octocode', 'awareness', 'csv', 'lessons.csv'), 'utf8')).toContain('DECISION');

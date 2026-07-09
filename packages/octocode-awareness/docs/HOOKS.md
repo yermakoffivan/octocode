@@ -12,7 +12,7 @@ Supported agents: **Codex**, **Claude Code**, **Cursor**, and **Pi**.
 
 | Host | Integration |
 |---|---|
-| Claude Code | `SKILL.md` frontmatter hooks can run automatically when the skill is active. |
+| Claude Code | `SKILL.md` frontmatter hooks can run when the skill is active; project-wide enforcement uses `.claude/settings.json`. |
 | Codex | Hook config via `.codex/hooks.json`; `SKILL.md` frontmatter is not enough. |
 | Cursor | Hook config via `.cursor/hooks.json`; `SKILL.md` frontmatter is not enough. |
 | Pi | In-process bridge through `wirePiAwarenessHooks(pi)`; pass `skillRoot` or set `OCTOCODE_SKILL_ROOT` to enable native harness self-edit guarding. |
@@ -31,29 +31,22 @@ Supported agents: **Codex**, **Claude Code**, **Cursor**, and **Pi**.
 
 ## Install, Check, Remove
 
-Always preview first:
+For the shell-hook hosts, always preview first, install only after approval, then run a strict check:
 
 ```bash
-octocode-awareness hooks install \
-  --host codex \
-  --project-dir . \
-  --dry-run \
-  --compact
+octocode-awareness hooks install --host <claude|codex|cursor> --project-dir . --dry-run --compact
+octocode-awareness hooks install --host <claude|codex|cursor> --project-dir . --compact
+octocode-awareness hooks check --host <claude|codex|cursor> --project-dir . --strict --compact
 ```
 
-Install:
+Host-specific targets:
 
-```bash
-octocode-awareness hooks install --host codex --project-dir . --compact
-octocode-awareness hooks install --host cursor --project-dir . --compact
-octocode-awareness hooks install --host claude --compact
-```
-
-Check exact installed commands and fail on missing/drifted entries:
-
-```bash
-octocode-awareness hooks check --host codex --project-dir . --strict --compact
-```
+| Host | Config target | Install | Strict check | Notes |
+|---|---|---|---|---|
+| Claude Code | `.claude/settings.json` | `octocode-awareness hooks install --host claude --project-dir . --compact` | `octocode-awareness hooks check --host claude --project-dir . --strict --compact` | Uses `${CLAUDE_PROJECT_DIR}` for project-relative generated dist hook scripts. |
+| Codex | `.codex/hooks.json` | `octocode-awareness hooks install --host codex --project-dir . --compact` | `octocode-awareness hooks check --host codex --project-dir . --strict --compact` | Uses absolute generated dist hook script paths. |
+| Cursor | `.cursor/hooks.json` | `octocode-awareness hooks install --host cursor --project-dir . --compact` | `octocode-awareness hooks check --host cursor --project-dir . --strict --compact` | Uses native lower-camel event names and flat command entries. |
+| Pi | no shell hook file | `wirePiAwarenessHooks(pi, { skillRoot })` or `@octocodeai/pi-extension` | Smoke `tool_call`/`tool_result` and `agent_end` pending-verification behavior. | Pi does not execute `SKILL.md` hook frontmatter or `hooks install`. |
 
 Remove awareness-owned hooks:
 

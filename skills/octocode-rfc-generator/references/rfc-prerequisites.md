@@ -8,6 +8,7 @@ Purpose: separate facts that must be true before building from the build steps. 
 
 Use `octocode-research` for repository facts, packaged artifacts, generated binaries, dependencies, prior art, history, and migration examples.
 If the skill is not installed, use https://github.com/bgauryy/octocode/tree/main/skills/octocode-research or install it with `npx octocode skill --name octocode-research`.
+When the evidence list is long, keep the full source inventory in `RESOURCES.md` and cite only the prerequisites that gate implementation here.
 
 Every prerequisite needs one of:
 

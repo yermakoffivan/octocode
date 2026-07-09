@@ -19,6 +19,7 @@ This skill makes the agent capture current-state evidence, compare viable option
 - Implementation steps ordered by dependency rather than preference.
 - Open questions closed with Octocode citations, not guesses.
 - Success criteria and post-ship verification derived from the RFC's goals.
+- Resources and references appendices for local refs, prior art, papers, packages, research artifacts, and search prompts.
 - Saved RFC flow when the user wants a durable artifact in the repo.
 
 ## Operating Model
@@ -39,12 +40,13 @@ On an approved save the skill writes a folder `\.octocode/rfc/{name}/` with a do
 - **`PREREQUISITES.md`** — existing-code RFCs only. Written before the implementation plan with current-state evidence, baseline checks, blockers, owners, setup, and migration constraints.
 - **`IMPLEMENTATION.md`** — the build. Closes every RFC open question via Octocode research, then a dependency-ordered plan with a test/verification plan and rollback.
 - **`KPI.md`** ("Success & Verification") — how to check the RFC and its implementation after shipping: user stories, Gherkin acceptance criteria, measurable signals, a decision rule, and a traceability matrix that binds the document set and detects drift.
+- **`RESOURCES.md`** — the refs appendix. Local code refs, external prior art, papers, package links, research artifacts, and useful search prompts; decisive claims are still cited where they appear.
 
-For a small, reversible, single-package change, the skill produces only `RFC.md` with an inline plan and acceptance criteria.
+For a small, reversible, single-package change, the skill produces only `RFC.md` with an inline plan, acceptance criteria, and references.
 
 ## User Experience
 
-Users should get a document set that feels ready for review: summary, goals/non-goals, evidence, options, recommendation, risks, rollout, rollback, implementation order, and a way to verify success. The skill is not meant to replace engineering judgment; it makes that judgment visible.
+Users should get a document set that feels ready for review: summary, goals/non-goals, evidence, options, recommendation, resources/refs, risks, rollout, rollback, implementation order, and a way to verify success. The skill is not meant to replace engineering judgment; it makes that judgment visible.
 
 It pairs well with `octocode-brainstorming` before the decision exists and `octocode-research` when the decision needs more proof or implementation.
 

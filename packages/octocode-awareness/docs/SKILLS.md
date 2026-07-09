@@ -59,10 +59,11 @@ The easiest installation path is conversational: tell your agent to run this com
 npx @octocodeai/octocode-awareness
 ```
 
-The CLI output shows the command map and tells the agent to install the bundled Agent Skill:
+The CLI output shows the command map and points agents at the bundled Agent Skill. The npm package ships both skills under `dist/skills/`; install that package path instead of fetching awareness by registry name:
 
 ```bash
-npx octocode skill --add --path {{path_to_skills_location}}/octocode-awareness --platform common
+npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common --force
+npx octocode skill --add --path <awareness-package>/dist/skills/octocode-skills --platform common --force
 ```
 
 This combination matters:
@@ -75,11 +76,7 @@ This combination matters:
 
 The CLI and skill are meant to work together. The CLI stores facts and performs actions; the skill tells the agent how to use those actions before, during, and after repo work. Hooks are the reliability layer that make important operations happen automatically for agents that support lifecycle hooks.
 
-Registry/marketplace fallback:
-
-```bash
-npx octocode skill --name octocode-awareness
-```
+Use `npx octocode` for skill install/update/lint and research/search operations. For the awareness skill itself, prefer the bundled path from `@octocodeai/octocode-awareness`.
 
 Supported agents: **Codex**, **Claude Code**, **Cursor**, and **Pi**. Custom hosts can use the CLI directly or import the library API.
 
@@ -315,10 +312,10 @@ If awareness shows repeated friction, turn it into a better workflow rather than
 
 ```bash
 npx octocode skill --add --path <skill-folder> --platform common
-npx octocode skill --name octocode-awareness
+npx octocode search "<workflow or research question>" --no-color
 ```
 
-The user-facing Octocode guide starts at `https://octocode.ai`. `reflect export-harness` can preview guidance candidates, but a human-reviewed edit applies skill or workflow changes.
+For `octocode-awareness`, install from the bundled `@octocodeai/octocode-awareness` `dist/skills/octocode-awareness` path. The user-facing Octocode guide starts at `https://octocode.ai`. `reflect export-harness` can preview guidance candidates, but a human-reviewed edit applies skill or workflow changes.
 
 ### 8. Hand off — preserve state for the next session
 
@@ -395,6 +392,7 @@ octocode-awareness signal publish \
 octocode-awareness signal reply \
   --agent-id "$OCTOCODE_AGENT_ID" \
   --signal-id ntf_abc123 \
+  --subject "Re: migration ordering" \
   --body "Schema first — data migration depends on new columns"
 
 # Acknowledge after acting
@@ -499,6 +497,7 @@ Use `BOOKMARKS.md` for resources an agent can learn from: URLs, repos, file path
 | `.octocode/GOTCHAS.md` | All gotcha-labeled memories |
 | `.octocode/LEARN.md` | Decisions, architecture notes, workflows |
 | `.octocode/BOOKMARKS.md` | Learnable resource leads from memory references |
+| `.octocode/DEVELOPER_REVIEW.md` | Agent feedback to the instruction author (from `reflect record --fix-instructions`) |
 | `.octocode/awareness/csv/*.csv` | Filterable/sortable data exports |
 | `.octocode/awareness/index.html` | Static browser view of all awareness data |
 | `.octocode/awareness/manifest.json` | Generation metadata, counts, projection budgets, and share/local policy warnings |
@@ -698,7 +697,7 @@ verify mark  --agent-id <id> --workspace <path> --all-pending --message <text>
 ```bash
 signal publish --agent-id <id> --workspace <path> --kind <kind> --subject <text> [--body <text>] [--to-agent <id>]
 signal list    --agent-id <id> --workspace <path> [--all] [--unread-only] [--limit N]
-signal reply   --agent-id <id> --signal-id <id> --body <text>
+signal reply   --agent-id <id> --signal-id <id> --subject <text> [--body <text>]
 signal ack     --agent-id <id> --signal-id <id>
 signal resolve --agent-id <id> --signal-id <id>
 signal prune   --workspace <path> [--resolved] [--older-than-days N] [--dry-run]

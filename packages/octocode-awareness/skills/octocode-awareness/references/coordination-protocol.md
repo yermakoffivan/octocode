@@ -34,7 +34,8 @@ Important flags:
 - `--workspace`: scope for status, audit, and `verify --all-pending`.
 - `--artifact`: optional package/service slice inside the workspace.
 - `--lock-type`: default `EXCLUSIVE`; use `SHARED` only for visible non-writing reads.
-- `--wait-seconds`: bounded wait; use only after choosing to wait.
+- `--wait-seconds`: bounded wait; use only after choosing to wait. Runtime accepts 0-3600 seconds.
+- `--retry-interval`: poll interval for waits. Runtime accepts 1-300 seconds.
 - `--ttl-minutes` / `--ttl-seconds`: lock expiry safety valve. The CLI accepts at most 10 minutes;
   direct runtime calls are also hard-capped at 10 minutes (`MAX_LOCK_TTL_MS` in `src/intents.ts`).
   Ten minutes is the default when no TTL flag is passed.
@@ -58,6 +59,7 @@ Pass absolute paths, or always run from repo root, so same-file claims collide.
 Use `lock wait` only after choosing to wait for a current holder.
 `lock wait` checks the same conflicts as `lock acquire` but never acquires a lock.
 `lock wait` evicts expired locks on each check, sleeps outside SQLite transactions, and has a bounded deadline.
+The CLI rejects waits above 3600 seconds and retry intervals above 300 seconds so a wait cannot quietly become an all-day apparent deadlock.
 Exit `0` means clear; exit `2` means timed out with `conflicts[]`.
 After a clear result, immediately claim with `lock acquire` before editing.
 

@@ -82,10 +82,46 @@ function normalizeReferences(refs = []) {
   const seen = /* @__PURE__ */ new Set();
   return refs.map((r) => (r ?? "").trim().slice(0, 512)).filter((r) => r && !seen.has(r) && seen.add(r)).slice(0, 20);
 }
-function normalizeLabel(value) {
-  if (!value) return "OTHER";
+function normalizeLabel(value, opts2 = {}) {
+  const coerce = opts2.coerce !== false;
+  if (value == null || String(value).trim() === "") return "OTHER";
   const cleaned = String(value).trim().toUpperCase().replace(/[\s-]+/g, "_");
-  return MEMORY_LABELS.has(cleaned) ? cleaned : "OTHER";
+  if (MEMORY_LABELS.has(cleaned)) return cleaned;
+  if (coerce) return "OTHER";
+  throw new Error(`invalid label "${String(value)}"; allowed: ${MEMORY_LABEL_VALUES.join(", ")}`);
+}
+var NOTIFICATION_KIND_VALUES = [
+  "claim",
+  "handoff",
+  "question",
+  "reply",
+  "blocker",
+  "request",
+  "decision",
+  "fyi"
+];
+var NOTIFICATION_KINDS = new Set(NOTIFICATION_KIND_VALUES);
+function normalizeNotificationKind(value, opts2 = {}) {
+  const coerce = opts2.coerce === true;
+  const cleaned = String(value ?? "").trim().toLowerCase();
+  if (NOTIFICATION_KINDS.has(cleaned)) {
+    return cleaned;
+  }
+  if (coerce) return "fyi";
+  throw new Error(
+    `invalid signal kind "${String(value)}"; allowed: ${NOTIFICATION_KIND_VALUES.join(", ")}`
+  );
+}
+var REFLECTION_OUTCOME_VALUES = ["worked", "partial", "failed"];
+function normalizeReflectionOutcome(value, opts2 = {}) {
+  const coerce = opts2.coerce === true;
+  if (value == null || String(value).trim() === "") return "partial";
+  const cleaned = String(value).trim().toLowerCase();
+  if (REFLECTION_OUTCOME_VALUES.includes(cleaned)) {
+    return cleaned;
+  }
+  if (coerce) return "partial";
+  throw new Error(`invalid outcome "${String(value)}"; allowed: ${REFLECTION_OUTCOME_VALUES.join("|")}`);
 }
 function normalizeFilePath(filePath, cwd) {
   if (!filePath) return null;
@@ -249,7 +285,7 @@ var SCHEMA_DDL = `
       files_json     TEXT NOT NULL DEFAULT '[]',
       reasoning      TEXT NOT NULL,
       remember       TEXT NOT NULL,
-      quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff')) DEFAULT 'good',
+      quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff','instructions')) DEFAULT 'good',
       state          TEXT NOT NULL CHECK(state IN ('open','ongoing','done')) DEFAULT 'open',
       created_at     TEXT NOT NULL,
       updated_at     TEXT NOT NULL
@@ -338,6 +374,7 @@ var SCHEMA_DDL = `
 function initDb(db3) {
   db3.exec(SCHEMA_DDL);
   migrateExistingTables(db3);
+  migrateRefinementQualityConstraint(db3);
   db3.exec(`
     CREATE INDEX IF NOT EXISTS idx_sessions_agent     ON sessions(agent_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_path);
@@ -449,6 +486,54 @@ function migrateExistingTables(db3) {
       }
       db3.exec(`ALTER TABLE ${table} ADD COLUMN ${clause}`);
     }
+  }
+}
+function migrateRefinementQualityConstraint(db3) {
+  const row = db3.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='refinements'"
+  ).get();
+  if (!row?.sql || row.sql.includes("'instructions'")) return;
+  db3.exec("SAVEPOINT migrate_refinement_quality_constraint");
+  try {
+    db3.exec(`
+      DROP TABLE IF EXISTS refinements_migration_new;
+      CREATE TABLE refinements_migration_new (
+        refinement_id  TEXT PRIMARY KEY,
+        agent_id       TEXT NOT NULL,
+        workspace_path TEXT NOT NULL,
+        artifact       TEXT,
+        repo           TEXT,
+        ref            TEXT,
+        files_json     TEXT NOT NULL DEFAULT '[]',
+        reasoning      TEXT NOT NULL,
+        remember       TEXT NOT NULL,
+        quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff','instructions')) DEFAULT 'good',
+        state          TEXT NOT NULL CHECK(state IN ('open','ongoing','done')) DEFAULT 'open',
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL
+      );
+      INSERT INTO refinements_migration_new (
+        refinement_id, agent_id, workspace_path, artifact, repo, ref,
+        files_json, reasoning, remember, quality, state, created_at, updated_at
+      )
+      SELECT
+        refinement_id, agent_id, workspace_path, artifact, repo, ref,
+        files_json, reasoning, remember, quality, state, created_at, updated_at
+      FROM refinements;
+      DROP TABLE refinements;
+      ALTER TABLE refinements_migration_new RENAME TO refinements;
+    `);
+    db3.exec("RELEASE SAVEPOINT migrate_refinement_quality_constraint");
+  } catch (err) {
+    try {
+      db3.exec("ROLLBACK TO SAVEPOINT migrate_refinement_quality_constraint");
+    } catch {
+    }
+    try {
+      db3.exec("RELEASE SAVEPOINT migrate_refinement_quality_constraint");
+    } catch {
+    }
+    throw err;
   }
 }
 function hasFts(db3) {
@@ -1029,7 +1114,8 @@ function insertMemory(db3, params) {
     repo: repoArg,
     ref: refArg,
     fileTreeFingerprint = null,
-    cwd
+    cwd,
+    compatCoerce = false
   } = params;
   const imp = Number(importance);
   if (!Number.isInteger(imp) || imp < 1 || imp > 10) {
@@ -1038,7 +1124,9 @@ function insertMemory(db3, params) {
   const memoryId = "mem_" + randomUUID().replace(/-/g, "");
   const tagList = normalizeTags(tags, tagsCsv);
   const refList = normalizeReferences(references);
-  const normalizedLabel = normalizeLabel(Array.isArray(label) ? label[0] : label);
+  const normalizedLabel = normalizeLabel(Array.isArray(label) ? label[0] : label, {
+    coerce: Boolean(compatCoerce)
+  });
   const createdAt = utcNow();
   const validFromVal = vf ?? createdAt;
   const scope = fillScope(
@@ -1180,7 +1268,7 @@ function getMemory(db3, params = {}) {
   let minImportance = Math.max(1, Number(minImpRaw) || 1);
   if (smart === true || smart === "true") minImportance = Math.max(1, minImportance - 1);
   const states = statesRaw ?? ["ACTIVE"];
-  const labels = label ? Array.isArray(label) ? label.map(normalizeLabel) : [normalizeLabel(label)] : [];
+  const labels = label ? Array.isArray(label) ? label.map((value) => normalizeLabel(value)) : [normalizeLabel(label)] : [];
   const effectiveCwd = cwdParam ?? workspacePath ?? void 0;
   const asOfDate = asOf ? new Date(asOf) : null;
   if (asOfDate && isNaN(asOfDate.getTime())) {
@@ -1901,7 +1989,7 @@ var REFINEMENTS_INSERT = `INSERT INTO refinements (
      files_json, reasoning, remember, quality, state, created_at, updated_at
    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 var REFINEMENTS_SELECT_OPEN = `SELECT ${COLS} FROM refinements
-   WHERE state IN ('open','ongoing') AND quality <> 'handoff'
+   WHERE state IN ('open','ongoing') AND quality NOT IN ('handoff','instructions')
    ORDER BY CASE state WHEN 'ongoing' THEN 0 ELSE 1 END, updated_at DESC`;
 var REFINEMENTS_SELECT_BY_WORKSPACE = `SELECT ${COLS} FROM refinements
    WHERE (workspace_path = ? OR workspace_path IS NULL)
@@ -1988,7 +2076,7 @@ function getRefinements(db3, params = {}) {
     sql += " AND quality = ?";
     queryParams.push(quality);
   } else if (!includeHandoffs) {
-    sql += " AND quality <> 'handoff'";
+    sql += " AND quality NOT IN ('handoff', 'instructions')";
   }
   if (scope.workspace_path) {
     sql += " AND (workspace_path = ? OR workspace_path IS NULL)";
@@ -2008,6 +2096,36 @@ function getRefinements(db3, params = {}) {
   }
   sql += ` ORDER BY CASE state WHEN 'ongoing' THEN 0 ELSE 1 END, updated_at DESC LIMIT ?`;
   queryParams.push(limit);
+  let handoffCount;
+  let instructionsCount;
+  if (!quality && !includeHandoffs) {
+    const countParams = [...states];
+    let scopeSql = "";
+    if (scope.workspace_path) {
+      scopeSql += " AND (workspace_path = ? OR workspace_path IS NULL)";
+      countParams.push(scope.workspace_path);
+    }
+    if (scope.artifact) {
+      scopeSql += " AND (artifact = ? OR artifact IS NULL)";
+      countParams.push(scope.artifact);
+    }
+    if (scope.repo) {
+      scopeSql += " AND (repo = ? OR repo IS NULL)";
+      countParams.push(scope.repo);
+    }
+    if (scope.ref) {
+      scopeSql += " AND (ref = ? OR ref IS NULL)";
+      countParams.push(scope.ref);
+    }
+    const rows2 = db3.prepare(
+      `SELECT quality, COUNT(*) AS c FROM refinements
+        WHERE ${stateFilter} AND quality IN ('handoff', 'instructions') ${scopeSql}
+        GROUP BY quality`
+    ).all(...countParams);
+    const byQuality = new Map(rows2.map((r) => [r.quality, Number(r.c)]));
+    handoffCount = byQuality.get("handoff") ?? 0;
+    instructionsCount = byQuality.get("instructions") ?? 0;
+  }
   const rows = db3.prepare(sql).all(...queryParams);
   const refinements = rows.map((r) => ({
     refinement_id: r.refinement_id,
@@ -2024,7 +2142,12 @@ function getRefinements(db3, params = {}) {
     created_at: r.created_at,
     updated_at: r.updated_at
   }));
-  return { count: refinements.length, refinements };
+  return {
+    count: refinements.length,
+    refinements,
+    ...handoffCount !== void 0 ? { handoff_count: handoffCount } : {},
+    ...instructionsCount !== void 0 ? { instructions_count: instructionsCount } : {}
+  };
 }
 function updateRefinement(db3, params) {
   const { refinementId, state, quality, reasoning, remember, files } = params;
@@ -2133,7 +2256,7 @@ function resolveTargetFiles(targetFiles = [], workspacePath) {
 function preFlightIntent(db3, params) {
   const {
     agentId: agentId2 = "agent",
-    sessionId = null,
+    sessionId: sessionId2 = null,
     workspacePath,
     artifact: artifact2,
     rationale = "agent write operation",
@@ -2155,7 +2278,9 @@ function preFlightIntent(db3, params) {
     for (const absPath of absFiles) {
       const conflictMode = lockType === "SHARED" ? "fl.lock_type = 'EXCLUSIVE'" : "1 = 1";
       const existing = db3.prepare(`
-        SELECT fl.*, ai.agent_id AS task_agent_id FROM locks fl
+        SELECT fl.*, ai.agent_id AS task_agent_id,
+               ai.rationale AS reasoning, ai.test_plan AS test_plan
+          FROM locks fl
         JOIN tasks ai ON ai.task_id = fl.task_id
         WHERE fl.file_path = ?
           AND ai.agent_id <> ?
@@ -2170,26 +2295,36 @@ function preFlightIntent(db3, params) {
       return {
         ok: false,
         conflict: true,
-        conflicts: conflicts.map((c) => ({
-          file_path: c.file_path,
-          lock_type: c.lock_type,
-          agent_id: c.task_agent_id ?? c.agent_id,
-          acquired_at: c.acquired_at,
-          expires_at: c.expires_at
-        }))
+        conflicts: conflicts.map((c) => {
+          const holderSession = c.session_id ? db3.prepare("SELECT ended_at FROM sessions WHERE session_id = ?").get(c.session_id) : void 0;
+          const holderSessionActive = !holderSession || holderSession.ended_at == null;
+          return {
+            file_path: c.file_path,
+            lock_type: c.lock_type,
+            agent_id: c.task_agent_id ?? c.agent_id,
+            acquired_at: c.acquired_at,
+            expires_at: c.expires_at,
+            // Surface the holder's who/why so a blocked agent can act on it.
+            task_id: c.task_id,
+            reasoning: c.reasoning ?? "agent write operation",
+            test_plan: c.test_plan ?? "post-edit verification",
+            session_id: c.session_id ?? null,
+            holder_session_active: holderSessionActive
+          };
+        })
       };
     }
-    if (sessionId) {
+    if (sessionId2) {
       db3.prepare(
         `INSERT OR IGNORE INTO sessions (session_id, agent_id, workspace_path, artifact, started_at)
          VALUES (?, ?, ?, ?, ?)`
-      ).run(sessionId, agentId2, wsPath, artifactScope, now);
+      ).run(sessionId2, agentId2, wsPath, artifactScope, now);
     }
     db3.prepare(`
       INSERT INTO tasks
         (task_id, agent_id, session_id, rationale, test_plan, plan_doc_ref, status, workspace_path, artifact, files_json, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
-    `).run(taskId, agentId2, sessionId, rationale, testPlan, planDocRef, wsPath, artifactScope, JSON.stringify(absFiles), now, now);
+    `).run(taskId, agentId2, sessionId2, rationale, testPlan, planDocRef, wsPath, artifactScope, JSON.stringify(absFiles), now, now);
     const expiresAt = expiresAtFromNow(ttlMs);
     const acquiredLocks = [];
     for (const absPath of absFiles) {
@@ -2198,7 +2333,7 @@ function preFlightIntent(db3, params) {
         INSERT OR REPLACE INTO locks
           (lock_id, file_path, task_id, agent_id, session_id, lock_type, acquired_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(lockId, absPath, taskId, agentId2, sessionId, lockType, now, expiresAt);
+      `).run(lockId, absPath, taskId, agentId2, sessionId2, lockType, now, expiresAt);
       acquiredLocks.push({ lock_id: lockId, file_path: absPath, lock_type: lockType, expires_at: expiresAt });
     }
     db3.exec("COMMIT");
@@ -2207,7 +2342,7 @@ function preFlightIntent(db3, params) {
       task: {
         task_id: taskId,
         agent_id: agentId2,
-        session_id: sessionId,
+        session_id: sessionId2,
         lock_type: lockType,
         workspace_path: wsPath,
         artifact: artifactScope,
@@ -2218,7 +2353,7 @@ function preFlightIntent(db3, params) {
           file_path: l.file_path,
           lock_type: l.lock_type,
           agent_id: agentId2,
-          session_id: sessionId,
+          session_id: sessionId2,
           acquired_at: now,
           expires_at: l.expires_at
         })),
@@ -2237,7 +2372,7 @@ function preFlightIntent(db3, params) {
 function releaseFileLock(db3, params) {
   const {
     agentId: agentId2 = "agent",
-    sessionId = null,
+    sessionId: sessionId2 = null,
     workspacePath = null,
     artifact: artifact2 = null,
     taskId = null,
@@ -2255,9 +2390,9 @@ function releaseFileLock(db3, params) {
   const now = utcNow();
   const whereClauses = ["fl.agent_id = ?"];
   const whereParams = [agentId2];
-  if (sessionId) {
+  if (sessionId2) {
     whereClauses.push("fl.session_id = ?");
-    whereParams.push(sessionId);
+    whereParams.push(sessionId2);
   }
   const artifactScope = normalizeArtifact(artifact2);
   if (workspacePath || artifactScope) {
@@ -2287,33 +2422,33 @@ function releaseFileLock(db3, params) {
        FROM locks fl${workspacePath || artifactScope ? ", tasks ai" : ""}
       WHERE ${where}`
   ).all(...whereParams);
-  const deleteClauses = ["agent_id = ?"];
-  const deleteParams = [agentId2];
-  if (sessionId) {
-    deleteClauses.push("session_id = ?");
-    deleteParams.push(sessionId);
+  const taskIds = [...new Set(locks.map((l) => l.task_id))];
+  const ambiguousRelease = !taskId && absFiles.length > 0 && taskIds.length > 1;
+  if (ambiguousRelease) {
+    return {
+      agent_id: agentId2,
+      status: effectiveStatus,
+      released: false,
+      locks_released: 0,
+      task_ids: taskIds,
+      updated_at: now,
+      ambiguousRelease: "target-file release matched multiple active tasks; pass --task-id to release exactly one task"
+    };
   }
-  if (taskId) {
-    deleteClauses.push("task_id = ?");
-    deleteParams.push(taskId);
+  if (locks.length === 0) {
+    return {
+      agent_id: agentId2,
+      status: effectiveStatus,
+      released: false,
+      locks_released: 0,
+      task_ids: [],
+      updated_at: now
+    };
   }
-  if (absFiles.length > 0) {
-    const ph = absFiles.map(() => "?").join(",");
-    deleteClauses.push(`file_path IN (${ph})`);
-    deleteParams.push(...absFiles);
-  }
-  const taskIds = [.../* @__PURE__ */ new Set([
-    ...taskId ? [taskId] : [],
-    ...locks.map((l) => l.task_id)
-  ])];
   db3.exec("BEGIN IMMEDIATE");
   try {
     const lockIds = locks.map((lock) => lock.lock_id);
-    if (lockIds.length > 0) {
-      db3.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => "?").join(",")})`).run(...lockIds);
-    } else if (taskId && !workspacePath && !artifactScope) {
-      db3.prepare(`DELETE FROM locks WHERE ${deleteClauses.join(" AND ")}`).run(...deleteParams);
-    }
+    db3.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => "?").join(",")})`).run(...lockIds);
     for (const tid of taskIds) {
       const remaining = db3.prepare("SELECT 1 FROM locks WHERE task_id = ? LIMIT 1").get(tid);
       if (!remaining) {
@@ -2342,7 +2477,7 @@ function releaseFileLock(db3, params) {
   return {
     agent_id: agentId2,
     status: effectiveStatus,
-    released: locks.length > 0 || Boolean(taskId),
+    released: locks.length > 0,
     locks_released: locks.length,
     task_ids: taskIds,
     updated_at: now,
@@ -2352,7 +2487,6 @@ function releaseFileLock(db3, params) {
 
 // src/reflect.ts
 import { resolve as resolve5 } from "node:path";
-var VALID_OUTCOMES = ["worked", "partial", "failed"];
 var NEXT_MSG = "memory_refine_get \u2192 repo fixes for the next agent \xB7 octocode-awareness reflect mine-weakness/maintenance digest \u2192 recurring failures and harness previews. A human merges.";
 function normalizeScopePaths(paths = [], prefix, baseCwd) {
   const base = baseCwd ?? process.cwd();
@@ -2371,6 +2505,7 @@ function reflect(db3, params) {
     didntWork,
     fixRepo,
     fixHarness,
+    fixInstructions,
     failureSignature: failSigArg,
     importance: impArg,
     judgmentNote,
@@ -2388,12 +2523,15 @@ function reflect(db3, params) {
     ref: refArg,
     cwd
   } = params;
-  const resolvedOutcome = VALID_OUTCOMES.includes(outcome ?? "") ? outcome : "partial";
+  const resolvedOutcome = normalizeReflectionOutcome(outcome, {
+    coerce: Boolean(params.compatCoerce)
+  });
   const bits = [`[reflection:${resolvedOutcome}] ${task}`];
   if (worked) bits.push(`worked: ${worked}`);
   if (didntWork) bits.push(`didn't work: ${didntWork}`);
   if (judgmentNote) bits.push(`judgment: ${judgmentNote}`);
   if (fixHarness) bits.push(`harness fix: ${fixHarness}`);
+  if (fixInstructions) bits.push(`instructions feedback: ${fixInstructions}`);
   const narrative = bits.join(" | ");
   const observation = lesson ? bits.length > 1 ? `${lesson}  (${narrative})` : lesson : narrative;
   const importance = impArg != null ? Number(impArg) : REFLECTION_IMPORTANCE[resolvedOutcome] ?? 5;
@@ -2402,6 +2540,9 @@ function reflect(db3, params) {
     "reflection",
     resolvedOutcome,
     ...fixHarness ? ["harness"] : [],
+    // `developer-review` is the query tag the DEVELOPER_REVIEW.md projection reads;
+    // `instructions` scopes it to the instruction-author feedback channel.
+    ...fixInstructions ? ["instructions", "developer-review"] : [],
     ...hasEvalFailures ? ["eval"] : []
   ];
   const failSig = failSigArg ?? evalFailures.find((f) => f.failure_signature)?.failure_signature ?? null;
@@ -2472,6 +2613,23 @@ function reflect(db3, params) {
     });
     refinementId = rid;
   }
+  let developerReviewRefinementId = null;
+  if (fixInstructions) {
+    const { refinementId: rid } = insertRefinement(db3, {
+      agentId: agentId2,
+      reasoning: `Instructions feedback (from ${resolvedOutcome} reflection on "${task}"): ${fixInstructions}`,
+      remember: fixInstructions,
+      quality: "instructions",
+      state: "open",
+      workspacePath: scope.workspace_path,
+      artifact: scope.artifact,
+      repo: scope.repo,
+      ref: scope.ref,
+      files: [...normalizeScopePaths(files, "file", cwd), ...normalizeScopePaths(folders, "dir", cwd)],
+      cwd
+    });
+    developerReviewRefinementId = rid;
+  }
   try {
     insertHarnessLog(db3, {
       agentId: agentId2,
@@ -2483,7 +2641,9 @@ function reflect(db3, params) {
         outcome: resolvedOutcome,
         novelty_score: noveltyScore,
         harness_fix: Boolean(fixHarness),
+        instructions_feedback: Boolean(fixInstructions),
         refinement_id: refinementId,
+        developer_review_refinement_id: developerReviewRefinementId,
         eval_count: evalFailureIds.length,
         workspace_path: scope.workspace_path,
         artifact: scope.artifact
@@ -2496,6 +2656,8 @@ function reflect(db3, params) {
     learning_memory_id: memoryId,
     repo_fix_refinement_id: refinementId,
     harness_fix: Boolean(fixHarness),
+    instructions_feedback: Boolean(fixInstructions),
+    developer_review_refinement_id: developerReviewRefinementId,
     eval_failure_count: evalFailureIds.length,
     eval_failure_ids: evalFailureIds,
     next: NEXT_MSG,
@@ -2541,6 +2703,9 @@ var TASK_LOG_INSERT_ABANDONED = `INSERT INTO task_log(event_id, task_id, agent_i
    VALUES (?, ?, ?, 'ABANDONED', 'orphaned by audit-unverified --abandon', ?)`;
 var TASK_LOG_INSERT_STALE_ABANDONED = `INSERT INTO task_log(event_id, task_id, agent_id, event_type, message, created_at)
    VALUES (?, ?, ?, 'ABANDONED', 'stale active (no live locks) abandoned by audit-unverified --abandon', ?)`;
+
+// src/sql/sessions.ts
+var SESSIONS_UPDATE_END = `UPDATE sessions SET ended_at = ?, summary = ? WHERE session_id = ? RETURNING *`;
 
 // src/sql/signals.ts
 var SIGNALS_SELECT_THREAD_ID = "SELECT thread_id FROM signals WHERE signal_id = ?";
@@ -2605,8 +2770,10 @@ function insertNotification(db3, params) {
     refIds = [],
     inReplyTo = null,
     importance = 5,
-    cwd
+    cwd,
+    compatCoerce = false
   } = params;
+  const normalizedKind = normalizeNotificationKind(kind, { coerce: Boolean(compatCoerce) });
   const scope = fillScope(
     { workspace_path: params.workspacePath ?? null, artifact: normalizeArtifact(params.artifact), repo: params.repo ?? null, ref: params.ref ?? null },
     cwd ?? process.cwd()
@@ -2632,7 +2799,7 @@ function insertNotification(db3, params) {
     scope.ref,
     agentId2,
     toAgent,
-    kind,
+    normalizedKind,
     subject,
     body,
     JSON.stringify(files),
@@ -2818,7 +2985,8 @@ function agentSignal(db3, params) {
         refIds: params.refs ?? [],
         inReplyTo: params.inReplyTo ?? null,
         importance: params.importance ?? 5,
-        cwd: params.cwd
+        cwd: params.cwd,
+        compatCoerce: params.compatCoerce
       }));
       return {
         action: params.action,
@@ -2921,6 +3089,10 @@ var SESSION_CAPTURE_VISIBLE_FILE_LIMIT = 20;
 var SESSION_CAPTURE_TASK_DETAIL_LIMIT = 8;
 var SESSION_CAPTURE_TASK_FILE_LIMIT = 8;
 var SESSION_CAPTURE_TEXT_LIMIT = 180;
+var MAX_WAIT_MS = 36e5;
+var MAX_RETRY_MS = 3e5;
+var DEFAULT_WAIT_MS = 6e4;
+var DEFAULT_RETRY_MS = 5e3;
 function compactText(value, max = SESSION_CAPTURE_TEXT_LIMIT) {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > max ? `${normalized.slice(0, max - 3)}...` : normalized;
@@ -2930,6 +3102,12 @@ function listSummary(label, items, visibleLimit = SESSION_CAPTURE_VISIBLE_FILE_L
   const shown = items.slice(0, visibleLimit);
   const omitted = items.length - shown.length;
   return `${label}${omitted > 0 ? ` (showing ${shown.length} of ${items.length})` : ""}: ${shown.join(", ")}${omitted > 0 ? `; ${omitted} omitted` : ""}.`;
+}
+function boundedMs(value, defaultMs, minMs, maxMs) {
+  if (value == null) return defaultMs;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return minMs;
+  return Math.min(Math.max(numeric, minMs), maxMs);
 }
 function pruneStale(db3, params = {}) {
   const dryRun = Boolean(params.dry_run ?? params.dryRun);
@@ -2973,9 +3151,9 @@ function pruneStale(db3, params = {}) {
     binds.push(artifact2);
   }
   const where = conditions.join(" AND ");
+  const from = scopedByTask ? "locks l JOIN tasks t ON t.task_id = l.task_id" : "locks l";
   let staleLocks = [];
   try {
-    const from = scopedByTask ? "locks l JOIN tasks t ON t.task_id = l.task_id" : "locks l";
     staleLocks = db3.prepare(
       `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
     ).all(...binds);
@@ -2987,10 +3165,17 @@ function pruneStale(db3, params = {}) {
   if (staleLocks.length === 0) {
     return { pruned_locks: 0, updated_tasks: 0 };
   }
-  const affectedTaskIds = [...new Set(staleLocks.map((l) => l.task_id))];
   let updatedTasks = 0;
   db3.exec("BEGIN IMMEDIATE");
   try {
+    staleLocks = db3.prepare(
+      `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
+    ).all(...binds);
+    if (staleLocks.length === 0) {
+      db3.exec("COMMIT");
+      return { pruned_locks: 0, updated_tasks: 0 };
+    }
+    const affectedTaskIds = [...new Set(staleLocks.map((l) => l.task_id))];
     const ph = staleLocks.map(() => "?").join(",");
     db3.prepare(`DELETE FROM locks WHERE lock_id IN (${ph})`).run(...staleLocks.map((l) => l.lock_id));
     for (const tid of affectedTaskIds) {
@@ -3176,15 +3361,30 @@ function notifyGet(db3, params = {}) {
   }
   return result;
 }
+function parseGitStatusShortLines(stdout) {
+  const files = [];
+  for (const rawLine of String(stdout).split("\n")) {
+    if (!rawLine || rawLine.length < 4) continue;
+    const xy = rawLine.slice(0, 2);
+    let pathPart = rawLine.slice(3);
+    if (xy.includes("R") || xy.includes("C")) {
+      const arrow = pathPart.indexOf(" -> ");
+      if (arrow >= 0) pathPart = pathPart.slice(arrow + 4);
+    }
+    const filePath = pathPart.trim();
+    if (filePath) files.push(filePath);
+  }
+  return files;
+}
 function gitDirtyFiles(workspacePath) {
   if (!workspacePath) return [];
   try {
-    const result = spawnSync3("git", ["-C", workspacePath, "status", "--short"], {
+    const result = spawnSync3("git", ["-C", workspacePath, "status", "--porcelain=v1"], {
       encoding: "utf8",
       timeout: 5e3
     });
     if (result.status !== 0) return [];
-    return String(result.stdout).split("\n").map((line) => line.trim()).filter(Boolean).map((line) => line.slice(3).trim()).filter(Boolean);
+    return parseGitStatusShortLines(String(result.stdout));
   } catch {
     return [];
   }
@@ -3317,8 +3517,8 @@ function waitForLock(db3, params = {}) {
   const rawWorkspacePath = typeof params.workspace === "string" ? params.workspace : typeof params.workspace_path === "string" ? params.workspace_path : typeof params.workspacePath === "string" ? params.workspacePath : null;
   const workspacePath = rawWorkspacePath ? normalizeWorkspacePath(rawWorkspacePath, rawWorkspacePath) : null;
   const artifact2 = normalizeArtifact(params.artifact);
-  const waitMs = Number(params.wait_ms ?? params.waitMs ?? 6e4);
-  const retryMs = Number(params.retry_interval_ms ?? params.retryIntervalMs ?? 5e3);
+  const waitMs = boundedMs(params.wait_ms ?? params.waitMs, DEFAULT_WAIT_MS, 0, MAX_WAIT_MS);
+  const retryMs = boundedMs(params.retry_interval_ms ?? params.retryIntervalMs, DEFAULT_RETRY_MS, 1, MAX_RETRY_MS);
   const requestedLockType = String(
     params.requestedLockType ?? params.requested_lock_type ?? params.lockType ?? params.lock_type ?? "EXCLUSIVE"
   ).toUpperCase();
@@ -3851,7 +4051,8 @@ function markVerified(db3, params) {
         }
       }
     }
-    return { ok: true, task_id: null, task_ids: ids, count: ids.length, status, updated_at: now2 };
+    const warning = !workspacePath && !artifact2 && ids.length > 0 ? `marked ${ids.length} pending task(s) across ALL workspaces for agent "${agentId2}" \u2014 no --workspace/--artifact scope given; pass --workspace to limit` : void 0;
+    return { ok: true, task_id: null, task_ids: ids, count: ids.length, status, updated_at: now2, ...warning ? { warning } : {} };
   }
   if (!taskId) {
     return { ok: false, error: "--task-id is required (or use --all-pending)", task_id: null };
@@ -3945,6 +4146,7 @@ Targets:
   --host claude         Write Claude Code hooks to .claude/settings.json (install default).
   --host codex         Write Codex hooks to .codex/hooks.json.
   --host cursor        Write Cursor hooks to .cursor/hooks.json.
+  Pi                   No shell install target; use wirePiAwarenessHooks(pi) or @octocodeai/pi-extension.
 
 Options:
   --project-dir <path>  Target a project hook file under <path> (default: cwd).
@@ -4062,9 +4264,9 @@ function matcherMatches(actual, expected) {
 }
 function isExactHookEntry(host, group, spec) {
   if (host === "cursor") {
-    return sameAwarenessCommand(group.command, spec.command) && group.timeout === 20 && matcherMatches(group.matcher, spec.matcher) && !Array.isArray(group.hooks);
+    return group.command === spec.command && group.timeout === 20 && matcherMatches(group.matcher, spec.matcher) && !Array.isArray(group.hooks);
   }
-  return matcherMatches(group.matcher, spec.matcher) && (group.hooks ?? []).some((hook) => hook.type === "command" && sameAwarenessCommand(hook.command, spec.command) && hook.timeout === 20);
+  return matcherMatches(group.matcher, spec.matcher) && (group.hooks ?? []).some((hook) => hook.type === "command" && hook.command === spec.command && hook.timeout === 20);
 }
 function hasExactCommand(groups, host, spec) {
   return (groups ?? []).some((group) => isExactHookEntry(host, group, spec));
@@ -4264,7 +4466,8 @@ var AWARENESS_QUERY_VIEWS = [
   "refinements",
   "files",
   "activity",
-  "workboard"
+  "workboard",
+  "developer-review"
 ];
 var VIEW_SET = new Set(AWARENESS_QUERY_VIEWS);
 var CSV_VIEWS = ["memories", "gotchas", "lessons", "agents", "tasks", "locks", "signals", "refinements", "files", "activity", "workboard"];
@@ -4273,7 +4476,8 @@ var PROJECTION_MARKDOWN_BUDGETS = {
   "MEMORY.md": { max_lines: 200, role: "active memory index" },
   "GOTCHAS.md": { max_lines: 200, role: "gotcha index" },
   "LEARN.md": { max_lines: 200, role: "lesson/opportunity index" },
-  "BOOKMARKS.md": { max_lines: 200, role: "learnable resource index" }
+  "BOOKMARKS.md": { max_lines: 200, role: "learnable resource index" },
+  "DEVELOPER_REVIEW.md": { max_lines: 200, role: "agent feedback to the instruction author" }
 };
 var ATTEND_COMPACT_BUDGET = { max_lines: 120, max_json_bytes: 8 * 1024 };
 var WORKBOARD_BUDGET = { max_rows_per_column: 10 };
@@ -4327,14 +4531,16 @@ function scopeFromParams(params) {
   const rawWorkspace = params.workspacePath ?? params.workspace_path ?? params.workspace ?? cwd;
   const workspacePath = rawWorkspace ? resolve8(String(rawWorkspace)) : null;
   return {
+    // Keep the raw resolved path for projection output / echo; the alias set
+    // below carries the extra keys used for DB row matching.
     workspacePath,
-    workspacePaths: workspacePath ? workspaceAliases(workspacePath) : [],
+    workspacePaths: workspacePath ? workspaceAliases(workspacePath, cwd) : [],
     artifact: params.artifact ? String(params.artifact) : null,
     repo: params.repo ? String(params.repo) : null,
     ref: params.ref ? String(params.ref) : null
   };
 }
-function workspaceAliases(workspacePath) {
+function workspaceAliases(workspacePath, cwd) {
   const aliases = /* @__PURE__ */ new Set([workspacePath]);
   try {
     aliases.add(realpathSync2.native(workspacePath));
@@ -4343,6 +4549,11 @@ function workspaceAliases(workspacePath) {
       aliases.add(realpathSync2(workspacePath));
     } catch {
     }
+  }
+  try {
+    const gitRoot = normalizeWorkspacePath(workspacePath, cwd ?? workspacePath);
+    if (gitRoot) aliases.add(gitRoot);
+  } catch {
   }
   return [...aliases];
 }
@@ -4661,6 +4872,77 @@ function refinementRows(db3, params) {
     updated_at: String(row["updated_at"])
   }));
 }
+function extractInstructionsFeedback(observation) {
+  const marker = "instructions feedback:";
+  const idx = observation.toLowerCase().indexOf(marker);
+  if (idx === -1) return observation;
+  const after = observation.slice(idx + marker.length);
+  const end = after.search(/\s\|\s|\)\s*$/);
+  return (end === -1 ? after : after.slice(0, end)).trim();
+}
+function developerReviewRows(db3, params) {
+  const scope = scopeFromParams(params);
+  const limit = limitOf(params.limit, 60, 500);
+  const refWhere = ["quality = 'instructions'"];
+  const refBinds = [];
+  addExactScope(refWhere, refBinds, scope);
+  addTextFilter(refWhere, refBinds, params.query, ["reasoning", "remember", "files_json", "agent_id"]);
+  addStateFilter(refWhere, refBinds, stringList(params.state), "state", (state) => state.toLowerCase());
+  const refRows = db3.prepare(
+    `SELECT refinement_id, agent_id, workspace_path, artifact, repo, ref, files_json,
+            reasoning, remember, state, created_at, updated_at
+       FROM refinements
+      WHERE ${refWhere.join(" AND ")}
+      ORDER BY CASE state WHEN 'open' THEN 0 WHEN 'ongoing' THEN 1 ELSE 2 END, datetime(updated_at) DESC
+      LIMIT ?`
+  ).all(...refBinds, limit);
+  const rows = refRows.map((row) => ({
+    source: "refinement",
+    id: String(row["refinement_id"]),
+    refinement_id: String(row["refinement_id"]),
+    state: String(row["state"]),
+    feedback: String(row["remember"]),
+    context: String(row["reasoning"]),
+    files: parseJsonList(row["files_json"]),
+    agent_id: String(row["agent_id"]),
+    workspace_path: row["workspace_path"] ?? null,
+    artifact: row["artifact"] ?? null,
+    repo: row["repo"] ?? null,
+    ref: row["ref"] ?? null,
+    created_at: String(row["created_at"]),
+    updated_at: String(row["updated_at"])
+  }));
+  const refTexts = refRows.map((row) => String(row["remember"] ?? "").trim()).filter(Boolean);
+  const memWhere = ["state = 'ACTIVE'", `tags_json LIKE '%"developer-review"%'`];
+  const memBinds = [];
+  addNullableScope(memWhere, memBinds, scope);
+  addTextFilter(memWhere, memBinds, params.query, ["task_context", "observation"]);
+  const memRows = db3.prepare(
+    `SELECT memory_id, agent_id, task_context, observation, importance, created_at, updated_at
+       FROM memories
+      WHERE ${memWhere.join(" AND ")}
+      ORDER BY importance DESC, datetime(created_at) DESC
+      LIMIT ?`
+  ).all(...memBinds, limit);
+  for (const row of memRows) {
+    const observation = String(row["observation"] ?? "");
+    if (refTexts.some((text) => text && observation.includes(text))) continue;
+    rows.push({
+      source: "memory",
+      id: String(row["memory_id"]),
+      memory_id: String(row["memory_id"]),
+      state: "recorded",
+      feedback: extractInstructionsFeedback(observation),
+      context: String(row["task_context"] ?? ""),
+      importance: Number(row["importance"] ?? 0),
+      files: [],
+      agent_id: String(row["agent_id"]),
+      created_at: String(row["created_at"]),
+      updated_at: row["updated_at"] ?? null
+    });
+  }
+  return rows.slice(0, limit);
+}
 function trackFile(map, filePath, source, date) {
   const clean = filePath.startsWith("file:") ? filePath.slice("file:".length) : filePath;
   if (!clean) return;
@@ -4765,7 +5047,8 @@ function repoProfileRows(db3, params) {
     { metric: "open_refinements", count: countWhere(db3, "refinements", refinementWhere, refinementBinds) },
     { metric: "open_signals", count: countWhere(db3, "signals", signalWhere, signalBinds) },
     { metric: "known_agents", count: agentRows(db3, { ...params, limit: 500 }).length },
-    { metric: "tracked_files", count: fileRows(db3, { ...params, limit: 500 }).length }
+    { metric: "tracked_files", count: fileRows(db3, { ...params, limit: 500 }).length },
+    { metric: "developer_review", count: developerReviewRows(db3, { ...params, limit: 500 }).length }
   ];
 }
 function activityRows(db3, params) {
@@ -4843,6 +5126,7 @@ function workboardRows(db3, params) {
     Claimed: [],
     RecentDone: [],
     MemoryReview: [],
+    DeveloperReview: [],
     ProjectionHealth: []
   };
   const counts = {};
@@ -4973,6 +5257,20 @@ function workboardRows(db3, params) {
       updated_at: row["updated_at"] ?? null
     }, limit);
   }
+  for (const row of developerReviewRows(db3, { ...params, state: ["open", "ongoing"], limit: 200 })) {
+    pushLimited(columns, counts, "DeveloperReview", {
+      item_type: String(row["source"]) === "refinement" ? "refinement" : "memory",
+      id: String(row["id"]),
+      title: summarize(String(row["feedback"]), 120),
+      detail: summarize(String(row["context"]), 180),
+      agent_id: String(row["agent_id"]),
+      status: String(row["state"]),
+      raw_ids: [String(row["id"])],
+      files: rowFiles(row),
+      created_at: String(row["created_at"]),
+      updated_at: row["updated_at"] ?? null
+    }, limit);
+  }
   const profile = Object.fromEntries(repoProfileRows(db3, params).map((row) => [String(row["metric"]), Number(row["count"] ?? 0)]));
   const activeMemories = Number(profile["active_memories"] ?? 0);
   const taskCount = Number(profile["tasks"] ?? 0);
@@ -5033,6 +5331,8 @@ function rowsForView(db3, view, params) {
       return activityRows(db3, params);
     case "workboard":
       return workboardRows(db3, params);
+    case "developer-review":
+      return developerReviewRows(db3, params);
     case "all":
       return [];
   }
@@ -5084,6 +5384,16 @@ function queryAwareness(db3, params = {}) {
     count: rows.length,
     rows,
     filters
+  };
+}
+function developerReviewDoc(db3, params = {}) {
+  const rows = developerReviewRows(db3, params);
+  const open = rows.filter((row) => String(row["state"]) !== "done").length;
+  return {
+    rows,
+    open,
+    resolved: rows.length - open,
+    markdown: renderDeveloperReviewDoc(rows, PROJECTION_MARKDOWN_BUDGETS["DEVELOPER_REVIEW.md"].max_lines)
   };
 }
 function formatAwarenessQueryResult(result, format) {
@@ -5171,6 +5481,7 @@ function injectRepoContext(db3, params = {}) {
   write("GOTCHAS.md", renderRowsDoc("Gotchas", sections["gotchas"]?.rows ?? [], "Failures, traps, and sharp edges agents should check before editing.", PROJECTION_MARKDOWN_BUDGETS["GOTCHAS.md"].max_lines));
   write("LEARN.md", renderRowsDoc("Learning And Opportunities", sections["lessons"]?.rows ?? [], "Decisions, architecture notes, workflows, and improvement ideas.", PROJECTION_MARKDOWN_BUDGETS["LEARN.md"].max_lines));
   write("BOOKMARKS.md", renderBookmarksDoc(sections["memories"]?.rows ?? []));
+  write("DEVELOPER_REVIEW.md", renderDeveloperReviewDoc(sections["developer-review"]?.rows ?? [], PROJECTION_MARKDOWN_BUDGETS["DEVELOPER_REVIEW.md"].max_lines));
   for (const view of CSV_VIEWS) {
     write(join5("awareness", "csv", `${view}.csv`), toCsv(sections[view]?.rows ?? []));
   }
@@ -5283,14 +5594,17 @@ function renderRepoAgentsMd(all) {
     "",
     "## Snapshot",
     "",
-    `- Memories ${counts["active_memories"] ?? 0} \xB7 Gotchas ${counts["gotchas"] ?? 0} \xB7 Lessons ${counts["lessons"] ?? 0} \xB7 Locks ${counts["active_locks"] ?? 0} \xB7 Refinements ${counts["open_refinements"] ?? 0} \xB7 Signals ${counts["open_signals"] ?? 0}`,
+    `- Memories ${counts["active_memories"] ?? 0} \xB7 Gotchas ${counts["gotchas"] ?? 0} \xB7 Lessons ${counts["lessons"] ?? 0} \xB7 Locks ${counts["active_locks"] ?? 0} \xB7 Refinements ${counts["open_refinements"] ?? 0} \xB7 Signals ${counts["open_signals"] ?? 0} \xB7 DevReview ${counts["developer_review"] ?? 0}`,
     "",
-    "## Wiki And Memory Map",
+    "## Retro Files Map",
+    "",
+    "Generated retrospective projections in this folder (SQLite is canonical; regenerate, don't hand-edit). Locks/signals/tasks live only in the DB \u2014 use live `query`.",
     "",
     "- Gotchas \u2192 `.octocode/GOTCHAS.md` \xB7 live `query gotchas` / `memory recall`",
     "- Lessons \u2192 `.octocode/LEARN.md` \xB7 live `query lessons`",
     "- Memory index \u2192 `.octocode/MEMORY.md` \xB7 live `memory recall --smart`",
     "- Bookmarks \u2192 `.octocode/BOOKMARKS.md` \xB7 Files \u2192 `awareness/csv/files.csv` \xB7 Workboard \u2192 live `query workboard`",
+    "- Developer review \u2192 `.octocode/DEVELOPER_REVIEW.md` \xB7 live `reflect developer-review` \u2014 agent feedback on the instructions themselves",
     "",
     "## Read Before Editing",
     "",
@@ -5320,7 +5634,7 @@ function renderRepoAgentsMd(all) {
     lines.push("");
   }
   lines.push("## References", "");
-  lines.push("- `.octocode/MEMORY.md` \xB7 `.octocode/GOTCHAS.md` \xB7 `.octocode/LEARN.md` \xB7 `.octocode/BOOKMARKS.md`");
+  lines.push("- `.octocode/MEMORY.md` \xB7 `.octocode/GOTCHAS.md` \xB7 `.octocode/LEARN.md` \xB7 `.octocode/BOOKMARKS.md` \xB7 `.octocode/DEVELOPER_REVIEW.md`");
   lines.push("- `.octocode/awareness/manifest.json` \xB7 `.octocode/references/`");
   lines.push("");
   return lines.join("\n");
@@ -5418,6 +5732,57 @@ function renderBookmarksDoc(memoryRows2) {
     lines.push(`- \`${ref}\` - ${labelText}; source: ${sourceText}; ${titleText}`);
   }
   lines.push("");
+  return lines.join("\n");
+}
+function renderDeveloperReviewDoc(rows, maxLines) {
+  const open = rows.filter((row) => String(row["state"]) !== "done");
+  const resolved = rows.filter((row) => String(row["state"]) === "done");
+  const lines = [
+    "# Developer Review",
+    "",
+    "<!-- Generated by `octocode-awareness repo inject`. Regenerate instead of hand-editing. -->",
+    "",
+    "Feedback from agents to the human who authors this repo's agent instructions",
+    "(root `AGENTS.md`, `.octocode/AGENTS.md`, SKILL.md, system prompt, task briefs).",
+    "Each item is where the *instructions* \u2014 not the code, not the harness \u2014 were ambiguous,",
+    "wrong, over-constraining, or missing context. Recorded via `reflect record --fix-instructions`.",
+    "",
+    `Open: ${open.length} \xB7 Resolved: ${resolved.length}`,
+    ""
+  ];
+  if (rows.length === 0) {
+    lines.push(
+      "No instruction feedback yet.",
+      "",
+      "Agents: when your instructions cost you time or a wrong turn, record it:",
+      '`octocode-awareness reflect record --outcome partial --task "<what you did>" \\',
+      '  --fix-instructions "<what the instructions should have said>"`',
+      ""
+    );
+    return lines.join("\n");
+  }
+  function renderSection(title, sectionRows) {
+    if (sectionRows.length === 0) return;
+    lines.push(`## ${title} (${sectionRows.length})`, "");
+    for (const row of sectionRows) {
+      const source = String(row["source"]);
+      const state = String(row["state"]);
+      const agent = String(row["agent_id"] ?? "agent");
+      const files = rowFiles(row);
+      const block = [`- ${summarize(String(row["feedback"]), 240)}`];
+      const meta = [`from ${agent}`, `via ${source}${state && state !== "recorded" ? `:${state}` : ""}`, `id \`${row["id"]}\``];
+      if (files.length > 0) meta.push(`files: ${files.slice(0, 3).join(", ")}${files.length > 3 ? ` +${files.length - 3}` : ""}`);
+      block.push(`  - ${meta.join(" \xB7 ")}`);
+      if (maxLines && lines.length + block.length + 1 > maxLines) {
+        lines.push(`- \u2026more omitted by projection cap. Use \`query developer-review\` or \`reflect developer-review\`.`, "");
+        return;
+      }
+      lines.push(...block);
+    }
+    lines.push("");
+  }
+  renderSection("Open", open);
+  renderSection("Resolved", resolved);
   return lines.join("\n");
 }
 function renderReferenceDoc(title, bullets, rows = []) {
@@ -5936,16 +6301,28 @@ function attendAwareness(db3, params = {}) {
 // bin/hook-runner.ts
 import { spawnSync as spawnSync6 } from "node:child_process";
 import { createHash as createHash2 } from "node:crypto";
-import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, renameSync, unlinkSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute5, join as join7, relative as relative3, resolve as resolve10 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
+
+// src/sessions.ts
+import { randomUUID as randomUUID8 } from "node:crypto";
+function endSession(db3, params) {
+  const now = utcNow();
+  const result = db3.prepare(SESSIONS_UPDATE_END).get(
+    now,
+    params.summary ?? null,
+    params.sessionId
+  );
+  return result ?? null;
+}
 
 // src/pi-hooks.ts
 import path from "node:path";
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { randomUUID as randomUUID8 } from "node:crypto";
+import { randomUUID as randomUUID9 } from "node:crypto";
 import { realpathSync as realpathSync3 } from "node:fs";
-var _sessionStartupToken = randomUUID8().slice(0, 8);
+var _sessionStartupToken = randomUUID9().slice(0, 8);
 function addPathValue(paths, value) {
   if (typeof value === "string" && value.trim().length > 0) {
     paths.push(value.trim());
@@ -5986,8 +6363,8 @@ function addQueryPaths(paths, value) {
     addPathValue(paths, payload.file_paths);
   }
 }
-function extractPiWriteTargetPaths(toolName, input = {}, options = {}) {
-  const normalizedToolName = String(toolName ?? "").toLowerCase();
+function extractPiWriteTargetPaths(toolName2, input = {}, options = {}) {
+  const normalizedToolName = String(toolName2 ?? "").toLowerCase();
   const isWriteTool = Boolean(options.assumeWrite) || [
     "write",
     "edit",
@@ -6061,14 +6438,14 @@ function agentId(payload) {
   const input = objectOrEmpty2(payloadInput(payload));
   const explicit = firstString2(
     process.env.OCTOCODE_AGENT_ID,
-    payload.session_id,
-    payload.sessionId,
     payload.agent_id,
     payload.agentId,
-    input.session_id,
-    input.sessionId,
     input.agent_id,
-    input.agentId
+    input.agentId,
+    payload.session_id,
+    payload.sessionId,
+    input.session_id,
+    input.sessionId
   );
   if (explicit) return explicit;
   const host = firstString2(
@@ -6086,6 +6463,33 @@ function agentId(payload) {
     console.error(`octocode-awareness: OCTOCODE_AGENT_ID or host session id missing; using fallback agent id "${fallback}". Set OCTOCODE_AGENT_ID for reliable multi-agent lock isolation.`);
   }
   return fallback;
+}
+function sessionId(payload) {
+  const input = objectOrEmpty2(payloadInput(payload));
+  return firstString2(
+    payload.session_id,
+    payload.sessionId,
+    input.session_id,
+    input.sessionId
+  );
+}
+function toolName(payload) {
+  const input = objectOrEmpty2(payloadInput(payload));
+  return firstString2(
+    payload.tool_name,
+    payload.toolName,
+    payload.name,
+    input.tool_name,
+    input.toolName
+  ) ?? "";
+}
+function autoClaimRationale(payload, files) {
+  const tool = toolName(payload);
+  const names = files.map((f) => f.split("/").pop() || f);
+  const shown = names.slice(0, 3).join(", ");
+  const extra = names.length > 3 ? ` +${names.length - 3} more` : "";
+  const action = tool ? `${tool}` : "edit";
+  return `auto: ${action} ${shown}${extra} (lifecycle hook)`;
 }
 function agentName(payload) {
   const value = process.env.OCTOCODE_AGENT_NAME ?? payload.agent_name ?? payload.agentName ?? payload.agent_display_name ?? payload.agentDisplayName;
@@ -6109,8 +6513,8 @@ function isStopHookActive(payload) {
 function extractFiles(payload) {
   const input = payloadForFileExtraction(payload);
   const inputObj = objectOrEmpty2(input);
-  const toolName = payload.tool_name ?? payload.toolName ?? payload.name ?? inputObj.tool_name ?? inputObj.toolName ?? "";
-  return extractPiWriteTargetPaths(toolName, input, { assumeWrite: true });
+  const toolName2 = payload.tool_name ?? payload.toolName ?? payload.name ?? inputObj.tool_name ?? inputObj.toolName ?? "";
+  return extractPiWriteTargetPaths(toolName2, input, { assumeWrite: true });
 }
 function resolveHookPath(file, cwd = process.cwd()) {
   return resolve10(cwd, file);
@@ -6125,20 +6529,52 @@ function isInsidePath(candidate, root) {
 function db() {
   return connectDb(resolveDbPath(null));
 }
-function hookTaskStateFile() {
+function hookTaskStateDir() {
+  const stateDir = join7(dirname5(resolveDbPath(null)), "hook-state", "tasks");
+  mkdirSync4(stateDir, { recursive: true });
+  return stateDir;
+}
+function hookTaskStateFile(key) {
+  return join7(hookTaskStateDir(), `${key}.json`);
+}
+function legacyHookTaskStateFile() {
   const stateDir = join7(dirname5(resolveDbPath(null)), "hook-state");
   mkdirSync4(stateDir, { recursive: true });
   return join7(stateDir, "shell-hook-tasks.json");
 }
-function readHookTaskState() {
+function readLegacyHookTaskEntries(key) {
   try {
-    return JSON.parse(readFileSync4(hookTaskStateFile(), "utf8"));
+    const legacyFile = legacyHookTaskStateFile();
+    const state = JSON.parse(readFileSync4(legacyFile, "utf8"));
+    const entries = Array.isArray(state[key]) ? state[key] : [];
+    if (entries.length === 0) return [];
+    delete state[key];
+    writeFileSync3(legacyFile, JSON.stringify(state, null, 2) + "\n", "utf8");
+    return entries;
   } catch {
-    return {};
+    return [];
   }
 }
-function writeHookTaskState(state) {
-  writeFileSync3(hookTaskStateFile(), JSON.stringify(state, null, 2) + "\n", "utf8");
+function readHookTaskEntries(key) {
+  try {
+    const parsed = JSON.parse(readFileSync4(hookTaskStateFile(key), "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return readLegacyHookTaskEntries(key);
+  }
+}
+function writeHookTaskEntries(key, entries) {
+  const file = hookTaskStateFile(key);
+  if (entries.length === 0) {
+    try {
+      unlinkSync(file);
+    } catch {
+    }
+    return;
+  }
+  const tempFile = `${file}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync3(tempFile, JSON.stringify(entries, null, 2) + "\n", "utf8");
+  renameSync(tempFile, file);
 }
 function hookEventId(payload) {
   const input = objectOrEmpty2(payloadInput(payload));
@@ -6171,25 +6607,20 @@ function hookTaskKey(payload, files, cwd) {
   return createHash2("sha1").update(JSON.stringify(identity)).digest("hex");
 }
 function recordHookTask(payload, files, cwd, taskId) {
-  const state = readHookTaskState();
   const key = hookTaskKey(payload, files, cwd);
-  const entries = state[key] ?? [];
+  const entries = readHookTaskEntries(key);
   entries.push({
     taskId,
     files: files.map((file) => resolveHookPath(file, cwd)),
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   });
-  state[key] = entries.slice(-20);
-  writeHookTaskState(state);
+  writeHookTaskEntries(key, entries.slice(-20));
 }
 function consumeHookTask(payload, files, cwd) {
-  const state = readHookTaskState();
   const key = hookTaskKey(payload, files, cwd);
-  const entries = state[key] ?? [];
+  const entries = readHookTaskEntries(key);
   const entry2 = entries.shift();
-  if (entries.length > 0) state[key] = entries;
-  else delete state[key];
-  writeHookTaskState(state);
+  writeHookTaskEntries(key, entries);
   return entry2?.taskId ?? null;
 }
 function uniqueActiveHookTaskId(database, params) {
@@ -6251,9 +6682,10 @@ async function runPreEdit(payload) {
     registerHookAgent(database, payload, "hook:pre-edit");
     const result = preFlightIntent(database, {
       agentId: agentId(payload),
+      sessionId: sessionId(payload),
       workspacePath: workspace(payload) ?? process.cwd(),
       artifact: artifact(payload),
-      rationale: "auto: file edit via lifecycle hook",
+      rationale: autoClaimRationale(payload, files),
       testPlan: "post-edit verification",
       targetFiles: files,
       ttlMs: 10 * 6e4
@@ -6428,6 +6860,8 @@ async function runSessionEnd(payload) {
       artifact: artifact(payload) ?? void 0,
       reason: hookReason(payload) || void 0
     });
+    const sid = sessionId(payload);
+    if (sid) endSession(database, { sessionId: sid });
   } catch {
   }
   return 0;
@@ -6467,6 +6901,8 @@ if (isMain && invokedAsHookRunner) {
 
 // bin/awareness.ts
 var MAX_CLI_TTL_SECONDS = 10 * 60;
+var MAX_CLI_WAIT_SECONDS = 60 * 60;
+var MAX_CLI_RETRY_INTERVAL_SECONDS = 5 * 60;
 var MEMORY_SORTS = /* @__PURE__ */ new Set(["smart", "score", "importance", "recent", "accessed"]);
 var ARRAY_FLAGS = /* @__PURE__ */ new Set([
   "tag",
@@ -6526,14 +6962,14 @@ function parseArgs(argv) {
 }
 var GLOBAL_FLAGS = ["db", "compact", "help"];
 var KNOWN_FLAGS = {
-  "tell-memory": ["agent_id", "task_context", "observation", "importance", "label", "tag", "reference", "supersedes", "failure_signature", "valid_from", "valid_to", "workspace", "artifact", "repo", "ref", "file", "file_tree_fingerprint"],
+  "tell-memory": ["agent_id", "task_context", "observation", "importance", "label", "tag", "reference", "supersedes", "failure_signature", "valid_from", "valid_to", "workspace", "artifact", "repo", "ref", "file", "file_tree_fingerprint", "compat_coerce"],
   "get-memory": ["query", "limit", "min_importance", "label", "tag", "smart", "workspace", "artifact", "repo", "ref", "state", "sort", "global_only", "strict_scope", "as_of", "reference", "regex", "file_regex", "file", "explain", "semantic"],
   "forget": ["memory_id", "tag", "tags", "before", "max_importance", "workspace", "artifact", "repo", "ref", "dry_run"],
-  "reflect": ["agent_id", "task", "outcome", "lesson", "worked", "didnt_work", "fix_repo", "fix_file", "fix_harness", "failure_signature", "importance", "judgment_note", "duo", "eval_failure_json", "workspace", "artifact", "repo", "ref"],
+  "reflect": ["agent_id", "task", "outcome", "lesson", "worked", "didnt_work", "fix_repo", "fix_file", "fix_harness", "fix_instructions", "failure_signature", "importance", "judgment_note", "duo", "eval_failure_json", "workspace", "artifact", "repo", "ref", "compat_coerce"],
   "refine-set": ["agent_id", "reasoning", "remember", "quality", "state", "workspace", "artifact", "repo", "ref", "file", "refinement_id"],
   "refine-get": ["workspace", "artifact", "repo", "ref", "quality", "include_handoffs", "state", "limit"],
   "refine-delete": ["refinement_id", "workspace", "artifact", "dry_run"],
-  "pre-flight-intent": ["agent_id", "workspace", "artifact", "rationale", "test_plan", "plan_doc_ref", "target_file", "file", "lock_type", "ttl_minutes", "ttl_seconds", "wait_seconds", "retry_interval"],
+  "pre-flight-intent": ["agent_id", "workspace", "artifact", "rationale", "test_plan", "plan_doc_ref", "target_file", "file", "lock_type", "ttl_minutes", "ttl_seconds", "wait_seconds", "retry_interval", "strict_agent_id"],
   "release-file-lock": ["agent_id", "task_id", "target_file", "file", "status", "verified", "verified_note", "workspace", "artifact"],
   "status": ["workspace", "artifact", "limit"],
   "init": [],
@@ -6545,11 +6981,12 @@ var KNOWN_FLAGS = {
   "doc-staleness": ["agent_id", "workspace", "artifact", "targets_json", "min_edits", "min_lines", "propose", "session_id"],
   "docs-catalog": ["action", "name"],
   "export-harness": ["limit", "min_importance", "workspace", "artifact"],
+  "developer-review": ["workspace", "artifact", "repo", "ref", "state", "limit", "format", "query"],
   "query": ["view", "query", "limit", "format", "out", "workspace", "artifact", "repo", "ref", "agent_id", "state", "label", "file", "since", "include_bodies"],
   "attend": ["query", "limit", "workspace", "artifact", "repo", "ref", "file", "include_bodies", "explain_organ"],
   "repo-inject": ["query", "limit", "out", "out_dir", "workspace", "artifact", "repo", "ref", "mode", "check", "include_view", "include_bodies"],
   "agent-registry": ["action", "agent_id", "agent_name", "workspace", "artifact", "context", "limit"],
-  "agent-signal": ["action", "agent_id", "workspace", "artifact", "repo", "ref", "kind", "subject", "body", "to_agent", "file", "ref_id", "importance", "in_reply_to", "thread_id", "signal_id", "all", "unread_only", "mark_read", "limit", "format"],
+  "agent-signal": ["action", "agent_id", "workspace", "artifact", "repo", "ref", "kind", "subject", "body", "to_agent", "file", "ref_id", "importance", "in_reply_to", "thread_id", "signal_id", "all", "unread_only", "mark_read", "limit", "format", "compat_coerce"],
   "notify-prune": ["signal_id", "resolved", "older_than_days", "dry_run", "workspace", "artifact"],
   "session-capture": ["agent_id", "workspace", "artifact", "repo", "ref", "reason", "cwd"],
   "wait-for-lock": ["agent_id", "target_file", "file", "workspace", "artifact", "lock_type", "wait_seconds", "retry_interval"],
@@ -6563,6 +7000,16 @@ function validateFlags(command2, args2) {
   if (!known) return [];
   const allowed = /* @__PURE__ */ new Set([...known, ...GLOBAL_FLAGS]);
   return Object.keys(args2).filter((k) => k !== "_" && !allowed.has(k));
+}
+function parseBoundedSeconds(args2, key, min, max) {
+  const raw = args2[key];
+  if (raw == null || raw === false) return null;
+  const flag2 = `--${key.replace(/_/g, "-")}`;
+  const value = Number(String(raw));
+  if (!Number.isInteger(value)) die(`${flag2} must be an integer`);
+  if (value < min) die(`${flag2} must be >= ${min}`);
+  if (value > max) die(`${flag2} must be <= ${max}`);
+  return value;
 }
 function extractGlobalDb(argv) {
   let dbPath2 = null;
@@ -6605,6 +7052,7 @@ var COMMAND_ROUTES = {
   "reflect record": { command: "reflect" },
   "reflect mine-weakness": { command: "mine-weakness" },
   "reflect export-harness": { command: "export-harness" },
+  "reflect developer-review": { command: "developer-review" },
   "docs list": { command: "docs-catalog", prepend: ["--action", "list"] },
   "docs show": { command: "docs-catalog", prepend: ["--action", "show"] },
   "docs staleness": { command: "doc-staleness" },
@@ -6716,12 +7164,13 @@ function cmdTellMemory(db3, args2, dbPath2, opts2) {
   const supersedes = Array.isArray(rawSup) ? rawSup : rawSup ? [String(rawSup)] : [];
   const rawLabel = args2["label"];
   const label = Array.isArray(rawLabel) ? rawLabel[0] : String(rawLabel ?? "");
+  const compatCoerce = Boolean(args2["compat_coerce"]);
   const { memory, superseded, noveltyScore, similarMemoryIds } = insertMemory(db3, {
     agentId: agentId2,
     taskContext,
     observation,
     importance: imp,
-    label: normalizeLabel(label),
+    label,
     tags,
     references: [...references, ...fileReferences],
     supersedes,
@@ -6732,7 +7181,8 @@ function cmdTellMemory(db3, args2, dbPath2, opts2) {
     artifact: args2["artifact"] ? String(args2["artifact"]) : null,
     repo: args2["repo"] ? String(args2["repo"]) : null,
     ref: args2["ref"] ? String(args2["ref"]) : null,
-    fileTreeFingerprint: args2["file_tree_fingerprint"] ? String(args2["file_tree_fingerprint"]) : null
+    fileTreeFingerprint: args2["file_tree_fingerprint"] ? String(args2["file_tree_fingerprint"]) : null,
+    compatCoerce
   });
   const payload = { db_path: dbPath2, memory, superseded };
   if (supersedes.length === 0 && noveltyScore < 0.5 && similarMemoryIds.length > 0) {
@@ -6908,15 +7358,17 @@ function cmdReflect(db3, args2, dbPath2, opts2) {
       die(`--eval-failure-json must be a JSON array of {id, dimension?, failure_signature?, suggested_lesson?}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  const compatCoerce = Boolean(args2["compat_coerce"]);
   const result = reflect(db3, {
     agentId: String(args2["agent_id"] ?? "agent"),
     task: String(args2["task"]),
-    outcome: String(args2["outcome"] ?? "partial"),
+    outcome: args2["outcome"] != null ? String(args2["outcome"]) : "partial",
     lesson: args2["lesson"] ? String(args2["lesson"]) : null,
     worked: args2["worked"] ? String(args2["worked"]) : null,
     didntWork: args2["didnt_work"] ? String(args2["didnt_work"]) : null,
     fixRepo: args2["fix_repo"] ? String(args2["fix_repo"]) : null,
     fixHarness: args2["fix_harness"] ? String(args2["fix_harness"]) : null,
+    fixInstructions: args2["fix_instructions"] ? String(args2["fix_instructions"]) : null,
     failureSignature: args2["failure_signature"] ? String(args2["failure_signature"]) : null,
     importance: args2["importance"] ? parseInt(String(args2["importance"]), 10) : null,
     judgmentNote: args2["judgment_note"] ? String(args2["judgment_note"]) : null,
@@ -6926,13 +7378,23 @@ function cmdReflect(db3, args2, dbPath2, opts2) {
     workspacePath: args2["workspace"] ? String(args2["workspace"]) : null,
     artifact: args2["artifact"] ? String(args2["artifact"]) : null,
     repo: args2["repo"] ? String(args2["repo"]) : null,
-    ref: args2["ref"] ? String(args2["ref"]) : null
+    ref: args2["ref"] ? String(args2["ref"]) : null,
+    compatCoerce
   });
   return emit({ ...result, db_path: dbPath2 }, 0, opts2);
 }
 function cmdPreFlightIntent(db3, args2, dbPath2, opts2) {
+  const envAgentId = process.env.OCTOCODE_AGENT_ID?.trim() || "";
+  const argAgentId = args2["agent_id"] ? String(args2["agent_id"]).trim() : "";
+  const strictAgentId = Boolean(args2["strict_agent_id"]) || process.env.OCTOCODE_STRICT_AGENT_ID === "1";
+  if (!argAgentId && !envAgentId) {
+    const msg = "lock acquire: set --agent-id or OCTOCODE_AGENT_ID so CLI and hooks share one identity";
+    if (strictAgentId) die(msg);
+    console.error(`octocode-awareness: warning: ${msg}`);
+  }
   const rawTarget = args2["target_file"] ?? args2["file"];
   const targetFiles = Array.isArray(rawTarget) ? rawTarget : rawTarget ? [String(rawTarget)] : [];
+  if (targetFiles.length === 0) die("lock acquire requires at least one --target-file");
   const ttlMinutes = args2["ttl_minutes"] ? parseInt(String(args2["ttl_minutes"]), 10) : null;
   const ttlSeconds = args2["ttl_seconds"] ? parseInt(String(args2["ttl_seconds"]), 10) : null;
   if (ttlMinutes != null && (!Number.isInteger(ttlMinutes) || ttlMinutes < 1)) die("--ttl-minutes must be >= 1");
@@ -6941,7 +7403,7 @@ function cmdPreFlightIntent(db3, args2, dbPath2, opts2) {
   if (ttlSeconds != null && ttlSeconds > MAX_CLI_TTL_SECONDS) die("--ttl-seconds must be <= 600");
   const ttlMs = ttlSeconds != null ? ttlSeconds * 1e3 : ttlMinutes != null ? ttlMinutes * 6e4 : null;
   const claimParams = {
-    agentId: String(args2["agent_id"] ?? "agent"),
+    agentId: argAgentId || envAgentId || "agent",
     workspacePath: args2["workspace"] ? String(args2["workspace"]) : null,
     artifact: args2["artifact"] ? String(args2["artifact"]) : null,
     rationale: String(args2["rationale"] ?? "agent write operation"),
@@ -6952,9 +7414,9 @@ function cmdPreFlightIntent(db3, args2, dbPath2, opts2) {
     ttlMs
   };
   let result = preFlightIntent(db3, claimParams);
-  const waitSeconds = args2["wait_seconds"] ? parseInt(String(args2["wait_seconds"]), 10) : null;
+  const waitSeconds = parseBoundedSeconds(args2, "wait_seconds", 0, MAX_CLI_WAIT_SECONDS);
+  const retrySeconds = parseBoundedSeconds(args2, "retry_interval", 1, MAX_CLI_RETRY_INTERVAL_SECONDS);
   if (!result.ok && waitSeconds != null && waitSeconds > 0) {
-    const retrySeconds = args2["retry_interval"] ? parseInt(String(args2["retry_interval"]), 10) : null;
     const wait = waitForLock(db3, {
       agent_id: claimParams.agentId,
       target_files: targetFiles,
@@ -6970,9 +7432,10 @@ function cmdPreFlightIntent(db3, args2, dbPath2, opts2) {
   return emit({ db_path: dbPath2, ...result }, 0, opts2);
 }
 function cmdAuditUnverified(db3, args2, dbPath2, opts2) {
+  const rawAuditWs = args2["workspace"] ? String(args2["workspace"]) : null;
   const result = auditUnverified(db3, {
     agentId: args2["agent_id"] ? String(args2["agent_id"]) : null,
-    workspacePath: args2["workspace"] ? String(args2["workspace"]) : null,
+    workspacePath: rawAuditWs ? normalizeWorkspacePath(rawAuditWs, rawAuditWs) : null,
     artifact: args2["artifact"] ? String(args2["artifact"]) : null,
     abandon: Boolean(args2["abandon"])
   });
@@ -7038,6 +7501,9 @@ function cmdReleaseFileLock(db3, args2, dbPath2, opts2) {
     verified: Boolean(args2["verified"]),
     verifiedNote: args2["verified_note"] ? String(args2["verified_note"]) : void 0
   });
+  if (!result.released) {
+    return emit({ db_path: dbPath2, ...result, ok: false }, result.ambiguousRelease ? 2 : 1, opts2);
+  }
   if ("unverifiedConclusion" in result) {
     return emit({ db_path: dbPath2, ...result, ok: false }, 2, opts2);
   }
@@ -7158,6 +7624,30 @@ function cmdExportHarness(db3, args2, dbPath2, opts2) {
     artifact: args2["artifact"] ? String(args2["artifact"]) : null
   });
   return emit({ db_path: dbPath2, ...result }, 0, opts2);
+}
+function cmdDeveloperReview(db3, args2, dbPath2, opts2) {
+  const format = String(args2["format"] ?? "json").toLowerCase();
+  const result = developerReviewDoc(db3, {
+    workspacePath: args2["workspace"] ? String(args2["workspace"]) : process.cwd(),
+    artifact: args2["artifact"] ? String(args2["artifact"]) : null,
+    repo: args2["repo"] ? String(args2["repo"]) : null,
+    ref: args2["ref"] ? String(args2["ref"]) : null,
+    query: args2["query"] ? String(args2["query"]) : null,
+    limit: args2["limit"] ? parseInt(String(args2["limit"]), 10) : void 0,
+    state: Array.isArray(args2["state"]) ? args2["state"].map(String) : args2["state"] ? String(args2["state"]) : null
+  });
+  if (format === "markdown") {
+    process.stdout.write(result.markdown);
+    return 0;
+  }
+  return emit({
+    db_path: dbPath2,
+    view: "developer-review",
+    open: result.open,
+    resolved: result.resolved,
+    count: result.rows.length,
+    rows: result.rows
+  }, 0, opts2);
 }
 function cmdQuery(db3, args2, dbPath2, opts2) {
   const view = String(args2["view"] ?? args2._[0] ?? "all");
@@ -7315,10 +7805,10 @@ function cmdDocStaleness(db3, args2, dbPath2, opts2) {
   const proposed = [];
   if (Boolean(args2["propose"])) {
     const agentId2 = String(args2["agent_id"] ?? "agent");
-    const sessionId = args2["session_id"] ? String(args2["session_id"]) : null;
+    const sessionId2 = args2["session_id"] ? String(args2["session_id"]) : null;
     for (const entry2 of result.entries) {
       if (!entry2.stale) continue;
-      const harnessId = proposeDocRefresh(db3, entry2, { agentId: agentId2, sessionId, workspacePath, artifact: artifact2 });
+      const harnessId = proposeDocRefresh(db3, entry2, { agentId: agentId2, sessionId: sessionId2, workspacePath, artifact: artifact2 });
       proposed.push({ target_file: entry2.doc_file, harness_id: harnessId });
     }
   }
@@ -7339,7 +7829,7 @@ function cmdNotify(db3, args2, dbPath2, opts2) {
     repo: args2["repo"] ? String(args2["repo"]) : null,
     ref: args2["ref"] ? String(args2["ref"]) : null,
     toAgent: args2["to"] ? String(args2["to"]) : null,
-    kind: String(args2["kind"]),
+    kind: normalizeNotificationKind(args2["kind"], { coerce: Boolean(args2["compat_coerce"]) }),
     subject: String(args2["subject"]),
     body: args2["body"] ? String(args2["body"]) : null,
     files,
@@ -7393,7 +7883,8 @@ function cmdAgentSignal(db3, args2, dbPath2, opts2) {
   const refs = Array.isArray(rawRefs) ? rawRefs : rawRefs ? [String(rawRefs)] : [];
   const rawKinds = args2["kind"];
   const kinds = Array.isArray(rawKinds) ? rawKinds : rawKinds ? [String(rawKinds)] : [];
-  const publishKind = kinds[0];
+  const compatCoerce = Boolean(args2["compat_coerce"]);
+  const publishKind = kinds[0] ? normalizeNotificationKind(kinds[0], { coerce: compatCoerce }) : void 0;
   const rawSignalIds = args2["signal_id"];
   const signalIds = Array.isArray(rawSignalIds) ? rawSignalIds : rawSignalIds ? [String(rawSignalIds)] : [];
   const result = agentSignal(db3, {
@@ -7415,7 +7906,8 @@ function cmdAgentSignal(db3, args2, dbPath2, opts2) {
     signalIds,
     unreadOnly: args2["all"] ? false : args2["unread_only"],
     markRead: Boolean(args2["mark_read"]),
-    kinds
+    kinds: kinds.length ? kinds.map((k) => normalizeNotificationKind(k, { coerce: compatCoerce })) : [],
+    compatCoerce
   });
   return emit({ db_path: dbPath2, ...result }, 0, opts2);
 }
@@ -7587,12 +8079,12 @@ schema: octocode-awareness schema commands|list|json-schema <name>|example <name
 easy install:
   If the CLI is bundled locally, tell your agent to run that local CLI:
     octocode-awareness maintenance init --compact
-  Registry fallback only when no local CLI exists:
+  Package fallback only when no local CLI exists:
     npx @octocodeai/octocode-awareness maintenance init --compact
-  Then install the bundled Agent Skill:
-    npx octocode skill --add --path {{path_to_skills_location}}/octocode-awareness --platform common
-  Registry fallback:
-    npx octocode skill --name octocode-awareness
+  The Agent Skill is bundled with this package under dist/skills/:
+    npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common
+    npx octocode skill --add --path <awareness-package>/dist/skills/octocode-skills --platform common
+  Use npx octocode for skill management and research/search operations; do not install awareness by registry name.
 
 supported agents: Codex, Claude Code, Cursor, Pi, and custom library/CLI hosts
 surfaces: CLI = control plane; Agent Skill = operating loop; hooks/Pi bridge = lifecycle automation
@@ -7600,7 +8092,7 @@ surfaces: CLI = control plane; Agent Skill = operating loop; hooks/Pi bridge = l
 start: attend, workspace status, memory recall, refinement get, signal list, query <view>
 edit: lock acquire, lock wait, lock release, lock prune, verify mark, verify audit
 messages: signal publish, signal list, signal reply, signal ack, signal resolve, signal prune, agent register, agent list
-learning: memory record, memory forget, refinement set, refinement get, refinement delete, reflect record, reflect mine-weakness, reflect export-harness, docs list, docs show, docs staleness
+learning: memory record, memory forget, refinement set, refinement get, refinement delete, reflect record, reflect mine-weakness, reflect export-harness, reflect developer-review, docs list, docs show, docs staleness
 repo context: query <view> [--format json|table|csv|markdown|html], repo inject
 hooks: hook run <pre-edit|post-edit|harness-guard|stop-verify|notify-deliver|session-end>, hooks install|check|remove --host claude|codex|cursor
 utility: session capture, maintenance init, maintenance self-test, maintenance digest
@@ -7619,11 +8111,11 @@ examples:
 
 Run "octocode-awareness <command> --help" for command flags. Exit 2 = lock conflict or wait timeout.`;
 var HELP_COMPACT = `octocode-awareness: canonical noun/verb CLI. Use --compact for JSON.
-local-first: octocode-awareness <command>; fallback: npx @octocodeai/octocode-awareness <command>; skill: npx octocode skill --add --path {{path_to_skills_location}}/octocode-awareness --platform common; agents: Codex, Claude, Cursor, Pi
+local-first: octocode-awareness <command>; fallback: npx @octocodeai/octocode-awareness <command>; bundled skill path: <awareness-package>/dist/skills/octocode-awareness; Octocode ops: npx octocode skill|search; agents: Codex, Claude, Cursor, Pi
 start: attend; workspace status; memory recall; refinement get; signal list; docs list
 edit: lock acquire|wait|release|prune; verify audit|mark
 msg: signal publish|list|reply|ack|resolve|prune; agent register|list
-learn: memory record|forget; reflect record|mine-weakness|export-harness; maintenance digest
+learn: memory record|forget; reflect record|mine-weakness|export-harness|developer-review; maintenance digest
 repo: query <view> --format json|table|csv|markdown|html; repo inject
 inspect: schema commands --compact; docs list|show; schema json-schema <name>; <command> --help`;
 var COMMAND_TO_SCHEMA = {
@@ -7673,6 +8165,7 @@ var COMMAND_DISPLAY = {
   "status": "workspace status",
   "attend": "attend",
   "export-harness": "reflect export-harness",
+  "developer-review": "reflect developer-review",
   "query": "query",
   "repo-inject": "repo inject",
   "session-capture": "session capture",
@@ -7706,6 +8199,7 @@ var COMMAND_EXAMPLE = {
   "status": 'octocode-awareness workspace status --workspace "$PWD" --compact',
   "attend": 'octocode-awareness attend --query "current task" --workspace "$PWD" --compact',
   "export-harness": 'octocode-awareness reflect export-harness --workspace "$PWD" --compact',
+  "developer-review": 'octocode-awareness reflect developer-review --workspace "$PWD" --format markdown --compact',
   "query": 'octocode-awareness query workboard --workspace "$PWD" --format json --limit 10 --compact',
   "repo-inject": 'octocode-awareness repo inject --workspace "$PWD" --out .octocode --mode local --compact',
   "session-capture": 'octocode-awareness session capture --agent-id agent --workspace "$PWD" --reason handoff --compact',
@@ -7728,6 +8222,7 @@ var ROUTE_EXAMPLE = {
   "signal resolve": "octocode-awareness signal resolve --agent-id agent --thread-id ntf_123 --compact",
   "agent register": 'octocode-awareness agent register --agent-id agent --agent-name "Codex" --workspace "$PWD" --compact',
   "agent list": 'octocode-awareness agent list --workspace "$PWD" --compact',
+  "reflect developer-review": 'octocode-awareness reflect developer-review --workspace "$PWD" --format markdown --compact',
   "docs list": "octocode-awareness docs list --compact",
   "docs show": "octocode-awareness docs show full-flow",
   "hooks install": "octocode-awareness hooks install --host codex --dry-run --compact",
@@ -7776,6 +8271,7 @@ var REMOVED_COMMAND_REPLACEMENTS = {
 var COMMAND_HELP = {
   "tell-memory": `usage: octocode-awareness memory record --agent-id <id> --task-context <text> --observation <text> --importance <1-10> [--label <l>] [--tag <t>]... [--reference <r>]... [--file <p>]...
 example: octocode-awareness memory record --agent-id agent --task-context "build failure" --observation "Run yarn build before tests" --importance 7 --label GOTCHA --workspace "$PWD" --compact
+note: unknown --label hard-errors unless --compat-coerce
 schema: octocode-awareness schema json-schema tell_memory --compact`,
   "get-memory": `usage: octocode-awareness memory recall [options]
 filters: [--query <text>] [--limit <n>] [--min-importance <n>] [--label <l>]... [--tag <t>]... [--reference <r>]... [--file <p>]... [--regex <r>]... [--file-regex <r>]...
@@ -7785,6 +8281,7 @@ example: octocode-awareness memory recall --query "current task" --workspace "$P
 schema: octocode-awareness schema json-schema get_memory --compact`,
   "pre-flight-intent": `usage: octocode-awareness lock acquire --agent-id <id> --target-file <p>... [--workspace <p>] [--artifact <a>] [--rationale <t>] [--test-plan <t>] [--lock-type EXCLUSIVE|SHARED] [--ttl-minutes <n>] [--wait-seconds <n>]
 example: octocode-awareness lock acquire --agent-id agent --target-file src/file.ts --rationale "edit file" --test-plan "yarn test" --compact
+note: export OCTOCODE_AGENT_ID for CLI+hooks; --strict-agent-id / OCTOCODE_STRICT_AGENT_ID=1 hard-fails when missing
 schema: octocode-awareness schema json-schema pre_flight_intent --compact`,
   "agent-signal": `usage: octocode-awareness signal publish|list|reply|ack|resolve --agent-id <id> [--to-agent <id>]... [--signal-id <id>]... [--thread-id <id>] [--kind <k>] [--subject <t>] [--body <t>] [--file <p>]...
 examples:
@@ -7795,10 +8292,15 @@ schema: octocode-awareness schema json-schema agent_signal --compact`,
   "verify": `usage: octocode-awareness verify mark (--task-id <id>... | --all-pending) --agent-id <id> [--status SUCCESS|FAILED] [--message <t>] [--workspace <p>] [--artifact <a>]
 example: octocode-awareness verify mark --agent-id agent --all-pending --message "yarn test passed" --workspace "$PWD" --compact
 schema: octocode-awareness schema json-schema verify --compact`,
-  "reflect": `usage: octocode-awareness reflect record --agent-id <id> --task <text> --outcome worked|partial|failed [--lesson <t>] [--fix-repo <t>] [--fix-file <p>]... [--failure-signature <s>]
+  "reflect": `usage: octocode-awareness reflect record --agent-id <id> --task <text> --outcome worked|partial|failed [--lesson <t>] [--fix-repo <t>] [--fix-instructions <t>] [--fix-file <p>]... [--failure-signature <s>]
 example: octocode-awareness reflect record --agent-id agent --task "fix CLI" --outcome worked --lesson "Keep CLI nouns canonical" --compact
+note: --outcome must be worked|partial|failed (unknown hard-errors unless --compat-coerce)
+note: --fix-repo \u2192 coding refinement; --fix-harness \u2192 skill/tooling; --fix-instructions \u2192 feedback to the human instruction author (see reflect developer-review)
 schema: octocode-awareness schema json-schema reflect --compact`,
-  "query": `usage: octocode-awareness query <all|repo-profile|memories|gotchas|lessons|tasks|locks|agents|signals|refinements|files|activity|workboard> [--workspace <repo>] [--format json|table|csv|markdown|html] [--out <path>]
+  "developer-review": `usage: octocode-awareness reflect developer-review [--workspace <repo>] [--state open|ongoing|done]... [--format json|markdown] [--limit <n>]
+example: octocode-awareness reflect developer-review --workspace "$PWD" --format markdown --compact
+note: reads agent feedback on the instructions themselves (from reflect record --fix-instructions); same rows feed .octocode/DEVELOPER_REVIEW.md`,
+  "query": `usage: octocode-awareness query <all|repo-profile|memories|gotchas|lessons|tasks|locks|agents|signals|refinements|files|activity|workboard|developer-review> [--workspace <repo>] [--format json|table|csv|markdown|html] [--out <path>]
 examples:
   octocode-awareness query workboard --workspace "$PWD" --format json --limit 10 --compact
   octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
@@ -8081,8 +8583,8 @@ try {
     case "wait-for-lock": {
       const rawWaitTarget = args["target_file"] ?? args["file"];
       const waitTargets = Array.isArray(rawWaitTarget) ? rawWaitTarget : rawWaitTarget ? [String(rawWaitTarget)] : [];
-      const waitSecs = args["wait_seconds"] ? parseInt(String(args["wait_seconds"]), 10) : null;
-      const retrySecs = args["retry_interval"] ? parseInt(String(args["retry_interval"]), 10) : null;
+      const waitSecs = parseBoundedSeconds(args, "wait_seconds", 0, MAX_CLI_WAIT_SECONDS);
+      const retrySecs = parseBoundedSeconds(args, "retry_interval", 1, MAX_CLI_RETRY_INTERVAL_SECONDS);
       const waitResult = waitForLock(db2, {
         agent_id: args["agent_id"],
         target_files: waitTargets,
@@ -8106,6 +8608,9 @@ try {
       break;
     case "export-harness":
       exitCode = cmdExportHarness(db2, args, dbPath, opts);
+      break;
+    case "developer-review":
+      exitCode = cmdDeveloperReview(db2, args, dbPath, opts);
       break;
     case "query":
       exitCode = cmdQuery(db2, args, dbPath, opts);

@@ -54,6 +54,7 @@ Targets:
   --host claude         Write Claude Code hooks to .claude/settings.json (install default).
   --host codex         Write Codex hooks to .codex/hooks.json.
   --host cursor        Write Cursor hooks to .cursor/hooks.json.
+  Pi                   No shell install target; use wirePiAwarenessHooks(pi) or @octocodeai/pi-extension.
 
 Options:
   --project-dir <path>  Target a project hook file under <path> (default: cwd).
@@ -194,7 +195,7 @@ function matcherMatches(actual: unknown, expected: string | undefined): boolean 
 
 function isExactHookEntry(host: HookHost, group: HookEntry, spec: HookSpec): boolean {
   if (host === 'cursor') {
-    return sameAwarenessCommand(group.command, spec.command)
+    return group.command === spec.command
       && group.timeout === 20
       && matcherMatches(group.matcher, spec.matcher)
       && !Array.isArray(group.hooks);
@@ -203,7 +204,7 @@ function isExactHookEntry(host: HookHost, group: HookEntry, spec: HookSpec): boo
   return matcherMatches(group.matcher, spec.matcher)
     && (group.hooks ?? []).some((hook) => (
       hook.type === 'command'
-      && sameAwarenessCommand(hook.command, spec.command)
+      && hook.command === spec.command
       && hook.timeout === 20
     ));
 }

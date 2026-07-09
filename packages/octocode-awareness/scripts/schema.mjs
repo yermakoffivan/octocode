@@ -314,6 +314,20 @@ export const schemas = {
     .strict()
     .describe("Export AGENTS block."),
 
+  developer_review: z
+    .object({
+      workspace: workspacePath.optional().describe("Workspace filter."),
+      artifact: artifactScope.optional(),
+      repo: repoScope.optional(),
+      ref: refScope.optional(),
+      state: z.union([z.string(), z.array(z.string())]).optional().describe("Filter by refinement state: open|ongoing|done."),
+      limit: z.number().int().min(1).max(500).default(60),
+      format: z.enum(["json", "markdown"]).default("json").describe("json rows or the markdown digest."),
+      query: z.string().trim().min(1).max(200).optional().describe("Text filter over feedback."),
+    })
+    .strict()
+    .describe("Read agent feedback to the instruction author (from reflect record --fix-instructions)."),
+
   session_capture: z
     .object({
       agent_id: agentId.optional().describe("Agent filter."),
@@ -528,7 +542,7 @@ export const schemas = {
         .describe("Related files."),
       reasoning: nonEmptyText("Why saved.", 2000),
       remember: nonEmptyText("What to remember.", 2000),
-      quality: z.enum(["good", "bad", "handoff"]).default("good").describe("Outcome quality."),
+      quality: z.enum(["good", "bad", "handoff", "instructions"]).default("good").describe("Outcome quality."),
       state: z
         .enum(["open", "ongoing", "done"])
         .default("open")
@@ -544,7 +558,7 @@ export const schemas = {
       artifact: artifactScope.optional(),
       repo: z.string().trim().min(1).max(256).optional(),
       ref: z.string().trim().min(1).max(256).optional(),
-      quality: z.enum(["good", "bad", "handoff"]).optional(),
+      quality: z.enum(["good", "bad", "handoff", "instructions"]).optional(),
       include_handoffs: z.boolean().default(false).describe("Include session handoff refinements."),
       states: z
         .array(z.enum(["open", "ongoing", "done"]))
@@ -664,6 +678,7 @@ export const schemas = {
       fix_repo: nonEmptyText("Repo fix note.", 2000).optional(),
       fix_file: fileList,
       fix_harness: nonEmptyText("Harness fix note.", 2000).optional(),
+      fix_instructions: nonEmptyText("Developer instructions feedback.", 2000).optional(),
       repo: z.string().trim().min(1).max(256).optional(),
       ref: z.string().trim().min(1).max(256).optional(),
       workspace_path: z.string().trim().min(1).max(1024).optional(),
@@ -743,6 +758,10 @@ export const examples = {
     min_importance: 7,
     workspace: "/repo",
     artifact: "pkg",
+  },
+  developer_review: {
+    workspace: "/repo",
+    format: "markdown",
   },
   session_capture: {
     agent_id: "agent",
@@ -897,6 +916,7 @@ export const examples = {
     lesson: "lesson",
     fix_repo: "fix",
     fix_file: ["src/file.ts"],
+    fix_instructions: "clarify when agents should install hooks",
     eval_failures: [
       {
         id: "eval-1",
@@ -916,7 +936,7 @@ const listableSchemas = [
   "pre_flight_intent", "wait_for_lock", "prune_stale_locks", "release_file_lock", "verify", "audit_unverified",
   "forget_memory", "refinement", "refine_query", "refine_delete",
   "agent_registry", "agent_signal", "signal_prune",
-  "mine_weakness", "doc_staleness", "docs_catalog", "digest", "reflect",
+  "mine_weakness", "developer_review", "doc_staleness", "docs_catalog", "digest", "reflect",
 ];
 
 const commandIndex = [
@@ -948,6 +968,7 @@ const commandIndex = [
   { command: "reflect record", schema: "reflect", use: "Record outcome and lessons after work.", example: 'octocode-awareness reflect record --agent-id agent --task "fix CLI" --outcome worked --lesson "lesson" --compact' },
   { command: "reflect mine-weakness", schema: "mine_weakness", use: "Find recurring failure clusters.", example: 'octocode-awareness reflect mine-weakness --workspace "$PWD" --compact' },
   { command: "reflect export-harness", schema: "export_harness", use: "Preview harness guidance candidates from memories.", example: 'octocode-awareness reflect export-harness --workspace "$PWD" --compact' },
+  { command: "reflect developer-review", schema: "developer_review", use: "Read agent feedback on the instructions themselves (from reflect record --fix-instructions).", example: 'octocode-awareness reflect developer-review --workspace "$PWD" --format markdown --compact' },
   { command: "docs list", schema: "docs_catalog", use: "List skill reference docs (references/*.md).", example: "octocode-awareness docs list --compact" },
   { command: "docs show", schema: "docs_catalog", use: "Show one skill reference by name.", example: "octocode-awareness docs show full-flow" },
   { command: "docs staleness", schema: "doc_staleness", use: "Find docs likely stale from edit activity.", example: 'octocode-awareness docs staleness --targets-json \'[{"docFile":"README.md","sourceDirs":["src"]}]\' --compact' },

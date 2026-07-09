@@ -7,7 +7,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,7 @@ import { canonicalizePath, normalizeWorkspacePath } from '../src/git.js';
 import { preFlightIntent, releaseFileLock } from '../src/intents.js';
 import { auditUnverified } from '../src/verify.js';
 import { digest, notifyGet, sessionCapture } from '../src/maintenance.js';
+import { endSession } from '../src/sessions.js';
 import { extractPiWriteTargetPaths } from '../src/pi-hooks.js';
 
 function readStdin(): Promise<string> {
@@ -68,14 +69,14 @@ function agentId(payload: Record<string, unknown>): string {
   const input = objectOrEmpty(payloadInput(payload));
   const explicit = firstString(
     process.env.OCTOCODE_AGENT_ID,
-    payload.session_id,
-    payload.sessionId,
     payload.agent_id,
     payload.agentId,
-    input.session_id,
-    input.sessionId,
     input.agent_id,
     input.agentId,
+    payload.session_id,
+    payload.sessionId,
+    input.session_id,
+    input.sessionId,
   );
   if (explicit) return explicit;
 
@@ -94,6 +95,31 @@ function agentId(payload: Record<string, unknown>): string {
     console.error(`octocode-awareness: OCTOCODE_AGENT_ID or host session id missing; using fallback agent id "${fallback}". Set OCTOCODE_AGENT_ID for reliable multi-agent lock isolation.`);
   }
   return fallback;
+}
+
+function sessionId(payload: Record<string, unknown>): string | null {
+  const input = objectOrEmpty(payloadInput(payload));
+  return firstString(
+    payload.session_id, payload.sessionId, input.session_id, input.sessionId,
+  );
+}
+
+function toolName(payload: Record<string, unknown>): string {
+  const input = objectOrEmpty(payloadInput(payload));
+  return firstString(
+    payload.tool_name, payload.toolName, payload.name, input.tool_name, input.toolName,
+  ) ?? '';
+}
+
+// Build an informative auto-claim rationale from the tool + target files so a
+// blocked agent sees WHAT the holder is doing, not a generic "file edit".
+function autoClaimRationale(payload: Record<string, unknown>, files: string[]): string {
+  const tool = toolName(payload);
+  const names = files.map((f) => f.split('/').pop() || f);
+  const shown = names.slice(0, 3).join(', ');
+  const extra = names.length > 3 ? ` +${names.length - 3} more` : '';
+  const action = tool ? `${tool}` : 'edit';
+  return `auto: ${action} ${shown}${extra} (lifecycle hook)`;
 }
 
 function agentName(payload: Record<string, unknown>): string {
@@ -175,22 +201,54 @@ interface HookTaskStateEntry {
 
 type HookTaskState = Record<string, HookTaskStateEntry[]>;
 
-function hookTaskStateFile(): string {
+function hookTaskStateDir(): string {
+  const stateDir = join(dirname(resolveDbPath(null)), 'hook-state', 'tasks');
+  mkdirSync(stateDir, { recursive: true });
+  return stateDir;
+}
+
+function hookTaskStateFile(key: string): string {
+  return join(hookTaskStateDir(), `${key}.json`);
+}
+
+function legacyHookTaskStateFile(): string {
   const stateDir = join(dirname(resolveDbPath(null)), 'hook-state');
   mkdirSync(stateDir, { recursive: true });
   return join(stateDir, 'shell-hook-tasks.json');
 }
 
-function readHookTaskState(): HookTaskState {
+function readLegacyHookTaskEntries(key: string): HookTaskStateEntry[] {
   try {
-    return JSON.parse(readFileSync(hookTaskStateFile(), 'utf8')) as HookTaskState;
+    const legacyFile = legacyHookTaskStateFile();
+    const state = JSON.parse(readFileSync(legacyFile, 'utf8')) as HookTaskState;
+    const entries = Array.isArray(state[key]) ? state[key]! : [];
+    if (entries.length === 0) return [];
+    delete state[key];
+    writeFileSync(legacyFile, JSON.stringify(state, null, 2) + '\n', 'utf8');
+    return entries;
   } catch {
-    return {};
+    return [];
   }
 }
 
-function writeHookTaskState(state: HookTaskState): void {
-  writeFileSync(hookTaskStateFile(), JSON.stringify(state, null, 2) + '\n', 'utf8');
+function readHookTaskEntries(key: string): HookTaskStateEntry[] {
+  try {
+    const parsed = JSON.parse(readFileSync(hookTaskStateFile(key), 'utf8')) as unknown;
+    return Array.isArray(parsed) ? parsed as HookTaskStateEntry[] : [];
+  } catch {
+    return readLegacyHookTaskEntries(key);
+  }
+}
+
+function writeHookTaskEntries(key: string, entries: HookTaskStateEntry[]): void {
+  const file = hookTaskStateFile(key);
+  if (entries.length === 0) {
+    try { unlinkSync(file); } catch { /* already absent */ }
+    return;
+  }
+  const tempFile = `${file}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tempFile, JSON.stringify(entries, null, 2) + '\n', 'utf8');
+  renameSync(tempFile, file);
 }
 
 function hookEventId(payload: Record<string, unknown>): string | null {
@@ -226,26 +284,21 @@ function hookTaskKey(payload: Record<string, unknown>, files: string[], cwd: str
 }
 
 function recordHookTask(payload: Record<string, unknown>, files: string[], cwd: string, taskId: string): void {
-  const state = readHookTaskState();
   const key = hookTaskKey(payload, files, cwd);
-  const entries = state[key] ?? [];
+  const entries = readHookTaskEntries(key);
   entries.push({
     taskId,
     files: files.map(file => resolveHookPath(file, cwd)),
     createdAt: new Date().toISOString(),
   });
-  state[key] = entries.slice(-20);
-  writeHookTaskState(state);
+  writeHookTaskEntries(key, entries.slice(-20));
 }
 
 function consumeHookTask(payload: Record<string, unknown>, files: string[], cwd: string): string | null {
-  const state = readHookTaskState();
   const key = hookTaskKey(payload, files, cwd);
-  const entries = state[key] ?? [];
+  const entries = readHookTaskEntries(key);
   const entry = entries.shift();
-  if (entries.length > 0) state[key] = entries;
-  else delete state[key];
-  writeHookTaskState(state);
+  writeHookTaskEntries(key, entries);
   return entry?.taskId ?? null;
 }
 
@@ -322,9 +375,10 @@ async function runPreEdit(payload: Record<string, unknown>): Promise<number> {
     registerHookAgent(database, payload, 'hook:pre-edit');
     const result = preFlightIntent(database, {
       agentId: agentId(payload),
+      sessionId: sessionId(payload),
       workspacePath: workspace(payload) ?? process.cwd(),
       artifact: artifact(payload),
-      rationale: 'auto: file edit via lifecycle hook',
+      rationale: autoClaimRationale(payload, files),
       testPlan: 'post-edit verification',
       targetFiles: files,
       ttlMs: 10 * 60_000,
@@ -512,6 +566,10 @@ async function runSessionEnd(payload: Record<string, unknown>): Promise<number> 
       artifact: artifact(payload) ?? undefined,
       reason: hookReason(payload) || undefined,
     });
+    // Mark the session ended so its still-held locks read as abandoned
+    // (holder_session_active:false) to any agent that later conflicts on them.
+    const sid = sessionId(payload);
+    if (sid) endSession(database, { sessionId: sid });
   } catch {
     // fail-open
   }

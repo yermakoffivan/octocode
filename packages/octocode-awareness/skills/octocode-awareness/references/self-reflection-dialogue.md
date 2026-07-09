@@ -58,6 +58,15 @@ octocode-awareness reflect record \
   --compact
 ```
 
+Use the returned prompts as an optional one-pass self-eval: note one thing that improved the work, one remaining uncertainty, and one concrete verification check.
+
+## Self-Eval Approaches
+
+- **After reflection**: run `reflect record --duo` or a Supporter / Skeptic pass only for non-obvious lessons. Capture the synthesis, dissent, and next check.
+- **Eval-backed learning**: when a test, benchmark, or rubric failed, pass structured rows with `--eval-failure-json '[...]'` and a `failure_signature`; later use `reflect mine-weakness` to find repeated patterns.
+- **Later weakness review**: mine clusters first, then use one or two subagents as bounded reviewers, such as Tester / Maintainer or Evidence Checker / Product. The main agent chooses one fix and one verification.
+- **Subagent challenge**: delegate disjoint questions, require `claim -> evidence -> risk -> next check`, preserve dissent, and treat agreement as a signal to verify rather than proof.
+
 After role dialogue:
 
 - Record a durable memory only if the synthesis is reusable, evidence-backed, and scoped.

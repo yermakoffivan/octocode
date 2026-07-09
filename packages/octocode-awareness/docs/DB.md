@@ -71,7 +71,7 @@ The SQLite schema does not enforce every agent relationship with a foreign key b
 | `task_log` | Verification and lifecycle audit events | `verify mark`, verified lock release |
 | `signals` | Agent-to-agent messages and threads | `signal publish`, `signal reply` |
 | `signal_reads` | Per-agent acknowledgement cursors | `signal ack`, briefing delivery |
-| `refinements` | Handoffs and repo/skill improvement proposals | `refinement set`, `reflect record`, `session capture` |
+| `refinements` | Handoffs, repo/skill improvement proposals, and instruction-author feedback (`quality='instructions'`) | `refinement set`, `reflect record`, `session capture` |
 | `edit_log` | Optional file edit audit trail | Library `insertEditLog()` callers |
 | `harness_log` | Self-improvement, reflection, capture, proposal events | `reflect record`, doc staleness proposals, library callers |
 
@@ -98,7 +98,7 @@ One row per contiguous work period.
 | `session_id` | Primary key, usually `sess_...`. |
 | `agent_id` | Owning agent. |
 | `workspace_path`, `artifact`, `repo`, `ref` | Scope. |
-| `started_at`, `ended_at` | Session lifecycle. |
+| `started_at`, `ended_at` | Session lifecycle. The session-end hook sets `ended_at`; a lock whose holder session has an `ended_at` reads as abandoned (`holder_session_active:false`) in a later acquire conflict. |
 | `summary` | Optional handoff summary. |
 
 Sessions group `tasks`, `edit_log`, and `harness_log` rows when a host provides session identity.
@@ -199,7 +199,7 @@ Handoffs and improvement proposals.
 | `files_json` | Related files. |
 | `reasoning` | Why this should be remembered or acted on. |
 | `remember` | The suggested future guidance or handoff content. |
-| `quality` | `good`, `bad`, or `handoff`. |
+| `quality` | `good`, `bad`, `handoff`, or `instructions`. |
 | `state` | `open`, `ongoing`, or `done`. |
 
 ### `edit_log`

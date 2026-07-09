@@ -82,11 +82,58 @@ export function normalizeReferences(refs: string[] = []): string[] {
     .slice(0, 20);
 }
 
-/** Normalize a label string to a valid MEMORY_LABELS value (defaults to OTHER). */
-export function normalizeLabel(value: unknown): string {
-  if (!value) return 'OTHER';
+/**
+ * Normalize a label string to a valid MEMORY_LABELS value.
+ * Empty/missing → OTHER. Unknown labels coerce to OTHER when `coerce` is true (default for
+ * filter/recall paths); pass `{ coerce: false }` to hard-error (memory record / CLI).
+ */
+export function normalizeLabel(value: unknown, opts: { coerce?: boolean } = {}): string {
+  const coerce = opts.coerce !== false;
+  if (value == null || String(value).trim() === '') return 'OTHER';
   const cleaned = String(value).trim().toUpperCase().replace(/[\s-]+/g, '_');
-  return MEMORY_LABELS.has(cleaned) ? cleaned : 'OTHER';
+  if (MEMORY_LABELS.has(cleaned)) return cleaned;
+  if (coerce) return 'OTHER';
+  throw new Error(`invalid label "${String(value)}"; allowed: ${MEMORY_LABEL_VALUES.join(', ')}`);
+}
+
+export const NOTIFICATION_KIND_VALUES = [
+  'claim', 'handoff', 'question', 'reply', 'blocker', 'request', 'decision', 'fyi',
+] as const;
+
+export const NOTIFICATION_KINDS = new Set<string>(NOTIFICATION_KIND_VALUES);
+
+/** Validate signal kind; unknown kinds hard-error unless `coerce` maps them to `fyi`. */
+export function normalizeNotificationKind(
+  value: unknown,
+  opts: { coerce?: boolean } = {},
+): (typeof NOTIFICATION_KIND_VALUES)[number] {
+  const coerce = opts.coerce === true;
+  const cleaned = String(value ?? '').trim().toLowerCase();
+  if (NOTIFICATION_KINDS.has(cleaned)) {
+    return cleaned as (typeof NOTIFICATION_KIND_VALUES)[number];
+  }
+  if (coerce) return 'fyi';
+  throw new Error(
+    `invalid signal kind "${String(value)}"; allowed: ${NOTIFICATION_KIND_VALUES.join(', ')}`,
+  );
+}
+
+export const REFLECTION_OUTCOME_VALUES = ['worked', 'partial', 'failed'] as const;
+
+/** Validate reflect outcome; unknown outcomes hard-error unless `coerce` maps them to `partial`. */
+export function normalizeReflectionOutcome(
+  value: unknown,
+  opts: { coerce?: boolean } = {},
+): (typeof REFLECTION_OUTCOME_VALUES)[number] {
+  const coerce = opts.coerce === true;
+  // Missing outcome still defaults to partial; only non-empty unknown values hard-error.
+  if (value == null || String(value).trim() === '') return 'partial';
+  const cleaned = String(value).trim().toLowerCase();
+  if ((REFLECTION_OUTCOME_VALUES as readonly string[]).includes(cleaned)) {
+    return cleaned as (typeof REFLECTION_OUTCOME_VALUES)[number];
+  }
+  if (coerce) return 'partial';
+  throw new Error(`invalid outcome "${String(value)}"; allowed: ${REFLECTION_OUTCOME_VALUES.join('|')}`);
 }
 
 /** Resolve and normalize a file path to absolute. Returns null for falsy input. */

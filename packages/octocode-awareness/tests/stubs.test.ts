@@ -385,6 +385,22 @@ describe('waitForLock', () => {
     expect(result.waited_ms).toBeGreaterThanOrEqual(1);
     expect(result.conflicts?.[0]?.file_path).toBe('/tmp/polling-locked.ts');
   });
+
+  it('treats non-finite direct wait values as an immediate bounded check', () => {
+    const db = freshDb();
+    preFlightIntent(db, { agentId: 'holder', targetFiles: ['/tmp/non-finite-wait.ts'] });
+
+    const result = waitForLock(db, {
+      agent_id: 'waiter',
+      target_files: ['/tmp/non-finite-wait.ts'],
+      wait_ms: Number.POSITIVE_INFINITY,
+      retry_interval_ms: 1,
+    });
+
+    expect(result.lock_free).toBe(false);
+    expect(result.waited_ms).toBeLessThan(100);
+    expect(result.conflicts?.[0]?.agent_id).toBe('holder');
+  });
 });
 
 describe('exportHarness', () => {

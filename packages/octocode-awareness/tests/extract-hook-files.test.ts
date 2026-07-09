@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -107,6 +107,47 @@ describe('hook-runner', () => {
           agent_name: 'Hook Agent',
           workspace_path: realpathSync(workspace),
           context: 'codex-hook',
+        }),
+      ]));
+    } finally {
+      rmSync(memoryHome, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers explicit payload agent ids over shared session ids', () => {
+    const memoryHome = mkdtempSync(join(tmpdir(), 'octocode-hook-agent-id-'));
+    const workspace = resolve(memoryHome, 'repo');
+    mkdirSync(workspace, { recursive: true });
+    try {
+      const env = {
+        OCTOCODE_MEMORY_HOME: memoryHome,
+        OCTOCODE_NO_DIGEST: '1',
+      };
+      const result = runScript(
+        HOOK_RUNNER,
+        ['pre-edit'],
+        { sessionId: 'shared-session', agent_id: 'subagent-a', workspace, file_path: 'src/sub.ts' },
+        env,
+      );
+      expect(result.status).toBe(0);
+
+      const status = spawnSync(NODE, [
+        AWARENESS,
+        'workspace',
+        'status',
+        '--workspace',
+        workspace,
+      ], {
+        encoding: 'utf8',
+        timeout: 5000,
+        env: { ...process.env, OCTOCODE_MEMORY_HOME: memoryHome },
+      });
+      expect(status.status).toBe(0);
+      const parsed = JSON.parse(status.stdout) as { locks: Array<{ file_path: string; agent_id: string }> };
+      expect(parsed.locks).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          file_path: resolve(workspace, 'src/sub.ts'),
+          agent_id: 'subagent-a',
         }),
       ]));
     } finally {
@@ -236,6 +277,35 @@ describe('hook-runner', () => {
       });
       expect(afterSecond.status).toBe(0);
       expect((JSON.parse(afterSecond.stdout) as { locks: unknown[] }).locks).toEqual([]);
+    } finally {
+      rmSync(memoryHome, { recursive: true, force: true });
+    }
+  });
+
+  it('stores shell hook task correlation in per-key files', () => {
+    const memoryHome = mkdtempSync(join(tmpdir(), 'octocode-hook-state-'));
+    const workspace = resolve(memoryHome, 'repo');
+    mkdirSync(workspace, { recursive: true });
+    try {
+      const env = {
+        OCTOCODE_MEMORY_HOME: memoryHome,
+        OCTOCODE_AGENT_ID: 'state-hook-agent',
+      };
+      const first = { sessionId: 'state-session', workspace, eventId: 'tool-1', file_path: 'src/a.ts' };
+      const second = { sessionId: 'state-session', workspace, eventId: 'tool-2', file_path: 'src/b.ts' };
+
+      expect(runScript(HOOK_RUNNER, ['pre-edit'], first, env).status).toBe(0);
+      expect(runScript(HOOK_RUNNER, ['pre-edit'], second, env).status).toBe(0);
+
+      const stateDir = join(memoryHome, 'hook-state', 'tasks');
+      const stateFiles = readdirSync(stateDir).filter((file) => file.endsWith('.json'));
+      expect(stateFiles).toHaveLength(2);
+      expect(existsSync(join(memoryHome, 'hook-state', 'shell-hook-tasks.json'))).toBe(false);
+
+      expect(runScript(HOOK_RUNNER, ['post-edit'], first, env).status).toBe(0);
+      expect(readdirSync(stateDir).filter((file) => file.endsWith('.json'))).toHaveLength(1);
+      expect(runScript(HOOK_RUNNER, ['post-edit'], second, env).status).toBe(0);
+      expect(readdirSync(stateDir).filter((file) => file.endsWith('.json'))).toHaveLength(0);
     } finally {
       rmSync(memoryHome, { recursive: true, force: true });
     }

@@ -32,7 +32,8 @@ Options:
 Examples:
   node scripts/install.mjs --check-only
   node scripts/install.mjs
-  node scripts/awareness.mjs hooks install --host codex --project-dir . --dry-run --compact`);
+  node scripts/awareness.mjs hooks install --host codex --project-dir . --dry-run --compact
+  node scripts/awareness.mjs hooks check --host claude --project-dir . --strict --compact`);
 }
 
 if (args.has("--help") || args.has("-h")) {
@@ -174,16 +175,23 @@ console.log(
         schema: `${nodeBin} scripts/schema.mjs list`,
         awareness: `${nodeBin} scripts/awareness.mjs workspace status`,
         init: `${nodeBin} scripts/awareness.mjs maintenance init --compact`,
+        hooks_preview_claude: `${nodeBin} scripts/awareness.mjs hooks install --host claude --project-dir <repo> --dry-run --compact`,
+        hooks_install_claude: `${nodeBin} scripts/awareness.mjs hooks install --host claude --project-dir <repo> --compact`,
+        hooks_check_claude: `${nodeBin} scripts/awareness.mjs hooks check --host claude --project-dir <repo> --strict --compact`,
         hooks_preview_codex: `${nodeBin} scripts/awareness.mjs hooks install --host codex --project-dir <repo> --dry-run --compact`,
         hooks_install_codex: `${nodeBin} scripts/awareness.mjs hooks install --host codex --project-dir <repo> --compact`,
         hooks_check_codex: `${nodeBin} scripts/awareness.mjs hooks check --host codex --project-dir <repo> --strict --compact`,
         hooks_preview_cursor: `${nodeBin} scripts/awareness.mjs hooks install --host cursor --project-dir <repo> --dry-run --compact`,
         hooks_install_cursor: `${nodeBin} scripts/awareness.mjs hooks install --host cursor --project-dir <repo> --compact`,
+        hooks_check_cursor: `${nodeBin} scripts/awareness.mjs hooks check --host cursor --project-dir <repo> --strict --compact`,
+        pi_bridge: "import { wirePiAwarenessHooks } from '@octocodeai/octocode-awareness'; wirePiAwarenessHooks(pi, { skillRoot })",
       },
       next_steps: [
-        "Install the skill with npx octocode skill --add --path <octocode-awareness> --platform common.",
+        "This package bundles the skill under dist/skills/octocode-awareness; install that local/bundled path with npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common.",
+        "Use npx octocode for skill install/update/lint and research/search operations; do not fetch octocode-awareness by registry name.",
         "Run maintenance init, then workspace status in each repo.",
-        "For Codex or Cursor, SKILL.md frontmatter is not enough: preview hooks with --dry-run, install after user approval, then run hooks check --strict.",
+        "For Claude, Codex, and Cursor project hooks: preview with --dry-run, install after user approval, then run hooks check --strict for that host.",
+        "For Pi: do not run shell hook install; call wirePiAwarenessHooks(pi, { skillRoot }) or use @octocodeai/pi-extension, then smoke tool_call/tool_result and agent_end behavior.",
       ],
     },
     null,

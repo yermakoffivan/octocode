@@ -16,6 +16,7 @@ Overgrown docs are the projection version of being overweight: they carry old ma
 - `query workboard` for active rows and columns,
 - short Markdown for human-readable summaries,
 - `BOOKMARKS.md` for learnable URL/repo/path/URI leads,
+- `DEVELOPER_REVIEW.md` for agent feedback on the instructions themselves,
 - CSV/HTML for sorting, search, and filtering,
 - manifest budget metadata for freshness and size checks,
 - cleanup and supersession for stale memories, signals, and refinements.
@@ -80,7 +81,8 @@ Available views:
 | `refinements` | Open/ongoing/done proposals and handoffs. |
 | `files` | File activity from `edit_log` and related data. |
 | `activity` | Timeline-like activity view. |
-| `workboard` | Kanban-like derived rows for Inbox, Verify, Ready, Claimed, Recent Done, Memory Review, and Projection Health. |
+| `workboard` | Kanban-like derived rows for Inbox, Verify, Ready, Claimed, Recent Done, Memory Review, Developer Review, and Projection Health. |
+| `developer-review` | Agent feedback to the instruction author (from `reflect record --fix-instructions`), grouped Open/Resolved. |
 
 Formats: `json`, `table`, `csv`, `markdown`, `html`.
 
@@ -114,6 +116,7 @@ Modes:
 | `.octocode/GOTCHAS.md` | Gotcha-focused memory projection. |
 | `.octocode/LEARN.md` | Decisions, architecture notes, workflows, and reusable lessons. |
 | `.octocode/BOOKMARKS.md` | Learnable resource leads from memory references: URLs, repos, file paths, docs, papers, skills, and other URIs. |
+| `.octocode/DEVELOPER_REVIEW.md` | Agent feedback to the human who authored the instructions (from `reflect record --fix-instructions`). |
 | `.octocode/awareness/csv/*.csv` | CSV exports for supported views. |
 | `.octocode/awareness/index.html` | Static browser view. |
 | `.octocode/awareness/manifest.json` | Generation metadata, mode, warnings, file list, counts, and projection budgets. |

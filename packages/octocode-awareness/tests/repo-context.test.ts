@@ -10,6 +10,7 @@ import { preFlightIntent } from '../src/intents.js';
 import { insertMemory } from '../src/memory.js';
 import { agentSignal } from '../src/notifications.js';
 import { insertRefinement } from '../src/refinements.js';
+import { reflect } from '../src/reflect.js';
 import { attendAwareness } from '../src/attend.js';
 import {
   formatAwarenessQueryResult,
@@ -260,7 +261,6 @@ describe('repo context query and projections', () => {
       expect(readFileSync(join(dir, '.octocode', 'BOOKMARKS.md'), 'utf8')).toContain('repo:bgauryy/octocode-mcp');
       const agentsMd = readFileSync(join(dir, '.octocode', 'AGENTS.md'), 'utf8');
       expect(agentsMd).toContain('Octocode Awareness Map');
-      expect(agentsMd).toContain('Wiki And Memory Map');
       expect(agentsMd).toContain('Projection Health');
       expect(agentsMd).toContain('Root `AGENTS.md` should point here');
       const manifest = JSON.parse(readFileSync(join(dir, '.octocode', 'awareness', 'manifest.json'), 'utf8')) as {
@@ -344,6 +344,52 @@ describe('repo context query and projections', () => {
         budgets: { markdown: Record<string, { within_budget: boolean }> };
       };
       expect(manifest.budgets.markdown['MEMORY.md']).toMatchObject({ within_budget: true });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('surfaces instruction feedback via the developer-review view and DEVELOPER_REVIEW.md projection', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-repo-devreview-'));
+    try {
+      const db = freshDb();
+      reflect(db, {
+        agentId: 'agent-a',
+        task: 'add lock retry',
+        outcome: 'partial',
+        fixInstructions: 'AGENTS.md never states the default lock TTL — document it and how to extend.',
+        workspacePath: dir,
+      });
+
+      const view = queryAwareness(db, { view: 'developer-review', workspacePath: dir });
+      expect(view.count).toBe(1);
+      expect(String(view.rows[0]!['feedback'])).toContain('default lock TTL');
+      expect(view.rows[0]!['source']).toBe('refinement');
+      expect(view.rows[0]!['state']).toBe('open');
+
+      injectRepoContext(db, {
+        workspacePath: dir,
+        outDir: join(dir, '.octocode'),
+        mode: 'local',
+        includeView: false,
+        check: false,
+      });
+
+      const devReview = readFileSync(join(dir, '.octocode', 'DEVELOPER_REVIEW.md'), 'utf8');
+      expect(devReview).toContain('# Developer Review');
+      expect(devReview).toContain('default lock TTL');
+      expect(devReview).toContain('Open: 1');
+
+      const agentsMd = readFileSync(join(dir, '.octocode', 'AGENTS.md'), 'utf8');
+      expect(agentsMd).toContain('Retro Files Map');
+      expect(agentsMd).toContain('.octocode/DEVELOPER_REVIEW.md');
+
+      const manifest = JSON.parse(readFileSync(join(dir, '.octocode', 'awareness', 'manifest.json'), 'utf8')) as {
+        counts: Record<string, number>;
+        budgets: { markdown: Record<string, { within_budget: boolean }> };
+      };
+      expect(manifest.counts['developer-review']).toBe(1);
+      expect(manifest.budgets.markdown['DEVELOPER_REVIEW.md']).toMatchObject({ within_budget: true });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

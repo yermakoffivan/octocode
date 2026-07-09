@@ -25,6 +25,10 @@ const SESSION_CAPTURE_VISIBLE_FILE_LIMIT = 20;
 const SESSION_CAPTURE_TASK_DETAIL_LIMIT = 8;
 const SESSION_CAPTURE_TASK_FILE_LIMIT = 8;
 const SESSION_CAPTURE_TEXT_LIMIT = 180;
+const MAX_WAIT_MS = 3600_000;
+const MAX_RETRY_MS = 300_000;
+const DEFAULT_WAIT_MS = 60_000;
+const DEFAULT_RETRY_MS = 5_000;
 
 export interface PruneStaleResult {
   pruned_locks: number;
@@ -74,6 +78,13 @@ function listSummary(label: string, items: string[], visibleLimit = SESSION_CAPT
   return `${label}${omitted > 0 ? ` (showing ${shown.length} of ${items.length})` : ''}: ${shown.join(', ')}${omitted > 0 ? `; ${omitted} omitted` : ''}.`;
 }
 
+function boundedMs(value: unknown, defaultMs: number, minMs: number, maxMs: number): number {
+  if (value == null) return defaultMs;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return minMs;
+  return Math.min(Math.max(numeric, minMs), maxMs);
+}
+
 /** REAL: Delete expired file locks and set parent tasks to PENDING. */
 export function pruneStale(db: DatabaseSync, params: Record<string, unknown> = {}): PruneStaleResult {
   const dryRun = Boolean(params.dry_run ?? params.dryRun);
@@ -120,10 +131,10 @@ export function pruneStale(db: DatabaseSync, params: Record<string, unknown> = {
   if (workspacePath) { conditions.push('t.workspace_path = ?'); binds.push(workspacePath); }
   if (artifact) { conditions.push('(t.artifact = ? OR t.artifact IS NULL)'); binds.push(artifact); }
   const where = conditions.join(' AND ');
+  const from = scopedByTask ? 'locks l JOIN tasks t ON t.task_id = l.task_id' : 'locks l';
 
   let staleLocks: Array<{ lock_id: string; task_id: string }> = [];
   try {
-    const from = scopedByTask ? 'locks l JOIN tasks t ON t.task_id = l.task_id' : 'locks l';
     staleLocks = db.prepare(
       `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
     ).all(...binds) as Array<{ lock_id: string; task_id: string }>;
@@ -136,7 +147,6 @@ export function pruneStale(db: DatabaseSync, params: Record<string, unknown> = {
     return { pruned_locks: 0, updated_tasks: 0 };
   }
 
-  const affectedTaskIds = [...new Set(staleLocks.map(l => l.task_id))];
   let updatedTasks = 0;
 
   // FIX #2 (P0): lock DELETE and task status UPDATE combined in one atomic transaction.
@@ -144,6 +154,14 @@ export function pruneStale(db: DatabaseSync, params: Record<string, unknown> = {
   // where locks were deleted but tasks were not yet reset to PENDING.
   db.exec('BEGIN IMMEDIATE');
   try {
+    staleLocks = db.prepare(
+      `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
+    ).all(...binds) as Array<{ lock_id: string; task_id: string }>;
+    if (staleLocks.length === 0) {
+      db.exec('COMMIT');
+      return { pruned_locks: 0, updated_tasks: 0 };
+    }
+    const affectedTaskIds = [...new Set(staleLocks.map(l => l.task_id))];
     const ph = staleLocks.map(() => '?').join(',');
     db.prepare(`DELETE FROM locks WHERE lock_id IN (${ph})`).run(...staleLocks.map(l => l.lock_id));
 
@@ -363,20 +381,37 @@ export function notifyGet(
   return result;
 }
 
+/**
+ * Parse `git status --porcelain=v1` / `--short` lines into paths.
+ * Do NOT trim before reading the XY columns — a leading space is significant
+ * (`" M file.txt"` must become `file.txt`, not `ile.txt`).
+ */
+export function parseGitStatusShortLines(stdout: string): string[] {
+  const files: string[] = [];
+  for (const rawLine of String(stdout).split('\n')) {
+    if (!rawLine || rawLine.length < 4) continue;
+    const xy = rawLine.slice(0, 2);
+    let pathPart = rawLine.slice(3);
+    // Rename/copy: keep the destination path after " -> ".
+    if (xy.includes('R') || xy.includes('C')) {
+      const arrow = pathPart.indexOf(' -> ');
+      if (arrow >= 0) pathPart = pathPart.slice(arrow + 4);
+    }
+    const filePath = pathPart.trim();
+    if (filePath) files.push(filePath);
+  }
+  return files;
+}
+
 function gitDirtyFiles(workspacePath: string | null): string[] {
   if (!workspacePath) return [];
   try {
-    const result = spawnSync('git', ['-C', workspacePath, 'status', '--short'], {
+    const result = spawnSync('git', ['-C', workspacePath, 'status', '--porcelain=v1'], {
       encoding: 'utf8',
       timeout: 5000,
     });
     if (result.status !== 0) return [];
-    return String(result.stdout)
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean)
-      .map(line => line.slice(3).trim())
-      .filter(Boolean);
+    return parseGitStatusShortLines(String(result.stdout));
   } catch {
     return [];
   }
@@ -542,8 +577,8 @@ export function waitForLock(
       typeof params.workspacePath === 'string' ? params.workspacePath : null;
   const workspacePath = rawWorkspacePath ? normalizeWorkspacePath(rawWorkspacePath, rawWorkspacePath) : null;
   const artifact = normalizeArtifact(params.artifact);
-  const waitMs = Number(params.wait_ms ?? params.waitMs ?? 60000);
-  const retryMs = Number(params.retry_interval_ms ?? params.retryIntervalMs ?? 5000);
+  const waitMs = boundedMs(params.wait_ms ?? params.waitMs, DEFAULT_WAIT_MS, 0, MAX_WAIT_MS);
+  const retryMs = boundedMs(params.retry_interval_ms ?? params.retryIntervalMs, DEFAULT_RETRY_MS, 1, MAX_RETRY_MS);
   // requestedLockType: EXCLUSIVE is blocked by any existing lock; SHARED is only blocked by EXCLUSIVE.
   const requestedLockType = String(
     params.requestedLockType ?? params.requested_lock_type ?? params.lockType ?? params.lock_type ?? 'EXCLUSIVE'

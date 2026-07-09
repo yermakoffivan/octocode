@@ -136,7 +136,12 @@ When a repeated lookup runs
 Then it returns without a network call.
 Success Metrics: primary lagging latency baseline 120ms Target 60ms; guardrail error rate must not regress.
 Decision Rule: Roll back if latency stays above the target after the rollout window.
-Traceability matrix: RFC requirement to user story to acceptance criteria to verification method to status.`,
+Traceability matrix: RFC requirement to user story to acceptance criteria to verification method to status.
+
+RESOURCES.md
+Local Code References: packages/core/src/cache.ts:42 explains the current TTL.
+Prior Art: https://github.com/owner/repo/pull/128 shows the rollout pattern.
+Search Prompts: token cache public API migration compatibility.`,
   };
   return samples[caseId] || '';
 }

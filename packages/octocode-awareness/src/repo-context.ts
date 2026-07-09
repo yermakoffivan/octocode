@@ -11,6 +11,7 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseJsonList } from './helpers.js';
+import { normalizeWorkspacePath } from './git.js';
 
 export const AWARENESS_QUERY_VIEWS = [
   'all',
@@ -26,6 +27,7 @@ export const AWARENESS_QUERY_VIEWS = [
   'files',
   'activity',
   'workboard',
+  'developer-review',
 ] as const;
 
 export type AwarenessQueryView = typeof AWARENESS_QUERY_VIEWS[number];
@@ -142,6 +144,7 @@ const PROJECTION_MARKDOWN_BUDGETS: Record<string, ProjectionMarkdownBudget> = {
   'GOTCHAS.md': { max_lines: 200, role: 'gotcha index' },
   'LEARN.md': { max_lines: 200, role: 'lesson/opportunity index' },
   'BOOKMARKS.md': { max_lines: 200, role: 'learnable resource index' },
+  'DEVELOPER_REVIEW.md': { max_lines: 200, role: 'agent feedback to the instruction author' },
 };
 const ATTEND_COMPACT_BUDGET = { max_lines: 120, max_json_bytes: 8 * 1024 };
 const WORKBOARD_BUDGET = { max_rows_per_column: 10 };
@@ -202,21 +205,31 @@ function scopeFromParams(params: AwarenessQueryParams): Scope {
   const rawWorkspace = params.workspacePath ?? params.workspace_path ?? params.workspace ?? cwd;
   const workspacePath = rawWorkspace ? resolve(String(rawWorkspace)) : null;
   return {
+    // Keep the raw resolved path for projection output / echo; the alias set
+    // below carries the extra keys used for DB row matching.
     workspacePath,
-    workspacePaths: workspacePath ? workspaceAliases(workspacePath) : [],
+    workspacePaths: workspacePath ? workspaceAliases(workspacePath, cwd) : [],
     artifact: params.artifact ? String(params.artifact) : null,
     repo: params.repo ? String(params.repo) : null,
     ref: params.ref ? String(params.ref) : null,
   };
 }
 
-function workspaceAliases(workspacePath: string): string[] {
+function workspaceAliases(workspacePath: string, cwd?: string): string[] {
   const aliases = new Set<string>([workspacePath]);
   try {
     aliases.add(realpathSync.native(workspacePath));
   } catch {
     try { aliases.add(realpathSync(workspacePath)); } catch { /* path may not exist yet */ }
   }
+  // D1 fix: also match the git-root workspace key that write paths store via
+  // fillScope, so reads run from a package/subdir meet the rows writes stored.
+  // Additive — the raw resolved path stays in the set, so non-git and raw-path
+  // rows keep matching.
+  try {
+    const gitRoot = normalizeWorkspacePath(workspacePath, cwd ?? workspacePath);
+    if (gitRoot) aliases.add(gitRoot);
+  } catch { /* leave aliases as-is if git detection fails */ }
   return [...aliases];
 }
 
@@ -567,6 +580,92 @@ function refinementRows(db: DatabaseSync, params: AwarenessQueryParams): Awarene
   }));
 }
 
+/** Pull the feedback clause out of a reflection narrative, if present. */
+function extractInstructionsFeedback(observation: string): string {
+  const marker = 'instructions feedback:';
+  const idx = observation.toLowerCase().indexOf(marker);
+  if (idx === -1) return observation;
+  const after = observation.slice(idx + marker.length);
+  // The narrative joins clauses with ' | ' and closes reflection bodies with ')'.
+  const end = after.search(/\s\|\s|\)\s*$/);
+  return (end === -1 ? after : after.slice(0, end)).trim();
+}
+
+/**
+ * Feedback addressed to the human developer who authored the agent's operating
+ * instructions. Primary source is the tracked `instructions`-quality refinement queue
+ * (open/ongoing/done lifecycle); developer-review-tagged memories that no refinement
+ * already represents are folded in so manually-tagged or historical feedback still shows.
+ */
+function developerReviewRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQueryRow[] {
+  const scope = scopeFromParams(params);
+  const limit = limitOf(params.limit, 60, 500);
+
+  const refWhere = ["quality = 'instructions'"];
+  const refBinds: BindValue[] = [];
+  addExactScope(refWhere, refBinds, scope);
+  addTextFilter(refWhere, refBinds, params.query, ['reasoning', 'remember', 'files_json', 'agent_id']);
+  addStateFilter(refWhere, refBinds, stringList(params.state), 'state', state => state.toLowerCase());
+  const refRows = db.prepare(
+    `SELECT refinement_id, agent_id, workspace_path, artifact, repo, ref, files_json,
+            reasoning, remember, state, created_at, updated_at
+       FROM refinements
+      WHERE ${refWhere.join(' AND ')}
+      ORDER BY CASE state WHEN 'open' THEN 0 WHEN 'ongoing' THEN 1 ELSE 2 END, datetime(updated_at) DESC
+      LIMIT ?`
+  ).all(...refBinds, limit) as unknown as Array<Record<string, string | null>>;
+
+  const rows: AwarenessQueryRow[] = refRows.map(row => ({
+    source: 'refinement',
+    id: String(row['refinement_id']),
+    refinement_id: String(row['refinement_id']),
+    state: String(row['state']),
+    feedback: String(row['remember']),
+    context: String(row['reasoning']),
+    files: parseJsonList(row['files_json']),
+    agent_id: String(row['agent_id']),
+    workspace_path: row['workspace_path'] ?? null,
+    artifact: row['artifact'] ?? null,
+    repo: row['repo'] ?? null,
+    ref: row['ref'] ?? null,
+    created_at: String(row['created_at']),
+    updated_at: String(row['updated_at']),
+  }));
+
+  // Fold in developer-review memories a refinement doesn't already carry.
+  const refTexts = refRows.map(row => String(row['remember'] ?? '').trim()).filter(Boolean);
+  const memWhere = ["state = 'ACTIVE'", `tags_json LIKE '%"developer-review"%'`];
+  const memBinds: BindValue[] = [];
+  addNullableScope(memWhere, memBinds, scope);
+  addTextFilter(memWhere, memBinds, params.query, ['task_context', 'observation']);
+  const memRows = db.prepare(
+    `SELECT memory_id, agent_id, task_context, observation, importance, created_at, updated_at
+       FROM memories
+      WHERE ${memWhere.join(' AND ')}
+      ORDER BY importance DESC, datetime(created_at) DESC
+      LIMIT ?`
+  ).all(...memBinds, limit) as unknown as Array<Record<string, string | number | null>>;
+  for (const row of memRows) {
+    const observation = String(row['observation'] ?? '');
+    if (refTexts.some(text => text && observation.includes(text))) continue;
+    rows.push({
+      source: 'memory',
+      id: String(row['memory_id']),
+      memory_id: String(row['memory_id']),
+      state: 'recorded',
+      feedback: extractInstructionsFeedback(observation),
+      context: String(row['task_context'] ?? ''),
+      importance: Number(row['importance'] ?? 0),
+      files: [],
+      agent_id: String(row['agent_id']),
+      created_at: String(row['created_at']),
+      updated_at: row['updated_at'] ?? null,
+    });
+  }
+
+  return rows.slice(0, limit);
+}
+
 function trackFile(
   map: Map<string, AwarenessQueryRow>,
   filePath: string,
@@ -691,6 +790,7 @@ function repoProfileRows(db: DatabaseSync, params: AwarenessQueryParams): Awaren
     { metric: 'open_signals', count: countWhere(db, 'signals', signalWhere, signalBinds) },
     { metric: 'known_agents', count: agentRows(db, { ...params, limit: 500 }).length },
     { metric: 'tracked_files', count: fileRows(db, { ...params, limit: 500 }).length },
+    { metric: 'developer_review', count: developerReviewRows(db, { ...params, limit: 500 }).length },
   ];
 }
 
@@ -789,6 +889,7 @@ function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): Awarenes
     Claimed: [],
     RecentDone: [],
     MemoryReview: [],
+    DeveloperReview: [],
     ProjectionHealth: [],
   };
   const counts: Record<string, number> = {};
@@ -929,6 +1030,21 @@ function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): Awarenes
     }, limit);
   }
 
+  for (const row of developerReviewRows(db, { ...params, state: ['open', 'ongoing'], limit: 200 })) {
+    pushLimited(columns, counts, 'DeveloperReview', {
+      item_type: String(row['source']) === 'refinement' ? 'refinement' : 'memory',
+      id: String(row['id']),
+      title: summarize(String(row['feedback']), 120),
+      detail: summarize(String(row['context']), 180),
+      agent_id: String(row['agent_id']),
+      status: String(row['state']),
+      raw_ids: [String(row['id'])],
+      files: rowFiles(row),
+      created_at: String(row['created_at']),
+      updated_at: row['updated_at'] ?? null,
+    }, limit);
+  }
+
   const profile = Object.fromEntries(repoProfileRows(db, params).map(row => [String(row['metric']), Number(row['count'] ?? 0)])) as Record<string, number>;
   const activeMemories = Number(profile['active_memories'] ?? 0);
   const taskCount = Number(profile['tasks'] ?? 0);
@@ -979,6 +1095,7 @@ function rowsForView(db: DatabaseSync, view: AwarenessQueryView, params: Awarene
     case 'files': return fileRows(db, params);
     case 'activity': return activityRows(db, params);
     case 'workboard': return workboardRows(db, params);
+    case 'developer-review': return developerReviewRows(db, params);
     case 'all': return [];
   }
 }
@@ -1032,6 +1149,24 @@ export function queryAwareness(db: DatabaseSync, params: AwarenessQueryParams = 
     count: rows.length,
     rows,
     filters,
+  };
+}
+
+/**
+ * Developer-review digest for the CLI `reflect developer-review` command: the same
+ * rows that feed `.octocode/DEVELOPER_REVIEW.md`, plus the rendered Markdown doc.
+ */
+export function developerReviewDoc(
+  db: DatabaseSync,
+  params: AwarenessQueryParams = {},
+): { rows: AwarenessQueryRow[]; open: number; resolved: number; markdown: string } {
+  const rows = developerReviewRows(db, params);
+  const open = rows.filter(row => String(row['state']) !== 'done').length;
+  return {
+    rows,
+    open,
+    resolved: rows.length - open,
+    markdown: renderDeveloperReviewDoc(rows, PROJECTION_MARKDOWN_BUDGETS['DEVELOPER_REVIEW.md']!.max_lines),
   };
 }
 
@@ -1132,6 +1267,7 @@ export function injectRepoContext(db: DatabaseSync, params: RepoContextInjectPar
   write('GOTCHAS.md', renderRowsDoc('Gotchas', sections['gotchas']?.rows ?? [], 'Failures, traps, and sharp edges agents should check before editing.', PROJECTION_MARKDOWN_BUDGETS['GOTCHAS.md']!.max_lines));
   write('LEARN.md', renderRowsDoc('Learning And Opportunities', sections['lessons']?.rows ?? [], 'Decisions, architecture notes, workflows, and improvement ideas.', PROJECTION_MARKDOWN_BUDGETS['LEARN.md']!.max_lines));
   write('BOOKMARKS.md', renderBookmarksDoc(sections['memories']?.rows ?? []));
+  write('DEVELOPER_REVIEW.md', renderDeveloperReviewDoc(sections['developer-review']?.rows ?? [], PROJECTION_MARKDOWN_BUDGETS['DEVELOPER_REVIEW.md']!.max_lines));
 
   for (const view of CSV_VIEWS) {
     write(join('awareness', 'csv', `${view}.csv`), toCsv(sections[view]?.rows ?? []));
@@ -1252,14 +1388,17 @@ function renderRepoAgentsMd(all: AwarenessQueryResult): string {
     '',
     '## Snapshot',
     '',
-    `- Memories ${counts['active_memories'] ?? 0} · Gotchas ${counts['gotchas'] ?? 0} · Lessons ${counts['lessons'] ?? 0} · Locks ${counts['active_locks'] ?? 0} · Refinements ${counts['open_refinements'] ?? 0} · Signals ${counts['open_signals'] ?? 0}`,
+    `- Memories ${counts['active_memories'] ?? 0} · Gotchas ${counts['gotchas'] ?? 0} · Lessons ${counts['lessons'] ?? 0} · Locks ${counts['active_locks'] ?? 0} · Refinements ${counts['open_refinements'] ?? 0} · Signals ${counts['open_signals'] ?? 0} · DevReview ${counts['developer_review'] ?? 0}`,
     '',
-    '## Wiki And Memory Map',
+    '## Retro Files Map',
+    '',
+    'Generated retrospective projections in this folder (SQLite is canonical; regenerate, don\'t hand-edit). Locks/signals/tasks live only in the DB — use live `query`.',
     '',
     '- Gotchas → `.octocode/GOTCHAS.md` · live `query gotchas` / `memory recall`',
     '- Lessons → `.octocode/LEARN.md` · live `query lessons`',
     '- Memory index → `.octocode/MEMORY.md` · live `memory recall --smart`',
     '- Bookmarks → `.octocode/BOOKMARKS.md` · Files → `awareness/csv/files.csv` · Workboard → live `query workboard`',
+    '- Developer review → `.octocode/DEVELOPER_REVIEW.md` · live `reflect developer-review` — agent feedback on the instructions themselves',
     '',
     '## Read Before Editing',
     '',
@@ -1293,7 +1432,7 @@ function renderRepoAgentsMd(all: AwarenessQueryResult): string {
   }
 
   lines.push('## References', '');
-  lines.push('- `.octocode/MEMORY.md` · `.octocode/GOTCHAS.md` · `.octocode/LEARN.md` · `.octocode/BOOKMARKS.md`');
+  lines.push('- `.octocode/MEMORY.md` · `.octocode/GOTCHAS.md` · `.octocode/LEARN.md` · `.octocode/BOOKMARKS.md` · `.octocode/DEVELOPER_REVIEW.md`');
   lines.push('- `.octocode/awareness/manifest.json` · `.octocode/references/`');
   lines.push('');
   return lines.join('\n');
@@ -1403,6 +1542,61 @@ function renderBookmarksDoc(memoryRows: AwarenessQueryRow[]): string {
     lines.push(`- \`${ref}\` - ${labelText}; source: ${sourceText}; ${titleText}`);
   }
   lines.push('');
+  return lines.join('\n');
+}
+
+function renderDeveloperReviewDoc(rows: AwarenessQueryRow[], maxLines: number): string {
+  const open = rows.filter(row => String(row['state']) !== 'done');
+  const resolved = rows.filter(row => String(row['state']) === 'done');
+  const lines = [
+    '# Developer Review',
+    '',
+    '<!-- Generated by `octocode-awareness repo inject`. Regenerate instead of hand-editing. -->',
+    '',
+    'Feedback from agents to the human who authors this repo\'s agent instructions',
+    '(root `AGENTS.md`, `.octocode/AGENTS.md`, SKILL.md, system prompt, task briefs).',
+    'Each item is where the *instructions* — not the code, not the harness — were ambiguous,',
+    'wrong, over-constraining, or missing context. Recorded via `reflect record --fix-instructions`.',
+    '',
+    `Open: ${open.length} · Resolved: ${resolved.length}`,
+    '',
+  ];
+
+  if (rows.length === 0) {
+    lines.push(
+      'No instruction feedback yet.',
+      '',
+      'Agents: when your instructions cost you time or a wrong turn, record it:',
+      '`octocode-awareness reflect record --outcome partial --task "<what you did>" \\',
+      '  --fix-instructions "<what the instructions should have said>"`',
+      '',
+    );
+    return lines.join('\n');
+  }
+
+  function renderSection(title: string, sectionRows: AwarenessQueryRow[]): void {
+    if (sectionRows.length === 0) return;
+    lines.push(`## ${title} (${sectionRows.length})`, '');
+    for (const row of sectionRows) {
+      const source = String(row['source']);
+      const state = String(row['state']);
+      const agent = String(row['agent_id'] ?? 'agent');
+      const files = rowFiles(row);
+      const block = [`- ${summarize(String(row['feedback']), 240)}`];
+      const meta = [`from ${agent}`, `via ${source}${state && state !== 'recorded' ? `:${state}` : ''}`, `id \`${row['id']}\``];
+      if (files.length > 0) meta.push(`files: ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` +${files.length - 3}` : ''}`);
+      block.push(`  - ${meta.join(' · ')}`);
+      if (maxLines && lines.length + block.length + 1 > maxLines) {
+        lines.push(`- …more omitted by projection cap. Use \`query developer-review\` or \`reflect developer-review\`.`, '');
+        return;
+      }
+      lines.push(...block);
+    }
+    lines.push('');
+  }
+
+  renderSection('Open', open);
+  renderSection('Resolved', resolved);
   return lines.join('\n');
 }
 

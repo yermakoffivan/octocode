@@ -8,7 +8,7 @@ process.on('warning', (w) => {
 // bin/hook-runner.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { createHash as createHash2 } from "node:crypto";
-import { mkdirSync as mkdirSync2, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync as mkdirSync2, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename as basename2, dirname as dirname3, isAbsolute as isAbsolute3, join as join3, relative, resolve as resolve6 } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,6 +53,17 @@ function parseJsonList(value) {
     return [];
   }
 }
+var NOTIFICATION_KIND_VALUES = [
+  "claim",
+  "handoff",
+  "question",
+  "reply",
+  "blocker",
+  "request",
+  "decision",
+  "fyi"
+];
+var NOTIFICATION_KINDS = new Set(NOTIFICATION_KIND_VALUES);
 function normalizeArtifact(value) {
   if (value == null) return null;
   const cleaned = String(value).trim().slice(0, 256);
@@ -299,7 +310,7 @@ var SCHEMA_DDL = `
       files_json     TEXT NOT NULL DEFAULT '[]',
       reasoning      TEXT NOT NULL,
       remember       TEXT NOT NULL,
-      quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff')) DEFAULT 'good',
+      quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff','instructions')) DEFAULT 'good',
       state          TEXT NOT NULL CHECK(state IN ('open','ongoing','done')) DEFAULT 'open',
       created_at     TEXT NOT NULL,
       updated_at     TEXT NOT NULL
@@ -388,6 +399,7 @@ var SCHEMA_DDL = `
 function initDb(db2) {
   db2.exec(SCHEMA_DDL);
   migrateExistingTables(db2);
+  migrateRefinementQualityConstraint(db2);
   db2.exec(`
     CREATE INDEX IF NOT EXISTS idx_sessions_agent     ON sessions(agent_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_path);
@@ -499,6 +511,54 @@ function migrateExistingTables(db2) {
       }
       db2.exec(`ALTER TABLE ${table} ADD COLUMN ${clause}`);
     }
+  }
+}
+function migrateRefinementQualityConstraint(db2) {
+  const row = db2.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='refinements'"
+  ).get();
+  if (!row?.sql || row.sql.includes("'instructions'")) return;
+  db2.exec("SAVEPOINT migrate_refinement_quality_constraint");
+  try {
+    db2.exec(`
+      DROP TABLE IF EXISTS refinements_migration_new;
+      CREATE TABLE refinements_migration_new (
+        refinement_id  TEXT PRIMARY KEY,
+        agent_id       TEXT NOT NULL,
+        workspace_path TEXT NOT NULL,
+        artifact       TEXT,
+        repo           TEXT,
+        ref            TEXT,
+        files_json     TEXT NOT NULL DEFAULT '[]',
+        reasoning      TEXT NOT NULL,
+        remember       TEXT NOT NULL,
+        quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff','instructions')) DEFAULT 'good',
+        state          TEXT NOT NULL CHECK(state IN ('open','ongoing','done')) DEFAULT 'open',
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL
+      );
+      INSERT INTO refinements_migration_new (
+        refinement_id, agent_id, workspace_path, artifact, repo, ref,
+        files_json, reasoning, remember, quality, state, created_at, updated_at
+      )
+      SELECT
+        refinement_id, agent_id, workspace_path, artifact, repo, ref,
+        files_json, reasoning, remember, quality, state, created_at, updated_at
+      FROM refinements;
+      DROP TABLE refinements;
+      ALTER TABLE refinements_migration_new RENAME TO refinements;
+    `);
+    db2.exec("RELEASE SAVEPOINT migrate_refinement_quality_constraint");
+  } catch (err) {
+    try {
+      db2.exec("ROLLBACK TO SAVEPOINT migrate_refinement_quality_constraint");
+    } catch {
+    }
+    try {
+      db2.exec("RELEASE SAVEPOINT migrate_refinement_quality_constraint");
+    } catch {
+    }
+    throw err;
   }
 }
 function hasFts(db2) {
@@ -618,7 +678,7 @@ function resolveTargetFiles(targetFiles = [], workspacePath) {
 function preFlightIntent(db2, params) {
   const {
     agentId: agentId2 = "agent",
-    sessionId = null,
+    sessionId: sessionId2 = null,
     workspacePath,
     artifact: artifact2,
     rationale = "agent write operation",
@@ -640,7 +700,9 @@ function preFlightIntent(db2, params) {
     for (const absPath of absFiles) {
       const conflictMode = lockType === "SHARED" ? "fl.lock_type = 'EXCLUSIVE'" : "1 = 1";
       const existing = db2.prepare(`
-        SELECT fl.*, ai.agent_id AS task_agent_id FROM locks fl
+        SELECT fl.*, ai.agent_id AS task_agent_id,
+               ai.rationale AS reasoning, ai.test_plan AS test_plan
+          FROM locks fl
         JOIN tasks ai ON ai.task_id = fl.task_id
         WHERE fl.file_path = ?
           AND ai.agent_id <> ?
@@ -655,26 +717,36 @@ function preFlightIntent(db2, params) {
       return {
         ok: false,
         conflict: true,
-        conflicts: conflicts.map((c) => ({
-          file_path: c.file_path,
-          lock_type: c.lock_type,
-          agent_id: c.task_agent_id ?? c.agent_id,
-          acquired_at: c.acquired_at,
-          expires_at: c.expires_at
-        }))
+        conflicts: conflicts.map((c) => {
+          const holderSession = c.session_id ? db2.prepare("SELECT ended_at FROM sessions WHERE session_id = ?").get(c.session_id) : void 0;
+          const holderSessionActive = !holderSession || holderSession.ended_at == null;
+          return {
+            file_path: c.file_path,
+            lock_type: c.lock_type,
+            agent_id: c.task_agent_id ?? c.agent_id,
+            acquired_at: c.acquired_at,
+            expires_at: c.expires_at,
+            // Surface the holder's who/why so a blocked agent can act on it.
+            task_id: c.task_id,
+            reasoning: c.reasoning ?? "agent write operation",
+            test_plan: c.test_plan ?? "post-edit verification",
+            session_id: c.session_id ?? null,
+            holder_session_active: holderSessionActive
+          };
+        })
       };
     }
-    if (sessionId) {
+    if (sessionId2) {
       db2.prepare(
         `INSERT OR IGNORE INTO sessions (session_id, agent_id, workspace_path, artifact, started_at)
          VALUES (?, ?, ?, ?, ?)`
-      ).run(sessionId, agentId2, wsPath, artifactScope, now);
+      ).run(sessionId2, agentId2, wsPath, artifactScope, now);
     }
     db2.prepare(`
       INSERT INTO tasks
         (task_id, agent_id, session_id, rationale, test_plan, plan_doc_ref, status, workspace_path, artifact, files_json, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
-    `).run(taskId, agentId2, sessionId, rationale, testPlan, planDocRef, wsPath, artifactScope, JSON.stringify(absFiles), now, now);
+    `).run(taskId, agentId2, sessionId2, rationale, testPlan, planDocRef, wsPath, artifactScope, JSON.stringify(absFiles), now, now);
     const expiresAt = expiresAtFromNow(ttlMs);
     const acquiredLocks = [];
     for (const absPath of absFiles) {
@@ -683,7 +755,7 @@ function preFlightIntent(db2, params) {
         INSERT OR REPLACE INTO locks
           (lock_id, file_path, task_id, agent_id, session_id, lock_type, acquired_at, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(lockId, absPath, taskId, agentId2, sessionId, lockType, now, expiresAt);
+      `).run(lockId, absPath, taskId, agentId2, sessionId2, lockType, now, expiresAt);
       acquiredLocks.push({ lock_id: lockId, file_path: absPath, lock_type: lockType, expires_at: expiresAt });
     }
     db2.exec("COMMIT");
@@ -692,7 +764,7 @@ function preFlightIntent(db2, params) {
       task: {
         task_id: taskId,
         agent_id: agentId2,
-        session_id: sessionId,
+        session_id: sessionId2,
         lock_type: lockType,
         workspace_path: wsPath,
         artifact: artifactScope,
@@ -703,7 +775,7 @@ function preFlightIntent(db2, params) {
           file_path: l.file_path,
           lock_type: l.lock_type,
           agent_id: agentId2,
-          session_id: sessionId,
+          session_id: sessionId2,
           acquired_at: now,
           expires_at: l.expires_at
         })),
@@ -722,7 +794,7 @@ function preFlightIntent(db2, params) {
 function releaseFileLock(db2, params) {
   const {
     agentId: agentId2 = "agent",
-    sessionId = null,
+    sessionId: sessionId2 = null,
     workspacePath = null,
     artifact: artifact2 = null,
     taskId = null,
@@ -740,9 +812,9 @@ function releaseFileLock(db2, params) {
   const now = utcNow();
   const whereClauses = ["fl.agent_id = ?"];
   const whereParams = [agentId2];
-  if (sessionId) {
+  if (sessionId2) {
     whereClauses.push("fl.session_id = ?");
-    whereParams.push(sessionId);
+    whereParams.push(sessionId2);
   }
   const artifactScope = normalizeArtifact(artifact2);
   if (workspacePath || artifactScope) {
@@ -772,33 +844,33 @@ function releaseFileLock(db2, params) {
        FROM locks fl${workspacePath || artifactScope ? ", tasks ai" : ""}
       WHERE ${where}`
   ).all(...whereParams);
-  const deleteClauses = ["agent_id = ?"];
-  const deleteParams = [agentId2];
-  if (sessionId) {
-    deleteClauses.push("session_id = ?");
-    deleteParams.push(sessionId);
+  const taskIds = [...new Set(locks.map((l) => l.task_id))];
+  const ambiguousRelease = !taskId && absFiles.length > 0 && taskIds.length > 1;
+  if (ambiguousRelease) {
+    return {
+      agent_id: agentId2,
+      status: effectiveStatus,
+      released: false,
+      locks_released: 0,
+      task_ids: taskIds,
+      updated_at: now,
+      ambiguousRelease: "target-file release matched multiple active tasks; pass --task-id to release exactly one task"
+    };
   }
-  if (taskId) {
-    deleteClauses.push("task_id = ?");
-    deleteParams.push(taskId);
+  if (locks.length === 0) {
+    return {
+      agent_id: agentId2,
+      status: effectiveStatus,
+      released: false,
+      locks_released: 0,
+      task_ids: [],
+      updated_at: now
+    };
   }
-  if (absFiles.length > 0) {
-    const ph = absFiles.map(() => "?").join(",");
-    deleteClauses.push(`file_path IN (${ph})`);
-    deleteParams.push(...absFiles);
-  }
-  const taskIds = [.../* @__PURE__ */ new Set([
-    ...taskId ? [taskId] : [],
-    ...locks.map((l) => l.task_id)
-  ])];
   db2.exec("BEGIN IMMEDIATE");
   try {
     const lockIds = locks.map((lock) => lock.lock_id);
-    if (lockIds.length > 0) {
-      db2.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => "?").join(",")})`).run(...lockIds);
-    } else if (taskId && !workspacePath && !artifactScope) {
-      db2.prepare(`DELETE FROM locks WHERE ${deleteClauses.join(" AND ")}`).run(...deleteParams);
-    }
+    db2.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => "?").join(",")})`).run(...lockIds);
     for (const tid of taskIds) {
       const remaining = db2.prepare("SELECT 1 FROM locks WHERE task_id = ? LIMIT 1").get(tid);
       if (!remaining) {
@@ -827,7 +899,7 @@ function releaseFileLock(db2, params) {
   return {
     agent_id: agentId2,
     status: effectiveStatus,
-    released: locks.length > 0 || Boolean(taskId),
+    released: locks.length > 0,
     locks_released: locks.length,
     task_ids: taskIds,
     updated_at: now,
@@ -972,6 +1044,9 @@ import { isAbsolute as isAbsolute2, resolve as resolve5 } from "node:path";
 // src/notifications.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
 
+// src/sql/sessions.ts
+var SESSIONS_UPDATE_END = `UPDATE sessions SET ended_at = ?, summary = ? WHERE session_id = ? RETURNING *`;
+
 // src/sql/signals.ts
 var SIGNALS_SELECT_BASE = "SELECT n.* FROM signals n";
 var SIGNALS_SELECT_LEFT_JOIN_READS = "LEFT JOIN signal_reads nr ON nr.signal_id = n.signal_id AND nr.agent_id = ?";
@@ -981,7 +1056,7 @@ var SIGNAL_READS_INSERT_IGNORE = "INSERT OR IGNORE INTO signal_reads(signal_id, 
 // src/sql/refinements.ts
 var COLS = "refinement_id, agent_id, workspace_path, artifact, repo, ref, files_json, reasoning, remember, quality, state, created_at, updated_at";
 var REFINEMENTS_SELECT_OPEN = `SELECT ${COLS} FROM refinements
-   WHERE state IN ('open','ongoing') AND quality <> 'handoff'
+   WHERE state IN ('open','ongoing') AND quality NOT IN ('handoff','instructions')
    ORDER BY CASE state WHEN 'ongoing' THEN 0 ELSE 1 END, updated_at DESC`;
 var REFINEMENTS_SELECT_BY_WORKSPACE = `SELECT ${COLS} FROM refinements
    WHERE (workspace_path = ? OR workspace_path IS NULL)
@@ -1146,9 +1221,9 @@ function pruneStale(db2, params = {}) {
     binds.push(artifact2);
   }
   const where = conditions.join(" AND ");
+  const from = scopedByTask ? "locks l JOIN tasks t ON t.task_id = l.task_id" : "locks l";
   let staleLocks = [];
   try {
-    const from = scopedByTask ? "locks l JOIN tasks t ON t.task_id = l.task_id" : "locks l";
     staleLocks = db2.prepare(
       `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
     ).all(...binds);
@@ -1160,10 +1235,17 @@ function pruneStale(db2, params = {}) {
   if (staleLocks.length === 0) {
     return { pruned_locks: 0, updated_tasks: 0 };
   }
-  const affectedTaskIds = [...new Set(staleLocks.map((l) => l.task_id))];
   let updatedTasks = 0;
   db2.exec("BEGIN IMMEDIATE");
   try {
+    staleLocks = db2.prepare(
+      `SELECT l.lock_id, l.task_id FROM ${from} WHERE ${where}`
+    ).all(...binds);
+    if (staleLocks.length === 0) {
+      db2.exec("COMMIT");
+      return { pruned_locks: 0, updated_tasks: 0 };
+    }
+    const affectedTaskIds = [...new Set(staleLocks.map((l) => l.task_id))];
     const ph = staleLocks.map(() => "?").join(",");
     db2.prepare(`DELETE FROM locks WHERE lock_id IN (${ph})`).run(...staleLocks.map((l) => l.lock_id));
     for (const tid of affectedTaskIds) {
@@ -1349,15 +1431,30 @@ function notifyGet(db2, params = {}) {
   }
   return result;
 }
+function parseGitStatusShortLines(stdout) {
+  const files = [];
+  for (const rawLine of String(stdout).split("\n")) {
+    if (!rawLine || rawLine.length < 4) continue;
+    const xy = rawLine.slice(0, 2);
+    let pathPart = rawLine.slice(3);
+    if (xy.includes("R") || xy.includes("C")) {
+      const arrow = pathPart.indexOf(" -> ");
+      if (arrow >= 0) pathPart = pathPart.slice(arrow + 4);
+    }
+    const filePath = pathPart.trim();
+    if (filePath) files.push(filePath);
+  }
+  return files;
+}
 function gitDirtyFiles(workspacePath) {
   if (!workspacePath) return [];
   try {
-    const result = spawnSync2("git", ["-C", workspacePath, "status", "--short"], {
+    const result = spawnSync2("git", ["-C", workspacePath, "status", "--porcelain=v1"], {
       encoding: "utf8",
       timeout: 5e3
     });
     if (result.status !== 0) return [];
-    return String(result.stdout).split("\n").map((line) => line.trim()).filter(Boolean).map((line) => line.slice(3).trim()).filter(Boolean);
+    return parseGitStatusShortLines(String(result.stdout));
   } catch {
     return [];
   }
@@ -1585,12 +1682,24 @@ function digest(db2, params = {}) {
   };
 }
 
+// src/sessions.ts
+import { randomUUID as randomUUID6 } from "node:crypto";
+function endSession(db2, params) {
+  const now = utcNow();
+  const result = db2.prepare(SESSIONS_UPDATE_END).get(
+    now,
+    params.summary ?? null,
+    params.sessionId
+  );
+  return result ?? null;
+}
+
 // src/pi-hooks.ts
 import path from "node:path";
 import { spawnSync as spawnSync3 } from "node:child_process";
-import { randomUUID as randomUUID6 } from "node:crypto";
+import { randomUUID as randomUUID7 } from "node:crypto";
 import { realpathSync as realpathSync2 } from "node:fs";
-var _sessionStartupToken = randomUUID6().slice(0, 8);
+var _sessionStartupToken = randomUUID7().slice(0, 8);
 function addPathValue(paths, value) {
   if (typeof value === "string" && value.trim().length > 0) {
     paths.push(value.trim());
@@ -1631,8 +1740,8 @@ function addQueryPaths(paths, value) {
     addPathValue(paths, payload.file_paths);
   }
 }
-function extractPiWriteTargetPaths(toolName, input = {}, options = {}) {
-  const normalizedToolName = String(toolName ?? "").toLowerCase();
+function extractPiWriteTargetPaths(toolName2, input = {}, options = {}) {
+  const normalizedToolName = String(toolName2 ?? "").toLowerCase();
   const isWriteTool = Boolean(options.assumeWrite) || [
     "write",
     "edit",
@@ -1706,14 +1815,14 @@ function agentId(payload) {
   const input = objectOrEmpty2(payloadInput(payload));
   const explicit = firstString2(
     process.env.OCTOCODE_AGENT_ID,
-    payload.session_id,
-    payload.sessionId,
     payload.agent_id,
     payload.agentId,
-    input.session_id,
-    input.sessionId,
     input.agent_id,
-    input.agentId
+    input.agentId,
+    payload.session_id,
+    payload.sessionId,
+    input.session_id,
+    input.sessionId
   );
   if (explicit) return explicit;
   const host = firstString2(
@@ -1731,6 +1840,33 @@ function agentId(payload) {
     console.error(`octocode-awareness: OCTOCODE_AGENT_ID or host session id missing; using fallback agent id "${fallback}". Set OCTOCODE_AGENT_ID for reliable multi-agent lock isolation.`);
   }
   return fallback;
+}
+function sessionId(payload) {
+  const input = objectOrEmpty2(payloadInput(payload));
+  return firstString2(
+    payload.session_id,
+    payload.sessionId,
+    input.session_id,
+    input.sessionId
+  );
+}
+function toolName(payload) {
+  const input = objectOrEmpty2(payloadInput(payload));
+  return firstString2(
+    payload.tool_name,
+    payload.toolName,
+    payload.name,
+    input.tool_name,
+    input.toolName
+  ) ?? "";
+}
+function autoClaimRationale(payload, files) {
+  const tool = toolName(payload);
+  const names = files.map((f) => f.split("/").pop() || f);
+  const shown = names.slice(0, 3).join(", ");
+  const extra = names.length > 3 ? ` +${names.length - 3} more` : "";
+  const action = tool ? `${tool}` : "edit";
+  return `auto: ${action} ${shown}${extra} (lifecycle hook)`;
 }
 function agentName(payload) {
   const value = process.env.OCTOCODE_AGENT_NAME ?? payload.agent_name ?? payload.agentName ?? payload.agent_display_name ?? payload.agentDisplayName;
@@ -1754,8 +1890,8 @@ function isStopHookActive(payload) {
 function extractFiles(payload) {
   const input = payloadForFileExtraction(payload);
   const inputObj = objectOrEmpty2(input);
-  const toolName = payload.tool_name ?? payload.toolName ?? payload.name ?? inputObj.tool_name ?? inputObj.toolName ?? "";
-  return extractPiWriteTargetPaths(toolName, input, { assumeWrite: true });
+  const toolName2 = payload.tool_name ?? payload.toolName ?? payload.name ?? inputObj.tool_name ?? inputObj.toolName ?? "";
+  return extractPiWriteTargetPaths(toolName2, input, { assumeWrite: true });
 }
 function resolveHookPath(file, cwd = process.cwd()) {
   return resolve6(cwd, file);
@@ -1770,20 +1906,52 @@ function isInsidePath(candidate, root) {
 function db() {
   return connectDb(resolveDbPath(null));
 }
-function hookTaskStateFile() {
+function hookTaskStateDir() {
+  const stateDir = join3(dirname3(resolveDbPath(null)), "hook-state", "tasks");
+  mkdirSync2(stateDir, { recursive: true });
+  return stateDir;
+}
+function hookTaskStateFile(key) {
+  return join3(hookTaskStateDir(), `${key}.json`);
+}
+function legacyHookTaskStateFile() {
   const stateDir = join3(dirname3(resolveDbPath(null)), "hook-state");
   mkdirSync2(stateDir, { recursive: true });
   return join3(stateDir, "shell-hook-tasks.json");
 }
-function readHookTaskState() {
+function readLegacyHookTaskEntries(key) {
   try {
-    return JSON.parse(readFileSync(hookTaskStateFile(), "utf8"));
+    const legacyFile = legacyHookTaskStateFile();
+    const state = JSON.parse(readFileSync(legacyFile, "utf8"));
+    const entries = Array.isArray(state[key]) ? state[key] : [];
+    if (entries.length === 0) return [];
+    delete state[key];
+    writeFileSync(legacyFile, JSON.stringify(state, null, 2) + "\n", "utf8");
+    return entries;
   } catch {
-    return {};
+    return [];
   }
 }
-function writeHookTaskState(state) {
-  writeFileSync(hookTaskStateFile(), JSON.stringify(state, null, 2) + "\n", "utf8");
+function readHookTaskEntries(key) {
+  try {
+    const parsed = JSON.parse(readFileSync(hookTaskStateFile(key), "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return readLegacyHookTaskEntries(key);
+  }
+}
+function writeHookTaskEntries(key, entries) {
+  const file = hookTaskStateFile(key);
+  if (entries.length === 0) {
+    try {
+      unlinkSync(file);
+    } catch {
+    }
+    return;
+  }
+  const tempFile = `${file}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tempFile, JSON.stringify(entries, null, 2) + "\n", "utf8");
+  renameSync(tempFile, file);
 }
 function hookEventId(payload) {
   const input = objectOrEmpty2(payloadInput(payload));
@@ -1816,25 +1984,20 @@ function hookTaskKey(payload, files, cwd) {
   return createHash2("sha1").update(JSON.stringify(identity)).digest("hex");
 }
 function recordHookTask(payload, files, cwd, taskId) {
-  const state = readHookTaskState();
   const key = hookTaskKey(payload, files, cwd);
-  const entries = state[key] ?? [];
+  const entries = readHookTaskEntries(key);
   entries.push({
     taskId,
     files: files.map((file) => resolveHookPath(file, cwd)),
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   });
-  state[key] = entries.slice(-20);
-  writeHookTaskState(state);
+  writeHookTaskEntries(key, entries.slice(-20));
 }
 function consumeHookTask(payload, files, cwd) {
-  const state = readHookTaskState();
   const key = hookTaskKey(payload, files, cwd);
-  const entries = state[key] ?? [];
+  const entries = readHookTaskEntries(key);
   const entry = entries.shift();
-  if (entries.length > 0) state[key] = entries;
-  else delete state[key];
-  writeHookTaskState(state);
+  writeHookTaskEntries(key, entries);
   return entry?.taskId ?? null;
 }
 function uniqueActiveHookTaskId(database, params) {
@@ -1896,9 +2059,10 @@ async function runPreEdit(payload) {
     registerHookAgent(database, payload, "hook:pre-edit");
     const result = preFlightIntent(database, {
       agentId: agentId(payload),
+      sessionId: sessionId(payload),
       workspacePath: workspace(payload) ?? process.cwd(),
       artifact: artifact(payload),
-      rationale: "auto: file edit via lifecycle hook",
+      rationale: autoClaimRationale(payload, files),
       testPlan: "post-edit verification",
       targetFiles: files,
       ttlMs: 10 * 6e4
@@ -2073,6 +2237,8 @@ async function runSessionEnd(payload) {
       artifact: artifact(payload) ?? void 0,
       reason: hookReason(payload) || void 0
     });
+    const sid = sessionId(payload);
+    if (sid) endSession(database, { sessionId: sid });
   } catch {
   }
   return 0;

@@ -25,33 +25,35 @@ npx @octocodeai/octocode-awareness
 npx @octocodeai/octocode-awareness maintenance init --compact
 ```
 
-**2. Install the Agent Skills** so the host knows the operating loop (awareness) and how to install/update/lint skills (`octocode-skills`, bundled beside awareness on npm):
+**2. Install the bundled Agent Skills** so the host knows the operating loop (awareness) and how to install/update/lint skills (`octocode-skills`, bundled beside awareness in this package):
 
 ```bash
-# From npm / marketplace
-npx octocode skill --name octocode-awareness --platform common
-npx octocode skill --name octocode-skills --platform common
+# From this package bundle (npm unpack or monorepo after build)
+npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common --force
+npx octocode skill --add --path <awareness-package>/dist/skills/octocode-skills --platform common --force
 
-# Or from a local / bundled skill folder (monorepo after build, or npm package skills/)
-npx octocode skill --add --path packages/octocode-awareness/skills/octocode-awareness --platform common
-npx octocode skill --add --path packages/octocode-awareness/skills/octocode-skills --platform common --force
+# Monorepo source path for maintainers before build
+npx octocode skill --add --path packages/octocode-awareness/skills/octocode-awareness --platform common --force
+npx octocode skill --add --path skills/octocode-skills --platform common --force
 ```
 
-`--platform common` installs into `~/.agents/skills` (shared discovery). For host-specific destinations use `--platform claude`, `cursor`, `codex`, `pi`, or `all`. After install, tell the agent: *use octocode-awareness before planning or editing this repo; use octocode-skills to install/update/lint skills.*
+`--platform common` installs into `~/.agents/skills` (shared discovery). For host-specific destinations use `--platform claude`, `cursor`, `codex`, `pi`, or `all`. Do not fetch `octocode-awareness` by registry name: `@octocodeai/octocode-awareness` already ships the canonical skill in `dist/skills/`. Use `npx octocode` for skill install/update/lint and for Octocode research/search operations.
+After install, tell the agent: *use octocode-awareness before planning or editing this repo; use octocode-skills to install/update/lint skills.*
 
 **3. Optional reflexes (hooks)** — preview, then install:
 
 ```bash
-npx @octocodeai/octocode-awareness hooks install --host codex --project-dir . --dry-run --compact
-npx @octocodeai/octocode-awareness hooks install --host codex --project-dir . --compact
-npx @octocodeai/octocode-awareness hooks check --host codex --project-dir . --strict --compact
+npx @octocodeai/octocode-awareness hooks install --host <claude|codex|cursor> --project-dir . --dry-run --compact
+npx @octocodeai/octocode-awareness hooks install --host <claude|codex|cursor> --project-dir . --compact
+npx @octocodeai/octocode-awareness hooks check --host <claude|codex|cursor> --project-dir . --strict --compact
 ```
 
 | Host | How awareness attaches |
 |---|---|
-| Claude Code | Skill frontmatter hooks + CLI |
-| Codex / Cursor | `hooks install` → `.codex/hooks.json` / `.cursor/hooks.json` + CLI. Host enablement varies — read [docs/HOOKS.md](docs/HOOKS.md) and skill `references/hooks.md` before assuming write-time enforcement. |
-| Pi | In-process `wirePiAwarenessHooks(pi)` + skill |
+| Claude Code | Skill frontmatter hooks when active; project-wide install writes `.claude/settings.json`. |
+| Codex | `hooks install --host codex` writes `.codex/hooks.json`; host hooks must be enabled for the session. |
+| Cursor | `hooks install --host cursor` writes `.cursor/hooks.json`; Cursor cloud supports fewer event classes, so smoke write paths. |
+| Pi | No shell hook file; use in-process `wirePiAwarenessHooks(pi, { skillRoot })` or `@octocodeai/pi-extension`. |
 | Custom | Import `@octocodeai/octocode-awareness` or call the CLI |
 
 Everyday first commands after install:
@@ -63,7 +65,7 @@ npx @octocodeai/octocode-awareness schema commands --compact
 npx @octocodeai/octocode-awareness docs list --compact   # skill reference catalog
 ```
 
-**Local-first rule** (the same rule the skill teaches): prefer an installed CLI — `node scripts/awareness.mjs` inside an installed skill, or `node packages/octocode-awareness/dist/bin/awareness.js` in this monorepo after a build. `npx @octocodeai/octocode-awareness` is the fallback when no local copy exists.
+**Local-first rule** (the same rule the skill teaches): prefer an installed CLI — `node scripts/awareness.mjs` inside an installed skill, or `node packages/octocode-awareness/dist/bin/awareness.js` in this monorepo after a build. `npx @octocodeai/octocode-awareness` is the fallback when no local copy exists and also carries the bundled skill files under `dist/skills/`.
 
 Guide: [docs/SKILLS.md](docs/SKILLS.md) · product site: [octocode.ai](https://octocode.ai)
 
@@ -201,9 +203,10 @@ That is human-grade situational awareness — for machines that share your repo.
 | Signals | `signal publish\|list\|reply\|ack\|resolve\|prune` | Blockers, questions, decisions, handoffs; thread replies with `--in-reply-to`. |
 | Agents | `agent register\|list` | Who is active in this workspace. |
 | Handoffs | `refinement *`, `session capture` | Backlog outside chat history. Session-captured handoffs are `quality=handoff`; read them back with `refinement get --include-handoffs`. |
-| Reflection | `reflect record\|mine-weakness\|export-harness` | Lessons + weakness clusters; outcomes are `worked\|partial\|failed`; record `--failure-signature` on failures or mine-weakness has nothing to cluster; harness preview is human-gated. |
+| Reflection | `reflect record\|mine-weakness\|export-harness` | Lessons + weakness clusters; outcomes are `worked\|partial\|failed`; three feedback targets `--fix-repo\|--fix-harness\|--fix-instructions`; record `--failure-signature` on failures or mine-weakness has nothing to cluster; harness preview is human-gated. |
+| Developer review | `reflect developer-review` | Agent feedback to the human who authored the instructions (`--fix-instructions`); grouped Open/Resolved; regenerated into `.octocode/DEVELOPER_REVIEW.md`. |
 | Workboard / views | `query <view>` | JSON / table / CSV / Markdown / HTML over live rows. |
-| LLM Wiki | `repo inject` | Bounded `.octocode/` projections (`AGENTS`, `MEMORY`, `GOTCHAS`, `LEARN`, `BOOKMARKS`, …). Generated files can contain machine-local absolute paths — review before committing a projection. |
+| LLM Wiki | `repo inject` | Bounded `.octocode/` projections (`AGENTS`, `MEMORY`, `GOTCHAS`, `LEARN`, `BOOKMARKS`, `DEVELOPER_REVIEW`, …). `AGENTS.md` carries a Retro Files Map indexing them. Generated files can contain machine-local absolute paths — review before committing a projection. |
 | Skill docs | `docs list\|show` | Catalog skill `references/*.md` (not package `docs/**`). |
 | Docs drift | `docs staleness` | Flag docs lagging `edit_log` source activity; paths must match how edits were recorded (prefer absolute). |
 | Metabolism | `maintenance digest\|init\|self-test` | Init, smoke, report-first cleanup. |
@@ -211,7 +214,58 @@ That is human-grade situational awareness — for machines that share your repo.
 | Hooks / Pi | `hooks *`, `wirePiAwarenessHooks` | Reflexes: claim, pending verify, stop gate, briefing, session capture. |
 | Library | `@octocodeai/octocode-awareness` | Same runtime for host integrations. |
 
-Code search is **not** bundled here — use `npx octocode search …` or Octocode MCP (see skill `references/octocode.md`).
+### CLI commands by type
+
+Source of truth: `octocode-awareness schema commands --compact`. The groups below name every shipped CLI command and why you would reach for it.
+
+| Type | Command | Why |
+|---|---|---|
+| Orientation | `attend` | Start a run with a compact packet: profile, workboard, evidence, gaps, organ state, and drive state. |
+| Orientation | `workspace status` | Check DB health, locks, pending verification, and memory counts before work. |
+| Orientation | `query` | Read live DB views as JSON, table, CSV, Markdown, or HTML. |
+| Memory | `memory recall` | Bring back relevant lessons before planning or editing. |
+| Memory | `memory record` | Save durable lessons, decisions, gotchas, or observations for future agents. |
+| Memory | `memory forget` | Remove selected stale memories; dry-run first. |
+| Claims | `lock acquire` | Claim files before edits and expose conflicts with exit code `2`. |
+| Claims | `lock wait` | Wait for existing file locks without taking ownership. |
+| Claims | `lock release` | Close file claims as `SUCCESS`, `FAILED`, or `PENDING`. |
+| Claims | `lock prune` | Clean expired or stale lock rows without marking work successful. |
+| Verification | `verify audit` | Find pending or stale verification debt before finishing. |
+| Verification | `verify mark` | Record that the declared check actually ran. |
+| Signals | `signal list` | Read blockers, questions, requests, decisions, handoffs, and FYIs. |
+| Signals | `signal publish` | Send a new blocker, question, request, handoff, decision, or FYI. |
+| Signals | `signal reply` | Continue an existing signal thread. |
+| Signals | `signal ack` | Mark handled signals as read. |
+| Signals | `signal resolve` | Close handled signals or whole threads. |
+| Signals | `signal prune` | Remove resolved, old, or selected signals; dry-run first. |
+| Agents | `agent register` | Register or refresh an agent identity in the shared workspace. |
+| Agents | `agent list` | See known agents in the current scope. |
+| Handoffs | `refinement get` | Read unfinished handoffs or follow-up work. |
+| Handoffs | `refinement set` | Save work state or next-step context for another run. |
+| Handoffs | `refinement delete` | Delete stale refinement rows; dry-run first. |
+| Handoffs | `session capture` | Capture unresolved session state from locks and the dirty git tree. |
+| Reflection | `reflect record` | Record outcome, lesson, and optional failure signature after work. |
+| Reflection | `reflect mine-weakness` | Find recurring failure clusters worth fixing. |
+| Reflection | `reflect export-harness` | Preview candidate harness guidance from memories for human review. |
+| Reflection | `reflect developer-review` | Read agent feedback on the instructions themselves (from `reflect record --fix-instructions`); feeds `.octocode/DEVELOPER_REVIEW.md`. |
+| Repo context | `repo inject` | Generate bounded `.octocode/` projections for agents and humans. |
+| Skill docs | `docs list` | List bundled skill reference docs in `references/*.md`. |
+| Skill docs | `docs show` | Display one bundled skill reference by name. |
+| Skill docs | `docs staleness` | Flag docs that may lag recorded source edits. |
+| Maintenance | `maintenance digest` | Preview or run report-first memory, signal, and refinement cleanup. |
+| Maintenance | `maintenance init` | Initialize the awareness database. |
+| Maintenance | `maintenance self-test` | Run in-memory DB smoke checks. |
+| Hooks | `hooks install` | Install awareness-owned hook config after preview. |
+| Hooks | `hooks check` | Check installed hook config and detect drift. |
+| Hooks | `hooks remove` | Remove awareness-owned hook config. |
+| Hooks | `hook run` | Internal hook dispatcher used by wrapper scripts. |
+| Schema | `schema commands` | Print the command-to-schema map for agents and tooling. |
+| Schema | `schema list` | Print available schema names only. |
+| Schema | `schema json-schema` | Print one JSON schema contract. |
+| Schema | `schema example` | Print example JSON for one schema. |
+| Schema | `schema validate` | Validate a JSON payload against a schema. |
+
+Code search is **not** bundled here — use `npx octocode search …` or Octocode MCP (see skill `references/octocode.md`). Skill install/update/lint workflows also use `npx octocode skill ...`, pointed at bundled/local skill paths.
 
 ---
 
@@ -228,7 +282,7 @@ npx @octocodeai/octocode-awareness lock acquire --agent-id "$OCTOCODE_AGENT_ID" 
 # …edit…
 npx @octocodeai/octocode-awareness verify mark --agent-id "$OCTOCODE_AGENT_ID" \
   --workspace "$PWD" --all-pending --message "tests passed" --compact
-npx @octocodeai/octocode-awareness lock release --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --compact
+npx @octocodeai/octocode-awareness lock release --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --target-file src/file.ts --compact
 
 # Learn → project → housekeep
 npx @octocodeai/octocode-awareness reflect record --agent-id "$OCTOCODE_AGENT_ID" \
@@ -236,6 +290,8 @@ npx @octocodeai/octocode-awareness reflect record --agent-id "$OCTOCODE_AGENT_ID
 npx @octocodeai/octocode-awareness repo inject --workspace "$PWD" --compact
 npx @octocodeai/octocode-awareness maintenance digest --workspace "$PWD" --dry-run --compact
 ```
+
+Bloat / prune playbook (report-first): see workspace `.octocode/rfc/awareness-audit-hardening/DIGEST-PLAN.md` when present — prefer `attend`/`query`, then `memory forget --dry-run` + `repo inject`; digest alone may not shrink memories.
 
 Self-improvement stays supervised: `reflect export-harness` previews guidance; humans (or gated harness apply) merge it. See [docs/HARNESS.md](docs/HARNESS.md).
 

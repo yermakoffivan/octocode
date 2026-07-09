@@ -8,6 +8,7 @@
     "Gates public contract and migration risk with rollout and rollback details.",
     "Produces implementation-ready acceptance criteria and verification commands.",
     "Adds PREREQUISITES.md before the implementation plan for RFCs on existing code.",
+    "Adds RESOURCES.md when sources, prior art, or research artifacts matter.",
     "For a new RFC without a handoff, asks to use octocode-brainstorming first when available and researches with octocode-research plus local and external tools if continuing.",
     "Avoids one-shot RFCs by asking focused questions when the decision flow is unclear."
   ],
@@ -55,7 +56,7 @@
     {
       "id": "existing-code-folder-rfc",
       "mode": "RFC",
-      "prompt": "Write a full RFC for an irreversible existing-code cross-package change as the folder set (RFC.md, PREREQUISITES.md, IMPLEMENTATION.md, KPI.md): goals/non-goals, reversibility, alternatives, prerequisites before the plan, open questions closed via research, acceptance criteria, success metrics, and a traceability matrix.",
+      "prompt": "Write a full RFC for an irreversible existing-code cross-package change as the folder set (RFC.md, PREREQUISITES.md, IMPLEMENTATION.md, KPI.md, RESOURCES.md): goals/non-goals, reversibility, alternatives, prerequisites before the plan, open questions closed via research, resources/refs, acceptance criteria, success metrics, and a traceability matrix.",
       "minScore": 0.85,
       "minCitationCount": 2,
       "required": [
@@ -63,6 +64,7 @@
         { "name": "PREREQUISITES.md file", "pattern": "\\bPREREQUISITES\\.md\\b" },
         { "name": "IMPLEMENTATION.md file", "pattern": "\\bIMPLEMENTATION\\.md\\b" },
         { "name": "KPI.md file", "pattern": "\\bKPI\\.md\\b" },
+        { "name": "RESOURCES.md file", "pattern": "\\bRESOURCES\\.md\\b" },
         { "name": "goals and non-goals", "pattern": "\\bNon-Goals?\\b" },
         { "name": "reversibility classification", "pattern": "\\b(reversible|irreversible|two-way door|one-way door)\\b" },
         { "name": "open questions closed", "pattern": "\\bResolved Questions?\\b|\\bResolution\\b|closed[^\\n]*open question" },

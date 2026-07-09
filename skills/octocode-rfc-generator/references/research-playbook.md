@@ -8,7 +8,7 @@ Use `octocode-research` if installed. If it is missing, use https://github.com/b
 npx octocode skill --name octocode-research
 ```
 
-Do not copy Octocode router/tool rules into this skill. Ask `octocode-research` for the needed surfaces, citations, confidence, and unresolved gaps, then write the RFC artifacts from that claim ledger.
+Do not copy Octocode router/tool rules into this skill. Ask `octocode-research` for the needed surfaces, citations, confidence, source inventory, and unresolved gaps, then write the RFC artifacts from that claim ledger.
 
 ## Research plan — run only the tracks that matter
 
@@ -23,7 +23,9 @@ Do not copy Octocode router/tool rules into this skill. Ask `octocode-research` 
 | RFC validation | Map each claim to local/external evidence; mark confirmed/likely/uncertain |
 | Closing open questions (IMPLEMENTATION.md) | Ask `octocode-research` to resolve each question with local/external/history evidence; a resolution without a citation is not resolved. |
 
-For new RFC research without a brainstorming handoff, ask `octocode-research` to cover the relevant local surface before writing. Add external package, GitHub, history, and docs evidence when prior art matters.
+For new RFC research without a brainstorming handoff, ask `octocode-research` to cover the relevant local surface before writing.
+Add external package, GitHub, history, and docs evidence when prior art matters.
+Put the broad source inventory in `RESOURCES.md`; cite decisive claims inline where they affect the decision.
 
 ## Evidence rules
 

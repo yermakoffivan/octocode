@@ -188,7 +188,7 @@ const SCHEMA_DDL = `
       files_json     TEXT NOT NULL DEFAULT '[]',
       reasoning      TEXT NOT NULL,
       remember       TEXT NOT NULL,
-      quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff')) DEFAULT 'good',
+      quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff','instructions')) DEFAULT 'good',
       state          TEXT NOT NULL CHECK(state IN ('open','ongoing','done')) DEFAULT 'open',
       created_at     TEXT NOT NULL,
       updated_at     TEXT NOT NULL
@@ -283,6 +283,7 @@ export function initDb(db: DatabaseSync): void {
   // created — indexes below reference columns (failure_signature, valid_from,
   // embedding_model, …) that old stores may lack.
   migrateExistingTables(db);
+  migrateRefinementQualityConstraint(db);
 
   // ── 2. All indexes in a single exec block ──────────────────────────────────
   db.exec(`
@@ -427,6 +428,50 @@ function migrateExistingTables(db: DatabaseSync): void {
       }
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${clause}`);
     }
+  }
+}
+
+function migrateRefinementQualityConstraint(db: DatabaseSync): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='refinements'"
+  ).get() as { sql: string } | undefined;
+  if (!row?.sql || row.sql.includes("'instructions'")) return;
+
+  db.exec('SAVEPOINT migrate_refinement_quality_constraint');
+  try {
+    db.exec(`
+      DROP TABLE IF EXISTS refinements_migration_new;
+      CREATE TABLE refinements_migration_new (
+        refinement_id  TEXT PRIMARY KEY,
+        agent_id       TEXT NOT NULL,
+        workspace_path TEXT NOT NULL,
+        artifact       TEXT,
+        repo           TEXT,
+        ref            TEXT,
+        files_json     TEXT NOT NULL DEFAULT '[]',
+        reasoning      TEXT NOT NULL,
+        remember       TEXT NOT NULL,
+        quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff','instructions')) DEFAULT 'good',
+        state          TEXT NOT NULL CHECK(state IN ('open','ongoing','done')) DEFAULT 'open',
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL
+      );
+      INSERT INTO refinements_migration_new (
+        refinement_id, agent_id, workspace_path, artifact, repo, ref,
+        files_json, reasoning, remember, quality, state, created_at, updated_at
+      )
+      SELECT
+        refinement_id, agent_id, workspace_path, artifact, repo, ref,
+        files_json, reasoning, remember, quality, state, created_at, updated_at
+      FROM refinements;
+      DROP TABLE refinements;
+      ALTER TABLE refinements_migration_new RENAME TO refinements;
+    `);
+    db.exec('RELEASE SAVEPOINT migrate_refinement_quality_constraint');
+  } catch (err) {
+    try { db.exec('ROLLBACK TO SAVEPOINT migrate_refinement_quality_constraint'); } catch { /* already rolled back */ }
+    try { db.exec('RELEASE SAVEPOINT migrate_refinement_quality_constraint'); } catch { /* already released */ }
+    throw err;
   }
 }
 

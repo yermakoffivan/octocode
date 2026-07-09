@@ -16,7 +16,7 @@ The canonical store is `~/.octocode/memory/awareness.sqlite3` under the global O
 
 Surfaces:
 
-- `SKILL.md` gives agents the operating loop and routes them to focused references.
+- `SKILL.md` gives agents the operating loop and routes them to focused references. The `@octocodeai/octocode-awareness` package bundles this skill under `dist/skills/octocode-awareness`.
 - Prefer the bundled/local CLI: `node scripts/awareness.mjs` inside an installed skill, or `node packages/octocode-awareness/dist/bin/awareness.js` in this repo. Use `npx @octocodeai/octocode-awareness` only when no local CLI exists.
 - Hooks and the Pi bridge automate the same CLI/runtime operations around lifecycle events.
 - `query <view>` reads live DB views; `repo inject` refreshes generated workspace `.octocode/` projections.
@@ -33,7 +33,7 @@ Surfaces:
 | During / Communicate | `signal publish|reply|ack|resolve` | Coordinates blockers, questions, claims, decisions, requests, and handoffs. |
 | During / Learn | `memory record`, `reflect record` | Stores durable facts discovered during the work; skip routine status. |
 | After / Verify | `verify mark`, `verify audit`, `lock release` | Records checks and clears or exposes pending work. |
-| After / Reflect | `reflect record`, `reflect mine-weakness`, `reflect export-harness` | Stores lessons, clusters failures, and previews human-reviewed guidance. |
+| After / Reflect | `reflect record` (`--fix-repo`/`--fix-harness`/`--fix-instructions`), `reflect mine-weakness`, `reflect export-harness`, `reflect developer-review` | Stores lessons, clusters failures, previews harness guidance, and collects feedback to the instruction author. |
 | After / Project | `query <view>`, `repo inject` | Reads live views or regenerates workspace `.octocode/` repo context. |
 | Housekeep | `maintenance digest`, `lock prune`, `memory forget`, `signal prune`, `docs staleness` | Previews or removes stale locks, old signals, redundant memories, refinements, and docs drift. |
 | Hand off | `session capture`, `refinement set|get`, `signal publish` | Preserves unfinished state for the next run. |
@@ -49,10 +49,10 @@ In a repo, start with a compact packet. Use schema discovery once when the comma
 <local-awareness-cli> query workboard --workspace "$PWD" --format table --limit 20
 <local-awareness-cli> workspace status --workspace "$PWD" --compact
 <local-awareness-cli> schema commands --compact
-npx octocode skill --add --path "{{path_to_skills_location}}/octocode-awareness" --platform common
+npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-awareness" --platform common --force
 ```
 
-Core groups: `attend`, `memory record|recall|forget`, `lock acquire|wait|release|prune`, `verify audit|mark`, `signal publish|list|reply|ack|resolve|prune`, `agent register|list`, `refinement set|get|delete`, `reflect record|mine-weakness|export-harness`, `query <view>`, `repo inject`, `docs staleness`, `session capture`, `maintenance digest|init|self-test`, `hooks install|check|remove`, `hook run pre-edit|post-edit|harness-guard|stop-verify|notify-deliver|session-end`, and `schema commands|list|json-schema|example|validate`.
+Core groups: `attend`, `memory record|recall|forget`, `lock acquire|wait|release|prune`, `verify audit|mark`, `signal publish|list|reply|ack|resolve|prune`, `agent register|list`, `refinement set|get|delete`, `reflect record|mine-weakness|export-harness|developer-review`, `query <view>`, `repo inject`, `docs staleness`, `session capture`, `maintenance digest|init|self-test`, `hooks install|check|remove`, `hook run pre-edit|post-edit|harness-guard|stop-verify|notify-deliver|session-end`, and `schema commands|list|json-schema|example|validate`.
 
 For exact flags, use `<command> --help`. For token-light examples, use `<command> --help --compact`. For contracts, use `schema json-schema <schema> --compact`.
 
@@ -90,7 +90,7 @@ Supported hosts are `claude`, `codex`, and `cursor`; Pi wires `wirePiAwarenessHo
 
 ## LLM Wiki / Repo Context
 
-The LLM Wiki is a generated projection of selected awareness data into the current workspace's `.octocode/`: `AGENTS.md`, `MEMORY.md`, `GOTCHAS.md`, `LEARN.md`, `BOOKMARKS.md`, `awareness/csv/*.csv`, `awareness/index.html`, `awareness/manifest.json`, and `references/*.md`.
+The LLM Wiki is a generated projection of selected awareness data into the current workspace's `.octocode/`: `AGENTS.md` (with a Retro Files Map), `MEMORY.md`, `GOTCHAS.md`, `LEARN.md`, `BOOKMARKS.md`, `DEVELOPER_REVIEW.md`, `awareness/csv/*.csv`, `awareness/index.html`, `awareness/manifest.json`, and `references/*.md`.
 
 Location rule: global `~/.octocode/` holds canonical data and config; workspace `<repo>/.octocode/` holds generated repo context and memories-about-this-repo as files.
 
@@ -120,10 +120,11 @@ Smart update pattern:
 
 Reflection turns outcomes into future behavior:
 
-- `reflect record` stores the outcome, lesson, optional judgment note, failure signature, eval-failure evidence, repo-fix refinement, and harness log event.
+- `reflect record` stores the outcome, lesson, optional judgment note, failure signature, eval-failure evidence, and — by target — a repo-fix refinement (`--fix-repo`), a harness-tagged memory (`--fix-harness`), or an instruction-feedback item (`--fix-instructions`), plus a harness log event.
 - `reflect record --duo` returns an advisory supporter/skeptic packet for bounded self-review; it is not stored, scored, or enforced.
 - `reflect mine-weakness` clusters repeated `failure_signature` values.
 - `reflect export-harness` previews candidate guidance from high-value memories.
+- `reflect developer-review` reads feedback to the instruction author (from `--fix-instructions`); the same rows feed `.octocode/DEVELOPER_REVIEW.md`.
 - `maintenance digest` previews or performs cleanup of old memories, signals, refinements, and pending state.
 - `docs staleness` can propose doc-refresh harness events when edit logs show source changed without the doc moving.
 
@@ -132,7 +133,7 @@ Awareness can propose skill, harness, or repo guidance changes, but a human-revi
 When a repeated failure points to a workflow gap:
 - load `octocode-skills` if it exists,
 - improve the relevant skill with lint and verification,
-- use `npx octocode` to install, create, or manage a missing skill,
+- use `npx octocode` to install, create, manage, or research skills; for awareness itself, point it at the bundled `dist/skills/octocode-awareness` path,
 - direct users to `https://octocode.ai` for the Octocode guide.
 ## Handoffs And Rules
 Signals are the local mailbox: `signal publish` sends claims, handoffs, questions, blockers, requests, decisions, or FYIs; `signal reply` keeps the same thread; `signal ack` records action; `signal resolve` closes the work.

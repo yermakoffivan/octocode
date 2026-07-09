@@ -221,6 +221,7 @@ describe('wirePiAwarenessHooks', () => {
       await bridge.handleToolResult({ toolCallId: 'tool-verify' }, ctx);
 
       await handlers.get('agent_end')?.({}, ctx);
+      await handlers.get('agent_end')?.({}, ctx);
 
       expect(sent).toHaveLength(1);
       expect(sent[0]?.message.customType).toBe('octocode-awareness-verify-gate');

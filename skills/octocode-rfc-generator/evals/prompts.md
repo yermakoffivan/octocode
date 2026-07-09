@@ -16,6 +16,6 @@ Pass criteria: chooses Migration or RFC mode; maps current and target state; gat
 
 ## Eval 3 — Existing-Code Folder RFC
 
-Prompt: `Write a full RFC for an irreversible existing-code cross-package change as the folder set (RFC.md, PREREQUISITES.md, IMPLEMENTATION.md, KPI.md): goals/non-goals, reversibility, alternatives, prerequisites before the plan, open questions closed via research, acceptance criteria, success metrics, and a traceability matrix.`
+Prompt: `Write a full RFC for an irreversible existing-code cross-package change as the folder set (RFC.md, PREREQUISITES.md, IMPLEMENTATION.md, KPI.md, RESOURCES.md): goals/non-goals, reversibility, alternatives, prerequisites before the plan, open questions closed via research, resources/refs, acceptance criteria, success metrics, and a traceability matrix.`
 
-Pass criteria: names the folder files including PREREQUISITES.md; classifies decision reversibility; states Goals and Non-Goals; compares alternatives; closes RFC open questions in IMPLEMENTATION.md with citations; KPI.md has user stories, Gherkin acceptance criteria, success metrics with baseline/target/guardrail, a decision rule, and a traceability matrix binding the files.
+Pass criteria: names the folder files including PREREQUISITES.md and RESOURCES.md; classifies decision reversibility; states Goals and Non-Goals; compares alternatives; closes RFC open questions in IMPLEMENTATION.md with citations; KPI.md has user stories, Gherkin acceptance criteria, success metrics with baseline/target/guardrail, a decision rule, and a traceability matrix binding the files.

@@ -95,9 +95,26 @@ describe('getRefinements', () => {
     const defaultView = getRefinements(db);
     expect(defaultView.refinements).toHaveLength(1);
     expect(defaultView.refinements[0]!.remember).toBe('real repo fix');
+    expect(defaultView.handoff_count).toBe(1);
 
     const withHandoffs = getRefinements(db, { includeHandoffs: true });
     expect(withHandoffs.refinements.map(r => r.quality).sort()).toEqual(['bad', 'handoff']);
+    expect(withHandoffs.handoff_count).toBeUndefined();
+  });
+
+  it('hides instructions-feedback from the coding queue and reports instructions_count', () => {
+    const db = freshDb();
+    insertRefinement(db, { reasoning: 'r', remember: 'real repo fix', quality: 'bad', state: 'open' });
+    insertRefinement(db, { reasoning: 'instr', remember: 'document the default lock TTL', quality: 'instructions', state: 'open' });
+
+    const defaultView = getRefinements(db);
+    expect(defaultView.refinements.every(r => r.quality !== 'instructions')).toBe(true);
+    expect(defaultView.instructions_count).toBe(1);
+
+    const onlyInstructions = getRefinements(db, { quality: 'instructions' });
+    expect(onlyInstructions.count).toBe(1);
+    expect(onlyInstructions.refinements[0]!.quality).toBe('instructions');
+    expect(onlyInstructions.refinements[0]!.remember).toBe('document the default lock TTL');
   });
 
   it('respects limit', () => {

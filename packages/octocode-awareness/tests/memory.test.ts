@@ -97,10 +97,17 @@ describe('insertMemory', () => {
     expect(second.similarMemoryIds).toContain(first.memoryId);
   });
 
-  it('normalizes label to OTHER for unknown values', () => {
+  it('hard-errors unknown labels by default', () => {
+    const db = freshDb();
+    expect(() => insertMemory(db, {
+      taskContext: 't', observation: 'o', importance: 3, label: 'BOGUS',
+    })).toThrow(/invalid label/);
+  });
+
+  it('coerces unknown labels to OTHER when compatCoerce', () => {
     const db = freshDb();
     const { memory } = insertMemory(db, {
-      taskContext: 't', observation: 'o', importance: 3, label: 'BOGUS',
+      taskContext: 't', observation: 'o', importance: 3, label: 'BOGUS', compatCoerce: true,
     });
     expect(memory.label).toBe('OTHER');
   });
@@ -127,9 +134,9 @@ describe('getMemory', () => {
     expect(scores[0]).toBeGreaterThanOrEqual(scores[scores.length - 1]!);
   });
 
-  // 20s timeout: 10 inserts each run similar-memory Jaccard scans; under the
-  // full parallel suite this occasionally exceeds the default 5s on CPU contention.
-  it('respects limit', { timeout: 20_000 }, () => {
+  // 30s timeout: 10 inserts each run similar-memory Jaccard scans; under the
+  // full parallel coverage suite this occasionally exceeds the default 5s on CPU contention.
+  it('respects limit', { timeout: 30_000 }, () => {
     const db = freshDb();
     for (let i = 0; i < 10; i++) {
       insertMemory(db, { taskContext: 'ctx', observation: `obs ${i}`, importance: 5 });

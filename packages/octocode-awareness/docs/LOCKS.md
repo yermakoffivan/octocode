@@ -54,6 +54,8 @@ Acquire does three things atomically:
 
 `EXCLUSIVE` locks conflict with any other active lock on the same file. `SHARED` locks conflict only with active `EXCLUSIVE` locks.
 
+At least one `--target-file` is required; acquiring with no target is rejected (exit `1`) so a claim never creates a task that locks nothing.
+
 ## Wait
 
 ```bash
@@ -111,7 +113,7 @@ octocode-awareness verify mark \
   --compact
 ```
 
-`verify mark` updates matching pending tasks to `SUCCESS` or `FAILED` and writes `task_log` events. Scope it to the same workspace/artifact used during acquire.
+`verify mark` updates matching pending tasks to `SUCCESS` or `FAILED` and writes `task_log` events. Scope it to the same workspace/artifact used during acquire. `--all-pending` with **no** `--workspace`/`--artifact` verifies every pending task for the agent across **all** workspaces and returns a `warning` naming the blast radius — pass `--workspace` to limit it.
 
 ## TTL, Prune, And Renew
 
@@ -142,13 +144,30 @@ Manual CLI calls and hooks use the same tables and state machine. See [HOOKS.md]
 
 ## Conflict Response
 
+On conflict, acquire rolls back and returns `{ ok: false, conflict: true, conflicts: [...] }` (exit `2`). Each entry carries enough who/why context to decide without a second lookup:
+
+```json
+{
+  "file_path": "/repo/src/auth.ts",
+  "lock_type": "EXCLUSIVE",
+  "agent_id": "agent-a",              // who holds it
+  "reasoning": "refactoring auth token flow",  // WHY it is claimed (holder's rationale)
+  "test_plan": "yarn test auth",      // what the holder verifies before release
+  "task_id": "task_…",                // reference it in a signal
+  "session_id": "sess-…",             // which run holds it (null if none)
+  "acquired_at": "…", "expires_at": "…",
+  "holder_session_active": false       // false = holder's session ended → lock likely abandoned
+}
+```
+
 When acquire reports a conflict:
 
-1. Read the conflict holder, file, and expiration.
-2. If the lock is recent, wait or send a targeted `signal publish --kind question`.
-3. If the lock is expired, use `lock prune --expired-only`.
-4. If you can make progress elsewhere, switch to non-overlapping files.
-5. Do not overwrite the file just because the user asked for speed; the lock is the shared workspace contract.
+1. Read `reasoning` / `test_plan` — is the holder's work related to yours or independent?
+2. If `holder_session_active` is `false`, the lock is likely abandoned (session ended before TTL); it is safe to `lock prune --expired-only` once it expires, or coordinate a reclaim.
+3. If the lock is recent and active, wait, or send a targeted `signal reply`/`signal publish --kind question` referencing the `task_id`.
+4. If the lock is expired, use `lock prune --expired-only`.
+5. If you can make progress elsewhere, switch to non-overlapping files.
+6. Do not overwrite the file just because the user asked for speed; the lock is the shared workspace contract.
 
 ## Common Failure Modes
 

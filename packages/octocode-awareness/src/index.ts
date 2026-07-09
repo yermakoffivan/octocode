@@ -90,8 +90,9 @@ export { registerAgent, touchAgent, resolveAgentName, resolveAgentNames, listAge
 // Pure helpers
 export {
   utcNow, parseJsonList, normalizeTags, normalizeReferences,
-  normalizeLabel, normalizeFilePath, tagsText, rowToMemory,
-  MEMORY_LABELS, MEMORY_LABEL_VALUES, REFLECTION_IMPORTANCE,
+  normalizeLabel, normalizeNotificationKind, normalizeReflectionOutcome, normalizeFilePath, tagsText, rowToMemory,
+  MEMORY_LABELS, MEMORY_LABEL_VALUES, NOTIFICATION_KIND_VALUES, NOTIFICATION_KINDS,
+  REFLECTION_OUTCOME_VALUES, REFLECTION_IMPORTANCE,
 } from './helpers.js';
 
 // Shared agent-tool operation runner

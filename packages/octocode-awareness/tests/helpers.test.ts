@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   utcNow, parseJsonList, tagsText, normalizeTags,
-  normalizeReferences, normalizeLabel, normalizeFilePath, rowToMemory,
+  normalizeReferences, normalizeLabel, normalizeNotificationKind, normalizeReflectionOutcome, normalizeFilePath, rowToMemory,
   MEMORY_LABELS, REFLECTION_IMPORTANCE,
 } from '../src/helpers.js';
 import { resolve } from 'node:path';
@@ -62,7 +62,10 @@ describe('normalizeReferences', () => {
 
 describe('normalizeLabel', () => {
   it('uppercases valid labels', () => expect(normalizeLabel('gotcha')).toBe('GOTCHA'));
-  it('defaults unknown to OTHER', () => expect(normalizeLabel('UNKNOWN')).toBe('OTHER'));
+  it('defaults unknown to OTHER when coerce (default)', () => expect(normalizeLabel('UNKNOWN')).toBe('OTHER'));
+  it('hard-errors unknown labels when coerce:false', () => {
+    expect(() => normalizeLabel('UNKNOWN', { coerce: false })).toThrow(/invalid label/);
+  });
   it('defaults null/undefined to OTHER', () => {
     expect(normalizeLabel(null)).toBe('OTHER');
     expect(normalizeLabel(undefined)).toBe('OTHER');
@@ -131,5 +134,30 @@ describe('rowToMemory', () => {
     expect(mem.references).toEqual([]);
     expect(mem.tags).toEqual([]);
     expect(mem.importance).toBe(7);
+  });
+});
+
+describe('normalizeNotificationKind', () => {
+  it('accepts known kinds', () => expect(normalizeNotificationKind('blocker')).toBe('blocker'));
+  it('hard-errors unknown kinds by default', () => {
+    expect(() => normalizeNotificationKind('not-a-kind')).toThrow(/invalid signal kind/);
+  });
+  it('coerces unknown kinds to fyi when requested', () => {
+    expect(normalizeNotificationKind('not-a-kind', { coerce: true })).toBe('fyi');
+  });
+});
+
+describe('normalizeReflectionOutcome', () => {
+  it('accepts worked|partial|failed', () => {
+    expect(normalizeReflectionOutcome('worked')).toBe('worked');
+    expect(normalizeReflectionOutcome('partial')).toBe('partial');
+    expect(normalizeReflectionOutcome('failed')).toBe('failed');
+  });
+  it('defaults empty to partial', () => expect(normalizeReflectionOutcome(undefined)).toBe('partial'));
+  it('hard-errors unknown outcomes by default', () => {
+    expect(() => normalizeReflectionOutcome('success')).toThrow(/invalid outcome/);
+  });
+  it('coerces unknown outcomes when requested', () => {
+    expect(normalizeReflectionOutcome('success', { coerce: true })).toBe('partial');
   });
 });

@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { normalizeArtifact, utcNow, parseJsonList } from './helpers.js';
+import { normalizeArtifact, normalizeNotificationKind, utcNow, parseJsonList } from './helpers.js';
 import { fillScope } from './git.js';
 import {
   SIGNALS_SELECT_THREAD_ID,
@@ -91,7 +91,10 @@ export function insertNotification(
     inReplyTo = null,
     importance = 5,
     cwd,
+    compatCoerce = false,
   } = params;
+
+  const normalizedKind = normalizeNotificationKind(kind, { coerce: Boolean(compatCoerce) });
 
   const scope = fillScope(
     { workspace_path: params.workspacePath ?? null, artifact: normalizeArtifact(params.artifact), repo: params.repo ?? null, ref: params.ref ?? null },
@@ -116,7 +119,7 @@ export function insertNotification(
 
   db.prepare(SIGNALS_INSERT).run(
     signalId, wsPath, scope.artifact, scope.repo, scope.ref,
-    agentId, toAgent, kind, subject, body,
+    agentId, toAgent, normalizedKind, subject, body,
     JSON.stringify(files), JSON.stringify(refIds),
     threadId, inReplyTo, importance, createdAt,
   );
@@ -357,6 +360,7 @@ export function agentSignal(db: DatabaseSync, params: AgentSignalParams): AgentS
         inReplyTo: params.inReplyTo ?? null,
         importance: params.importance ?? 5,
         cwd: params.cwd,
+        compatCoerce: params.compatCoerce,
       }));
       return {
         action: params.action,

@@ -5,14 +5,13 @@
 
 import type { DatabaseSync } from 'node:sqlite';
 import { resolve } from 'node:path';
-import { normalizeArtifact, REFLECTION_IMPORTANCE } from './helpers.js';
+import { normalizeArtifact, normalizeReflectionOutcome, REFLECTION_IMPORTANCE } from './helpers.js';
 import { fillScope } from './git.js';
 import { insertMemory } from './memory.js';
 import { insertRefinement } from './refinements.js';
 import { insertHarnessLog } from './audit.js';
 import type { ReflectParams, ReflectResult, ReflectionOutcome } from './types.js';
 
-const VALID_OUTCOMES: ReadonlyArray<string> = ['worked', 'partial', 'failed'];
 const NEXT_MSG = 'memory_refine_get → repo fixes for the next agent · octocode-awareness reflect mine-weakness/maintenance digest → recurring failures and harness previews. A human merges.';
 
 function normalizeScopePaths(paths: string[] = [], prefix: 'file' | 'dir', baseCwd?: string): string[] {
@@ -40,6 +39,7 @@ export function reflect(db: DatabaseSync, params: ReflectParams): ReflectResult 
     didntWork,
     fixRepo,
     fixHarness,
+    fixInstructions,
     failureSignature: failSigArg,
     importance: impArg,
     judgmentNote,
@@ -58,9 +58,9 @@ export function reflect(db: DatabaseSync, params: ReflectParams): ReflectResult 
     cwd,
   } = params;
 
-  const resolvedOutcome: ReflectionOutcome = VALID_OUTCOMES.includes(outcome ?? '')
-    ? (outcome as ReflectionOutcome)
-    : 'partial';
+  const resolvedOutcome: ReflectionOutcome = normalizeReflectionOutcome(outcome, {
+    coerce: Boolean(params.compatCoerce),
+  });
 
   // Build narrative observation
   const bits: string[] = [`[reflection:${resolvedOutcome}] ${task}`];
@@ -68,6 +68,7 @@ export function reflect(db: DatabaseSync, params: ReflectParams): ReflectResult 
   if (didntWork) bits.push(`didn't work: ${didntWork}`);
   if (judgmentNote) bits.push(`judgment: ${judgmentNote}`);
   if (fixHarness) bits.push(`harness fix: ${fixHarness}`);
+  if (fixInstructions) bits.push(`instructions feedback: ${fixInstructions}`);
   const narrative = bits.join(' | ');
   const observation = lesson
     ? (bits.length > 1 ? `${lesson}  (${narrative})` : lesson)
@@ -81,6 +82,9 @@ export function reflect(db: DatabaseSync, params: ReflectParams): ReflectResult 
   const tags = [
     'reflection', resolvedOutcome,
     ...(fixHarness ? ['harness'] : []),
+    // `developer-review` is the query tag the DEVELOPER_REVIEW.md projection reads;
+    // `instructions` scopes it to the instruction-author feedback channel.
+    ...(fixInstructions ? ['instructions', 'developer-review'] : []),
     ...(hasEvalFailures ? ['eval'] : []),
   ];
 
@@ -167,6 +171,28 @@ export function reflect(db: DatabaseSync, params: ReflectParams): ReflectResult 
     refinementId = rid;
   }
 
+  // Optional instructions-feedback refinement — a tracked, human-owned item addressed
+  // to the developer who authored this agent's operating instructions. Quality
+  // 'instructions' keeps it out of the coding refinement queue; it surfaces via
+  // `reflect developer-review` and `.octocode/DEVELOPER_REVIEW.md`.
+  let developerReviewRefinementId: string | null = null;
+  if (fixInstructions) {
+    const { refinementId: rid } = insertRefinement(db, {
+      agentId,
+      reasoning: `Instructions feedback (from ${resolvedOutcome} reflection on "${task}"): ${fixInstructions}`,
+      remember: fixInstructions,
+      quality: 'instructions',
+      state: 'open',
+      workspacePath: scope.workspace_path,
+      artifact: scope.artifact,
+      repo: scope.repo,
+      ref: scope.ref,
+      files: [...normalizeScopePaths(files, 'file', cwd), ...normalizeScopePaths(folders, 'dir', cwd)],
+      cwd,
+    });
+    developerReviewRefinementId = rid;
+  }
+
   // Record harness loop lifecycle event
   try {
     insertHarnessLog(db, {
@@ -179,7 +205,9 @@ export function reflect(db: DatabaseSync, params: ReflectParams): ReflectResult 
         outcome: resolvedOutcome,
         novelty_score: noveltyScore,
         harness_fix: Boolean(fixHarness),
+        instructions_feedback: Boolean(fixInstructions),
         refinement_id: refinementId,
+        developer_review_refinement_id: developerReviewRefinementId,
         eval_count: evalFailureIds.length,
         workspace_path: scope.workspace_path,
         artifact: scope.artifact,
@@ -192,6 +220,8 @@ export function reflect(db: DatabaseSync, params: ReflectParams): ReflectResult 
     learning_memory_id: memoryId,
     repo_fix_refinement_id: refinementId,
     harness_fix: Boolean(fixHarness),
+    instructions_feedback: Boolean(fixInstructions),
+    developer_review_refinement_id: developerReviewRefinementId,
     eval_failure_count: evalFailureIds.length,
     eval_failure_ids: evalFailureIds,
     next: NEXT_MSG,

@@ -16,4 +16,4 @@ npx octocode skill --name octocode-research
 
 Add `--platform <target>` when installing for a specific host, such as `codex`, `claude`, `cursor`, or `pi`.
 
-Return the evidence to the RFC claim ledger, then use this skill to compare options, close open questions, and write the document set.
+Return the evidence and source inventory to the RFC claim ledger, then use this skill to compare options, close open questions, write `RESOURCES.md`, and write the rest of the document set.

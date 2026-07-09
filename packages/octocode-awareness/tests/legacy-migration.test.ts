@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { initDb, tableColumns } from '../src/db.js';
 import { insertMemory, getMemory } from '../src/memory.js';
+import { insertRefinement } from '../src/refinements.js';
 
 /**
  * Upgrade-path regression tests. This bug class has shipped twice:
@@ -122,5 +123,52 @@ describe('legacy store migration', () => {
     const db = legacyDb();
     initDb(db);
     expect(() => initDb(db)).not.toThrow();
+  });
+
+  it('widens legacy refinement quality checks for instructions feedback', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE refinements (
+        refinement_id  TEXT PRIMARY KEY,
+        agent_id       TEXT NOT NULL,
+        workspace_path TEXT NOT NULL,
+        artifact       TEXT,
+        repo           TEXT,
+        ref            TEXT,
+        files_json     TEXT NOT NULL DEFAULT '[]',
+        reasoning      TEXT NOT NULL,
+        remember       TEXT NOT NULL,
+        quality        TEXT NOT NULL CHECK(quality IN ('good','bad','handoff')) DEFAULT 'good',
+        state          TEXT NOT NULL CHECK(state IN ('open','ongoing','done')) DEFAULT 'open',
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL
+      );
+      INSERT INTO refinements (
+        refinement_id, agent_id, workspace_path, files_json, reasoning, remember,
+        quality, state, created_at, updated_at
+      )
+      VALUES (
+        'ref_legacy', 'agent-old', '/repo', '[]', 'old handoff', 'keep it',
+        'handoff', 'open', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+      );
+    `);
+
+    initDb(db);
+    const schema = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='refinements'"
+    ).get() as { sql: string };
+    expect(schema.sql).toContain("'instructions'");
+
+    const { refinement } = insertRefinement(db, {
+      agentId: 'agent-new',
+      workspacePath: '/repo',
+      reasoning: 'instructions feedback',
+      remember: 'clarify hook install flow',
+      quality: 'instructions',
+    });
+    expect(refinement.quality).toBe('instructions');
+    const count = db.prepare('SELECT COUNT(*) AS cnt FROM refinements')
+      .get() as { cnt: number };
+    expect(count.cnt).toBe(2);
   });
 });

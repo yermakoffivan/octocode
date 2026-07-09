@@ -15,7 +15,7 @@ export const REFINEMENTS_INSERT =
  *  Caller appends optional scope clauses (repo / workspace_path) + LIMIT before executing. */
 export const REFINEMENTS_SELECT_OPEN =
   `SELECT ${COLS} FROM refinements
-   WHERE state IN ('open','ongoing') AND quality <> 'handoff'
+   WHERE state IN ('open','ongoing') AND quality NOT IN ('handoff','instructions')
    ORDER BY CASE state WHEN 'ongoing' THEN 0 ELSE 1 END, updated_at DESC`;
 
 /** Select refinements scoped to a workspace path (also matches unscoped rows).
@@ -40,7 +40,7 @@ export const REFINEMENTS_DELETE =
  *  Caller appends AND (repo = ? OR …) / AND (workspace_path = ? OR …) as needed. */
 export const REFINEMENTS_COUNT_OPEN =
   `SELECT COUNT(*) AS c FROM refinements
-   WHERE state IN ('open','ongoing') AND quality <> 'handoff'`;
+   WHERE state IN ('open','ongoing') AND quality NOT IN ('handoff','instructions')`;
 
 /** Hard-delete old session handoffs and completed refinements (used by digest).
  *  Binds: handoff_updated_at_cutoff, done_updated_at_cutoff. */

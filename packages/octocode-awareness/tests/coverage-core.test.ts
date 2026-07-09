@@ -59,6 +59,7 @@ describe('core branch coverage helpers', () => {
       if (!task.ok) throw new Error('claim failed');
       first.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(new Date(Date.now() - 1000).toISOString(), task.task.task_id);
       expect(evictExpiredLocks(first)).toMatchObject({ pruned_locks: 1, updated_tasks: 1 });
+      expect(evictExpiredLocks(first)).toMatchObject({ pruned_locks: 0, updated_tasks: 0 });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -183,8 +184,17 @@ describe('core branch coverage helpers', () => {
       importance: 6,
       label: 'OTHER',
     });
+    const { memoryId: corrupt } = insertMemory(db, {
+      agentId: 'agent-a',
+      taskContext: 'embedding corrupt',
+      observation: 'bad blob',
+      importance: 6,
+      label: 'OTHER',
+    });
     storeEmbedding(db, first, new Float32Array([1, 0, 0]), 'model-a');
     storeEmbedding(db, second, new Float32Array([0, 1, 0]), 'model-b');
+    db.prepare('UPDATE memories SET embedding = ?, embedding_model = ? WHERE memory_id = ?')
+      .run(Buffer.from([1, 2, 3]), 'model-a', corrupt);
 
     expect(searchByEmbedding(db, new Float32Array([1, 0, 0]), 5, 0.5)[0]).toMatchObject({ memory_id: first });
     expect(searchByEmbedding(db, new Float32Array([1, 0, 0]), 5, 0.5, 'model-b')).toHaveLength(0);

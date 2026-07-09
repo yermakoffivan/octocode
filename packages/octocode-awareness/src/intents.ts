@@ -79,7 +79,7 @@ function activeLockRows(
 
   return db.prepare(
     `SELECT fl.lock_id, fl.task_id, fl.file_path, ai.agent_id, ai.session_id, ai.workspace_path, ai.artifact,
-            ai.rationale AS reasoning, fl.lock_type, fl.acquired_at, fl.expires_at
+            ai.rationale AS reasoning, ai.test_plan AS test_plan, fl.lock_type, fl.acquired_at, fl.expires_at
        FROM locks fl
        JOIN tasks ai ON ai.task_id = fl.task_id
       WHERE ${clauses.join(' AND ')}
@@ -126,7 +126,9 @@ export function preFlightIntent(
     for (const absPath of absFiles) {
       const conflictMode = lockType === 'SHARED' ? "fl.lock_type = 'EXCLUSIVE'" : '1 = 1';
       const existing = db.prepare(`
-        SELECT fl.*, ai.agent_id AS task_agent_id FROM locks fl
+        SELECT fl.*, ai.agent_id AS task_agent_id,
+               ai.rationale AS reasoning, ai.test_plan AS test_plan
+          FROM locks fl
         JOIN tasks ai ON ai.task_id = fl.task_id
         WHERE fl.file_path = ?
           AND ai.agent_id <> ?
@@ -142,13 +144,28 @@ export function preFlightIntent(
       return {
         ok: false,
         conflict: true,
-        conflicts: conflicts.map(c => ({
-          file_path: c.file_path,
-          lock_type: c.lock_type as 'EXCLUSIVE' | 'SHARED',
-          agent_id: c.task_agent_id ?? c.agent_id,
-          acquired_at: c.acquired_at,
-          expires_at: c.expires_at,
-        })),
+        conflicts: conflicts.map(c => {
+          // Session liveness: if the holder's session has ended, the lock is
+          // likely abandoned (not yet TTL-expired). Surface it — don't auto-steal
+          // — so a blocked agent can decide to wait, work elsewhere, or reclaim.
+          const holderSession = c.session_id
+            ? (db.prepare('SELECT ended_at FROM sessions WHERE session_id = ?').get(c.session_id) as { ended_at: string | null } | undefined)
+            : undefined;
+          const holderSessionActive = !holderSession || holderSession.ended_at == null;
+          return {
+            file_path: c.file_path,
+            lock_type: c.lock_type as 'EXCLUSIVE' | 'SHARED',
+            agent_id: c.task_agent_id ?? c.agent_id,
+            acquired_at: c.acquired_at,
+            expires_at: c.expires_at,
+            // Surface the holder's who/why so a blocked agent can act on it.
+            task_id: c.task_id,
+            reasoning: c.reasoning ?? 'agent write operation',
+            test_plan: c.test_plan ?? 'post-edit verification',
+            session_id: c.session_id ?? null,
+            holder_session_active: holderSessionActive,
+          };
+        }),
       };
     }
 
@@ -278,33 +295,37 @@ export function releaseFileLock(
       WHERE ${where}`
   ).all(...whereParams) as unknown as Array<{ lock_id: string; task_id: string; file_path: string }>;
 
-  // INT-2: Build the DELETE WHERE clause independently instead of string-replacing
-  // the SELECT WHERE clause to strip the 'fl.' table alias. String-replace is
-  // fragile: a bind value containing 'fl.' would silently corrupt the query.
-  const deleteClauses: string[] = ['agent_id = ?'];
-  const deleteParams: (string | number)[] = [agentId];
-  if (sessionId) { deleteClauses.push('session_id = ?'); deleteParams.push(sessionId); }
-  if (taskId) { deleteClauses.push('task_id = ?'); deleteParams.push(taskId); }
-  if (absFiles.length > 0) {
-    const ph = absFiles.map(() => '?').join(',');
-    deleteClauses.push(`file_path IN (${ph})`);
-    deleteParams.push(...absFiles);
+  const taskIds = [...new Set(locks.map(l => l.task_id))];
+  const ambiguousRelease = !taskId && absFiles.length > 0 && taskIds.length > 1;
+  if (ambiguousRelease) {
+    return {
+      agent_id: agentId,
+      status: effectiveStatus,
+      released: false,
+      locks_released: 0,
+      task_ids: taskIds,
+      updated_at: now,
+      ambiguousRelease: 'target-file release matched multiple active tasks; pass --task-id to release exactly one task',
+    };
   }
-  const taskIds = [...new Set([
-    ...(taskId ? [taskId] : []),
-    ...locks.map(l => l.task_id),
-  ])];
+
+  if (locks.length === 0) {
+    return {
+      agent_id: agentId,
+      status: effectiveStatus,
+      released: false,
+      locks_released: 0,
+      task_ids: [],
+      updated_at: now,
+    };
+  }
 
   // FIX #3 (P0): Wrap DELETE from locks AND UPDATE tasks status in a single atomic transaction
   // so a crash between the two statements never leaves orphaned lock rows with no task update.
   db.exec('BEGIN IMMEDIATE');
   try {
     const lockIds = locks.map((lock) => lock.lock_id);
-    if (lockIds.length > 0) {
-      db.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => '?').join(',')})`).run(...lockIds);
-    } else if (taskId && !workspacePath && !artifactScope) {
-      db.prepare(`DELETE FROM locks WHERE ${deleteClauses.join(' AND ')}`).run(...deleteParams);
-    }
+    db.prepare(`DELETE FROM locks WHERE lock_id IN (${lockIds.map(() => '?').join(',')})`).run(...lockIds);
 
     for (const tid of taskIds) {
       const remaining = db.prepare('SELECT 1 FROM locks WHERE task_id = ? LIMIT 1').get(tid);
@@ -332,7 +353,7 @@ export function releaseFileLock(
   return {
     agent_id: agentId,
     status: effectiveStatus,
-    released: locks.length > 0 || Boolean(taskId),
+    released: locks.length > 0,
     locks_released: locks.length,
     task_ids: taskIds,
     updated_at: now,

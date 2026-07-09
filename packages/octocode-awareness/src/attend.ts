@@ -301,6 +301,10 @@ function chooseMode(query: string, evidenceCount: number, verifyCount: number, g
 
 export function attendAwareness(db: DatabaseSync, params: AttendParams = {}): AttendResult {
   const cwd = params.cwd ? resolve(params.cwd) : process.cwd();
+  // D1 fix lives in repo-context `scopeFromParams`/`workspaceAliases`: the raw
+  // workspace path below flows through to the alias set, which now also matches
+  // the git-root key that write paths store — so the profile block does not
+  // undercount rows written from a package/subdir.
   const workspacePath = resolve(String(params.workspacePath ?? params.workspace_path ?? params.workspace ?? cwd));
   const limit = limitOf(params.limit);
   const query = String(params.query ?? '').trim();

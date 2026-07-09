@@ -1,7 +1,7 @@
 # RFC.md Template — Decision Body
 
 `RFC.md` is the **decision document**: reviewer-facing, **frozen once accepted**, and the **single source of truth for goals and scope**. `IMPLEMENTATION.md` and `KPI.md` reference its sections — they never restate them.
-Keep implementation steps in `rfc-implementation.md` and success metrics in `rfc-kpi.md`.
+Keep implementation steps in `rfc-implementation.md`, success metrics in `rfc-kpi.md`, and long source inventories in `rfc-resources.md`.
 
 ```markdown
 # RFC: {Title}
@@ -120,7 +120,7 @@ Impact of not accepting this RFC. This is a valid alternative — give it honest
 ## Prior Art
 
 What exists already — in the ecosystem, in the codebase, in the literature.
-Lessons learned from others. If no prior art, state that explicitly.
+Lessons learned from others. If no prior art, state that explicitly. Put the detailed link table, local refs, papers, packages, and search prompts in `RESOURCES.md`; keep only decision-relevant lessons here.
 
 ---
 

@@ -1,6 +1,6 @@
 # Agent Cheat Sheet
 
-Canonical CLI: `node scripts/awareness.mjs` in an installed skill, or `node packages/octocode-awareness/dist/bin/awareness.js` in this monorepo. Use `npx @octocodeai/octocode-awareness` only when neither local path exists. Set `OCTOCODE_AGENT_ID` once per run.
+Use `<cli>` below as the first available Awareness CLI: `node scripts/awareness.mjs` in an installed skill, `node packages/octocode-awareness/dist/bin/awareness.js` in this monorepo, then `npx @octocodeai/octocode-awareness`. Set `OCTOCODE_AGENT_ID` once per run.
 
 ## Start
 
@@ -11,6 +11,20 @@ Canonical CLI: `node scripts/awareness.mjs` in an installed skill, or `node pack
 ```
 
 Follow `next` from `attend` when present — it is meant to be copy-runnable.
+Use `<command> --help --compact` for flags, `schema json-schema <name> --compact` for contracts, and `docs show <name>` for focused reference docs.
+
+## Operations Map
+
+| Need | Commands |
+|---|---|
+| Start context | `attend`, `query workboard`, `workspace status`, `memory recall` |
+| Claim/edit | `lock acquire`, `lock wait`, `lock release` |
+| Coordinate | `signal publish|list|reply|ack|resolve`, `refinement set|get` |
+| Learn | `memory record`, `reflect record --duo`, `reflect mine-weakness` |
+| Verify | `verify audit`, `verify mark`, `lock release --verified` |
+| Project repo context | `query <view>`, `repo inject` |
+| Install/enforce | `maintenance init`, `hooks install|check|remove`, `agent register` |
+| Cleanup | `maintenance digest`, `lock prune`, `signal prune`, `memory forget --dry-run` |
 
 ## Before edits
 
@@ -31,7 +45,8 @@ Exit code `2` on lock conflict → wait, coordinate via signal, switch files, or
 <cli> verify audit --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --compact
 # run the declared test plan, then:
 <cli> verify mark --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --all-pending --compact
-<cli> lock release --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --compact
+<cli> lock release --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" \
+  --status SUCCESS --verified --compact
 ```
 
 ## Finish / hygiene
@@ -39,6 +54,9 @@ Exit code `2` on lock conflict → wait, coordinate via signal, switch files, or
 ```bash
 <cli> reflect record --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" \
   --task "<task>" --outcome worked|partial|failed --lesson "<reusable>" --compact
+# route feedback by target: --fix-repo <code>, --fix-harness <tooling>,
+# --fix-instructions <what the AGENTS.md/SKILL/brief should have said>
+<cli> reflect developer-review --workspace "$PWD" --format markdown --compact  # read instruction feedback
 <cli> session capture --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --compact
 <cli> maintenance digest --workspace "$PWD" --dry-run --compact
 <cli> repo inject --workspace "$PWD" --compact   # only when projections should refresh
@@ -52,6 +70,14 @@ Exit code `2` on lock conflict → wait, coordinate via signal, switch files, or
 <cli> attend --workspace "$PWD" --query "<idea or risk>" --compact
 # then read references/self-reflection-dialogue.md and run a bounded two-role pass
 <cli> reflect record ... --duo --compact   # advisory supporter/skeptic prompts only
+```
+
+## Handoffs
+
+```bash
+<cli> refinement get --workspace "$PWD" --state open --compact
+# handoff_count > 0 means session handoffs exist; list them with:
+<cli> refinement get --workspace "$PWD" --state open --include-handoffs --compact
 ```
 
 ## Agents + docs
@@ -69,12 +95,21 @@ Exit code `2` on lock conflict → wait, coordinate via signal, switch files, or
 
 ## Skills (install / update / lint)
 
-Sibling skill `octocode-skills` ships next to this skill (npm/dist bundle). Use it to install, update, rate, improve, or lint Agent Skills — gate every write.
+Sibling skill `octocode-skills` ships next to this skill in the awareness package bundle. Use `npx octocode` for skill install/update/lint and for Octocode research/search operations — gate every write.
 
 ```bash
-# Install / refresh both skills into a host
-npx octocode skill --add --path "{{path_to_skills_location}}/octocode-awareness" --platform common --force
-npx octocode skill --add --path "{{path_to_skills_location}}/octocode-skills" --platform common --force
+# Install / refresh both bundled skills for a host; use common for ~/.agents/skills
+npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-awareness" --platform codex --force
+npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-skills" --platform codex --force
+
+# Initialize store and smoke the CLI
+<cli> maintenance init --compact
+<cli> attend --workspace "$PWD" --query "smoke" --compact
+
+# Hooks: preview first, install after approval, then verify host wiring
+<cli> hooks install --host codex --project-dir "$PWD" --dry-run --compact
+<cli> hooks install --host codex --project-dir "$PWD" --compact
+<cli> hooks check --host codex --project-dir "$PWD" --strict --compact
 
 # Lint this skill (from an installed awareness skill folder)
 node ../octocode-skills/scripts/skill-lint.mjs .
@@ -83,7 +118,7 @@ node packages/octocode-awareness/skills/octocode-skills/scripts/skill-lint.mjs \
   packages/octocode-awareness/skills/octocode-awareness
 ```
 
-Load `octocode-skills` when the job is skill discovery/install/lint; keep using this skill for workspace awareness.
+Load `octocode-skills` when the job is skill discovery/install/lint; keep using this skill for workspace awareness. Do not install `octocode-awareness` by registry name: the `@octocodeai/octocode-awareness` package already bundles the canonical skill.
 
 ## Code search (not bundled here)
 

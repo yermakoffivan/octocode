@@ -44,9 +44,14 @@ describe('reflect', () => {
     expect(result.repo_fix_refinement_id).toBeNull();
   });
 
-  it('defaults invalid outcome to partial', () => {
+  it('hard-errors invalid outcomes by default', () => {
     const db = freshDb();
-    const result = reflect(db, { task: 't', outcome: 'INVALID' as 'worked' });
+    expect(() => reflect(db, { task: 't', outcome: 'INVALID' as 'worked' })).toThrow(/invalid outcome/);
+  });
+
+  it('coerces invalid outcomes when compatCoerce', () => {
+    const db = freshDb();
+    const result = reflect(db, { task: 't', outcome: 'INVALID' as 'worked', compatCoerce: true });
     expect(result.outcome).toBe('partial');
   });
 
@@ -91,6 +96,39 @@ describe('reflect', () => {
     const db = freshDb();
     const result = reflect(db, { task: 't', outcome: 'worked' });
     expect(result.harness_fix).toBe(false);
+  });
+
+  it('creates developer-review refinement when fixInstructions is set', () => {
+    const db = freshDb();
+    const result = reflect(db, {
+      task: 'instructions gap',
+      outcome: 'partial',
+      fixInstructions: 'clarify when to install hooks',
+      files: ['AGENTS.md'],
+    });
+
+    expect(result.instructions_feedback).toBe(true);
+    expect(result.developer_review_refinement_id).toMatch(/^ref_/);
+
+    const mem = db.prepare('SELECT tags_json FROM memories WHERE memory_id = ?')
+      .get(result.learning_memory_id) as { tags_json: string };
+    const tags: string[] = JSON.parse(mem.tags_json);
+    expect(tags).toContain('developer-review');
+    expect(tags).toContain('instructions');
+
+    const ref = db.prepare('SELECT quality, state, remember, files_json FROM refinements WHERE refinement_id = ?')
+      .get(result.developer_review_refinement_id!) as {
+        quality: string;
+        state: string;
+        remember: string;
+        files_json: string;
+      };
+    expect(ref.quality).toBe('instructions');
+    expect(ref.state).toBe('open');
+    expect(ref.remember).toBe('clarify when to install hooks');
+    expect(JSON.parse(ref.files_json)).toEqual([
+      expect.stringMatching(/^file:.*AGENTS\.md$/),
+    ]);
   });
 
   it('stores reflection label and failure signature', () => {

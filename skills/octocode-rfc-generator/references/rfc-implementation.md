@@ -61,6 +61,7 @@ Verification = did we build it to the design? Validation = did it move the KPIs 
 ## References
 
 Every reference states **how it supports the plan**. Local claims need `file:line`; external claims need a GitHub path/line or PR/commit link.
+Use `RESOURCES.md` for the full source inventory; keep this section to implementation-critical references.
 
 - [`src/auth/middleware.ts:42`](https://github.com/owner/repo/blob/main/src/auth/middleware.ts#L42) — current behavior the plan extends.
 - [owner/repo#123](https://github.com/owner/repo/pull/123) — prior change showing the rollout pattern used here.

@@ -214,6 +214,28 @@ describe('releaseFileLock', () => {
     } finally { cleanup(); }
   });
 
+  it('refuses ambiguous target-file release across same-agent overlapping tasks', () => {
+    const db = freshDb();
+    const { path, cleanup } = tempFile();
+    try {
+      const first = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
+      const second = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path] });
+      if (!first.ok || !second.ok) throw new Error('claims failed');
+
+      const release = releaseFileLock(db, {
+        agentId: 'agent-a',
+        targetFiles: [path],
+        status: 'PENDING',
+      });
+      expect(release.released).toBe(false);
+      expect(release.locks_released).toBe(0);
+      expect(release.task_ids.sort()).toEqual([first.task.task_id, second.task.task_id].sort());
+      expect(release.ambiguousRelease).toContain('pass --task-id');
+      const lockCount = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE file_path = ?').get(path) as { c: number };
+      expect(lockCount.c).toBe(2);
+    } finally { cleanup(); }
+  });
+
   it('returns released=false with no matching locks', () => {
     const db = freshDb();
     const { path, cleanup } = tempFile();
@@ -347,6 +369,26 @@ describe('pruneStale', () => {
       expect(locksAfter.c).toBe(0);
       const taskAfter = db.prepare('SELECT status FROM tasks WHERE task_id = ?').get(taskId) as { status: string };
       expect(taskAfter.status).toBe('PENDING');
+    } finally { cleanup(); }
+  });
+
+  it('rechecks stale locks at prune time so renewed locks survive', () => {
+    const db = freshDb();
+    const { path, cleanup } = tempFile();
+    try {
+      const claim = preFlightIntent(db, { agentId: 'agent-a', targetFiles: [path], ttlMs: 1000 });
+      if (!claim.ok) throw new Error('claim failed');
+      const taskId = claim.task.task_id;
+      const past = new Date(Date.now() - 5000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(past, taskId);
+      expect(pruneStale(db, { dry_run: true }).would_prune).toBe(1);
+
+      const future = new Date(Date.now() + 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      db.prepare('UPDATE locks SET expires_at = ? WHERE task_id = ?').run(future, taskId);
+      const result = pruneStale(db);
+      expect(result.pruned_locks).toBe(0);
+      const lockCount = db.prepare('SELECT COUNT(*) AS c FROM locks WHERE task_id = ?').get(taskId) as { c: number };
+      expect(lockCount.c).toBe(1);
     } finally { cleanup(); }
   });
 

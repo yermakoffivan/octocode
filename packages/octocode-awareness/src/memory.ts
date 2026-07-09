@@ -542,6 +542,7 @@ export function insertMemory(db: DatabaseSync, params: InsertMemoryParams): Inse
     ref: refArg,
     fileTreeFingerprint = null,
     cwd,
+    compatCoerce = false,
   } = params;
 
   const imp = Number(importance);
@@ -552,7 +553,10 @@ export function insertMemory(db: DatabaseSync, params: InsertMemoryParams): Inse
   const memoryId = 'mem_' + randomUUID().replace(/-/g, '');
   const tagList = normalizeTags(tags, tagsCsv);
   const refList = normalizeReferences(references);
-  const normalizedLabel = normalizeLabel(Array.isArray(label) ? label[0] : label);
+  // Hard-error on unknown labels unless compatCoerce (audit hardening H3).
+  const normalizedLabel = normalizeLabel(Array.isArray(label) ? label[0] : label, {
+    coerce: Boolean(compatCoerce),
+  });
   const createdAt = utcNow();
   const validFromVal = vf ?? createdAt;
 
@@ -701,7 +705,7 @@ export function getMemory(db: DatabaseSync, params: GetMemoryParams = {}): GetMe
 
   const states = statesRaw ?? ['ACTIVE'];
   const labels = label
-    ? (Array.isArray(label) ? label.map(normalizeLabel) : [normalizeLabel(label)])
+    ? (Array.isArray(label) ? label.map((value) => normalizeLabel(value)) : [normalizeLabel(label)])
     : [];
 
   const effectiveCwd = cwdParam ?? workspacePath ?? undefined;
@@ -1200,9 +1204,11 @@ export function storeEmbedding(
 /**
  * Search memories by cosine similarity against a query embedding.
  *
- * Retrieves all stored embeddings (optionally filtered by model) and ranks
- * them in JS. For stores < ~10k memories this is fast enough; at larger
- * scale, a proper vector index (e.g. sqlite-vss) would be needed.
+ * Retrieves stored embeddings (optionally filtered by model) and ranks them in
+ * JS. To bound heap use it only loads the 2000 most-recently-accessed embedded
+ * memories (see the `LIMIT 2000` below), so at larger scale older embedded
+ * memories fall outside the cosine ranking and a proper vector index
+ * (e.g. sqlite-vss) would be needed.
  *
  * @param queryEmbedding - The embedding of the text to search for
  * @param limit          - Maximum results to return (default 5)

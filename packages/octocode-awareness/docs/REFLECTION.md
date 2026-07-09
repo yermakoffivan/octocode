@@ -13,7 +13,16 @@ Reflection turns session outcomes into structured memory. It supports durable le
 | Failure clustering key | `memories.failure_signature` | `reflect record --failure-signature` |
 | Reflection lifecycle event | `harness_log` | `reflect record` |
 | Repo-fix or harness-fix hint | `refinements` and/or `harness_log.payload_json` | `reflect record --fix-repo`, `--fix-harness` |
+| Instruction-author feedback | `instructions`-quality `refinements` + `developer-review`-tagged `memories` | `reflect record --fix-instructions` |
 | Structured eval failures | extra `memories` rows | `reflect record --eval-failure-json` |
+
+### Three feedback targets
+
+Reflection separates *who needs to change something* into three channels — pick by what would prevent the problem next time:
+
+- `--fix-repo` → the **code**. Becomes a `good`/`bad` refinement in the coding queue for the next builder.
+- `--fix-harness` → the **skill/tooling/hooks**. Becomes a `harness`-tagged memory surfaced by `reflect export-harness`.
+- `--fix-instructions` → the **human who authored the agent's instructions** (root/`.octocode` `AGENTS.md`, `SKILL.md`, system prompt, task brief), when the instructions — not the code — were ambiguous, wrong, over-constraining, or missing context. Becomes a tracked `instructions` refinement (hidden from the coding queue; the queue reports `instructions_count`) plus a durable `developer-review` memory. Read it with `reflect developer-review`; regenerate `.octocode/DEVELOPER_REVIEW.md` with `repo inject`. See `skills/octocode-awareness/references/developer-review.md`.
 
 Reflection outputs are advisory. They never apply skill, docs, or `AGENTS.md` changes automatically.
 

@@ -31,7 +31,7 @@ Feature: {feature}
 Whole-feature quality bar (applies on top of per-story criteria):
 - [ ] Acceptance scenarios pass
 - [ ] Tests added and green (see `IMPLEMENTATION.md` V&V)
-- [ ] Docs updated
+- [ ] Docs and `RESOURCES.md` updated
 - [ ] Rolled out per `IMPLEMENTATION.md`
 
 ## Success Metrics

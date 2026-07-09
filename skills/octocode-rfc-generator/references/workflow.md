@@ -3,7 +3,7 @@
 UNDERSTAND → RESEARCH (octocode-research) → PREREQUISITES? → COMPARE OPTIONS → WRITE RFC → CLOSE OPEN QUESTIONS → DERIVE KPIs → VALIDATE → DELIVER
 ```
 
-Default output when saving is approved: a folder `\.octocode/rfc/{name}/` with `RFC.md`, `IMPLEMENTATION.md`, and `KPI.md`; existing-code RFCs insert `PREREQUISITES.md` before the implementation plan. See "Output shape" below for when a single `RFC.md` is enough.
+Default output when saving is approved: a folder `\.octocode/rfc/{name}/` with `RFC.md`, `IMPLEMENTATION.md`, `KPI.md`, and `RESOURCES.md`; existing-code RFCs insert `PREREQUISITES.md` before the implementation plan. See "Output shape" below for when a single `RFC.md` is enough.
 
 ## Pick mode
 
@@ -31,8 +31,6 @@ Gate before overwriting a saved file.
 
 ## Output shape — folder vs single file
 
-Classify the decision first:
-
 - **Reversible + small** ⇒ single `RFC.md` with a short inline Implementation Plan + Acceptance Criteria; say why.
 - **Irreversible, cross-package, or public-contract/data/security impact** ⇒ full folder (see the SKILL.md table for each file's role):
 
@@ -42,13 +40,12 @@ Classify the decision first:
   PREREQUISITES.md    # ready — existing-code RFCs only; write before implementation planning
   IMPLEMENTATION.md   # build — open questions closed via octocode-research; steps + test plan
   KPI.md              # verify — acceptance criteria + success metrics + traceability
+  RESOURCES.md        # refs — source appendix + research artifacts + search prompts
 ```
 
 **SSOT / anti-drift rule (non-negotiable):** `RFC.md` is the single source of truth for goals and scope. `IMPLEMENTATION.md` and `KPI.md` **reference `RFC.md` section anchors — they never restate goals/scope.** Generate the set in one pass from one claim ledger.
 
 ## Understand
-
-Capture this before research gets broad:
 
 - Problem in one or two sentences (solution-free — state the problem, not the fix).
 - Why this needs a decision/plan; is the decision reversible or irreversible.
@@ -67,7 +64,7 @@ If input includes an `octocode-brainstorming` RFC handoff, normalize it before r
 |---|---|
 | Problem | Motivation and affected users/workflows (`RFC.md`) |
 | Chosen framing + value thesis | Summary and Rationale (`RFC.md`) |
-| Surviving evidence links | Evidence Summary, Current State, References (`RFC.md`) |
+| Surviving evidence links | Evidence Summary / Current State (`RFC.md`) and source inventory (`RESOURCES.md`) |
 | Alternatives | Alternatives Considered (`RFC.md`) |
 | Constraints + risks | Drawbacks, rollout, rollback, open questions (`RFC.md` → closed in `IMPLEMENTATION.md`) |
 | Bounded MVP / first slice | Implementation Plan (`IMPLEMENTATION.md`) |
@@ -104,12 +101,13 @@ Stop and ask, narrow, or clearly mark `Draft` before delivery when:
 
 ## Write the files
 
-Produce the files in dependency order — `RFC.md` first (the SSOT), then `PREREQUISITES.md` for existing-code RFCs, then `IMPLEMENTATION.md`, then `KPI.md` — each from its own template:
+Produce the files in dependency order — `RFC.md` first (the SSOT), then `PREREQUISITES.md` for existing-code RFCs, then `IMPLEMENTATION.md`, then `KPI.md`, then `RESOURCES.md` — each from its own template:
 
 - `RFC.md` — see `references/rfc-template.md`.
 - `PREREQUISITES.md` — see `references/rfc-prerequisites.md`; write it before the plan and cite current-state facts, blockers, owners, baseline checks, setup, and contract/migration constraints.
 - `IMPLEMENTATION.md` — see `references/rfc-implementation.md`. Opens by **closing every `RFC.md` open question with an `octocode-research` citation**, then dependency-ordered steps + V&V + rollback. References `RFC.md` anchors; no restated goals.
 - `KPI.md` — see `references/rfc-kpi.md`. User stories, Gherkin criteria, metrics (never a single one), a decision rule, and the traceability matrix.
+- `RESOURCES.md` — see `references/rfc-resources.md`. Local refs, external prior art, papers, packages, research artifacts, and search prompts; citations still live beside decisive claims.
 
 For a lighter **Plan** in single-file mode, keep only the `rfc-template.md` sections that carry weight — typically Goal, Current State, Proposed Approach, Alternatives, Step-by-Step, Test/Verification, Rollout/Rollback, plus inline Acceptance Criteria and Open Questions.
 Order steps by dependency, not preference; avoid time estimates.
@@ -124,6 +122,7 @@ Before delivering, check:
 - **Every `RFC.md` open question is closed in `IMPLEMENTATION.md` with a citation, or deferred with a reason.**
 - Implementation plan is actionable, dependency-ordered, and verifiable.
 - `KPI.md` has user stories, testable (Gherkin) acceptance criteria, a primary success metric with baseline/target/window, guardrails, a decision rule, and a traceability matrix covering every RFC requirement.
+- `RESOURCES.md` captures the non-trivial source inventory and research trail when prior art, external docs, papers, packages, or many local refs shaped the decision.
 - SSOT holds: `IMPLEMENTATION.md`/`KPI.md` reference `RFC.md` anchors and do not restate goals/scope.
 - Every non-obvious claim has a citation or is marked uncertain; no claim relies on "common practice" without explaining why it applies here.
 

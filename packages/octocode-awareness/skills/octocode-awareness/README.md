@@ -74,7 +74,7 @@ Manual CLI works without hooks. Hooks only automate the same transitions. Detail
 
 ### Wiki / memory projections
 
-`query <view>` reads the live store. `repo inject` regenerates `<repo>/.octocode/` with `.octocode/AGENTS.md` (digested map), `MEMORY.md`, `GOTCHAS.md`, `LEARN.md`, `BOOKMARKS.md`, CSV, HTML, and references. Agents should keep a short pointer in root `AGENTS.md` → `.octocode/AGENTS.md` so default loaders find the map (see `references/repo-context-management.md`).
+`query <view>` reads the live store. `repo inject` regenerates `<repo>/.octocode/` with `.octocode/AGENTS.md` (digested map with a Retro Files Map), `MEMORY.md`, `GOTCHAS.md`, `LEARN.md`, `BOOKMARKS.md`, `DEVELOPER_REVIEW.md` (agent feedback on the instructions, from `reflect record --fix-instructions`), CSV, HTML, and references. Agents should keep a short pointer in root `AGENTS.md` → `.octocode/AGENTS.md` so default loaders find the map (see `references/repo-context-management.md`).
 
 ## How Users Use It
 
@@ -90,7 +90,7 @@ From there, the agent should make the awareness layer visible in plain language:
 
 If automatic hooks are available in your agent host, they can enforce parts of this flow. Otherwise, the agent should call `node scripts/awareness.mjs` from the bundled skill folder, or the repo-local `dist/bin/awareness.js` when working in this package; use `npx @octocodeai/octocode-awareness` only when no local CLI exists. The exact commands live in `SKILL.md`, `references/`, and `scripts/` because those files are for agents and maintainers, not for the user-facing overview. Start technical onboarding with `references/full-flow.md`. Older prompts that name `octocode-reflection` or `octocode-agent-communication` should load this skill.
 
-When the agent sees repeated workflow friction, ask it to improve the workflow rather than only recording another note. It should use `octocode-skills` when installed, or `npx octocode` to install/manage skills; the user-facing Octocode guide starts at `https://octocode.ai`.
+When the agent sees repeated workflow friction, ask it to improve the workflow rather than only recording another note. It should use `octocode-skills` when installed, or `npx octocode` to install/manage skills and run Octocode research/search; the user-facing Octocode guide starts at `https://octocode.ai`.
 
 ## Storage And Recall
 
@@ -105,13 +105,14 @@ The skill also makes collaboration more honest. A conclusion can carry a recorde
 
 ## Installation
 
-Install the bundled skill with:
+Install the bundled awareness skill from the `@octocodeai/octocode-awareness` package path:
 
 ```bash
-npx octocode skill --add --path {{path_to_skills_location}}/octocode-awareness --platform common
+npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common --force
+npx octocode skill --add --path <awareness-package>/dist/skills/octocode-skills --platform common --force
 ```
 
-The path form is for agents that already know where bundled skills live. They provide that local folder path, and the Octocode CLI installs from it without the awareness package trying to infer host-specific skill locations. A registry fallback is `npx octocode skill --name octocode-awareness`.
+The path form is intentional: this package already bundles the canonical `octocode-awareness` skill under `dist/skills/`. Use `npx octocode` as the skill manager, but do not fetch awareness by registry name.
 
 Optional hooks can make awareness more automatic. Users can start with manual coordination and add host-specific automation later.
 

@@ -63,7 +63,7 @@ export type MemoryState = 'ACTIVE' | 'SUPERSEDED';
 export type LockType = 'EXCLUSIVE' | 'SHARED';
 /** Maps to the tasks table status column. */
 export type TaskStatus = 'PENDING' | 'ACTIVE' | 'SUCCESS' | 'FAILED';
-export type RefinementQuality = 'good' | 'bad' | 'handoff';
+export type RefinementQuality = 'good' | 'bad' | 'handoff' | 'instructions';
 export type RefinementState = 'open' | 'ongoing' | 'done';
 export type ReflectionOutcome = 'worked' | 'partial' | 'failed';
 
@@ -177,6 +177,8 @@ export interface InsertMemoryParams {
    * When provided, insertMemory skips its own internal findSimilarMemories query.
    */
   preComputedSimilar?: Array<{ memory_id: string; similarity: number }>;
+  /** When true, unknown labels coerce to OTHER (legacy). Default: hard-error. */
+  compatCoerce?: boolean;
 }
 
 export interface InsertMemoryResult {
@@ -284,6 +286,10 @@ export interface GetRefinementsParams {
 export interface GetRefinementsResult {
   count: number;
   refinements: RefinementRecord[];
+  /** Present when handoffs are excluded by default — use --include-handoffs to list them. */
+  handoff_count?: number;
+  /** Present when instructions-feedback refinements are excluded by default — see `reflect developer-review`. */
+  instructions_count?: number;
 }
 
 /** Task pre-flight — checks for lock conflicts before acquiring. */
@@ -314,6 +320,13 @@ export interface PreFlightTaskConflict {
     agent_id: string;
     acquired_at: string;
     expires_at: string | null;
+    // Who/why context so a blocked agent can decide (wait / work elsewhere /
+    // signal the holder) instead of only seeing who holds the lock and until when.
+    task_id: string;
+    reasoning: string;      // the holder's rationale — WHY the file is claimed
+    test_plan: string;      // what the holder intends to verify before release
+    session_id: string | null;
+    holder_session_active: boolean;  // false = holder's session ended → likely abandoned
   }>;
 }
 
@@ -358,6 +371,7 @@ export interface ReleaseFileLockResult {
   task_ids: string[];
   updated_at: string;
   unverifiedConclusion?: string;
+  ambiguousRelease?: string;
 }
 
 export interface FileLockStatusEntry {
@@ -369,6 +383,7 @@ export interface FileLockStatusEntry {
   workspace_path: string | null;
   artifact: string | null;
   reasoning: string;
+  test_plan?: string;
   lock_type: LockType;
   acquired_at: string;
   expires_at: string | null;
@@ -418,6 +433,14 @@ export interface ReflectParams {
   didntWork?: string | null;
   fixRepo?: string | null;
   fixHarness?: string | null;
+  /**
+   * Feedback to the human developer who authored this agent's operating instructions
+   * (AGENTS.md, SKILL.md, system prompt, task brief). Use when the instructions —
+   * not the code and not the harness — were ambiguous, wrong, over-constraining, or
+   * missing context. Tags the learning memory `developer-review` and opens a tracked
+   * `instructions`-quality refinement; both surface in `.octocode/DEVELOPER_REVIEW.md`.
+   */
+  fixInstructions?: string | null;
   failureSignature?: string | null;
   importance?: number | null;
   /** Judgment nuance: evidence checked, remaining uncertainty. Folded into the narrative. */
@@ -437,6 +460,8 @@ export interface ReflectParams {
   repo?: string | null;
   ref?: string | null;
   cwd?: string;
+  /** When true, unknown outcomes coerce to partial (legacy). Default: hard-error. */
+  compatCoerce?: boolean;
 }
 
 export interface ReflectResult {
@@ -444,6 +469,10 @@ export interface ReflectResult {
   learning_memory_id: string;
   repo_fix_refinement_id: string | null;
   harness_fix: boolean;
+  /** True when this reflection carried feedback to the instruction author (`--fix-instructions`). */
+  instructions_feedback: boolean;
+  /** Refinement id for the tracked instructions-feedback item, when one was opened. */
+  developer_review_refinement_id: string | null;
   eval_failure_count: number;
   eval_failure_ids: string[];
   next: string;
@@ -547,10 +576,13 @@ export interface FileLockRow {
   file_path: string;
   task_id: string;
   agent_id: string;
+  session_id?: string | null;
   lock_type: string;
   acquired_at: string;
   expires_at: string | null;
   task_agent_id?: string;
+  reasoning?: string;
+  test_plan?: string;
 }
 
 export interface TableInfoRow {
@@ -666,6 +698,7 @@ export interface MarkVerifiedResult {
   status?: string;
   count?: number;
   error?: string;
+  warning?: string;              // e.g. allPending ran across ALL workspaces (no scope given)
 }
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
@@ -736,6 +769,8 @@ export interface InsertNotificationParams {
   inReplyTo?: string | null;     // inherits thread from parent
   importance?: number;
   cwd?: string;
+  /** When true, unknown kinds coerce to fyi (legacy). Default: hard-error. */
+  compatCoerce?: boolean;
 }
 
 export interface InsertNotificationResult {
@@ -820,6 +855,8 @@ export interface AgentSignalParams {
   kinds?: NotificationKind[];
   limit?: number;
   cwd?: string;
+  /** When true, unknown kinds coerce to fyi (legacy). Default: hard-error. */
+  compatCoerce?: boolean;
 }
 
 export interface AgentSignalRecord extends NotificationRecord {
