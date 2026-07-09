@@ -208,7 +208,7 @@ function openRefinementCount(
   );
   const queryParams: (string | number)[] = [];
   let sql = "SELECT COUNT(*) AS c FROM refinements WHERE state IN ('open','ongoing')";
-  if (!params.includeHandoffs) sql += " AND quality <> 'handoff'";
+  if (!params.includeHandoffs) sql += " AND quality NOT IN ('handoff','instructions')";
   if (scope.workspace_path) {
     sql += ' AND (workspace_path = ? OR workspace_path IS NULL)';
     queryParams.push(scope.workspace_path);

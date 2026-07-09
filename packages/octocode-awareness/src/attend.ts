@@ -143,12 +143,17 @@ function groupWorkboard(rows: AwarenessQueryRow[]): Record<string, AwarenessQuer
 
 function compactRow(row: AwarenessQueryRow): AwarenessQueryRow {
   const next: AwarenessQueryRow = {};
-  for (const key of ['column', 'item_type', 'id', 'status', 'agent_id', 'quality', 'count', 'column_total', 'omitted_count', 'active_memories', 'tasks', 'open_refinements', 'open_signals']) {
+  for (const key of ['column', 'item_type', 'id', 'status', 'agent_id', 'quality', 'count', 'column_total', 'omitted_count', 'active_memories', 'missing_file_refs', 'missing_reference_count', 'tasks', 'open_refinements', 'open_signals']) {
     const value = row[key];
     if (value != null) next[key] = value;
   }
   if (typeof row['title'] === 'string') next['title'] = summarize(row['title'], 90);
   if (Array.isArray(row['reasons'])) next['reasons'] = row['reasons'].slice(0, 3);
+  if (Array.isArray(row['missing_references'])) {
+    const refs = row['missing_references'];
+    next['missing_references'] = refs.slice(0, 2);
+    next['omitted_missing_reference_count'] = Math.max(0, refs.length - 2);
+  }
   if (Array.isArray(row['files'])) {
     const files = row['files'];
     next['file_count'] = files.length;

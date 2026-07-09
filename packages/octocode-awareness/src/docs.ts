@@ -12,6 +12,7 @@
  */
 
 import type { DatabaseSync } from 'node:sqlite';
+import { resolve } from 'node:path';
 import { insertHarnessLog } from './audit.js';
 import { normalizeArtifact } from './helpers.js';
 import type {
@@ -110,9 +111,19 @@ export function mineDocStaleness(db: DatabaseSync, params: DocStalenessParams): 
   const workspacePath = params.workspacePath ?? null;
   const artifact = normalizeArtifact(params.artifact);
 
+  // edit_log.file_path is always stored absolute (resolved against cwd at hook
+  // time — see resolveHookPath in bin/hook-runner.ts). Doc targets, however, are
+  // typically given relative (the CLI help/examples use "README.md" / "src").
+  // Resolve targets to absolute against the same base so the LIKE/= match lands;
+  // absolute inputs pass through resolve() unchanged. Without this, relative
+  // targets silently match zero rows and every doc reports stale:false.
+  const base = workspacePath ?? process.cwd();
+
   const entries: DocStalenessEntry[] = params.targets.map((target): DocStalenessEntry => {
-    const docLastSyncedAt = lastEditTimestamp(db, target.docFile, workspacePath, artifact);
-    const activity = sourceActivitySince(db, target.sourceDirs, docLastSyncedAt, workspacePath, artifact);
+    const resolvedDoc = resolve(base, target.docFile);
+    const resolvedDirs = target.sourceDirs.map((d) => resolve(base, d));
+    const docLastSyncedAt = lastEditTimestamp(db, resolvedDoc, workspacePath, artifact);
+    const activity = sourceActivitySince(db, resolvedDirs, docLastSyncedAt, workspacePath, artifact);
     const stale = activity.edits >= minEdits || activity.linesChanged >= minLines;
 
     return {

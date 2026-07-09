@@ -114,9 +114,15 @@ export function extractPiWriteTargetPaths(
     'applypatch',
   ].includes(normalizedToolName);
   const payload = objectOrEmpty(input);
+  // Source for apply_patch marker scanning (addApplyPatchPaths). Only true patch
+  // carriers — a raw string input, or `command`/`patch` fields — are scanned.
+  // `text`/`content` are the FILE BODY for Write/Edit; scanning them would turn
+  // any file line like `*** Add File: X` (e.g. these very docs) into a phantom
+  // lock + edit_log target. Write/Edit paths come from the explicit path fields
+  // below, not from the body.
   const command = typeof input === 'string'
     ? input
-    : firstString(payload.command, payload.patch, payload.text, payload.content);
+    : firstString(payload.command, payload.patch);
 
   if (!isWriteTool) {
     const patchPaths: string[] = [];
@@ -260,9 +266,15 @@ export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) 
     pendingToolTasks,
 
     async handleToolCall(event: PiToolEvent, ctx?: PiLikeContext) {
-      if (event?.toolCallId && pendingToolTasks.has(event.toolCallId)) return undefined;
       const targetFiles = extractPiWriteTargetPaths(event?.toolName, event?.input);
       if (targetFiles.length === 0) return undefined;
+      // Dedupe key: a host may emit BOTH tool_call and tool_execution_start for
+      // one edit. Prefer toolCallId; when it is missing, fall back to the sorted
+      // target-file set (identical across both events for the same edit) so a
+      // missing id cannot cause a double lock-acquire. Distinct edits yield
+      // distinct file sets, so this never over-dedupes real work.
+      const dedupeKey = event?.toolCallId || `nofid:${[...targetFiles].sort().join('|')}`;
+      if (pendingToolTasks.has(dedupeKey)) return undefined;
       const harnessBlockReason = guardPiHarnessEdit(targetFiles, ctx, skillRoot);
       if (harnessBlockReason) return { block: true, reason: harnessBlockReason };
 
@@ -289,10 +301,8 @@ export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) 
           return { block: true, reason: `Octocode awareness blocked this edit: ${detail || 'conflict'}` };
         }
 
-        if (event?.toolCallId) {
-          pendingToolFiles.set(event.toolCallId, targetFiles);
-          pendingToolTasks.set(event.toolCallId, result.task.task_id);
-        }
+        pendingToolFiles.set(dedupeKey, targetFiles);
+        pendingToolTasks.set(dedupeKey, result.task.task_id);
         return undefined;
       } catch (error) {
         notify(ctx, `Octocode awareness warning; continuing: ${error instanceof Error ? error.message : String(error)}`, 'warning');
@@ -301,15 +311,17 @@ export function createPiAwarenessBridge(options: PiAwarenessBridgeOptions = {}) 
     },
 
     async handleToolResult(event: PiToolEvent, ctx?: PiLikeContext) {
-      const targetFiles = event?.toolCallId ? pendingToolFiles.get(event.toolCallId) : undefined;
-      const taskId = event?.toolCallId ? pendingToolTasks.get(event.toolCallId) : undefined;
-      const fallbackFiles = targetFiles ?? extractPiWriteTargetPaths(event?.toolName, event?.input);
+      const extracted = extractPiWriteTargetPaths(event?.toolName, event?.input);
+      // Mirror the acquire-side key (toolCallId, else sorted target files) so the
+      // release finds the task the matching handleToolCall recorded.
+      const dedupeKey = event?.toolCallId || `nofid:${[...extracted].sort().join('|')}`;
+      const trackedFiles = pendingToolTasks.has(dedupeKey) ? pendingToolFiles.get(dedupeKey) : undefined;
+      const taskId = pendingToolTasks.get(dedupeKey);
+      const fallbackFiles = trackedFiles ?? extracted;
       if (fallbackFiles.length === 0 && !taskId) return undefined;
 
-      if (event?.toolCallId) {
-        pendingToolFiles.delete(event.toolCallId);
-        pendingToolTasks.delete(event.toolCallId);
-      }
+      pendingToolFiles.delete(dedupeKey);
+      pendingToolTasks.delete(dedupeKey);
       try {
         const db = getDb(ctx);
         const agentId = getPiAwarenessAgentId(ctx);

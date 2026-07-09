@@ -22,18 +22,17 @@ First command: `<cli> attend --workspace "$PWD" --query "<current task>" --compa
 - **Ongoing/setup**: `maintenance digest`, `lock|signal prune`, `memory forget --dry-run`, `docs staleness`, `hooks install|check|remove`, and `npx octocode` / `octocode-skills` for skill and research operations.
 
 ## Command Map
-Source of truth: `<cli> schema commands --compact`; use `<command> --help --compact` for flags/examples and `schema json-schema <name>` for contracts.
-Core groups: `attend`, `workspace status`, `query`, `memory`, `lock`, `verify`, `signal`, `agent`, `refinement`, `session`, `reflect`, `repo inject`, `docs`, `maintenance`, `hooks`, `hook run`, and `schema`.
+Source of truth: `<cli> schema commands --compact`; use `<command> --help` for flags (add `--compact` only for a token-light example — it omits the flag list) and `schema json-schema <name>` for contracts.
+Use `query files` for stale/missing file refs, `query workboard` for next actions, and `query all --format html --out .octocode/awareness/index.html` for the sortable/filterable human view.
 For CLI recipes read `references/agent-cheatsheet.md`; for lifecycle flow read `references/full-flow.md`; for hook side effects/host support read `references/hooks.md`.
 
 ## Must-Know
 - Agents load root `AGENTS.md` by default. After `repo inject`, append a short pointer there to `.octocode/AGENTS.md` if missing — never rewrite the whole file or dump the wiki into root.
 - Recall is lexical FTS + salience by default. `--semantic` ranks only when `OCTOCODE_EMBED_CMD` is set; otherwise it warns and stays lexical.
 - Code/GitHub/package search and Octocode skill operations use `npx octocode ... --no-color` (or Octocode MCP for research). This skill bundles awareness docs/scripts, not the Octocode search engine.
-- Prefer operational commands over organ metaphors. Read `references/homeostatic-loop.md` only when explaining attend/workboard/digest or memory/wiki bloat.
 - Read `references/self-reflection-dialogue.md` when a hard idea, post-reflection lesson, or recurring weakness needs bounded role/subagent self-eval.
-- Reflection has three feedback targets — keep them separate. `--fix-repo` fixes the code; `--fix-harness` fixes the skill/tooling; `--fix-instructions` is feedback to the developer who authored your operating instructions (root/`.octocode` `AGENTS.md`, SKILL.md, system prompt, task brief) when the *instructions* — not the code — were ambiguous, wrong, over-constraining, or missing context. It opens a tracked item that surfaces in `.octocode/DEVELOPER_REVIEW.md` and `reflect developer-review`. Read `references/developer-review.md` before using it.
-- **Dogfood.** When the work IS this awareness tooling (or any shared repo), operate through awareness itself — `attend` before planning, `lock` before edits, `signal` to coordinate live agents, `reflect --fix-instructions` when the instructions failed you. Concurrent agents are real here: honor others' locks, publish a decision signal before touching contended files, and never clobber verified work. Self-improvement is the point — the tool should get better from its own use.
+- Reflection targets: `--fix-repo` code, `--fix-harness` skill/tooling, `--fix-instructions` human-authored instructions. Read `references/developer-review.md` before `--fix-instructions`.
+- Dogfood awareness work: run `attend`, lock before edits, coordinate with `signal`, and use `reflect --fix-instructions` when instructions failed. Honor locks and verified work.
 - Export `OCTOCODE_AGENT_ID` for CLI+hooks (same id; `--strict-agent-id` hard-fails if missing). Before relying on hooks, read `references/hooks.md`; Claude may run frontmatter hooks, while Codex/Cursor/Pi need host wiring (installed ≠ enabled).
 
 ## References
@@ -47,5 +46,4 @@ For CLI recipes read `references/agent-cheatsheet.md`; for lifecycle flow read `
 2. Smoke: `<cli> maintenance init --compact`; then `attend --workspace "$PWD" --query "smoke" --compact`, `workspace status`, `schema commands`, and `docs list`.
 3. Hooks: preview `hooks install --host codex|cursor|claude --project-dir <repo> --dry-run --compact`; after approval run install, then `hooks check --host <host> --strict --compact`. Pi is wired by extension.
 4. Repo context: run `repo inject --workspace "$PWD" --mode local --compact` only when projections should refresh; then ensure root `AGENTS.md` points to `.octocode/AGENTS.md`.
-5. Lint/update: load `octocode-skills`; use `scripts/schema.mjs` for schemas, `scripts/install.mjs` for install checks, and `scripts/smoke-multi-agent.mjs` for multi-agent smoke runs.
-   Hook scripts: `scripts/hook-runner.mjs` dispatches hooks, `scripts/extract-hook-files.mjs` extracts paths, and `scripts/install-hooks.mjs` wraps legacy installs.
+5. Scripts: `scripts/schema.mjs` schemas; `scripts/install.mjs` install checks; `scripts/smoke-multi-agent.mjs` smoke; `scripts/hook-runner.mjs` dispatches hooks; `scripts/extract-hook-files.mjs` parses hook paths; `scripts/install-hooks.mjs` wraps legacy installs.

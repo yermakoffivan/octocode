@@ -2,22 +2,21 @@
 
 Use this directory as the technical map for `@octocodeai/octocode-awareness`.
 
-The short version: awareness gives local AI agents a shared memory and coordination layer. The SQLite database under the global Octocode home is canonical; the CLI is the control plane; hooks and the Pi bridge automate lifecycle edges; workspace `.octocode/` files are generated repo projections for agents and humans.
+The short version: awareness gives local AI agents a shared memory and coordination layer. The SQLite database under the global Octocode home is canonical; the CLI is the control plane; bundled skills teach agents how to use it; hooks and the Pi bridge automate lifecycle edges; workspace `.octocode/` files are generated repo projections for agents and humans.
 
-The agent-facing model is: **before** work, inspect repo status, other agents, memories, gotchas, handoffs, signals, and wiki context; **during** work, lock files, communicate, and record durable facts; **after** work, verify, reflect, refresh wiki context when useful, housekeep stale state, and improve skills/workflows when repeated patterns emerge.
+The agent-facing model is: **before** work, inspect live state and relevant memory; **during** work, lock files and communicate; **after** work, verify, reflect, refresh repo context when useful, and hand off unfinished state.
 
 ## Mental Model
 
-Context and tokens are the working circulation of an agent run: they move goals, constraints, evidence, warnings, and next actions to the place where decisions happen. Healthy awareness keeps that circulation fresh and bounded. Too little context starves the run; too much stale context clogs it.
+Start with [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md) for the conceptual model: one store, one CLI, two bundled skills, optional hooks, and generated repo projections.
 
-Docs can become like excess weight. A giant `MEMORY.md` or chat-derived wiki may feel safe, but it makes every future run carry mass before it can think. Keep Markdown lean, move rows to CSV/HTML/query views, and use `attend --compact` plus `query workboard` as the active circulation.
-
-Social exchange is part of the loop. Signals, refinements, handoffs, and user corrections bring new ideas and perspectives into the shared system. Keep them traceable and resolve or consolidate them so they improve the collective map instead of becoming more weight.
+Keep this README as navigation and coverage. Put exact behavior in the focused owner docs below instead of repeating full explanations here.
 
 ## Reading Paths
 
 | You want to... | Start here |
 |---|---|
+| Understand how the CLI, bundled skills, hooks, and DB fit together | [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md) |
 | Understand the product and install it | [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md) |
 | Understand the two `.octocode` locations | [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md), [WIKI.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/WIKI.md) |
 | Tell an agent how to install awareness | [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md#install-in-5-minutes) |
@@ -34,9 +33,10 @@ Social exchange is part of the loop. Signals, refinements, handoffs, and user co
 
 | Feature | Primary docs | Main commands / APIs |
 |---|---|---|
+| System concept and surface boundaries | [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md), [HARNESS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HARNESS.md) | `octocode-awareness`, bundled skills, hooks, `repo inject` |
 | Workspace health | [HARNESS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HARNESS.md), [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md) | `workspace status` |
 | Attend packet and workboard | [WIKI.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/WIKI.md), [MEMORY_NAVIGATION.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/MEMORY_NAVIGATION.md), package skill `SKILL.md` | `attend`, `query workboard` |
-| Before/during/after agent workflow | [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), package skill `SKILL.md` | `attend`, `workspace status`, `memory recall`, `lock acquire`, `signal publish`, `verify mark`, `reflect record`, `repo inject` |
+| Before/during/after agent workflow | [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md), [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), package skill `SKILL.md` | `attend`, `workspace status`, `memory recall`, `lock acquire`, `signal publish`, `verify mark`, `reflect record`, `repo inject` |
 | Global home vs repo projection | [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md), [WIKI.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/WIKI.md), package README | `OCTOCODE_MEMORY_HOME`, `repo inject --out` |
 | Database schema and storage | [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md) | `maintenance init`, library DB helpers |
 | Scope model | [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md), [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md) | `--workspace`, `--artifact`, `--repo`, `--ref` |
@@ -63,10 +63,10 @@ Social exchange is part of the loop. Signals, refinements, handoffs, and user co
 | Pi bridge | [HOOKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOOKS.md), [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md) | `wirePiAwarenessHooks(pi)` |
 | Custom host/library integration | [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md), [HOOKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOOKS.md), package README | `@octocodeai/octocode-awareness` exports |
 | Maintenance and cleanup | [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md) | `maintenance digest`, `maintenance self-test` |
-| Skill/workflow improvement | [REFLECTION.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/REFLECTION.md), [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), Octocode guide | `reflect mine-weakness`, `reflect export-harness`, `npx octocode skill ...`, `octocode-skills` |
+| Skill/workflow improvement | [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md), [REFLECTION.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/REFLECTION.md), [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), Octocode guide | `reflect mine-weakness`, `reflect export-harness`, `npx octocode skill ...`, `octocode-skills` |
 | Schema discovery | [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), [HARNESS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HARNESS.md) | `schema commands`, `schema list`, `schema json-schema`, `schema example`, `schema validate` |
-| Agent Skill install and bundled scripts | [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), package README | `npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common`, `node scripts/awareness.mjs` |
-| Easy agent install | [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), package README | `npx @octocodeai/octocode-awareness`, bundled `dist/skills/octocode-awareness` |
+| Agent Skill install and bundled scripts | [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md), [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), package README | `npx octocode skill --add --path <awareness-package>/dist/skills/octocode-awareness --platform common`, `node scripts/awareness.mjs` |
+| Easy agent install | [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md), [SKILLS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/SKILLS.md), package README | `npx @octocodeai/octocode-awareness`, bundled `dist/skills/octocode-awareness` |
 
 ## Feature Coverage Check
 
@@ -74,8 +74,9 @@ Every public command group from `octocode-awareness schema commands --compact` i
 
 ## Maintenance Rule
 
-Keep [HARNESS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HARNESS.md) as the map. Put canonical details in the focused docs:
+Keep [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md) as the conceptual map for CLI + bundled skills + hooks + shared store. Keep [HARNESS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HARNESS.md) as the maintainer/system map. Put canonical details in the focused docs:
 
+- system surface boundaries and bundled skill roles in [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md),
 - database storage details in [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md),
 - active-memory-navigation tradeoffs and prototype scope in [MEMORY_NAVIGATION.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/MEMORY_NAVIGATION.md),
 - lock/verification behavior in [LOCKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/LOCKS.md),

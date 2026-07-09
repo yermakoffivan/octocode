@@ -11,7 +11,7 @@ Use `<cli>` below as the first available Awareness CLI: `node scripts/awareness.
 ```
 
 Follow `next` from `attend` when present — it is meant to be copy-runnable.
-Use `<command> --help --compact` for flags, `schema json-schema <name> --compact` for contracts, and `docs show <name>` for focused reference docs.
+Use `<command> --help` for flags (add `--compact` only for a token-light usage/example line — it omits the flag list), `schema json-schema <name> --compact` for contracts, and `docs show <name>` for focused reference docs.
 
 ## Operations Map
 
@@ -22,7 +22,7 @@ Use `<command> --help --compact` for flags, `schema json-schema <name> --compact
 | Coordinate | `signal publish|list|reply|ack|resolve`, `refinement set|get` |
 | Learn | `memory record`, `reflect record --duo`, `reflect mine-weakness` |
 | Verify | `verify audit`, `verify mark`, `lock release --verified` |
-| Project repo context | `query <view>`, `repo inject` |
+| Project repo context | `query files`, `query workboard`, `query all --format html`, `repo inject` |
 | Install/enforce | `maintenance init`, `hooks install|check|remove`, `agent register` |
 | Cleanup | `maintenance digest`, `lock prune`, `signal prune`, `memory forget --dry-run` |
 
@@ -59,6 +59,8 @@ Exit code `2` on lock conflict → wait, coordinate via signal, switch files, or
 <cli> reflect developer-review --workspace "$PWD" --format markdown --compact  # read instruction feedback
 <cli> session capture --agent-id "$OCTOCODE_AGENT_ID" --workspace "$PWD" --compact
 <cli> maintenance digest --workspace "$PWD" --dry-run --compact
+<cli> query files --workspace "$PWD" --format table --limit 50  # stale/missing refs
+<cli> query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
 <cli> repo inject --workspace "$PWD" --compact   # only when projections should refresh
 # then: if root AGENTS.md has no pointer to .octocode/AGENTS.md, append the short
 # block from references/repo-context-management.md (do not rewrite the whole file)
@@ -111,14 +113,14 @@ npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-skills
 <cli> hooks install --host codex --project-dir "$PWD" --compact
 <cli> hooks check --host codex --project-dir "$PWD" --strict --compact
 
-# Lint this skill (from an installed awareness skill folder)
-node ../octocode-skills/scripts/skill-lint.mjs .
+# Review this skill (from an installed awareness skill folder)
+node ../octocode-skills/scripts/skill-review.mjs .
 # Or from the package tree after build:
-node packages/octocode-awareness/skills/octocode-skills/scripts/skill-lint.mjs \
+node packages/octocode-awareness/skills/octocode-skills/scripts/skill-review.mjs \
   packages/octocode-awareness/skills/octocode-awareness
 ```
 
-Load `octocode-skills` when the job is skill discovery/install/lint; keep using this skill for workspace awareness. Do not install `octocode-awareness` by registry name: the `@octocodeai/octocode-awareness` package already bundles the canonical skill.
+Load `octocode-skills` when the job is skill discovery/install/review; keep using this skill for workspace awareness. Do not install `octocode-awareness` by registry name: the `@octocodeai/octocode-awareness` package already bundles the canonical skill.
 
 ## Code search (not bundled here)
 

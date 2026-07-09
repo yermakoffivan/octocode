@@ -1,8 +1,10 @@
 # Developer Review
 
-Feedback from the agent to the **human who authored its operating instructions** — the root and `.octocode/AGENTS.md`, this SKILL.md, the system prompt, and the task brief. Use it when the *instructions*, not the code and not the harness, cost you time or a wrong turn.
+Feedback from the agent to the **human who authored its operating instructions**:
+root and `.octocode/AGENTS.md`, this SKILL.md, the system prompt, and the task brief.
+Use it when the *instructions* caused time loss or a wrong turn.
 
-This closes the self-improvement loop: agents surface exactly where their guidance was ambiguous, wrong, over-constraining, or missing context, and the instruction author gets a ranked, evidence-backed list to fix.
+Developer review closes the self-improvement loop. Agents identify ambiguous, wrong, over-constraining, or missing guidance, and the instruction author gets an evidence-backed fix list.
 
 ## Which Feedback Target
 
@@ -25,7 +27,10 @@ octocode-awareness reflect record --agent-id "$OCTOCODE_AGENT_ID" \
   --workspace "$PWD" --compact
 ```
 
-One `--fix-instructions` call records both a durable memory (tags `developer-review`, `instructions`; searchable via recall) and a tracked `instructions`-quality refinement with an open → done lifecycle. The instructions refinement is deliberately **hidden from the coding `refinement get` queue** (it is addressed to the operator, not the next builder) — the default queue reports `instructions_count` so nothing is silently dropped.
+One `--fix-instructions` call writes two records: a durable memory tagged `developer-review` / `instructions`,
+and an `instructions` refinement with an open -> done lifecycle.
+The refinement is hidden from the coding `refinement get` queue because it is addressed to the operator.
+The default queue reports `instructions_count`.
 
 ## Consume It
 
@@ -45,4 +50,7 @@ Resolve an item once the instructions are updated: `octocode-awareness refinemen
 
 ## Dogfood
 
-When the repo you are editing IS this awareness tooling, this channel is how the tool improves from its own use: operate through awareness (`attend`, `lock`, `signal`), and when its own instructions fail you, record `--fix-instructions` against them. The best evidence that the guidance is good is that agents stop filing developer-review items about it.
+When the repo you are editing IS this awareness tooling, this channel is how the tool improves from its own use.
+Operate through awareness (`attend`, `lock`, `signal`).
+When its own instructions fail, record `--fix-instructions` against them.
+Strong guidance reduces repeat developer-review items.

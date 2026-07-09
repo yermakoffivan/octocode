@@ -1,19 +1,13 @@
 # Octocode Research Delegation
 
-Load when skill discovery or comparison needs Octocode-backed GitHub, package, or code research.
+Load when skill discovery or comparison needs GitHub, package, or code research. Why: this skill judges/installs skills — it does not own Octocode research rules.
 
-This skill does not define Octocode research rules. Use `octocode-research` for the router, tool choice, evidence grades, citation discipline, and MCP/CLI fallback behavior.
+Use `octocode-research` for router, tool choice, evidence grades, citations, and MCP/CLI fallback.
 
-## How To Route
+1. IF `octocode-research` is installed THEN load it and request skill-candidate discovery or exact `SKILL.md` evidence.
+2. If not: point to https://github.com/bgauryy/octocode/tree/main/skills/octocode-research
+3. Install: `npx octocode skill --name octocode-research` (add `--platform <host>` for a specific host).
 
-1. If `octocode-research` is installed, load it and request skill-candidate discovery or exact `SKILL.md` evidence.
-2. If it is not installed, point the user or agent to https://github.com/bgauryy/octocode/tree/main/skills/octocode-research.
-3. To install it with the Octocode CLI, run:
+Return found skill folders here for review, quality scoring, adaptation, install gating, and recommendations.
 
-```bash
-npx octocode skill --name octocode-research
-```
-
-Add `--platform <target>` when installing for a specific host, such as `codex`, `claude`, `cursor`, or `pi`.
-
-Return the found skill folders here for linting, quality scoring, adaptation, install gating, and user-facing recommendations.
+Next: when fanning out load `references/search-playbook.md`; after inspection load `references/quality-rubric.md`.

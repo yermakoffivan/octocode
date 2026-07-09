@@ -1,49 +1,49 @@
 ---
 name: octocode-skills
-description: "Use when working with Agent Skills or SKILL.md folders: find, evaluate, lint, rate, improve, install, or create them across local paths, GitHub, and marketplaces — including description tuning and install targets."
+description: "Use when finding, evaluating, reviewing, rating, improving, installing, or creating Agent Skills / SKILL.md folders across local paths, GitHub, and marketplaces — including description tuning, hooks, and install targets."
 ---
 
 # Octocode Skills
 
-Evaluate, lint, install, and author Agent Skills: folders with `SKILL.md` plus optional `references/`, `scripts/`, and `assets/`. Agents load skills progressively, so keep `SKILL.md` as the compact operating map and route conditional detail out.
-Flow: `UNDERSTAND -> DISCOVER -> INSPECT -> JUDGE -> RECOMMEND -> USER GATE -> ACT -> VERIFY`.
+Operate on Agent Skills (`SKILL.md` plus optional references, scripts, assets).
+**Lobby rule:** all workflows live here; refs are one-concept depth — no flow restatement, no overlapping owners, load one ref at a time.
+Flow: `UNDERSTAND → DISCOVER → INSPECT → JUDGE → RECOMMEND → USER GATE → ACT → CLEANUP → REVIEW → VERIFY`.
+Hard rules: inspect real `SKILL.md` before recommend/install/quote; identify by path; gate every write; one owner per concept.
+Stop when one fit, two High pick a winner, three angles add nothing, or a gate is pending. Skills ship as a **standalone folder** — prune dead files before done (`references/skill-cleanup.md`).
 
-Hard rules:
-- Inspect real `SKILL.md` content before recommending, adapting, installing, or quoting.
-- Identify each candidate by repo/path or absolute path; filter results, never hand over raw search dumps.
-- Gate every install, write, overwrite, symlink, and config change behind user approval.
+## Workflows → load
 
-Stop when one inspected recommendation fits, two High-quality candidates establish a clear top pick, three search angles add nothing new, or a user gate is pending.
-
-## Tooling
-
-For Octocode-backed skill research, load `references/octocode.md` and delegate search mechanics to `octocode-research` when installed. Keep this skill focused on evaluating, linting, improving, and installing the skill folders found.
-
-## Reference Map
-
-Load one reference on demand; each route states when it applies.
-
-- `references/search-playbook.md` — when discovering candidates.
-- `references/discovery-surfaces.md` — when shopping beyond raw GitHub.
-- `references/quality-rubric.md` — when judging workflow quality.
-- `references/quality-signals.md` — when ranking by evidence beyond stars.
-- `references/output-format.md` — when presenting results or deep-dives.
-- `references/agent-skills-guide.md` — when evaluating, improving, or authoring a skill.
-- `references/description-tuning.md` — when optimizing a `description` trigger.
-- `references/self-improvement.md` — when rating, reviewing, refactoring, or linting a skill.
-- `references/skill-lint.md` — when linting, updating, or creating a skill (new or existing); documents `scripts/skill-lint.mjs`.
-- `references/hooks.md` — when adding, reviewing, or explaining a skill's lifecycle hooks; routes to `assets/hooks/` templates.
-- `references/install-reference.md` — when installing or choosing targets/scopes.
-- `references/fetch-and-create-locally.md` — when fetching a remote skill into a local folder.
-- `references/create-local-skill.md` — when creating or synthesizing a local skill.
-- `references/recovery.md` — when search, fetch, install, or marketplace access fails.
+- when discovering: `references/search-playbook.md` — fan-out and angles before shopping
+- when shopping registries: `references/discovery-surfaces.md` — pick the right surface
+- when parsing manifests/CLIs: `references/discovery-manifests.md` — formats and installers
+- when judging fit: `references/quality-rubric.md` — dimensions plus High/Med/Low
+- when ranking evidence: `references/quality-signals.md` — installs/recency beat stars
+- when presenting: `references/output-format.md` — cards and next-step gate
+- when authoring structure: `references/skill-anatomy.md` — progressive disclosure map
+- when writing instructions: `references/skill-authoring.md` — sources, control, patterns
+- when bundling scripts: `references/skill-scripts.md` — deterministic code over prose
+- when tuning description: `references/description-tuning.md` — trigger is discovery signal
+- when improving any skill: `references/skill-improve.md` — lobby owns flow; dedupe; ≤50 one-concept
+- when cleaning before ship: `references/skill-cleanup.md` — prune orphans/dupes; standalone folder only
+- when rating/refactor: `references/self-improvement.md` — mode gate and READ→REPORT
+- before calling done: `references/skill-review.md` — full review gate (best practices + rules)
+- when interpreting findings: `references/skill-review-rules.md` — ERROR/WARN codes to fixes
+- when reviewing hooks: `references/hooks.md` — host surfaces and event contract
+- when adding a hook: `references/hooks-add.md` — wire frontmatter plus templates
+- when installing: `references/install-gates.md` — user gates and checklist
+- when choosing destinations: `references/install-destinations.md` — maps provider and scope paths
+- when syncing to vendors: `references/skill-sync.md` — dry-run then human `--approve`
+- when fetching remote: `references/fetch-remote.md` — clone, scan, then write
+- when creating local: `references/create-local-skill.md` — plan, approve, write, review
+- when search fails: `references/recovery.md` — broaden once, then report gap
+- when needing code evidence: `references/octocode.md` — delegate to octocode-research
 
 ## Scripts
 
-- `scripts/skill-lint.mjs` — lint skill structure, routing, scripts, and prompt quality; run before reporting any created or edited skill done.
-- `assets/hooks/` — copy-paste hook templates; read `references/hooks.md` before wiring a new hook.
+- `scripts/skill-review.mjs` — before reporting any create/edit done; best-practices + structure review gate
+- `scripts/skill-sync.mjs` — when symlinking a local skill to vendors; dry-run first, `--approve` only after human OK
+- `assets/hooks/` templates — when adding a lifecycle hook; copy after `references/hooks-add.md`
 
 ## Installation
 
-- Installing: read `references/install-reference.md` — inspect `scripts/` and hooks before copying third-party skills; confirm provider, scope, copy-vs-symlink, conflicts, and verification plan.
-- Creating: read `references/create-local-skill.md` — synthesize from evidence, write lean files, include a `references/references.md` audit trail using `references/references-template.md`, then run `scripts/skill-lint.mjs` before reporting done.
+When installing or creating: follow the install/create routes above, then review before done.

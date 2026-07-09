@@ -38,6 +38,7 @@ describe('skill routing boundaries', () => {
     expect(text).toMatch(/Agent smoke|Smoke:/);
     expect(text).toContain('octocode-skills');
     expect(existsSync(resolve(PACKAGE_ROOT, 'skills/octocode-skills/SKILL.md'))).toBe(true);
+    expect(existsSync(resolve(PACKAGE_ROOT, 'skills/octocode-skills/scripts/skill-review.mjs'))).toBe(true);
     expect(existsSync(resolve(PACKAGE_ROOT, 'skills/octocode-skills/scripts/skill-lint.mjs'))).toBe(true);
   });
 

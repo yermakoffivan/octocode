@@ -30,32 +30,9 @@ export const SIGNALS_SELECT_LEFT_JOIN_READS =
 export const SIGNALS_SELECT_ORDER_LIMIT =
   'ORDER BY n.created_at DESC LIMIT ?';
 
-// ─── signals: update ─────────────────────────────────────────────────────────
-
-/**
- * Resolve signals by IDs.
- * Caller must interpolate IN-list placeholders: `IN (${ph})`.
- * Binds: (resolved_at, ...signal_ids)
- */
-export const SIGNALS_UPDATE_RESOLVED_BY_IDS = (ph: string): string =>
-  `UPDATE signals SET status = 'resolved', resolved_at = ? WHERE signal_id IN (${ph}) AND status = 'open' RETURNING signal_id`;
-
-/**
- * Resolve all open signals in a thread.
- * Binds: (resolved_at, thread_id)
- */
-export const SIGNALS_UPDATE_RESOLVED_BY_THREAD =
-  `UPDATE signals SET status = 'resolved', resolved_at = ? WHERE thread_id = ? AND status = 'open' RETURNING signal_id`;
-
-// ─── signals: select for ack ──────────────────────────────────────────────────
-
-/**
- * Fetch open signal IDs in a thread that are addressed to or broadcast to an agent.
- * Binds: (thread_id, agent_id)
- */
-export const SIGNALS_SELECT_THREAD_OPEN_FOR_AGENT =
-  `SELECT signal_id FROM signals
-   WHERE thread_id = ? AND status = 'open' AND (to_agent IS NULL OR to_agent = ?)`;
+// Note: signal resolve/ack updates (by-ids, by-thread, thread-open-for-agent)
+// are written inline in src/notifications.ts, not shared here — keep it that way
+// so there is one source of truth per query.
 
 // ─── signals: delete ─────────────────────────────────────────────────────────
 

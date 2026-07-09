@@ -8,6 +8,7 @@ The harness is the operating system around `@octocodeai/octocode-awareness`: a s
 
 | Subject | Read this |
 |---|---|
+| How the CLI, bundled skills, hooks, DB, and repo projections fit together | [HOW_IT_WORKS.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/HOW_IT_WORKS.md) |
 | Feature-by-feature documentation coverage | [README.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/README.md) |
 | Stored entities, SQLite schema, relationships, indexes | [DB.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/DB.md) |
 | Attend packet, workboard, and active memory navigation | [MEMORY_NAVIGATION.md](https://github.com/bgauryy/octocode-mcp/blob/main/packages/octocode-awareness/docs/MEMORY_NAVIGATION.md) |

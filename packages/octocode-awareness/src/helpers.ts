@@ -27,7 +27,8 @@ export const REFLECTION_IMPORTANCE: Record<string, number> = {
 
 // ─── Time ─────────────────────────────────────────────────────────────────────
 
-/** Current UTC timestamp as ISO-8601 (milliseconds stripped). */
+/** Current UTC timestamp as ISO-8601 (milliseconds stripped — a deliberate,
+ *  test-enforced contract; see tests/helpers.test.ts). */
 export function utcNow(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }

@@ -400,6 +400,7 @@ function initDb(db2) {
   db2.exec(SCHEMA_DDL);
   migrateExistingTables(db2);
   migrateRefinementQualityConstraint(db2);
+  migrateCheckConstraints(db2);
   db2.exec(`
     CREATE INDEX IF NOT EXISTS idx_sessions_agent     ON sessions(agent_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_path);
@@ -511,6 +512,76 @@ function migrateExistingTables(db2) {
       }
       db2.exec(`ALTER TABLE ${table} ADD COLUMN ${clause}`);
     }
+  }
+}
+var _canonicalTableSql;
+function canonicalTableSql() {
+  if (_canonicalTableSql) return _canonicalTableSql;
+  const tmp = new DatabaseSync(":memory:");
+  try {
+    tmp.exec(SCHEMA_DDL);
+    const rows = tmp.prepare(
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL"
+    ).all();
+    _canonicalTableSql = new Map(rows.map((r) => [r.name, r.sql]));
+    return _canonicalTableSql;
+  } finally {
+    tmp.close();
+  }
+}
+function checkClauses(createSql) {
+  const matches = createSql.match(/CHECK\s*\([^)]*\)/gi) ?? [];
+  return matches.map((c) => c.replace(/\s+/g, " ").trim().toLowerCase()).sort().join(" | ");
+}
+function rebuildTableFromCanonical(db2, table, canonSql) {
+  const liveCols = tableColumns(db2, table);
+  const canonCols = (canonicalColumns().get(table) ?? []).map((c) => c.name).filter((n) => liveCols.has(n));
+  if (canonCols.length === 0) return;
+  const colList = canonCols.join(", ");
+  const tmpName = `${table}__ckmig`;
+  const createTmp = canonSql.replace(
+    new RegExp(`(CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)"?${table}"?`, "i"),
+    `$1${tmpName}`
+  );
+  if (!createTmp.includes(tmpName)) {
+    throw new Error(`check-constraint migration: cannot rename table ${table} in canonical DDL`);
+  }
+  const savepoint = `migrate_check_${table}`;
+  db2.exec(`SAVEPOINT ${savepoint}`);
+  try {
+    db2.exec(`DROP TABLE IF EXISTS ${tmpName};`);
+    db2.exec(createTmp);
+    db2.exec(`INSERT INTO ${tmpName} (${colList}) SELECT ${colList} FROM ${table};`);
+    db2.exec(`DROP TABLE ${table};`);
+    db2.exec(`ALTER TABLE ${tmpName} RENAME TO ${table};`);
+    db2.exec(`RELEASE SAVEPOINT ${savepoint}`);
+  } catch (err) {
+    try {
+      db2.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+    } catch {
+    }
+    try {
+      db2.exec(`RELEASE SAVEPOINT ${savepoint}`);
+    } catch {
+    }
+    throw err;
+  }
+}
+function migrateCheckConstraints(db2) {
+  const drifted = [];
+  for (const [table, canonSql] of canonicalTableSql()) {
+    const live = db2.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name=?"
+    ).get(table);
+    if (!live?.sql) continue;
+    if (checkClauses(live.sql) !== checkClauses(canonSql)) drifted.push([table, canonSql]);
+  }
+  if (drifted.length === 0) return;
+  db2.exec("PRAGMA foreign_keys = OFF");
+  try {
+    for (const [table, canonSql] of drifted) rebuildTableFromCanonical(db2, table, canonSql);
+  } finally {
+    db2.exec("PRAGMA foreign_keys = ON");
   }
 }
 function migrateRefinementQualityConstraint(db2) {
@@ -974,6 +1045,11 @@ function auditUnverified(db2, params = {}) {
     const nowIso = utcNow();
     const staleWhere = [
       "ai.status = 'ACTIVE'",
+      // Exclude tasks that never had any files to claim: a zero-target-file task
+      // holds no locks by construction, so it would otherwise be reported as
+      // "stale_active" the instant it is created (age ~0h) — a false positive
+      // that blocks the Stop/conclude gate. Real orphaned work always has files.
+      "COALESCE(ai.files_json,'[]') NOT IN ('[]','null','')",
       `NOT EXISTS (
         SELECT 1 FROM locks fl
         WHERE fl.task_id = ai.task_id
@@ -1274,7 +1350,7 @@ function openRefinementCount(db2, params = {}) {
   );
   const queryParams = [];
   let sql = "SELECT COUNT(*) AS c FROM refinements WHERE state IN ('open','ongoing')";
-  if (!params.includeHandoffs) sql += " AND quality <> 'handoff'";
+  if (!params.includeHandoffs) sql += " AND quality NOT IN ('handoff','instructions')";
   if (scope.workspace_path) {
     sql += " AND (workspace_path = ? OR workspace_path IS NULL)";
     queryParams.push(scope.workspace_path);
@@ -1753,7 +1829,7 @@ function extractPiWriteTargetPaths(toolName2, input = {}, options = {}) {
     "applypatch"
   ].includes(normalizedToolName);
   const payload = objectOrEmpty(input);
-  const command = typeof input === "string" ? input : firstString(payload.command, payload.patch, payload.text, payload.content);
+  const command = typeof input === "string" ? input : firstString(payload.command, payload.patch);
   if (!isWriteTool) {
     const patchPaths = [];
     addApplyPatchPaths(patchPaths, command);

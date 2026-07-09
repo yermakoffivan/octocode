@@ -1,45 +1,28 @@
 # Octocode Skills
 
-`octocode-skills` gives an agent the ability to work on Agent Skills as first-class artifacts. It can find, inspect, evaluate, improve, install, author, and explain `SKILL.md` folders without treating them like ordinary markdown.
+Find, evaluate, review, improve, install, and author Agent Skills (`SKILL.md` folders) across local paths, GitHub, and marketplaces.
 
-Use it whenever the task is about a skill's trigger, workflow, references, README, installation target, publication quality, or marketplace fit.
-
-## The Problem
-
-Skills are small, but they are operational. A weak description can trigger at the wrong time. A bloated `SKILL.md` can waste context. A missing gate can make install behavior risky. A nice README can still fail to explain what the agent actually does.
-
-This skill gives the agent a rubric and workflow for judging skill quality from real files instead of summaries.
+Use when the task is about a skill's trigger, workflow, references, hooks, install target, or publication quality — not ordinary markdown.
 
 ## Capabilities
 
-- Skill discovery across local paths, GitHub paths, and marketplace-style sources.
-- Inspection of real `SKILL.md` content before recommending or installing.
-- Quality review for trigger clarity, workflow, evidence, gates, output UX, specificity, portability, and risk.
-- Description tuning so a skill activates at the right time without keyword stuffing.
-- Install planning across provider, scope, destination, copy-vs-symlink mode, and conflict handling.
-- Skill creation from evidence, with references and an audit trail.
-- README review for user value, capabilities, operating model, installation, and maintainer clarity.
-- Gates before installs, overwrites, symlinks, config changes, or file writes.
+- Discover skills across GitHub, registries, and local paths
+- Inspect real `SKILL.md` content before recommending or installing
+- Score quality: trigger, workflow, gates, evidence, portability, risk
+- Tune descriptions so skills activate at the right time
+- Install with provider/scope/mode gates and conflict handling
+- Create or adapt local skills with an audit trail and review gate
+- Review and wire lifecycle hooks safely
 
-## Operating Model
-
-The workflow is:
+## How It Works
 
 ```text
-UNDERSTAND -> DISCOVER -> INSPECT -> JUDGE -> RECOMMEND -> USER GATE -> ACT -> VERIFY
+UNDERSTAND → DISCOVER → INSPECT → JUDGE → RECOMMEND → USER GATE → ACT → CLEANUP → REVIEW → VERIFY
 ```
 
-The agent resolves the skill identity, reads the real files, applies the rubric, asks before risky actions, performs the smallest useful change, and verifies the result with the repo's quality checks.
-
-## User Experience
-
-Users can ask whether a skill is worth installing, why it fails to trigger, how to rewrite it, or how to publish it cleanly. The answer should be concrete: what is strong, what is risky, what should change, and what gate is needed before writing or installing.
-
-For authors, the skill keeps `SKILL.md` lean while moving conditional depth into references and keeping the README friendly to humans.
+`SKILL.md` is the compact operating map. Conditional depth lives in one-concept `references/` files (≤50 lines) with when/why load lines. Ref→ref links continue the path. `scripts/skill-review.mjs` is the done-gate (best practices + structure).
 
 ## Installation
-
-Install the published skill with:
 
 ```bash
 npx octocode skill --name octocode-skills
@@ -47,4 +30,4 @@ npx octocode skill --name octocode-skills
 
 ## Maintainer Notes
 
-Keep this README focused on skill quality as a user-facing workflow. Keep deeper rubric rules, discovery surfaces, install details, creation templates, and recovery behavior in the agent-facing skill file and references.
+Keep this README user-facing. Agent routing, rubrics, install matrices, and review rules live under `references/`. Skills ship as a standalone folder — after edits run cleanup (`references/skill-cleanup.md`) then `node scripts/skill-review.mjs .` and clear ERRORs before shipping.

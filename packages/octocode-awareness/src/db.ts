@@ -284,6 +284,7 @@ export function initDb(db: DatabaseSync): void {
   // embedding_model, …) that old stores may lack.
   migrateExistingTables(db);
   migrateRefinementQualityConstraint(db);
+  migrateCheckConstraints(db);
 
   // ── 2. All indexes in a single exec block ──────────────────────────────────
   db.exec(`
@@ -428,6 +429,99 @@ function migrateExistingTables(db: DatabaseSync): void {
       }
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${clause}`);
     }
+  }
+}
+
+let _canonicalTableSql: Map<string, string> | undefined;
+
+/**
+ * Canonical `CREATE TABLE` text per table, captured by instantiating SCHEMA_DDL
+ * in a throwaway DB. Used to detect and repair CHECK-constraint drift on old
+ * stores. Computed once per process.
+ */
+function canonicalTableSql(): Map<string, string> {
+  if (_canonicalTableSql) return _canonicalTableSql;
+  const tmp = new DatabaseSync(':memory:');
+  try {
+    tmp.exec(SCHEMA_DDL);
+    const rows = tmp.prepare(
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL"
+    ).all() as unknown as Array<{ name: string; sql: string }>;
+    _canonicalTableSql = new Map(rows.map((r) => [r.name, r.sql]));
+    return _canonicalTableSql;
+  } finally {
+    tmp.close();
+  }
+}
+
+/** Normalized, order-insensitive fingerprint of a table's CHECK clauses. */
+function checkClauses(createSql: string): string {
+  const matches = createSql.match(/CHECK\s*\([^)]*\)/gi) ?? [];
+  return matches.map((c) => c.replace(/\s+/g, ' ').trim().toLowerCase()).sort().join(' | ');
+}
+
+/**
+ * Rebuild one table from its canonical DDL, copying the intersection of old and
+ * canonical columns. Indexes are intentionally not recreated here — initDb's
+ * `CREATE INDEX IF NOT EXISTS` block runs immediately after migrations and
+ * restores them. Wrapped in a SAVEPOINT so a failure leaves the old table intact.
+ */
+function rebuildTableFromCanonical(db: DatabaseSync, table: string, canonSql: string): void {
+  const liveCols = tableColumns(db, table);
+  const canonCols = (canonicalColumns().get(table) ?? []).map((c) => c.name).filter((n) => liveCols.has(n));
+  if (canonCols.length === 0) return;
+  const colList = canonCols.join(', ');
+  const tmpName = `${table}__ckmig`;
+  const createTmp = canonSql.replace(
+    new RegExp(`(CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)"?${table}"?`, 'i'),
+    `$1${tmpName}`,
+  );
+  if (!createTmp.includes(tmpName)) {
+    throw new Error(`check-constraint migration: cannot rename table ${table} in canonical DDL`);
+  }
+  const savepoint = `migrate_check_${table}`;
+  db.exec(`SAVEPOINT ${savepoint}`);
+  try {
+    db.exec(`DROP TABLE IF EXISTS ${tmpName};`);
+    db.exec(createTmp);
+    db.exec(`INSERT INTO ${tmpName} (${colList}) SELECT ${colList} FROM ${table};`);
+    db.exec(`DROP TABLE ${table};`);
+    db.exec(`ALTER TABLE ${tmpName} RENAME TO ${table};`);
+    db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+  } catch (err) {
+    try { db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`); } catch { /* already rolled back */ }
+    try { db.exec(`RELEASE SAVEPOINT ${savepoint}`); } catch { /* already released */ }
+    throw err;
+  }
+}
+
+/**
+ * Generic CHECK-constraint drift repair. migrateExistingTables only ADDs
+ * columns — it cannot evolve a CHECK on a pre-existing table, so an old store
+ * whose enum is narrower than the current DDL (e.g. harness_log.event_type
+ * lacking 'reflect', tasks.status, locks.lock_type, memories.state) throws
+ * "CHECK constraint failed" on any insert using a newer value. This detects
+ * such drift against the canonical DDL and rebuilds only the drifted tables.
+ * A current/fresh store matches canonical exactly, so nothing is rebuilt.
+ */
+function migrateCheckConstraints(db: DatabaseSync): void {
+  const drifted: Array<[string, string]> = [];
+  for (const [table, canonSql] of canonicalTableSql()) {
+    const live = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name=?"
+    ).get(table) as { sql: string } | undefined;
+    if (!live?.sql) continue;
+    if (checkClauses(live.sql) !== checkClauses(canonSql)) drifted.push([table, canonSql]);
+  }
+  if (drifted.length === 0) return;
+  // A rebuild transiently drops tables that may be FK-referenced by others;
+  // disable FK enforcement for the duration. Safe here: PRAGMA foreign_keys is
+  // a no-op inside a transaction and initDb holds none at this point.
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    for (const [table, canonSql] of drifted) rebuildTableFromCanonical(db, table, canonSql);
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
   }
 }
 

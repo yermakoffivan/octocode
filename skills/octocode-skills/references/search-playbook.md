@@ -1,65 +1,40 @@
 # Search Playbook
 
-Load when discovering skill candidates. Pairs with `discovery-surfaces.md` (the full registry/marketplace catalog) and `quality-rubric.md` (how to judge what you find).
+Load when discovering skill candidates. Why: sets depth, fan-out, and angles before shopping registries.
 
-## Set depth before searching
+## Set depth
 
-- Quick answer: inspect enough to recommend one best candidate with caveats.
-- Research request: compare broadly, preserve confirmed sources, stop when more search is unlikely to change the recommendation.
-- Install request: inspect source, support files, target destinations, and conflict behavior before asking for approval.
-- Improve / rate / lint / create: inspect the target skill, adjacent local examples, and `agent-skills-guide.md` before writing.
-- Weak results: broaden once, then report the gap and the next best action.
+- Quick: enough to recommend one best candidate with caveats.
+- Research: compare broadly; stop when more search won't change the pick.
+- Install: inspect source, support files, destinations, conflicts before approval.
+- Improve/rate/review/create: inspect target + local examples + `skill-anatomy.md` first.
+- Weak results: broaden once, then report the gap.
 
 ## Parallel three-surface fan-out
 
-For every PUBLIC skill query, fan out across three surfaces IN PARALLEL, then merge and dedupe by `(owner/repo, skill name)`:
+For every PUBLIC query, fan out IN PARALLEL, then dedupe by `(owner/repo, skill name)`:
 
-1. Octocode/GitHub — delegate code and path search for `SKILL.md` to `octocode-research` when installed.
-2. skills.sh registry API — install-ranked candidates (below).
-3. Runtime web search tool (e.g. `WebSearch`) — topic + "agent skill"/"claude skill"/"SKILL.md", to catch skills outside known registries. Confirm each web lead's real `SKILL.md` through `octocode-research` before recommending.
+1. Octocode/GitHub — via `octocode.md` / `octocode-research`.
+2. skills.sh API — install-ranked (below).
+3. Web search — topic + "agent skill"/"SKILL.md"; confirm real `SKILL.md` before recommend.
 
-Skip the public surfaces only for local-only or org/private scopes; use `octocode-research` for Octocode-backed checks there.
+Skip public surfaces for local/org-private scopes — Octocode only.
 
 ## Search angles
 
-- Name: exact phrase, lowercase, hyphenated folder name, aliases.
-- Subject: core domain terms.
-- Workflow verbs: analyze, review, migrate, generate, install, optimize, debug, audit, benchmark, plan.
-- Ecosystem: agent, IDE, language, framework, MCP server, CLI, or platform named by the user.
-- Safety: gate, validation, rollback, verify, tests, prompt, scripts, permissions.
+Name (exact, hyphenated, aliases) · subject · workflow verbs · ecosystem (agent/IDE/lang/MCP) · safety (gate, verify, scripts).
 
-## GitHub `SKILL.md` patterns
-
-- Search body/frontmatter with `filename: "SKILL.md"` and `match: "file"`.
-- Search folder names with `filename: "SKILL.md"` and `match: "path"`.
-- Search composite filenames `*.skill.md` for skills not using the canonical name.
-- Bias toward well-formatted skills: `filename: "SKILL.md" "name:" "description:"`.
-- Discover repos via topics: `topicsToSearch: ["agent-skills"]`, `["claude-code-skills"]`, `["claude-skill"]`, `["cursor-skills"]`, `["codex-skills"]`; combine with `agent`, `skills`, `SKILL.md`.
-- Inspect likely paths: `skills/<name>/SKILL.md`, `skills/<category>/<name>/SKILL.md`, `<name>/SKILL.md`, `.agents/skills/<name>/SKILL.md`, `.claude/skills/<name>/SKILL.md`, `.cursor/skills/<name>/SKILL.md`, `.opencode/skills/<name>/SKILL.md`, `.github/skills/<name>/SKILL.md`, `.gemini/skills/<name>/SKILL.md`.
-- Probe manifests: `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json`, per-catalog `llms.txt` / `llms-full.txt`.
-
-## Skills.sh registry API
-
-MUST run in parallel with GitHub/Octocode + web search for every public skill query. MUST NOT use for org-specific or private searches (Octocode tools only).
+## Skills.sh API
 
 ```bash
-curl 'https://www.skills.sh/api/search?q={{SEARCH_KEY}}&limit=100' \
-  --compressed \
-  -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0'
+curl 'https://www.skills.sh/api/search?q={{SEARCH_KEY}}&limit=100' --compressed \
+  -H 'User-Agent: Mozilla/5.0'
 ```
 
-Response: `{"skills": [{"id", "skillId", "name", "installs": number, "source": "owner/repo"}], "count"}`.
+Sort by `installs` desc → top 5 inspect targets → fetch each `SKILL.md` via Octocode. Installs are a tiebreaker, not a blind recommend. Unreachable → leaderboard + GitHub topics; lower confidence (`recovery.md`).
 
-Workflow:
+## Sparse discovery
 
-1. Sort by `installs` descending — highest install count is the strongest battle-tested signal.
-2. Take the top 5 as priority inspection targets.
-3. In parallel, ask `octocode-research` to fetch each top candidate's `SKILL.md` using `source` as `owner/repo`; try `skills/<skillId>/SKILL.md`, `<skillId>/SKILL.md`, `.claude/skills/<skillId>/SKILL.md`.
-4. Include install count in every result card.
-5. MUST NOT blindly recommend the highest-install skill — inspect content and task fit first; installs are a tiebreaker only.
+Seed from `topic:agent-skills` and maintained collections: `anthropics/skills`, `vercel-labs/skills`, `obra/superpowers`, `microsoft/skills`, `trailofbits/skills`.
 
-Fallback: if the API is unreachable/rate-limited, switch to the `https://www.skills.sh` leaderboard and GitHub topic search; lower confidence and continue (see `recovery.md`).
-
-## Seed collections (only when discovery is sparse)
-
-Start from `topic:agent-skills` (or narrower `topic:claude-code-skills`), then sample well-maintained collections: `anthropics/skills`, `ComposioHQ/awesome-claude-skills`, `addyosmani/agent-skills`, `vercel-labs/skills`, `alirezarezvani/claude-skills`, `microsoft/skills`, `obra/superpowers`, `trailofbits/skills`, `wshobson/claude-code-workflows`, or any author-curated marketplace the user trusts.
+Next: when picking a registry load `references/discovery-surfaces.md`; when judging load `references/quality-rubric.md`; when ranking load `references/quality-signals.md`.

@@ -1,32 +1,21 @@
-# Create A Local Skill From Research
+# Create A Local Skill
 
-Load when the user chooses to create a skill from findings or asks to synthesize one. Read `agent-skills-guide.md` before planning. If the source is a remote skill being fetched into a local folder, also read `fetch-and-create-locally.md`.
+Load when synthesizing a new local skill from research. Why: plan + approve before writing.
 
-## Before writing files
+If fetching a remote skill first, load `references/fetch-remote.md`. Shape the lobby with `references/skill-anatomy.md` + `references/skill-improve.md` (workflows in `SKILL.md`, no overlaps).
 
-1. Build a research synthesis:
-   - User need and constraints.
-   - Inspected source skills and useful patterns.
-   - Quality and UX gates to include.
-   - Resources to create, if any.
-   - Exclusions: copied, generic, risky, or unnecessary pieces.
-2. Present a short plan:
-   - Skill name and destination.
-   - Trigger description draft (see `description-tuning.md`).
-   - Workflow outline.
-   - Resources and validation plan.
-3. Ask for approval with create, adjust, inspect-more, or cancel options.
+## Before writing
+
+1. Synthesize: user need, inspected sources, gates, resources, exclusions.
+2. Plan: name, destination, trigger draft (`references/description-tuning.md`), workflow outline (goes in lobby), validation.
+3. Gate: create / adjust / inspect-more / cancel.
 
 ## After approval
 
-Write the skill with a concise purpose, workflow, tool and resource rules, gates, output UX, and recovery paths. Defer to a dedicated skill-creation skill when one is available.
+Write the lobby (`SKILL.md`) with purpose, workflows, hard rules, stop conditions, and when/why routes. Put depth in one-concept refs. Hooks → `references/hooks-add.md`. Scripts → `references/skill-scripts.md`.
 
-Add `references/`, `scripts/`, or `assets/` only when they reduce repeated work or keep `SKILL.md` lean.
-Add a minimal-read routing table so agents can finish simple tasks without loading too many refs.
-If the new skill needs a lifecycle hook (pre/post tool use, stop, session start/end), read `hooks.md` before writing frontmatter or `scripts/hooks/`.
+Create `references/references.md` from `references/references-template.md` with sources actually consulted.
 
-MUST also create `references/references.md` inside the new skill folder using `references-template.md`.
-Populate it with every source you actually consulted.
-This file is a research audit trail, not a bibliography template.
+Run `node scripts/skill-review.mjs <new-skill-dir>`; clear ERRORs before done.
 
-MUST run `scripts/skill-lint.mjs <new-skill-dir>` (see `skill-lint.md`) and clear ERRORs before reporting the skill as done; report residual WARNs as a gated decision with the user.
+Next: when writing instruction patterns load `references/skill-authoring.md`; when tuning the trigger load `references/description-tuning.md`.

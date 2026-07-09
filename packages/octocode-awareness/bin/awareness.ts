@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
   connectDb, initDb, hasFts, resolveDbPath, evictExpiredLocks,
 } from '../src/db.js';
-import { insertMemory, getMemory, mineWeakness, forgetMemory, storeEmbedding, searchByEmbedding, loadMemoriesByIds, bumpAccess } from '../src/memory.js';
+import { insertMemory, getMemory, mineWeakness, forgetMemory, storeEmbedding, searchByEmbedding, lexicalSearch, bumpAccess } from '../src/memory.js';
 import { resolveEmbedCommand, runHostEmbedder } from '../src/embed-host.js';
 import { mineDocStaleness, proposeDocRefresh } from '../src/docs.js';
 import { listSkillDocs, showSkillDoc } from '../src/docs-catalog.js';
@@ -22,17 +22,16 @@ import { insertRefinement, getRefinements, updateRefinement, deleteRefinement } 
 import { preFlightIntent, releaseFileLock } from '../src/intents.js';
 import { reflect } from '../src/reflect.js';
 import type { EvalFailure, RefinementQuality } from '../src/types.js';
-import { pruneStale, notifyGet, sessionCapture, waitForLock, digest, getWorkspaceStatus, exportMemoryDoc, exportHarness } from '../src/maintenance.js';
-import { insertNotification, getNotifications, resolveNotification, pruneNotifications, agentSignal } from '../src/notifications.js';
+import { pruneStale, notifyGet, sessionCapture, waitForLock, digest, exportMemoryDoc, exportHarness } from '../src/maintenance.js';
+import { pruneNotifications, agentSignal } from '../src/notifications.js';
 import { auditUnverified, markVerified } from '../src/verify.js';
 import { registerAgent, listAgents } from '../src/agents.js';
 import { hooksInstallUsage, runHooksInstall } from '../src/hooks-install.js';
 import { attendAwareness } from '../src/attend.js';
-import { developerReviewDoc, formatAwarenessQueryResult, injectRepoContext, queryAwareness, writeAwarenessView } from '../src/repo-context.js';
+import { developerReviewDoc, formatAwarenessQueryResult, injectRepoContext, queryAwareness } from '../src/repo-context.js';
 import {
   normalizeNotificationKind,
   normalizeFilePath,
-  parseJsonList,
 } from '../src/helpers.js';
 import { normalizeWorkspacePath } from '../src/git.js';
 import { runHookCommand } from './hook-runner.js';
@@ -85,6 +84,25 @@ function parseArgs(argv: string[]): ParsedArgs {
 // Per-command flag allowlist. Documented flags that the runtime silently
 // ignored were the #1 source of doc drift — unknown flags are now hard errors.
 const GLOBAL_FLAGS = ['db', 'compact', 'help'];
+
+// Flags whose value must parse to an integer. Without this, `--limit abc` (NaN)
+// or `--limit --smart` (boolean-coerced) silently fell back to a default and
+// read as "it worked". Excludes flags that already have dedicated validation
+// with their own messages/bounds (wait_seconds, retry_interval via
+// parseBoundedSeconds; ttl_*; importance on memory record).
+const NUMERIC_FLAGS = new Set([
+  'limit', 'min_importance', 'max_importance', 'min_count', 'min_edits',
+  'min_lines', 'older_than_days', 'retention_days',
+  'refinement_handoff_retention_days', 'refinement_done_retention_days',
+]);
+// Flags that must carry a value. Catches value-swallow like `--query --smart`,
+// which parseArgs would otherwise read as query=true (searching the literal
+// string "true"). Curated allowlist — unlisted flags are never falsely rejected.
+const VALUE_REQUIRED_FLAGS = new Set([
+  'query', 'observation', 'lesson', 'task', 'task_context', 'subject', 'body',
+  'rationale', 'reasoning', 'remember', 'message', 'fix_repo', 'fix_harness',
+  'fix_instructions', 'in_reply_to', 'thread_id',
+]);
 const KNOWN_FLAGS: Record<string, string[]> = {
   'tell-memory': ['agent_id', 'task_context', 'observation', 'importance', 'label', 'tag', 'reference', 'supersedes', 'failure_signature', 'valid_from', 'valid_to', 'workspace', 'artifact', 'repo', 'ref', 'file', 'file_tree_fingerprint', 'compat_coerce'],
   'get-memory': ['query', 'limit', 'min_importance', 'label', 'tag', 'smart', 'workspace', 'artifact', 'repo', 'ref', 'state', 'sort', 'global_only', 'strict_scope', 'as_of', 'reference', 'regex', 'file_regex', 'file', 'explain', 'semantic'],
@@ -125,6 +143,26 @@ function validateFlags(command: string, args: ParsedArgs): string[] {
   if (!known) return [];
   const allowed = new Set([...known, ...GLOBAL_FLAGS]);
   return Object.keys(args).filter((k) => k !== '_' && !allowed.has(k));
+}
+
+/**
+ * Reject silently-coerced flag values: non-integer numeric flags and
+ * value-required flags that got boolean-coerced (`--query --smart`). Runs for
+ * every command so bad input fails loudly instead of falling back to a default.
+ */
+function validateFlagValues(args: ParsedArgs): void {
+  for (const key of Object.keys(args)) {
+    if (key === '_') continue;
+    const value = args[key];
+    if (NUMERIC_FLAGS.has(key)) {
+      const n = typeof value === 'string' ? Number(value) : NaN;
+      if (value === true || !Number.isInteger(n)) {
+        die(`--${key.replace(/_/g, '-')} expects an integer`, { got: value === true ? 'flag with no value' : String(value) });
+      }
+    } else if (VALUE_REQUIRED_FLAGS.has(key) && value === true) {
+      die(`--${key.replace(/_/g, '-')} expects a value (it was followed by another flag)`);
+    }
+  }
 }
 
 function parseBoundedSeconds(args: ParsedArgs, key: string, min: number, max: number): number | null {
@@ -205,6 +243,15 @@ function selectCommand(argv: string[]): { command: string | undefined; rest: str
   const first = normalizeToken(firstRaw);
   if (!first) return { command: undefined, rest: [] };
   if (first.startsWith('-')) {
+    // Tolerate a leading global flag (e.g. `--compact workspace status`): pull
+    // it off, re-select on the remainder, and re-append it so parseArgs still
+    // sees it. Without this the whole argv was mis-read as one unknown command.
+    if (first === '--compact' && argv.length > 1) {
+      const sel = selectCommand(argv.slice(1));
+      if (sel.command && sel.command !== UNKNOWN_COMMAND) {
+        return { command: sel.command, rest: [...sel.rest, '--compact'] };
+      }
+    }
     return argv.every((arg) => arg === '--compact')
       ? { command: undefined, rest: argv }
       : { command: UNKNOWN_COMMAND, rest: argv };
@@ -432,18 +479,56 @@ function cmdGetMemory(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: 
             `OCTOCODE_EMBED_CMD ran (model=${model}) but no stored embeddings matched; results use lexical FTS + decay. Record memories while OCTOCODE_EMBED_CMD is set to populate vectors.`,
           ];
         } else {
-          const ranked = loadMemoriesByIds(db, hits.map(hit => hit.memory_id));
+          // Re-apply the SAME scope/label/importance/state/tag/asOf filters the
+          // lexical getMemory() call honored: searchByEmbedding only filters on
+          // state='ACTIVE', so without this the semantic path would leak
+          // cross-workspace, cross-label, low-importance memories. Feed the
+          // cosine hits back through lexicalSearch as candidateMemoryIds with an
+          // empty query (no FTS constraint) so only in-scope candidates survive,
+          // then re-rank by cosine similarity.
           const simById = new Map(hits.map(hit => [hit.memory_id, hit.similarity]));
-          for (const memory of ranked) {
-            const similarity = simById.get(memory.memory_id) ?? 0;
-            memory.score = similarity;
-            memory.lexical = similarity;
+          const scoped = lexicalSearch(
+            db,
+            '',
+            hits.length,
+            parseInt(String(args['min_importance'] ?? '1'), 10),
+            tags,
+            labelArr ?? [],
+            states ?? ['ACTIVE'],
+            {
+              workspacePath: args['workspace'] ? String(args['workspace']) : null,
+              artifact: args['artifact'] ? String(args['artifact']) : null,
+              repo: args['repo'] ? String(args['repo']) : null,
+              ref: args['ref'] ? String(args['ref']) : null,
+              strictScope: Boolean(args['strict_scope']),
+              globalOnly: Boolean(args['global_only']),
+              asOf: args['as_of'] ? String(args['as_of']) : null,
+              candidateMemoryIds: hits.map(hit => hit.memory_id),
+            },
+          );
+          const ranked = scoped
+            .map(memory => {
+              const similarity = simById.get(memory.memory_id) ?? 0;
+              memory.score = similarity;
+              memory.lexical = similarity;
+              return memory;
+            })
+            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+          if (ranked.length === 0) {
+            payload['warnings'] = [
+              `OCTOCODE_EMBED_CMD ran (model=${model}) and matched embeddings, but none passed the scope/label/importance filters; results use lexical FTS + decay.`,
+            ];
+          } else {
+            bumpAccess(db, ranked.map(memory => memory.memory_id));
+            // Switching to semantic mode: drop the lexical-run judgment fields so
+            // they don't misdescribe the semantic result set.
+            delete payload['judgment_required'];
+            delete payload['judgment_reason'];
+            payload['memories'] = ranked.slice(0, limit);
+            payload['count'] = Math.min(ranked.length, limit);
+            payload['mode'] = 'semantic';
+            payload['embedding_model'] = model;
           }
-          bumpAccess(db, ranked.map(memory => memory.memory_id));
-          payload['memories'] = ranked.slice(0, limit);
-          payload['count'] = Math.min(ranked.length, limit);
-          payload['mode'] = 'semantic';
-          payload['embedding_model'] = model;
         }
       } catch (err) {
         payload['warnings'] = [
@@ -706,91 +791,6 @@ function cmdReleaseFileLock(db: DatabaseSync, args: ParsedArgs, dbPath: string, 
   return emit({ db_path: dbPath, ...result }, 0, opts);
 }
 
-function cmdMemoryIndex(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
-  const limit = args['limit'] ? parseInt(String(args['limit']), 10) : 30;
-  const minImportance = args['min_importance'] ? parseInt(String(args['min_importance']), 10) : 1;
-  const stdout = Boolean(args['stdout']);
-
-  // Query top memories by importance + access
-  const wsPath = args['workspace'] ? String(args['workspace']) : null;
-  const conds: (string | number)[] = [];
-  const binds: (string | number)[] = [minImportance];
-  let sql = `SELECT memory_id, label, importance, task_context, observation, tags_json,
-                    failure_signature, created_at
-     FROM memories WHERE state = 'ACTIVE' AND importance >= ?`;
-  if (wsPath) { sql += ' AND (workspace_path = ? OR workspace_path IS NULL)'; binds.push(wsPath); }
-  if (args['artifact']) { sql += ' AND (artifact = ? OR artifact IS NULL)'; binds.push(String(args['artifact'])); }
-  if (args['repo']) { sql += ' AND (repo = ? OR repo IS NULL)'; binds.push(String(args['repo'])); }
-  if (args['ref']) { sql += ' AND (ref = ? OR ref IS NULL)'; binds.push(String(args['ref'])); }
-  sql += ' ORDER BY importance DESC, access_count DESC, last_accessed_at DESC LIMIT ?';
-  binds.push(limit);
-  void conds;
-
-  type MemRow = {
-    memory_id: string;
-    label: string;
-    importance: number;
-    task_context: string;
-    observation: string;
-    tags_json: string;
-    failure_signature: string | null;
-    created_at: string;
-    references: string[];
-  };
-  const rows = db.prepare(sql).all(...binds) as unknown as MemRow[];
-  if (rows.length > 0) {
-    const refs = db.prepare(
-      `SELECT memory_id, reference
-       FROM memory_refs
-       WHERE memory_id IN (${rows.map(() => '?').join(',')})
-       ORDER BY memory_id, ordinal`
-    ).all(...rows.map(row => row.memory_id)) as unknown as Array<{ memory_id: string; reference: string }>;
-    const refsByMemory = new Map<string, string[]>();
-    for (const ref of refs) {
-      const list = refsByMemory.get(ref.memory_id) ?? [];
-      list.push(ref.reference);
-      refsByMemory.set(ref.memory_id, list);
-    }
-    for (const row of rows) row.references = refsByMemory.get(row.memory_id) ?? [];
-  }
-
-  const now = new Date().toISOString().slice(0, 10);
-  const lines = [
-    `# Memory Index — ${now}`,
-    `<!-- Auto-generated by octocode-awareness memory-index. Regenerate after recording or forgetting memories. -->`,
-    '',
-    `**${rows.length} active memories** (importance ≥ ${minImportance}, sorted by salience)`,
-    '',
-  ];
-  for (const m of rows) {
-    const tags = parseJsonList(m.tags_json).join(', ');
-    lines.push(`## [${m.label}:${m.importance}] ${m.task_context.slice(0, 80)}`);
-    lines.push(`> ${m.observation.slice(0, 200)}`);
-    if (tags) lines.push(`*Tags: ${tags}*`);
-    if (m.references.length > 0) lines.push(`*References: ${m.references.join(', ')}*`);
-    if (m.failure_signature) lines.push(`*Failure: ${m.failure_signature}*`);
-    lines.push('');
-  }
-
-  const content = lines.join('\n');
-
-  if (stdout) {
-    process.stdout.write(content + '\n');
-    return 0;
-  }
-
-  const outPath = args['out'] ? String(args['out']) : null;
-  const targetPath = outPath ?? (resolveDbPath(null).replace('awareness.sqlite3', 'MEMORY.md'));
-  try {
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, content, 'utf8');
-  } catch (err) {
-    return emit({ db_path: dbPath, error: `Could not write MEMORY.md: ${(err as Error).message}` }, 1, opts);
-  }
-
-  return emit({ db_path: dbPath, ok: true, path: targetPath, count: rows.length }, 0, opts);
-}
-
 function cmdForget(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
   const rawIds = args['memory_id'];
   const memoryIds = Array.isArray(rawIds) ? rawIds : rawIds ? [String(rawIds)] : [];
@@ -910,27 +910,6 @@ function cmdAttend(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: Emi
   return emit({ db_path: dbPath, ...result }, 0, opts);
 }
 
-function cmdView(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
-  const view = String(args['view'] ?? args._[0] ?? 'all');
-  const result = writeAwarenessView(db, {
-    view,
-    workspacePath: args['workspace'] ? String(args['workspace']) : process.cwd(),
-    artifact: args['artifact'] ? String(args['artifact']) : null,
-    repo: args['repo'] ? String(args['repo']) : null,
-    ref: args['ref'] ? String(args['ref']) : null,
-    query: args['query'] ? String(args['query']) : null,
-    limit: args['limit'] ? parseInt(String(args['limit']), 10) : undefined,
-    agentId: args['agent_id'] ? String(args['agent_id']) : null,
-    state: Array.isArray(args['state']) ? args['state'].map(String) : args['state'] ? String(args['state']) : null,
-    label: Array.isArray(args['label']) ? args['label'].map(String) : args['label'] ? String(args['label']) : null,
-    file: args['file'] ? String(Array.isArray(args['file']) ? args['file'][0] : args['file']) : null,
-    since: args['since'] ? String(args['since']) : null,
-    includeBodies: flagBool(args['include_bodies']),
-    out: args['out'] ? String(args['out']) : undefined,
-  });
-  return emit({ db_path: dbPath, ...result }, 0, opts);
-}
-
 function cmdRepoInject(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
   const outDir = args['out_dir'] ?? args['out'];
   const result = injectRepoContext(db, {
@@ -1033,64 +1012,6 @@ function cmdDocStaleness(db: DatabaseSync, args: ParsedArgs, dbPath: string, opt
   }
 
   return emit({ db_path: dbPath, ...result, proposed }, 0, opts);
-}
-
-function cmdNotify(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
-  if (!args['agent_id']) return emit({ error: '--agent-id is required' }, 1, opts);
-  if (!args['kind']) return emit({ error: '--kind is required' }, 1, opts);
-  if (!args['subject']) return emit({ error: '--subject is required' }, 1, opts);
-  const rawFiles = args['file'];
-  const files = Array.isArray(rawFiles) ? rawFiles : rawFiles ? [String(rawFiles)] : [];
-  const rawRefIds = args['ref_id'];
-  const refIds = Array.isArray(rawRefIds) ? rawRefIds : rawRefIds ? [String(rawRefIds)] : [];
-  const result = insertNotification(db, {
-    agentId: String(args['agent_id']),
-    workspacePath: args['workspace'] ? String(args['workspace']) : null,
-    artifact: args['artifact'] ? String(args['artifact']) : null,
-    repo: args['repo'] ? String(args['repo']) : null,
-    ref: args['ref'] ? String(args['ref']) : null,
-    toAgent: args['to'] ? String(args['to']) : null,
-    kind: normalizeNotificationKind(args['kind'], { coerce: Boolean(args['compat_coerce']) }),
-    subject: String(args['subject']),
-    body: args['body'] ? String(args['body']) : null,
-    files,
-    refIds,
-    inReplyTo: args['in_reply_to'] ? String(args['in_reply_to']) : null,
-    importance: args['importance'] ? parseInt(String(args['importance']), 10) : 5,
-  });
-  return emit({ db_path: dbPath, ...result }, 0, opts);
-}
-
-function cmdNotifyGet(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
-  if (!args['agent_id']) return emit({ error: '--agent-id is required' }, 1, opts);
-  const rawKinds = args['kind'];
-  const kinds = Array.isArray(rawKinds) ? rawKinds : rawKinds ? [String(rawKinds)] : [];
-  const result = getNotifications(db, {
-    agentId: String(args['agent_id']),
-    workspacePath: args['workspace'] ? String(args['workspace']) : null,
-    artifact: args['artifact'] ? String(args['artifact']) : null,
-    repo: args['repo'] ? String(args['repo']) : null,
-    ref: args['ref'] ? String(args['ref']) : null,
-    kinds: kinds as import('../src/types.js').NotificationKind[],
-    threadId: args['thread_id'] ? String(args['thread_id']) : null,
-    unreadOnly: args['all'] ? false : true,
-    markRead: Boolean(args['mark_read']),
-    limit: args['limit'] ? parseInt(String(args['limit']), 10) : 20,
-  });
-  return emit({ db_path: dbPath, ...result }, 0, opts);
-}
-
-function cmdNotifyResolve(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
-  const rawIds = args['signal_id'];
-  const notificationIds = Array.isArray(rawIds) ? rawIds : rawIds ? [String(rawIds)] : [];
-  const result = resolveNotification(db, {
-    agentId: args['agent_id'] ? String(args['agent_id']) : null,
-    notificationIds,
-    threadId: args['thread_id'] ? String(args['thread_id']) : null,
-    workspacePath: args['workspace'] ? String(args['workspace']) : null,
-    artifact: args['artifact'] ? String(args['artifact']) : null,
-  });
-  return emit({ db_path: dbPath, ...result }, 0, opts);
 }
 
 function cmdAgentSignal(db: DatabaseSync, args: ParsedArgs, dbPath: string, opts: EmitOptions): number {
@@ -1324,7 +1245,7 @@ start: attend, workspace status, memory recall, refinement get, signal list, que
 edit: lock acquire, lock wait, lock release, lock prune, verify mark, verify audit
 messages: signal publish, signal list, signal reply, signal ack, signal resolve, signal prune, agent register, agent list
 learning: memory record, memory forget, refinement set, refinement get, refinement delete, reflect record, reflect mine-weakness, reflect export-harness, reflect developer-review, docs list, docs show, docs staleness
-repo context: query <view> [--format json|table|csv|markdown|html], repo inject
+repo context: query files|workboard|all|developer-review [--format json|table|csv|markdown|html], repo inject
 hooks: hook run <pre-edit|post-edit|harness-guard|stop-verify|notify-deliver|session-end>, hooks install|check|remove --host claude|codex|cursor
 utility: session capture, maintenance init, maintenance self-test, maintenance digest
 
@@ -1337,7 +1258,8 @@ examples:
   octocode-awareness lock acquire --agent-id agent --target-file src/file.ts --rationale "edit" --compact
   octocode-awareness signal list --agent-id agent --workspace "$PWD" --compact
   octocode-awareness schema commands --compact
-  octocode-awareness query gotchas --workspace "$PWD" --format json --limit 20 --compact
+  octocode-awareness query files --workspace "$PWD" --format table --limit 50
+  octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
   octocode-awareness repo inject --workspace "$PWD" --mode local --compact
 
 Run "octocode-awareness <command> --help" for command flags. Exit 2 = lock conflict or wait timeout.`;
@@ -1348,7 +1270,7 @@ start: attend; workspace status; memory recall; refinement get; signal list; doc
 edit: lock acquire|wait|release|prune; verify audit|mark
 msg: signal publish|list|reply|ack|resolve|prune; agent register|list
 learn: memory record|forget; reflect record|mine-weakness|export-harness|developer-review; maintenance digest
-repo: query <view> --format json|table|csv|markdown|html; repo inject
+repo: query files|workboard|all|developer-review --format json|table|csv|markdown|html; repo inject
 inspect: schema commands --compact; docs list|show; schema json-schema <name>; <command> --help`;
 
 const COMMAND_TO_SCHEMA: Record<string, string> = {
@@ -1540,8 +1462,10 @@ example: octocode-awareness reflect developer-review --workspace "$PWD" --format
 note: reads agent feedback on the instructions themselves (from reflect record --fix-instructions); same rows feed .octocode/DEVELOPER_REVIEW.md`,
   'query': `usage: octocode-awareness query <all|repo-profile|memories|gotchas|lessons|tasks|locks|agents|signals|refinements|files|activity|workboard|developer-review> [--workspace <repo>] [--format json|table|csv|markdown|html] [--out <path>]
 examples:
+  octocode-awareness query files --workspace "$PWD" --format table --limit 50
   octocode-awareness query workboard --workspace "$PWD" --format json --limit 10 --compact
   octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
+note: files/memories expose missing file references as file_exists, missing_file, missing_references, and stale_file_refs workboard reasons
 schema: octocode-awareness schema json-schema query --compact`,
   'attend': `usage: octocode-awareness attend [--workspace <repo>] [--query <text>] [--file <p>]... [--limit <n>] [--include-bodies] [--explain-organ]
 example: octocode-awareness attend --query "current task" --workspace "$PWD" --compact
@@ -1644,6 +1568,7 @@ if (command && KNOWN_FLAGS[command]) {
     process.exit(1);
   }
 }
+if (command && command !== UNKNOWN_COMMAND) validateFlagValues(args);
 
 const dbPath = resolveDbPath(globalDb ?? null);
 const compact = args['compact'] === true || process.env['OCTOCODE_AWARENESS_COMPACT'] === '1';
@@ -1687,6 +1612,10 @@ if (command === 'schema') {
 }
 
 if (command === 'hook-run') {
+  // Hooks always write to the canonical store; a `--db` here was silently
+  // ignored (edits would land in the real DB regardless), which is a footgun.
+  // Fail loudly instead of misleading the caller.
+  if (globalDb) die('hook run ignores --db: hooks always use the canonical store. Remove --db, or set OCTOCODE_MEMORY_HOME to relocate the store.');
   process.exit(await runHookCommand(String(args._[0] ?? 'help')));
 }
 
@@ -1720,29 +1649,6 @@ try {
     case 'prune-stale-locks': exitCode = emit({ db_path: dbPath, ...pruneStale(db, args) }, 0, opts); break;
     case 'audit-unverified':  exitCode = cmdAuditUnverified(db, args, dbPath, opts); break;
     case 'verify':             exitCode = cmdVerify(db, args, dbPath, opts); break;
-    case 'notify-get': {
-      const ngFormat = String(args['format'] ?? 'json');
-      const ngAgentId = args['agent_id'] as string | undefined;
-      // If agent-id provided and NOT hook format → real inbox
-      // Otherwise → smart briefing (hooks path)
-      if (ngAgentId && ngFormat !== 'hook') {
-        exitCode = cmdNotifyGet(db, args, dbPath, opts);
-      } else {
-        const ngParams: Record<string, unknown> = {
-          workspace: args['workspace'] as string | undefined,
-          artifact: args['artifact'] as string | undefined,
-          format: ngFormat,
-          agent_id: ngAgentId,
-        };
-        const ngResult = notifyGet(db, ngParams) as unknown as Record<string, unknown>;
-        if (ngFormat === 'hook' && ngResult['additionalContext']) {
-          exitCode = emit({ additionalContext: ngResult['additionalContext'] }, 0, opts);
-        } else {
-          exitCode = emit({ db_path: dbPath, ...ngResult }, 0, opts);
-        }
-      }
-      break;
-    }
     case 'session-capture': exitCode = emit({
       db_path: dbPath,
       ...sessionCapture(db, {
@@ -1769,14 +1675,6 @@ try {
     }
     case 'doc-staleness': exitCode = cmdDocStaleness(db, args, dbPath, opts); break;
     case 'docs-catalog': exitCode = cmdDocsCatalog(db, args, dbPath, opts); break;
-    case 'workspace-status': {
-      const wsStatusResult = getWorkspaceStatus(db, {
-        workspace_path: args['workspace'] as string | undefined,
-        artifact: args['artifact'] as string | undefined,
-      });
-      exitCode = emit({ db_path: dbPath, ...wsStatusResult }, 0, opts);
-      break;
-    }
     case 'digest': {
       const retDays = args['retention_days'] ? Number(args['retention_days']) : undefined;
       const handoffDays = args['refinement_handoff_retention_days'] ? Number(args['refinement_handoff_retention_days']) : undefined;
@@ -1829,17 +1727,14 @@ try {
       exitCode = emit({ db_path: dbPath, ...waitResult }, waitResult.lock_free ? 0 : 2, opts);
       break;
     }
-    case 'memory-index':    exitCode = cmdMemoryIndex(db, args, dbPath, opts); break;
     case 'forget':          exitCode = cmdForget(db, args, dbPath, opts); break;
     case 'refine-delete':   exitCode = cmdRefineDelete(db, args, dbPath, opts); break;
     case 'export-harness':  exitCode = cmdExportHarness(db, args, dbPath, opts); break;
     case 'developer-review': exitCode = cmdDeveloperReview(db, args, dbPath, opts); break;
     case 'query':           exitCode = cmdQuery(db, args, dbPath, opts); break;
     case 'attend':          exitCode = cmdAttend(db, args, dbPath, opts); break;
-    case 'view':            exitCode = cmdView(db, args, dbPath, opts); break;
     case 'repo-inject':     exitCode = cmdRepoInject(db, args, dbPath, opts); break;
     case 'agent-registry':  exitCode = cmdAgentRegistry(db, args, dbPath, opts); break;
-    case 'notify':          exitCode = cmdNotify(db, args, dbPath, opts); break;
     case 'agent-signal': {
       const signalFormat = String(args['format'] ?? 'json');
       if (args['action'] === 'list' && signalFormat === 'hook') {
@@ -1857,7 +1752,6 @@ try {
       }
       break;
     }
-    case 'notify-resolve':  exitCode = cmdNotifyResolve(db, args, dbPath, opts); break;
     case 'notify-prune':    exitCode = cmdNotifyPrune(db, args, dbPath, opts); break;
     default:
       exitCode = emit({ error: `unknown command: ${command}. Run --help for usage.` }, 1, opts);

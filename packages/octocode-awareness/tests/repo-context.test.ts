@@ -265,9 +265,11 @@ describe('repo context query and projections', () => {
       expect(agentsMd).toContain('Root `AGENTS.md` should point here');
       const manifest = JSON.parse(readFileSync(join(dir, '.octocode', 'awareness', 'manifest.json'), 'utf8')) as {
         schema_version: number;
+        files: string[];
         budgets: { markdown: Record<string, { max_lines: number; actual_lines: number; within_budget: boolean }> };
       };
       expect(manifest.schema_version).toBe(1);
+      expect(manifest.files).toContain('.octocode/awareness/manifest.json');
       const agentsBudget = manifest.budgets.markdown['AGENTS.md'];
       expect(agentsBudget).toMatchObject({ max_lines: 80, within_budget: true });
       expect(agentsBudget?.actual_lines).toBeGreaterThan(0);
@@ -275,7 +277,63 @@ describe('repo context query and projections', () => {
       const attend = attendAwareness(db, { workspacePath: dir, artifact: 'svc', compact: true });
       const projectionFiles = ((attend.organ_state.senses as Record<string, unknown>).projection_health as Array<{ file: string }>).map(row => row.file);
       expect(projectionFiles).toEqual(expect.arrayContaining(['.octocode/BOOKMARKS.md', '.octocode/awareness/manifest.json']));
+      expect(attend.bloat_warnings).not.toContain('manifest older than generated projection files; regenerate repo projection');
       expect(readFileSync(join(dir, '.octocode', 'awareness', 'csv', 'files.csv'), 'utf8')).toContain('auth.ts');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('surfaces missing file references across query, workboard, projections, and HTML', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-repo-missing-ref-'));
+    try {
+      const db = freshDb();
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      const existing = join(dir, 'src', 'exists.ts');
+      const missing = join(dir, 'src', 'missing.ts');
+      writeFileSync(existing, 'export const ok = true;\n', 'utf8');
+      insertMemory(db, {
+        agentId: 'agent-a',
+        taskContext: 'missing ref gotcha',
+        observation: 'Do not trust old generated viewer paths without checking file refs',
+        importance: 8,
+        label: 'GOTCHA',
+        references: [`file:${existing}:1`, `file:${missing}:27`],
+        workspacePath: dir,
+        failureSignature: 'mechanism:projection|cause:stale-file-ref',
+      });
+
+      const memories = queryAwareness(db, { workspacePath: dir, view: 'memories', limit: 10 });
+      expect(memories.rows[0]?.['missing_reference_count']).toBe(1);
+      expect(memories.rows[0]?.['missing_references']).toEqual([`file:${missing}:27`]);
+      expect(memories.rows[0]?.['missing_files']).toEqual([missing]);
+
+      const files = queryAwareness(db, { workspacePath: dir, view: 'files', limit: 10 });
+      const missingRow = files.rows.find(row => row['file_path'] === missing);
+      expect(missingRow).toMatchObject({ file_exists: false, missing_file: true, gotchas: 1 });
+
+      const profile = queryAwareness(db, { workspacePath: dir, view: 'repo-profile', limit: 20 });
+      expect(profile.rows).toContainEqual({ metric: 'missing_file_refs', count: 1 });
+
+      const workboard = queryAwareness(db, { workspacePath: dir, view: 'workboard', limit: 10 });
+      const review = workboard.rows.find(row => row['column'] === 'MemoryReview');
+      expect(review?.['reasons']).toEqual(expect.arrayContaining(['stale_file_refs', 'failure_signature']));
+      expect(review?.['missing_references']).toEqual([`file:${missing}:27`]);
+
+      injectRepoContext(db, {
+        workspacePath: dir,
+        outDir: join(dir, '.octocode'),
+        mode: 'local',
+        includeView: true,
+        check: false,
+      });
+      expect(readFileSync(join(dir, '.octocode', 'GOTCHAS.md'), 'utf8')).toContain(`Missing refs: file:${missing}:27`);
+      expect(readFileSync(join(dir, '.octocode', 'BOOKMARKS.md'), 'utf8')).toContain('[missing file]');
+      expect(readFileSync(join(dir, '.octocode', 'AGENTS.md'), 'utf8')).toContain('MissingFiles 1');
+      const html = readFileSync(join(dir, '.octocode', 'awareness', 'index.html'), 'utf8');
+      expect(html).toContain('id="global-filter"');
+      expect(html).toContain('id="missing-filter"');
+      expect(html).toContain('data-missing="true"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

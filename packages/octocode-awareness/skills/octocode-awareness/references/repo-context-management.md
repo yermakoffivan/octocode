@@ -19,8 +19,8 @@ Generated files include:
 - `.octocode/LEARN.md` - decisions, architecture notes, workflows, and opportunities.
 - `.octocode/BOOKMARKS.md` - learnable resource leads from memory references: URLs, repos, file paths, docs, papers, skills, and other URIs.
 - `.octocode/DEVELOPER_REVIEW.md` - agent feedback to the human who authored the instructions (from `reflect record --fix-instructions`), grouped Open/Resolved.
-- `.octocode/awareness/csv/*.csv` - filterable/sortable data for scripts and agents.
-- `.octocode/awareness/index.html` - static browser view.
+- `.octocode/awareness/csv/*.csv` - filterable/sortable data for scripts and agents, including `files.csv` with `file_exists` / `missing_file`.
+- `.octocode/awareness/index.html` - browser view with row search, section filter, missing-file filter, and sortable columns.
 - `.octocode/awareness/manifest.json` - generation metadata and share/local policy warnings.
 - `.octocode/references/` - compact generated reference notes to avoid context bloat.
 
@@ -45,6 +45,7 @@ Prefer live DB reads when freshness matters:
 ```bash
 octocode-awareness query all --workspace "$PWD" --format json --limit 20 --compact
 octocode-awareness query gotchas --workspace "$PWD" --format table
+octocode-awareness query files --workspace "$PWD" --format table --limit 50
 octocode-awareness query files --workspace "$PWD" --format csv --out .octocode/awareness/csv/files.csv
 ```
 
@@ -55,6 +56,8 @@ Write a human HTML view through the query command:
 ```bash
 octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
 ```
+
+Use `query files` before trusting old bookmarks or memory references. Missing local paths are exposed as `missing_file=true`; memory rows expose `missing_references`, and `query workboard` raises `stale_file_refs` under `MemoryReview`.
 
 Regenerate repo projections:
 

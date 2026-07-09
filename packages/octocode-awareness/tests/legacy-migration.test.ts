@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { initDb, tableColumns } from '../src/db.js';
 import { insertMemory, getMemory } from '../src/memory.js';
 import { insertRefinement } from '../src/refinements.js';
+import { insertHarnessLog } from '../src/audit.js';
 
 /**
  * Upgrade-path regression tests. This bug class has shipped twice:
@@ -170,5 +171,61 @@ describe('legacy store migration', () => {
     const count = db.prepare('SELECT COUNT(*) AS cnt FROM refinements')
       .get() as { cnt: number };
     expect(count.cnt).toBe(2);
+  });
+
+  // Generic CHECK-constraint drift repair (migrateCheckConstraints): the
+  // column-only migration cannot widen a CHECK, so an old store whose enum is
+  // narrower than the current DDL threw "CHECK constraint failed" on any insert
+  // using a newer value. This must now be repaired for ANY table, not just the
+  // hand-written refinements case.
+  it('widens a legacy harness_log event_type CHECK and preserves its rows', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE harness_log (
+        harness_id   TEXT PRIMARY KEY,
+        session_id   TEXT,
+        agent_id     TEXT NOT NULL,
+        workspace_path TEXT,
+        artifact     TEXT,
+        event_type   TEXT NOT NULL CHECK(event_type IN ('mine','propose')),
+        payload_json TEXT,
+        memory_id    TEXT,
+        task_id      TEXT,
+        created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      INSERT INTO harness_log (harness_id, agent_id, event_type)
+        VALUES ('hl_legacy', 'agent-old', 'mine');
+    `);
+
+    initDb(db);
+
+    // The legacy row survives the table rebuild.
+    const preserved = db.prepare(
+      "SELECT COUNT(*) AS c FROM harness_log WHERE harness_id='hl_legacy'"
+    ).get() as { c: number };
+    expect(preserved.c).toBe(1);
+
+    // Event types the narrow CHECK rejected now insert cleanly.
+    for (const ev of ['reflect', 'validate', 'apply', 'capture'] as const) {
+      expect(() => insertHarnessLog(db, { agentId: 'agent-new', eventType: ev }), ev).not.toThrow();
+    }
+  });
+
+  it('does not rebuild a current-schema store (CHECK migration is a no-op)', () => {
+    const db = new DatabaseSync(':memory:');
+    initDb(db);
+    insertHarnessLog(db, { agentId: 'a', eventType: 'reflect' });
+    const before = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='harness_log'"
+    ).get() as { sql: string };
+
+    initDb(db); // second init must not touch the table
+
+    const after = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='harness_log'"
+    ).get() as { sql: string };
+    expect(after.sql).toBe(before.sql);
+    const rows = db.prepare('SELECT COUNT(*) AS c FROM harness_log').get() as { c: number };
+    expect(rows.c).toBe(1);
   });
 });

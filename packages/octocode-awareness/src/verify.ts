@@ -197,6 +197,11 @@ export function auditUnverified(
     const nowIso = utcNow();
     const staleWhere: string[] = [
       "ai.status = 'ACTIVE'",
+      // Exclude tasks that never had any files to claim: a zero-target-file task
+      // holds no locks by construction, so it would otherwise be reported as
+      // "stale_active" the instant it is created (age ~0h) — a false positive
+      // that blocks the Stop/conclude gate. Real orphaned work always has files.
+      "COALESCE(ai.files_json,'[]') NOT IN ('[]','null','')",
       `NOT EXISTS (
         SELECT 1 FROM locks fl
         WHERE fl.task_id = ai.task_id

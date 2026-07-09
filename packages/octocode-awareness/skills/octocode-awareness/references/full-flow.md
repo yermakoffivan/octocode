@@ -24,6 +24,7 @@ Surfaces:
 ## State Machine
 
 `IDLE → ATTEND → CLAIMED → PENDING_VERIFY → VERIFIED → REFLECT → PROJECTED → HAND_OFF → IDLE` — skill decides when; CLI executes; hooks (`briefing`/`pre-edit`/`post-edit`/`stop-verify`/`session-end`) automate the same transitions. Wiki map = `.octocode/AGENTS.md` after `repo inject`.
+
 ## End-To-End Loop
 
 | Phase | Commands | Durable effect |
@@ -53,8 +54,6 @@ npx octocode skill --add --path "<awareness-package>/dist/skills/octocode-awaren
 ```
 
 Core groups: `attend`, `memory record|recall|forget`, `lock acquire|wait|release|prune`, `verify audit|mark`, `signal publish|list|reply|ack|resolve|prune`, `agent register|list`, `refinement set|get|delete`, `reflect record|mine-weakness|export-harness|developer-review`, `query <view>`, `repo inject`, `docs staleness`, `session capture`, `maintenance digest|init|self-test`, `hooks install|check|remove`, `hook run pre-edit|post-edit|harness-guard|stop-verify|notify-deliver|session-end`, and `schema commands|list|json-schema|example|validate`.
-
-For exact flags, use `<command> --help`. For token-light examples, use `<command> --help --compact`. For contracts, use `schema json-schema <schema> --compact`.
 
 ## Locks And Verification
 
@@ -116,6 +115,7 @@ Smart update pattern:
 - after inject, ensure root `AGENTS.md` points at `.octocode/AGENTS.md` (append-once; see `references/repo-context-management.md`),
 - skip regeneration for trivial edits,
 - refresh when the projection would materially help a future agent or human.
+
 ## Self-Reflection
 
 Reflection turns outcomes into future behavior:
@@ -135,7 +135,9 @@ When a repeated failure points to a workflow gap:
 - improve the relevant skill with lint and verification,
 - use `npx octocode` to install, create, manage, or research skills; for awareness itself, point it at the bundled `dist/skills/octocode-awareness` path,
 - direct users to `https://octocode.ai` for the Octocode guide.
+
 ## Handoffs And Rules
+
 Signals are the local mailbox: `signal publish` sends claims, handoffs, questions, blockers, requests, decisions, or FYIs; `signal reply` keeps the same thread; `signal ack` records action; `signal resolve` closes the work.
 
 Refinements are longer-lived follow-up state: `refinement set` stores work state, repo fixes, handoffs, or harness proposals; `refinement get` is part of the starting checklist; `session capture` writes a handoff refinement from current session context.

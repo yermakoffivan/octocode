@@ -7,9 +7,10 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
 import { parseJsonList } from './helpers.js';
 import { normalizeWorkspacePath } from './git.js';
 
@@ -306,6 +307,61 @@ function fileRefCandidates(file: string, workspacePath: string | null): string[]
   return [`file:${absolute}`, `%${trimmed}%`];
 }
 
+function stripLocationSuffix(value: string): string {
+  return value.trim().replace(/:(\d+)(?::\d+)?$/, '');
+}
+
+function localPathFromReference(reference: string, workspacePath: string | null): string | null {
+  const trimmed = reference.trim();
+  if (!trimmed) return null;
+  let rawPath: string | null = null;
+  if (/^file:\/\//i.test(trimmed)) {
+    try {
+      rawPath = fileURLToPath(trimmed);
+    } catch {
+      rawPath = trimmed.replace(/^file:\/+/i, '/');
+    }
+  } else if (/^file:/i.test(trimmed)) {
+    rawPath = trimmed.slice('file:'.length);
+  } else if (/^path:/i.test(trimmed)) {
+    rawPath = trimmed.slice('path:'.length);
+  } else if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return null;
+  } else if (isAbsolute(trimmed) || trimmed.startsWith('./') || trimmed.startsWith('../') || /^[^/\s]+\/.+/.test(trimmed)) {
+    rawPath = trimmed;
+  }
+  if (!rawPath) return null;
+  const clean = stripLocationSuffix(rawPath);
+  return isAbsolute(clean) ? resolve(clean) : resolve(workspacePath ?? process.cwd(), clean);
+}
+
+function referenceHealth(references: string[], workspacePath: string | null): Record<string, string[] | number> {
+  const fileReferences: string[] = [];
+  const existingFiles: string[] = [];
+  const missingFiles: string[] = [];
+  const missingReferences: string[] = [];
+  for (const reference of references) {
+    const localPath = localPathFromReference(reference, workspacePath);
+    if (!localPath) continue;
+    fileReferences.push(localPath);
+    if (existsSync(localPath)) {
+      existingFiles.push(localPath);
+    } else {
+      missingFiles.push(localPath);
+      missingReferences.push(reference);
+    }
+  }
+  return {
+    reference_count: references.length,
+    file_reference_count: fileReferences.length,
+    missing_reference_count: missingReferences.length,
+    file_references: [...new Set(fileReferences)],
+    existing_files: [...new Set(existingFiles)],
+    missing_files: [...new Set(missingFiles)],
+    missing_references: [...new Set(missingReferences)],
+  };
+}
+
 function addMemoryFileFilter(where: string[], binds: BindValue[], file: string | null | undefined, scope: Scope): void {
   if (!file) return;
   const candidates = fileRefCandidates(file, scope.workspacePath);
@@ -374,23 +430,27 @@ function memoryRows(
       LIMIT ?`
   ).all(...binds, limit) as unknown as MemoryDbRow[];
 
-  return withReferences(db, rows).map(row => ({
-    memory_id: row.memory_id,
-    label: row.label,
-    importance: row.importance,
-    task_context: row.task_context,
-    observation: row.observation,
-    tags: parseJsonList(row.tags_json),
-    references: row.references ?? [],
-    failure_signature: row.failure_signature,
-    agent_id: row.agent_id,
-    workspace_path: row.workspace_path,
-    artifact: row.artifact,
-    repo: row.repo,
-    ref: row.ref,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  }));
+  return withReferences(db, rows).map(row => {
+    const references = row.references ?? [];
+    return {
+      memory_id: row.memory_id,
+      label: row.label,
+      importance: row.importance,
+      task_context: row.task_context,
+      observation: row.observation,
+      tags: parseJsonList(row.tags_json),
+      references,
+      ...referenceHealth(references, scope.workspacePath),
+      failure_signature: row.failure_signature,
+      agent_id: row.agent_id,
+      workspace_path: row.workspace_path,
+      artifact: row.artifact,
+      repo: row.repo,
+      ref: row.ref,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  });
 }
 
 function taskRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQueryRow[] {
@@ -671,11 +731,16 @@ function trackFile(
   filePath: string,
   source: string,
   date: string | null | undefined,
+  workspacePath: string | null,
 ): void {
-  const clean = filePath.startsWith('file:') ? filePath.slice('file:'.length) : filePath;
+  const resolved = localPathFromReference(filePath, workspacePath);
+  const clean = resolved ?? stripLocationSuffix(filePath.startsWith('file:') ? filePath.slice('file:'.length) : filePath);
   if (!clean) return;
+  const fileExists = existsSync(clean);
   const row = map.get(clean) ?? {
     file_path: clean,
+    file_exists: fileExists,
+    missing_file: !fileExists,
     memories: 0,
     gotchas: 0,
     tasks: 0,
@@ -685,6 +750,8 @@ function trackFile(
     edits: 0,
     last_seen_at: null,
   };
+  row['file_exists'] = Boolean(row['file_exists']) || fileExists;
+  row['missing_file'] = !Boolean(row['file_exists']);
   const current = Number(row[source] ?? 0);
   row[source] = current + 1;
   if (date && (!row['last_seen_at'] || String(date) > String(row['last_seen_at']))) row['last_seen_at'] = date;
@@ -709,21 +776,21 @@ function fileRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQuer
       LIMIT ?`
   ).all(...memoryBinds, 1000) as unknown as Array<{ reference: string; label: string; created_at: string }>;
   for (const ref of memoryRefs) {
-    trackFile(files, ref.reference, 'memories', ref.created_at);
-    if (ref.label === 'GOTCHA') trackFile(files, ref.reference, 'gotchas', ref.created_at);
+    trackFile(files, ref.reference, 'memories', ref.created_at, scope.workspacePath);
+    if (ref.label === 'GOTCHA') trackFile(files, ref.reference, 'gotchas', ref.created_at, scope.workspacePath);
   }
 
   for (const row of taskRows(db, { ...params, limit: 500 })) {
-    for (const file of row['files'] as string[]) trackFile(files, file, 'tasks', String(row['created_at']));
+    for (const file of row['files'] as string[]) trackFile(files, file, 'tasks', String(row['created_at']), scope.workspacePath);
   }
   for (const row of lockRows(db, { ...params, limit: 500 })) {
-    trackFile(files, String(row['file_path']), 'locks', String(row['acquired_at']));
+    trackFile(files, String(row['file_path']), 'locks', String(row['acquired_at']), scope.workspacePath);
   }
   for (const row of refinementRows(db, { ...params, limit: 500 })) {
-    for (const file of row['files'] as string[]) trackFile(files, file, 'refinements', String(row['updated_at']));
+    for (const file of row['files'] as string[]) trackFile(files, file, 'refinements', String(row['updated_at']), scope.workspacePath);
   }
   for (const row of signalRows(db, { ...params, limit: 500 })) {
-    for (const file of row['files'] as string[]) trackFile(files, file, 'signals', String(row['created_at']));
+    for (const file of row['files'] as string[]) trackFile(files, file, 'signals', String(row['created_at']), scope.workspacePath);
   }
 
   const editWhere: string[] = [];
@@ -739,14 +806,14 @@ function fileRows(db: DatabaseSync, params: AwarenessQueryParams): AwarenessQuer
       LIMIT ?`
   ).all(...editBinds, 1000) as unknown as Array<{ file_path: string; old_file_path: string | null; created_at: string }>;
   for (const edit of edits) {
-    trackFile(files, edit.file_path, 'edits', edit.created_at);
-    if (edit.old_file_path) trackFile(files, edit.old_file_path, 'edits', edit.created_at);
+    trackFile(files, edit.file_path, 'edits', edit.created_at, scope.workspacePath);
+    if (edit.old_file_path) trackFile(files, edit.old_file_path, 'edits', edit.created_at, scope.workspacePath);
   }
 
   return [...files.values()]
     .sort((a, b) => {
-      const scoreA = Number(a['locks'] ?? 0) * 10 + Number(a['gotchas'] ?? 0) * 6 + Number(a['memories'] ?? 0) * 4 + Number(a['tasks'] ?? 0) * 3 + Number(a['edits'] ?? 0);
-      const scoreB = Number(b['locks'] ?? 0) * 10 + Number(b['gotchas'] ?? 0) * 6 + Number(b['memories'] ?? 0) * 4 + Number(b['tasks'] ?? 0) * 3 + Number(b['edits'] ?? 0);
+      const scoreA = (a['missing_file'] ? 20 : 0) + Number(a['locks'] ?? 0) * 10 + Number(a['gotchas'] ?? 0) * 6 + Number(a['memories'] ?? 0) * 4 + Number(a['tasks'] ?? 0) * 3 + Number(a['edits'] ?? 0);
+      const scoreB = (b['missing_file'] ? 20 : 0) + Number(b['locks'] ?? 0) * 10 + Number(b['gotchas'] ?? 0) * 6 + Number(b['memories'] ?? 0) * 4 + Number(b['tasks'] ?? 0) * 3 + Number(b['edits'] ?? 0);
       return scoreB - scoreA || String(b['last_seen_at'] ?? '').localeCompare(String(a['last_seen_at'] ?? ''));
     })
     .slice(0, limit);
@@ -780,6 +847,7 @@ function repoProfileRows(db: DatabaseSync, params: AwarenessQueryParams): Awaren
   const signalBinds: BindValue[] = [];
   addExactScope(signalWhere, signalBinds, scope);
 
+  const trackedFiles = fileRows(db, { ...params, limit: 500 });
   return [
     { metric: 'active_memories', count: countWhere(db, 'memories', memWhere, memBinds) },
     { metric: 'gotchas', count: memoryRows(db, { ...params, view: 'gotchas', limit: 500 }, { gotchas: true }).length },
@@ -789,7 +857,8 @@ function repoProfileRows(db: DatabaseSync, params: AwarenessQueryParams): Awaren
     { metric: 'open_refinements', count: countWhere(db, 'refinements', refinementWhere, refinementBinds) },
     { metric: 'open_signals', count: countWhere(db, 'signals', signalWhere, signalBinds) },
     { metric: 'known_agents', count: agentRows(db, { ...params, limit: 500 }).length },
-    { metric: 'tracked_files', count: fileRows(db, { ...params, limit: 500 }).length },
+    { metric: 'tracked_files', count: trackedFiles.length },
+    { metric: 'missing_file_refs', count: trackedFiles.filter(row => row['missing_file']).length },
     { metric: 'developer_review', count: developerReviewRows(db, { ...params, limit: 500 }).length },
   ];
 }
@@ -1008,9 +1077,11 @@ function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): Awarenes
   for (const row of memoryRows(db, { ...params, limit: 200 })) {
     const failureSignature = String(row['failure_signature'] ?? '');
     const refs = Array.isArray(row['references']) ? row['references'] as string[] : [];
+    const missingRefs = Array.isArray(row['missing_references']) ? row['missing_references'] as string[] : [];
     const tags = Array.isArray(row['tags']) ? row['tags'] as string[] : [];
     const reviewReasons = [
       refs.length === 0 ? 'missing_refs' : null,
+      missingRefs.length > 0 ? 'stale_file_refs' : null,
       failureSignature ? 'failure_signature' : null,
       tags.includes('anti-bloat') ? 'policy_memory' : null,
     ].filter((reason): reason is string => Boolean(reason));
@@ -1023,8 +1094,10 @@ function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): Awarenes
       agent_id: String(row['agent_id']),
       status: 'review',
       reasons: reviewReasons,
+      missing_reference_count: missingRefs.length,
+      missing_references: missingRefs,
       raw_ids: [String(row['memory_id'])],
-      files: refs.filter(ref => ref.startsWith('file:')).map(ref => ref.slice('file:'.length)),
+      files: (Array.isArray(row['file_references']) ? row['file_references'] as string[] : refs.filter(ref => ref.startsWith('file:')).map(ref => ref.slice('file:'.length))),
       created_at: String(row['created_at']),
       updated_at: row['updated_at'] ?? null,
     }, limit);
@@ -1050,7 +1123,9 @@ function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): Awarenes
   const taskCount = Number(profile['tasks'] ?? 0);
   const openRefinements = Number(profile['open_refinements'] ?? 0);
   const openSignalCount = Number(profile['open_signals'] ?? 0);
+  const missingFileRefs = Number(profile['missing_file_refs'] ?? 0);
   const projectionWarnings = [
+    missingFileRefs > 0 ? 'missing_file_refs' : null,
     activeMemories > 200 ? 'active_memories_over_200' : null,
     taskCount > 500 ? 'task_rows_over_500' : null,
     openRefinements > 40 ? 'open_refinements_over_40' : null,
@@ -1065,6 +1140,7 @@ function workboardRows(db: DatabaseSync, params: AwarenessQueryParams): Awarenes
     raw_ids: [],
     files: [],
     active_memories: activeMemories,
+    missing_file_refs: missingFileRefs,
     tasks: taskCount,
     open_refinements: openRefinements,
     open_signals: openSignalCount,
@@ -1181,6 +1257,7 @@ export function formatAwarenessQueryResult(result: AwarenessQueryResult, format:
 
 export function renderAwarenessHtml(result: AwarenessQueryResult): string {
   const title = `Octocode Awareness: ${result.view}`;
+  const sectionNames = result.sections ? Object.keys(result.sections) : [result.view];
   const sections = result.sections
     ? Object.entries(result.sections).map(([name, section]) => renderHtmlSection(name, section.rows)).join('\n')
     : renderHtmlSection(result.view, result.rows);
@@ -1194,6 +1271,11 @@ export function renderAwarenessHtml(result: AwarenessQueryResult): string {
     :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     body { margin: 0; background: Canvas; color: CanvasText; }
     header { padding: 24px 28px 12px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+    .controls input, .controls select, .controls label { font: inherit; font-size: 13px; }
+    .controls input, .controls select { min-height: 34px; padding: 6px 8px; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 6px; background: Canvas; color: CanvasText; }
+    .controls input { min-width: min(420px, 100%); flex: 1 1 260px; }
+    .controls label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: color-mix(in srgb, CanvasText 76%, transparent); }
     main { padding: 20px 28px 40px; display: grid; gap: 28px; }
     h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: 0; }
     h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
@@ -1201,8 +1283,11 @@ export function renderAwarenessHtml(result: AwarenessQueryResult): string {
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
     th { font-weight: 650; white-space: nowrap; }
+    th button { all: unset; cursor: pointer; }
+    th button::after { content: " v"; color: color-mix(in srgb, CanvasText 46%, transparent); }
     td { max-width: 460px; overflow-wrap: anywhere; }
     section { overflow-x: auto; }
+    section[hidden], tr[hidden] { display: none; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
   </style>
 </head>
@@ -1210,10 +1295,60 @@ export function renderAwarenessHtml(result: AwarenessQueryResult): string {
   <header>
     <h1>${escapeHtml(title)}</h1>
     <div class="meta">Generated ${escapeHtml(result.generated_at)} for <code>${escapeHtml(result.workspace_path ?? 'global')}</code></div>
+    <div class="controls">
+      <input id="global-filter" type="search" placeholder="Filter rows" autocomplete="off">
+      <select id="section-filter" aria-label="Section">
+        <option value="">All sections</option>
+        ${sectionNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')}
+      </select>
+      <label><input id="missing-filter" type="checkbox"> Missing files</label>
+    </div>
   </header>
   <main>
     ${sections}
   </main>
+  <script>
+    const filterInput = document.querySelector('#global-filter');
+    const sectionFilter = document.querySelector('#section-filter');
+    const missingFilter = document.querySelector('#missing-filter');
+    function applyFilters() {
+      const text = filterInput.value.trim().toLowerCase();
+      const wantedSection = sectionFilter.value;
+      const onlyMissing = missingFilter.checked;
+      for (const section of document.querySelectorAll('section[data-section]')) {
+        const sectionMatches = !wantedSection || section.dataset.section === wantedSection;
+        let visible = 0;
+        for (const row of section.querySelectorAll('tbody tr')) {
+          const rowMatches = (!text || row.textContent.toLowerCase().includes(text)) && (!onlyMissing || row.dataset.missing === 'true');
+          row.hidden = !(sectionMatches && rowMatches);
+          if (!row.hidden) visible++;
+        }
+        section.hidden = !sectionMatches || visible === 0;
+      }
+    }
+    for (const control of [filterInput, sectionFilter, missingFilter]) control.addEventListener('input', applyFilters);
+    for (const button of document.querySelectorAll('th button[data-key]')) {
+      button.addEventListener('click', () => {
+        const table = button.closest('table');
+        const tbody = table.querySelector('tbody');
+        const index = Array.from(button.closest('tr').children).indexOf(button.closest('th'));
+        const direction = button.dataset.direction === 'asc' ? 'desc' : 'asc';
+        button.dataset.direction = direction;
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort((a, b) => {
+          const av = a.children[index]?.textContent.trim() ?? '';
+          const bv = b.children[index]?.textContent.trim() ?? '';
+          const an = Number(av);
+          const bn = Number(bv);
+          const cmp = Number.isFinite(an) && Number.isFinite(bn) ? an - bn : av.localeCompare(bv);
+          return direction === 'asc' ? cmp : -cmp;
+        });
+        for (const row of rows) tbody.appendChild(row);
+        applyFilters();
+      });
+    }
+    applyFilters();
+  </script>
 </body>
 </html>
 `;
@@ -1244,7 +1379,6 @@ export function injectRepoContext(db: DatabaseSync, params: RepoContextInjectPar
   const mode = normalizeMode(params.mode);
   const includeView = params.includeView ?? params.include_view ?? true;
   const check = params.check ?? true;
-  const generatedAt = utcNow();
   const queryParams: AwarenessQueryParams = { ...params, workspacePath, limit: limitOf(params.limit, 50, 500) };
   const all = queryAwareness(db, { ...queryParams, view: 'all' });
   const filesWritten: string[] = [];
@@ -1320,6 +1454,12 @@ export function injectRepoContext(db: DatabaseSync, params: RepoContextInjectPar
     if (!budget.within_budget) warnings.push(`projection budget exceeded: ${relPath} has ${budget.actual_lines}/${budget.max_lines} lines`);
   }
 
+  const generatedAt = utcNow();
+  const manifestRelPath = join('awareness', 'manifest.json');
+  const manifestFiles = [
+    ...filesWritten.map(file => relative(workspacePath, file)),
+    relative(workspacePath, join(outDir, manifestRelPath)),
+  ];
   const manifest = {
     schema_version: 1,
     generated_at: generatedAt,
@@ -1343,10 +1483,10 @@ export function injectRepoContext(db: DatabaseSync, params: RepoContextInjectPar
       workboard: WORKBOARD_BUDGET,
       attend_compact: ATTEND_COMPACT_BUDGET,
     },
-    files: filesWritten.map(file => relative(workspacePath, file)),
+    files: manifestFiles,
     warnings,
   };
-  write(join('awareness', 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  write(manifestRelPath, JSON.stringify(manifest, null, 2) + '\n');
 
   return {
     ok: true,
@@ -1370,6 +1510,7 @@ function renderRepoAgentsMd(all: AwarenessQueryResult): string {
   const locks = (sections['locks']?.rows ?? []).slice(0, 3);
   const lockTotal = (sections['locks']?.rows ?? []).length;
   const projectionWarnings = [
+    Number(counts['missing_file_refs'] ?? 0) > 0 ? `Missing/stale file refs (${counts['missing_file_refs']}) — use \`query files --format table\` before trusting bookmarks.` : null,
     Number(counts['active_memories'] ?? 0) > 200 ? `Active memories high (${counts['active_memories']}) — prefer recall/CSV over full Markdown.` : null,
     Number(counts['tasks'] ?? 0) > 500 ? `Task history high (${counts['tasks']}) — use \`query workboard\`.` : null,
     Number(counts['open_refinements'] ?? 0) > 40 ? `Open refinements high (${counts['open_refinements']}) — filter CSV before promoting.` : null,
@@ -1388,7 +1529,7 @@ function renderRepoAgentsMd(all: AwarenessQueryResult): string {
     '',
     '## Snapshot',
     '',
-    `- Memories ${counts['active_memories'] ?? 0} · Gotchas ${counts['gotchas'] ?? 0} · Lessons ${counts['lessons'] ?? 0} · Locks ${counts['active_locks'] ?? 0} · Refinements ${counts['open_refinements'] ?? 0} · Signals ${counts['open_signals'] ?? 0} · DevReview ${counts['developer_review'] ?? 0}`,
+    `- Memories ${counts['active_memories'] ?? 0} · Gotchas ${counts['gotchas'] ?? 0} · Lessons ${counts['lessons'] ?? 0} · MissingFiles ${counts['missing_file_refs'] ?? 0} · Locks ${counts['active_locks'] ?? 0} · Refinements ${counts['open_refinements'] ?? 0} · Signals ${counts['open_signals'] ?? 0} · DevReview ${counts['developer_review'] ?? 0}`,
     '',
     '## Retro Files Map',
     '',
@@ -1397,12 +1538,12 @@ function renderRepoAgentsMd(all: AwarenessQueryResult): string {
     '- Gotchas → `.octocode/GOTCHAS.md` · live `query gotchas` / `memory recall`',
     '- Lessons → `.octocode/LEARN.md` · live `query lessons`',
     '- Memory index → `.octocode/MEMORY.md` · live `memory recall --smart`',
-    '- Bookmarks → `.octocode/BOOKMARKS.md` · Files → `awareness/csv/files.csv` · Workboard → live `query workboard`',
+    '- Bookmarks → `.octocode/BOOKMARKS.md` · Files/missing refs → live `query files` or `awareness/csv/files.csv` · Workboard → live `query workboard`',
     '- Developer review → `.octocode/DEVELOPER_REVIEW.md` · live `reflect developer-review` — agent feedback on the instructions themselves',
     '',
     '## Read Before Editing',
     '',
-    '- Read GOTCHAS + LEARN; filter `awareness/csv/files.csv` for affected paths.',
+    '- Read GOTCHAS + LEARN; run `query files --format table` or filter `awareness/csv/files.csv` for affected and missing paths.',
     '- Prefer live `attend` / `query` when freshness matters; `repo inject` after important memories.',
     '',
     '## Projection Health',
@@ -1465,6 +1606,8 @@ function renderRowsDoc(title: string, rows: AwarenessQueryRow[], description: st
     if (row['failure_signature']) block.push('', `Failure signature: \`${row['failure_signature']}\``);
     const refs = Array.isArray(row['references']) ? row['references'] as string[] : [];
     if (refs.length > 0) block.push('', `Refs: ${refs.join(', ')}`);
+    const missingRefs = Array.isArray(row['missing_references']) ? row['missing_references'] as string[] : [];
+    if (missingRefs.length > 0) block.push('', `Missing refs: ${missingRefs.join(', ')}`);
     block.push('', `Source id: \`${id}\``, '');
     const needsOmittedLine = omitted === 0 && rows.length > 0;
     const reserve = maxLines ? (needsOmittedLine ? 3 : 1) : 0;
@@ -1492,19 +1635,21 @@ function bookmarkKind(reference: string): string {
 }
 
 function renderBookmarksDoc(memoryRows: AwarenessQueryRow[]): string {
-  const byRef = new Map<string, { kind: string; sourceIds: string[]; labels: string[]; titles: string[] }>();
+  const byRef = new Map<string, { kind: string; sourceIds: string[]; labels: string[]; titles: string[]; missing: boolean }>();
   for (const row of memoryRows) {
     const refs = Array.isArray(row['references']) ? row['references'] as string[] : [];
+    const missingRefs = new Set(Array.isArray(row['missing_references']) ? row['missing_references'] as string[] : []);
     const sourceId = String(row['memory_id'] ?? 'memory');
     const label = `${row['label'] ?? 'MEMORY'}:${row['importance'] ?? ''}`.replace(/:$/, '');
     const title = summarize(String(row['task_context'] ?? row['observation'] ?? sourceId), 90);
     for (const rawRef of refs) {
       const ref = rawRef.trim();
       if (!ref) continue;
-      const entry = byRef.get(ref) ?? { kind: bookmarkKind(ref), sourceIds: [], labels: [], titles: [] };
+      const entry = byRef.get(ref) ?? { kind: bookmarkKind(ref), sourceIds: [], labels: [], titles: [], missing: false };
       if (!entry.sourceIds.includes(sourceId)) entry.sourceIds.push(sourceId);
       if (!entry.labels.includes(label)) entry.labels.push(label);
       if (!entry.titles.includes(title)) entry.titles.push(title);
+      entry.missing = entry.missing || missingRefs.has(ref);
       byRef.set(ref, entry);
     }
   }
@@ -1539,7 +1684,8 @@ function renderBookmarksDoc(memoryRows: AwarenessQueryRow[]): string {
     const sourceText = entry.sourceIds.slice(0, 3).join(', ');
     const titleText = entry.titles.slice(0, 2).join(' | ');
     const labelText = entry.labels.slice(0, 3).join(', ');
-    lines.push(`- \`${ref}\` - ${labelText}; source: ${sourceText}; ${titleText}`);
+    const health = entry.missing ? ' [missing file]' : '';
+    lines.push(`- \`${ref}\`${health} - ${labelText}; source: ${sourceText}; ${titleText}`);
   }
   lines.push('');
   return lines.join('\n');
@@ -1621,7 +1767,7 @@ function renderReferenceDoc(title: string, bullets: string[], rows: AwarenessQue
 }
 
 function renderHtmlSection(name: string, rows: AwarenessQueryRow[]): string {
-  return `<section>
+  return `<section data-section="${escapeHtml(name)}">
   <h2>${escapeHtml(name)} (${rows.length})</h2>
   ${rows.length === 0 ? '<p class="meta">No rows.</p>' : `<table>${renderHtmlTable(rows)}</table>`}
 </section>`;
@@ -1629,8 +1775,11 @@ function renderHtmlSection(name: string, rows: AwarenessQueryRow[]): string {
 
 function renderHtmlTable(rows: AwarenessQueryRow[]): string {
   const keys = keysForRows(rows).slice(0, 12);
-  const header = `<thead><tr>${keys.map(key => `<th>${escapeHtml(key)}</th>`).join('')}</tr></thead>`;
-  const body = rows.map(row => `<tr>${keys.map(key => `<td>${escapeHtml(cellToString(row[key]))}</td>`).join('')}</tr>`).join('\n');
+  const header = `<thead><tr>${keys.map(key => `<th><button type="button" data-key="${escapeHtml(key)}">${escapeHtml(key)}</button></th>`).join('')}</tr></thead>`;
+  const body = rows.map(row => {
+    const missing = row['missing_file'] === true || Number(row['missing_reference_count'] ?? 0) > 0 || (Array.isArray(row['missing_references']) && row['missing_references'].length > 0);
+    return `<tr data-missing="${missing ? 'true' : 'false'}">${keys.map(key => `<td>${escapeHtml(cellToString(row[key]))}</td>`).join('')}</tr>`;
+  }).join('\n');
   return `${header}<tbody>${body}</tbody>`;
 }
 
@@ -1690,7 +1839,8 @@ function markdownRows(rows: AwarenessQueryRow[]): string {
     const text = row['observation'] ?? row['count'] ?? '';
     const extras: string[] = [];
     if (row['failure_signature']) extras.push(`failure=${cellToString(row['failure_signature'])}`);
-    if (Array.isArray(row['references']) && row['references'].length > 0) extras.push(`refs=${(row['references'] as string[]).join(', ')}`);
+  if (Array.isArray(row['references']) && row['references'].length > 0) extras.push(`refs=${(row['references'] as string[]).join(', ')}`);
+  if (Array.isArray(row['missing_references']) && row['missing_references'].length > 0) extras.push(`missing=${(row['missing_references'] as string[]).join(', ')}`);
     const suffix = extras.length > 0 ? ` (${extras.join('; ')})` : '';
     return `- \`${cellToString(id)}\` ${label}${summarize(cellToString(title), 100)} - ${summarize(cellToString(text), 220)}${suffix}`;
   }).join('\n');

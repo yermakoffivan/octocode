@@ -1156,6 +1156,8 @@ describe('CLI', () => {
     expect(parsed.commands).toEqual(expect.arrayContaining([
       expect.objectContaining({ command: 'workspace status', schema: 'workspace_status' }),
       expect.objectContaining({ command: 'lock acquire', schema: 'pre_flight_intent' }),
+      expect.objectContaining({ command: 'query files', schema: 'query' }),
+      expect.objectContaining({ command: 'query all', schema: 'query' }),
       expect.objectContaining({ command: 'schema commands', schema: null }),
     ]));
     for (const row of parsed.commands) {

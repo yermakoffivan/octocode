@@ -6,11 +6,11 @@ process.on('warning', (w) => {
 });
 
 // bin/awareness.ts
-import { writeFileSync as writeFileSync4, mkdirSync as mkdirSync5, existsSync as existsSync4 } from "node:fs";
+import { writeFileSync as writeFileSync4, mkdirSync as mkdirSync5, existsSync as existsSync5 } from "node:fs";
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { dirname as dirname6, isAbsolute as isAbsolute6, join as join8, resolve as resolve11 } from "node:path";
+import { dirname as dirname6, isAbsolute as isAbsolute6, join as join8, resolve as resolve12 } from "node:path";
 import { DatabaseSync as DatabaseSync2 } from "node:sqlite";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // src/db.ts
 import { DatabaseSync } from "node:sqlite";
@@ -375,6 +375,7 @@ function initDb(db3) {
   db3.exec(SCHEMA_DDL);
   migrateExistingTables(db3);
   migrateRefinementQualityConstraint(db3);
+  migrateCheckConstraints(db3);
   db3.exec(`
     CREATE INDEX IF NOT EXISTS idx_sessions_agent     ON sessions(agent_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_path);
@@ -486,6 +487,76 @@ function migrateExistingTables(db3) {
       }
       db3.exec(`ALTER TABLE ${table} ADD COLUMN ${clause}`);
     }
+  }
+}
+var _canonicalTableSql;
+function canonicalTableSql() {
+  if (_canonicalTableSql) return _canonicalTableSql;
+  const tmp = new DatabaseSync(":memory:");
+  try {
+    tmp.exec(SCHEMA_DDL);
+    const rows = tmp.prepare(
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL"
+    ).all();
+    _canonicalTableSql = new Map(rows.map((r) => [r.name, r.sql]));
+    return _canonicalTableSql;
+  } finally {
+    tmp.close();
+  }
+}
+function checkClauses(createSql) {
+  const matches = createSql.match(/CHECK\s*\([^)]*\)/gi) ?? [];
+  return matches.map((c) => c.replace(/\s+/g, " ").trim().toLowerCase()).sort().join(" | ");
+}
+function rebuildTableFromCanonical(db3, table, canonSql) {
+  const liveCols = tableColumns(db3, table);
+  const canonCols = (canonicalColumns().get(table) ?? []).map((c) => c.name).filter((n) => liveCols.has(n));
+  if (canonCols.length === 0) return;
+  const colList = canonCols.join(", ");
+  const tmpName = `${table}__ckmig`;
+  const createTmp = canonSql.replace(
+    new RegExp(`(CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)"?${table}"?`, "i"),
+    `$1${tmpName}`
+  );
+  if (!createTmp.includes(tmpName)) {
+    throw new Error(`check-constraint migration: cannot rename table ${table} in canonical DDL`);
+  }
+  const savepoint = `migrate_check_${table}`;
+  db3.exec(`SAVEPOINT ${savepoint}`);
+  try {
+    db3.exec(`DROP TABLE IF EXISTS ${tmpName};`);
+    db3.exec(createTmp);
+    db3.exec(`INSERT INTO ${tmpName} (${colList}) SELECT ${colList} FROM ${table};`);
+    db3.exec(`DROP TABLE ${table};`);
+    db3.exec(`ALTER TABLE ${tmpName} RENAME TO ${table};`);
+    db3.exec(`RELEASE SAVEPOINT ${savepoint}`);
+  } catch (err) {
+    try {
+      db3.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+    } catch {
+    }
+    try {
+      db3.exec(`RELEASE SAVEPOINT ${savepoint}`);
+    } catch {
+    }
+    throw err;
+  }
+}
+function migrateCheckConstraints(db3) {
+  const drifted = [];
+  for (const [table, canonSql] of canonicalTableSql()) {
+    const live = db3.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name=?"
+    ).get(table);
+    if (!live?.sql) continue;
+    if (checkClauses(live.sql) !== checkClauses(canonSql)) drifted.push([table, canonSql]);
+  }
+  if (drifted.length === 0) return;
+  db3.exec("PRAGMA foreign_keys = OFF");
+  try {
+    for (const [table, canonSql] of drifted) rebuildTableFromCanonical(db3, table, canonSql);
+  } finally {
+    db3.exec("PRAGMA foreign_keys = ON");
   }
 }
 function migrateRefinementQualityConstraint(db3) {
@@ -1657,17 +1728,6 @@ function searchByEmbedding(db3, queryEmbedding, limit = 5, threshold = 0.75, mod
   }
   return results.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
 }
-function loadMemoriesByIds(db3, memoryIds) {
-  const ids = [...new Set(memoryIds.filter(Boolean))];
-  if (ids.length === 0) return [];
-  const placeholders = ids.map(() => "?").join(", ");
-  const rows = db3.prepare(
-    `SELECT * FROM memories WHERE memory_id IN (${placeholders}) AND state = 'ACTIVE'`
-  ).all(...ids);
-  const byId = new Map(rows.map((row) => [row.memory_id, rowToMemory(row)]));
-  attachMemoryReferences(db3, [...byId.values()]);
-  return ids.map((id) => byId.get(id)).filter((row) => Boolean(row));
-}
 
 // src/embed-host.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
@@ -1718,6 +1778,9 @@ function runHostEmbedder(text, options = {}) {
   const model = typeof modelRaw === "string" && modelRaw.trim() ? modelRaw.trim() : "host-embed";
   return { embedding: Float32Array.from(values), model };
 }
+
+// src/docs.ts
+import { resolve as resolve4 } from "node:path";
 
 // src/audit.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
@@ -1834,9 +1897,12 @@ function mineDocStaleness(db3, params) {
   const minLines = params.minLinesSinceSync ?? DEFAULT_MIN_LINES_SINCE_SYNC;
   const workspacePath = params.workspacePath ?? null;
   const artifact2 = normalizeArtifact(params.artifact);
+  const base = workspacePath ?? process.cwd();
   const entries = params.targets.map((target) => {
-    const docLastSyncedAt = lastEditTimestamp(db3, target.docFile, workspacePath, artifact2);
-    const activity = sourceActivitySince(db3, target.sourceDirs, docLastSyncedAt, workspacePath, artifact2);
+    const resolvedDoc = resolve4(base, target.docFile);
+    const resolvedDirs = target.sourceDirs.map((d) => resolve4(base, d));
+    const docLastSyncedAt = lastEditTimestamp(db3, resolvedDoc, workspacePath, artifact2);
+    const activity = sourceActivitySince(db3, resolvedDirs, docLastSyncedAt, workspacePath, artifact2);
     const stale = activity.edits >= minEdits || activity.linesChanged >= minLines;
     return {
       doc_file: target.docFile,
@@ -2233,7 +2299,7 @@ function deleteRefinement(db3, params) {
 
 // src/intents.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { isAbsolute, resolve as resolve4 } from "node:path";
+import { isAbsolute, resolve as resolve5 } from "node:path";
 var MAX_LOCK_TTL_MS = 10 * 6e4;
 var VALID_RELEASE_STATUSES = /* @__PURE__ */ new Set(["PENDING", "SUCCESS", "FAILED"]);
 function effectiveTtlMs(ttlMs) {
@@ -2244,14 +2310,14 @@ function expiresAtFromNow(ttlMs) {
 }
 function workspaceScopeRoot(workspacePath) {
   const candidate = workspacePath ?? process.cwd();
-  return normalizeWorkspacePath(candidate, candidate) ?? resolve4(candidate);
+  return normalizeWorkspacePath(candidate, candidate) ?? resolve5(candidate);
 }
 function workspaceFileBase(workspacePath) {
-  return workspacePath ? resolve4(workspacePath) : process.cwd();
+  return workspacePath ? resolve5(workspacePath) : process.cwd();
 }
 function resolveTargetFiles(targetFiles = [], workspacePath) {
   const root = workspaceFileBase(workspacePath);
-  return targetFiles.map((file) => isAbsolute(file) ? resolve4(file) : resolve4(root, file));
+  return targetFiles.map((file) => isAbsolute(file) ? resolve5(file) : resolve5(root, file));
 }
 function preFlightIntent(db3, params) {
   const {
@@ -2486,12 +2552,12 @@ function releaseFileLock(db3, params) {
 }
 
 // src/reflect.ts
-import { resolve as resolve5 } from "node:path";
+import { resolve as resolve6 } from "node:path";
 var NEXT_MSG = "memory_refine_get \u2192 repo fixes for the next agent \xB7 octocode-awareness reflect mine-weakness/maintenance digest \u2192 recurring failures and harness previews. A human merges.";
 function normalizeScopePaths(paths = [], prefix, baseCwd) {
   const base = baseCwd ?? process.cwd();
   return [...new Set(paths.filter(Boolean).map((p) => {
-    const abs = p.startsWith("/") ? p : resolve5(base, p);
+    const abs = p.startsWith("/") ? p : resolve6(base, p);
     return `${prefix}:${abs}`;
   }))];
 }
@@ -2685,7 +2751,7 @@ function reflect(db3, params) {
 // src/maintenance.ts
 import { spawnSync as spawnSync3 } from "node:child_process";
 import { randomUUID as randomUUID6 } from "node:crypto";
-import { isAbsolute as isAbsolute2, resolve as resolve6 } from "node:path";
+import { isAbsolute as isAbsolute2, resolve as resolve7 } from "node:path";
 
 // src/notifications.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
@@ -3119,8 +3185,8 @@ function pruneStale(db3, params = {}) {
   const artifact2 = normalizeArtifact(params.artifact);
   const rawTarget = params.target_file ?? params.targetFile;
   const targetFiles = (Array.isArray(rawTarget) ? rawTarget : rawTarget != null ? [rawTarget] : []).map(String).filter(Boolean).map((file) => {
-    const base = rawWorkspacePath ? resolve6(rawWorkspacePath) : process.cwd();
-    return isAbsolute2(file) ? resolve6(file) : resolve6(base, file);
+    const base = rawWorkspacePath ? resolve7(rawWorkspacePath) : process.cwd();
+    return isAbsolute2(file) ? resolve7(file) : resolve7(base, file);
   });
   const now = utcNow();
   const ageCutoff = olderThanMinutes != null && !expiredOnly ? new Date(Date.now() - olderThanMinutes * 6e4).toISOString() : null;
@@ -3204,7 +3270,7 @@ function openRefinementCount(db3, params = {}) {
   );
   const queryParams = [];
   let sql = "SELECT COUNT(*) AS c FROM refinements WHERE state IN ('open','ongoing')";
-  if (!params.includeHandoffs) sql += " AND quality <> 'handoff'";
+  if (!params.includeHandoffs) sql += " AND quality NOT IN ('handoff','instructions')";
   if (scope.workspace_path) {
     sql += " AND (workspace_path = ? OR workspace_path IS NULL)";
     queryParams.push(scope.workspace_path);
@@ -3393,7 +3459,7 @@ function sessionCapture(db3, params = {}) {
   const agentId2 = String(params.agent_id ?? params.agentId ?? "agent");
   const reason = params.reason ? String(params.reason) : null;
   const workspaceInput = params.workspace ?? params.workspace_path ?? params.workspacePath;
-  const rawWorkspacePath = typeof workspaceInput === "string" && workspaceInput.trim() ? resolve6(workspaceInput.trim()) : null;
+  const rawWorkspacePath = typeof workspaceInput === "string" && workspaceInput.trim() ? resolve7(workspaceInput.trim()) : null;
   const scope = fillScope(
     {
       workspace_path: rawWorkspacePath,
@@ -3526,8 +3592,8 @@ function waitForLock(db3, params = {}) {
   if (targetFiles.length === 0) {
     return { ok: true, waited_ms: 0, lock_free: true };
   }
-  const root = rawWorkspacePath ? resolve6(rawWorkspacePath) : process.cwd();
-  const absTargetFiles = targetFiles.map((file) => isAbsolute2(file) ? resolve6(file) : resolve6(root, file));
+  const root = rawWorkspacePath ? resolve7(rawWorkspacePath) : process.cwd();
+  const absTargetFiles = targetFiles.map((file) => isAbsolute2(file) ? resolve7(file) : resolve7(root, file));
   const ph = absTargetFiles.map(() => "?").join(",");
   const lockTypeFilter = requestedLockType === "EXCLUSIVE" ? "" : "AND fl.lock_type = 'EXCLUSIVE'";
   const scopeClauses = [];
@@ -3675,76 +3741,6 @@ function digest(db3, params = {}) {
     pruned_locks,
     pruned_refinements: pruneRefinementsRes.changes,
     fts_rebuilt: ftsRebuilt
-  };
-}
-function getWorkspaceStatus(db3, params = {}) {
-  const rawWsPath = params.workspace_path ?? null;
-  const wsPath = rawWsPath ? normalizeWorkspacePath(rawWsPath, rawWsPath) : null;
-  const artifact2 = normalizeArtifact(params.artifact);
-  evictExpiredLocks(db3);
-  const memoryScope = ["state = 'ACTIVE'"];
-  const memoryScopeParams = [];
-  if (wsPath) {
-    memoryScope.push("(workspace_path = ? OR workspace_path IS NULL)");
-    memoryScopeParams.push(wsPath);
-  }
-  if (artifact2) {
-    memoryScope.push("(artifact = ? OR artifact IS NULL)");
-    memoryScopeParams.push(artifact2);
-  }
-  const activeMemories = db3.prepare(
-    `SELECT COUNT(*) AS c FROM memories WHERE ${memoryScope.join(" AND ")}`
-  ).get(...memoryScopeParams).c;
-  const taskScopeParts = [];
-  const taskScopeParams = [];
-  if (wsPath) {
-    taskScopeParts.push("workspace_path = ?");
-    taskScopeParams.push(wsPath);
-  }
-  if (artifact2) {
-    taskScopeParts.push("(artifact = ? OR artifact IS NULL)");
-    taskScopeParams.push(artifact2);
-  }
-  const taskScope = taskScopeParts.length > 0 ? ` AND ${taskScopeParts.join(" AND ")}` : "";
-  const pendingTasks = db3.prepare(
-    `SELECT COUNT(*) AS c FROM tasks WHERE status = 'PENDING'${taskScope}`
-  ).get(...taskScopeParams).c;
-  const activeTasks = db3.prepare(
-    `SELECT COUNT(*) AS c FROM tasks WHERE status = 'ACTIVE'${taskScope}`
-  ).get(...taskScopeParams).c;
-  const openRefinements = openRefinementCount(db3, {
-    workspacePath: wsPath,
-    artifact: artifact2,
-    repo: params.repo,
-    cwd: params.cwd
-  });
-  const lockWhereParts = [];
-  const lockParams = [];
-  if (wsPath) {
-    lockWhereParts.push("ai.workspace_path = ?");
-    lockParams.push(wsPath);
-  }
-  if (artifact2) {
-    lockWhereParts.push("(ai.artifact = ? OR ai.artifact IS NULL)");
-    lockParams.push(artifact2);
-  }
-  const lockWhere = lockWhereParts.length > 0 ? `WHERE ${lockWhereParts.join(" AND ")}` : "";
-  const locks = db3.prepare(
-    `SELECT fl.file_path, ai.agent_id, ai.session_id, ai.workspace_path, ai.artifact, fl.task_id,
-            fl.lock_type, fl.acquired_at, fl.expires_at
-     FROM locks fl
-     JOIN tasks ai ON ai.task_id = fl.task_id
-     ${lockWhere}
-     ORDER BY fl.acquired_at DESC
-     LIMIT 50`
-  ).all(...lockParams);
-  return {
-    ok: true,
-    active_memories: activeMemories,
-    pending_tasks: pendingTasks,
-    active_tasks: activeTasks,
-    open_refinements: openRefinements,
-    locks
   };
 }
 function exportMemoryDoc(db3, params = {}) {
@@ -3949,6 +3945,11 @@ function auditUnverified(db3, params = {}) {
     const nowIso = utcNow();
     const staleWhere = [
       "ai.status = 'ACTIVE'",
+      // Exclude tasks that never had any files to claim: a zero-target-file task
+      // holds no locks by construction, so it would otherwise be reported as
+      // "stale_active" the instant it is created (age ~0h) — a false positive
+      // that blocks the Stop/conclude gate. Real orphaned work always has files.
+      "COALESCE(ai.files_json,'[]') NOT IN ('[]','null','')",
       `NOT EXISTS (
         SELECT 1 FROM locks fl
         WHERE fl.task_id = ai.task_id
@@ -4134,7 +4135,7 @@ function listAgents(db3, params = {}) {
 // src/hooks-install.ts
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { dirname as dirname4, isAbsolute as isAbsolute3, join as join4, relative, resolve as resolve7, sep } from "node:path";
+import { dirname as dirname4, isAbsolute as isAbsolute3, join as join4, relative, resolve as resolve8, sep } from "node:path";
 var WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|ApplyPatch";
 var HOSTS = /* @__PURE__ */ new Set(["claude", "codex", "cursor"]);
 function hooksInstallUsage() {
@@ -4339,7 +4340,7 @@ function runHooksInstall(argv, options) {
   const cwd = options.cwd ?? process.cwd();
   const home = options.homeDir ?? homedir2();
   const globalMode = flag(argv, "--global");
-  const projectDir = resolve7(opt(argv, "--project-dir", cwd));
+  const projectDir = resolve8(opt(argv, "--project-dir", cwd));
   const config = targetConfig(host);
   const settingsPath = globalMode ? join4(home, config.dir, config.file) : join4(projectDir, config.dir, config.file);
   let settings;
@@ -4446,13 +4447,14 @@ function runHooksInstall(argv, options) {
 }
 
 // src/attend.ts
-import { existsSync as existsSync3, readFileSync as readFileSync3, statSync } from "node:fs";
-import { join as join6, resolve as resolve9 } from "node:path";
+import { existsSync as existsSync4, readFileSync as readFileSync3, statSync } from "node:fs";
+import { join as join6, resolve as resolve10 } from "node:path";
 
 // src/repo-context.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { mkdirSync as mkdirSync3, realpathSync as realpathSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { isAbsolute as isAbsolute4, join as join5, relative as relative2, resolve as resolve8 } from "node:path";
+import { existsSync as existsSync3, mkdirSync as mkdirSync3, realpathSync as realpathSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { isAbsolute as isAbsolute4, join as join5, relative as relative2, resolve as resolve9 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 var AWARENESS_QUERY_VIEWS = [
   "all",
   "repo-profile",
@@ -4527,9 +4529,9 @@ function stringList(value) {
   return [String(value)];
 }
 function scopeFromParams(params) {
-  const cwd = params.cwd ? resolve8(params.cwd) : process.cwd();
+  const cwd = params.cwd ? resolve9(params.cwd) : process.cwd();
   const rawWorkspace = params.workspacePath ?? params.workspace_path ?? params.workspace ?? cwd;
-  const workspacePath = rawWorkspace ? resolve8(String(rawWorkspace)) : null;
+  const workspacePath = rawWorkspace ? resolve9(String(rawWorkspace)) : null;
   return {
     // Keep the raw resolved path for projection output / echo; the alias set
     // below carries the extra keys used for DB row matching.
@@ -4615,8 +4617,60 @@ function fileRefCandidates(file, workspacePath) {
   const trimmed = file.trim();
   if (!trimmed) return [];
   if (trimmed.startsWith("file:")) return [trimmed];
-  const absolute = isAbsolute4(trimmed) ? resolve8(trimmed) : resolve8(workspacePath ?? process.cwd(), trimmed);
+  const absolute = isAbsolute4(trimmed) ? resolve9(trimmed) : resolve9(workspacePath ?? process.cwd(), trimmed);
   return [`file:${absolute}`, `%${trimmed}%`];
+}
+function stripLocationSuffix(value) {
+  return value.trim().replace(/:(\d+)(?::\d+)?$/, "");
+}
+function localPathFromReference(reference, workspacePath) {
+  const trimmed = reference.trim();
+  if (!trimmed) return null;
+  let rawPath = null;
+  if (/^file:\/\//i.test(trimmed)) {
+    try {
+      rawPath = fileURLToPath2(trimmed);
+    } catch {
+      rawPath = trimmed.replace(/^file:\/+/i, "/");
+    }
+  } else if (/^file:/i.test(trimmed)) {
+    rawPath = trimmed.slice("file:".length);
+  } else if (/^path:/i.test(trimmed)) {
+    rawPath = trimmed.slice("path:".length);
+  } else if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return null;
+  } else if (isAbsolute4(trimmed) || trimmed.startsWith("./") || trimmed.startsWith("../") || /^[^/\s]+\/.+/.test(trimmed)) {
+    rawPath = trimmed;
+  }
+  if (!rawPath) return null;
+  const clean = stripLocationSuffix(rawPath);
+  return isAbsolute4(clean) ? resolve9(clean) : resolve9(workspacePath ?? process.cwd(), clean);
+}
+function referenceHealth(references, workspacePath) {
+  const fileReferences = [];
+  const existingFiles = [];
+  const missingFiles = [];
+  const missingReferences = [];
+  for (const reference of references) {
+    const localPath = localPathFromReference(reference, workspacePath);
+    if (!localPath) continue;
+    fileReferences.push(localPath);
+    if (existsSync3(localPath)) {
+      existingFiles.push(localPath);
+    } else {
+      missingFiles.push(localPath);
+      missingReferences.push(reference);
+    }
+  }
+  return {
+    reference_count: references.length,
+    file_reference_count: fileReferences.length,
+    missing_reference_count: missingReferences.length,
+    file_references: [...new Set(fileReferences)],
+    existing_files: [...new Set(existingFiles)],
+    missing_files: [...new Set(missingFiles)],
+    missing_references: [...new Set(missingReferences)]
+  };
 }
 function addMemoryFileFilter(where, binds, file, scope) {
   if (!file) return;
@@ -4676,23 +4730,27 @@ function memoryRows(db3, params, options = {}) {
       ORDER BY importance DESC, datetime(created_at) DESC
       LIMIT ?`
   ).all(...binds, limit);
-  return withReferences(db3, rows).map((row) => ({
-    memory_id: row.memory_id,
-    label: row.label,
-    importance: row.importance,
-    task_context: row.task_context,
-    observation: row.observation,
-    tags: parseJsonList(row.tags_json),
-    references: row.references ?? [],
-    failure_signature: row.failure_signature,
-    agent_id: row.agent_id,
-    workspace_path: row.workspace_path,
-    artifact: row.artifact,
-    repo: row.repo,
-    ref: row.ref,
-    created_at: row.created_at,
-    updated_at: row.updated_at
-  }));
+  return withReferences(db3, rows).map((row) => {
+    const references = row.references ?? [];
+    return {
+      memory_id: row.memory_id,
+      label: row.label,
+      importance: row.importance,
+      task_context: row.task_context,
+      observation: row.observation,
+      tags: parseJsonList(row.tags_json),
+      references,
+      ...referenceHealth(references, scope.workspacePath),
+      failure_signature: row.failure_signature,
+      agent_id: row.agent_id,
+      workspace_path: row.workspace_path,
+      artifact: row.artifact,
+      repo: row.repo,
+      ref: row.ref,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  });
 }
 function taskRows(db3, params) {
   const scope = scopeFromParams(params);
@@ -4943,11 +5001,15 @@ function developerReviewRows(db3, params) {
   }
   return rows.slice(0, limit);
 }
-function trackFile(map, filePath, source, date) {
-  const clean = filePath.startsWith("file:") ? filePath.slice("file:".length) : filePath;
+function trackFile(map, filePath, source, date, workspacePath) {
+  const resolved = localPathFromReference(filePath, workspacePath);
+  const clean = resolved ?? stripLocationSuffix(filePath.startsWith("file:") ? filePath.slice("file:".length) : filePath);
   if (!clean) return;
+  const fileExists = existsSync3(clean);
   const row = map.get(clean) ?? {
     file_path: clean,
+    file_exists: fileExists,
+    missing_file: !fileExists,
     memories: 0,
     gotchas: 0,
     tasks: 0,
@@ -4957,6 +5019,8 @@ function trackFile(map, filePath, source, date) {
     edits: 0,
     last_seen_at: null
   };
+  row["file_exists"] = Boolean(row["file_exists"]) || fileExists;
+  row["missing_file"] = !Boolean(row["file_exists"]);
   const current = Number(row[source] ?? 0);
   row[source] = current + 1;
   if (date && (!row["last_seen_at"] || String(date) > String(row["last_seen_at"]))) row["last_seen_at"] = date;
@@ -4979,20 +5043,20 @@ function fileRows(db3, params) {
       LIMIT ?`
   ).all(...memoryBinds, 1e3);
   for (const ref of memoryRefs) {
-    trackFile(files, ref.reference, "memories", ref.created_at);
-    if (ref.label === "GOTCHA") trackFile(files, ref.reference, "gotchas", ref.created_at);
+    trackFile(files, ref.reference, "memories", ref.created_at, scope.workspacePath);
+    if (ref.label === "GOTCHA") trackFile(files, ref.reference, "gotchas", ref.created_at, scope.workspacePath);
   }
   for (const row of taskRows(db3, { ...params, limit: 500 })) {
-    for (const file of row["files"]) trackFile(files, file, "tasks", String(row["created_at"]));
+    for (const file of row["files"]) trackFile(files, file, "tasks", String(row["created_at"]), scope.workspacePath);
   }
   for (const row of lockRows(db3, { ...params, limit: 500 })) {
-    trackFile(files, String(row["file_path"]), "locks", String(row["acquired_at"]));
+    trackFile(files, String(row["file_path"]), "locks", String(row["acquired_at"]), scope.workspacePath);
   }
   for (const row of refinementRows(db3, { ...params, limit: 500 })) {
-    for (const file of row["files"]) trackFile(files, file, "refinements", String(row["updated_at"]));
+    for (const file of row["files"]) trackFile(files, file, "refinements", String(row["updated_at"]), scope.workspacePath);
   }
   for (const row of signalRows(db3, { ...params, limit: 500 })) {
-    for (const file of row["files"]) trackFile(files, file, "signals", String(row["created_at"]));
+    for (const file of row["files"]) trackFile(files, file, "signals", String(row["created_at"]), scope.workspacePath);
   }
   const editWhere = [];
   const editBinds = [];
@@ -5007,12 +5071,12 @@ function fileRows(db3, params) {
       LIMIT ?`
   ).all(...editBinds, 1e3);
   for (const edit of edits) {
-    trackFile(files, edit.file_path, "edits", edit.created_at);
-    if (edit.old_file_path) trackFile(files, edit.old_file_path, "edits", edit.created_at);
+    trackFile(files, edit.file_path, "edits", edit.created_at, scope.workspacePath);
+    if (edit.old_file_path) trackFile(files, edit.old_file_path, "edits", edit.created_at, scope.workspacePath);
   }
   return [...files.values()].sort((a, b) => {
-    const scoreA = Number(a["locks"] ?? 0) * 10 + Number(a["gotchas"] ?? 0) * 6 + Number(a["memories"] ?? 0) * 4 + Number(a["tasks"] ?? 0) * 3 + Number(a["edits"] ?? 0);
-    const scoreB = Number(b["locks"] ?? 0) * 10 + Number(b["gotchas"] ?? 0) * 6 + Number(b["memories"] ?? 0) * 4 + Number(b["tasks"] ?? 0) * 3 + Number(b["edits"] ?? 0);
+    const scoreA = (a["missing_file"] ? 20 : 0) + Number(a["locks"] ?? 0) * 10 + Number(a["gotchas"] ?? 0) * 6 + Number(a["memories"] ?? 0) * 4 + Number(a["tasks"] ?? 0) * 3 + Number(a["edits"] ?? 0);
+    const scoreB = (b["missing_file"] ? 20 : 0) + Number(b["locks"] ?? 0) * 10 + Number(b["gotchas"] ?? 0) * 6 + Number(b["memories"] ?? 0) * 4 + Number(b["tasks"] ?? 0) * 3 + Number(b["edits"] ?? 0);
     return scoreB - scoreA || String(b["last_seen_at"] ?? "").localeCompare(String(a["last_seen_at"] ?? ""));
   }).slice(0, limit);
 }
@@ -5038,6 +5102,7 @@ function repoProfileRows(db3, params) {
   const signalWhere = ["status = 'open'"];
   const signalBinds = [];
   addExactScope(signalWhere, signalBinds, scope);
+  const trackedFiles = fileRows(db3, { ...params, limit: 500 });
   return [
     { metric: "active_memories", count: countWhere(db3, "memories", memWhere, memBinds) },
     { metric: "gotchas", count: memoryRows(db3, { ...params, view: "gotchas", limit: 500 }, { gotchas: true }).length },
@@ -5047,7 +5112,8 @@ function repoProfileRows(db3, params) {
     { metric: "open_refinements", count: countWhere(db3, "refinements", refinementWhere, refinementBinds) },
     { metric: "open_signals", count: countWhere(db3, "signals", signalWhere, signalBinds) },
     { metric: "known_agents", count: agentRows(db3, { ...params, limit: 500 }).length },
-    { metric: "tracked_files", count: fileRows(db3, { ...params, limit: 500 }).length },
+    { metric: "tracked_files", count: trackedFiles.length },
+    { metric: "missing_file_refs", count: trackedFiles.filter((row) => row["missing_file"]).length },
     { metric: "developer_review", count: developerReviewRows(db3, { ...params, limit: 500 }).length }
   ];
 }
@@ -5236,9 +5302,11 @@ function workboardRows(db3, params) {
   for (const row of memoryRows(db3, { ...params, limit: 200 })) {
     const failureSignature = String(row["failure_signature"] ?? "");
     const refs = Array.isArray(row["references"]) ? row["references"] : [];
+    const missingRefs = Array.isArray(row["missing_references"]) ? row["missing_references"] : [];
     const tags = Array.isArray(row["tags"]) ? row["tags"] : [];
     const reviewReasons = [
       refs.length === 0 ? "missing_refs" : null,
+      missingRefs.length > 0 ? "stale_file_refs" : null,
       failureSignature ? "failure_signature" : null,
       tags.includes("anti-bloat") ? "policy_memory" : null
     ].filter((reason) => Boolean(reason));
@@ -5251,8 +5319,10 @@ function workboardRows(db3, params) {
       agent_id: String(row["agent_id"]),
       status: "review",
       reasons: reviewReasons,
+      missing_reference_count: missingRefs.length,
+      missing_references: missingRefs,
       raw_ids: [String(row["memory_id"])],
-      files: refs.filter((ref) => ref.startsWith("file:")).map((ref) => ref.slice("file:".length)),
+      files: Array.isArray(row["file_references"]) ? row["file_references"] : refs.filter((ref) => ref.startsWith("file:")).map((ref) => ref.slice("file:".length)),
       created_at: String(row["created_at"]),
       updated_at: row["updated_at"] ?? null
     }, limit);
@@ -5276,7 +5346,9 @@ function workboardRows(db3, params) {
   const taskCount = Number(profile["tasks"] ?? 0);
   const openRefinements = Number(profile["open_refinements"] ?? 0);
   const openSignalCount = Number(profile["open_signals"] ?? 0);
+  const missingFileRefs = Number(profile["missing_file_refs"] ?? 0);
   const projectionWarnings2 = [
+    missingFileRefs > 0 ? "missing_file_refs" : null,
     activeMemories > 200 ? "active_memories_over_200" : null,
     taskCount > 500 ? "task_rows_over_500" : null,
     openRefinements > 40 ? "open_refinements_over_40" : null
@@ -5291,6 +5363,7 @@ function workboardRows(db3, params) {
     raw_ids: [],
     files: [],
     active_memories: activeMemories,
+    missing_file_refs: missingFileRefs,
     tasks: taskCount,
     open_refinements: openRefinements,
     open_signals: openSignalCount,
@@ -5406,6 +5479,7 @@ function formatAwarenessQueryResult(result, format) {
 }
 function renderAwarenessHtml(result) {
   const title = `Octocode Awareness: ${result.view}`;
+  const sectionNames = result.sections ? Object.keys(result.sections) : [result.view];
   const sections = result.sections ? Object.entries(result.sections).map(([name, section]) => renderHtmlSection(name, section.rows)).join("\n") : renderHtmlSection(result.view, result.rows);
   return `<!doctype html>
 <html lang="en">
@@ -5417,6 +5491,11 @@ function renderAwarenessHtml(result) {
     :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     body { margin: 0; background: Canvas; color: CanvasText; }
     header { padding: 24px 28px 12px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+    .controls input, .controls select, .controls label { font: inherit; font-size: 13px; }
+    .controls input, .controls select { min-height: 34px; padding: 6px 8px; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 6px; background: Canvas; color: CanvasText; }
+    .controls input { min-width: min(420px, 100%); flex: 1 1 260px; }
+    .controls label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: color-mix(in srgb, CanvasText 76%, transparent); }
     main { padding: 20px 28px 40px; display: grid; gap: 28px; }
     h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: 0; }
     h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
@@ -5424,8 +5503,11 @@ function renderAwarenessHtml(result) {
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
     th { font-weight: 650; white-space: nowrap; }
+    th button { all: unset; cursor: pointer; }
+    th button::after { content: " v"; color: color-mix(in srgb, CanvasText 46%, transparent); }
     td { max-width: 460px; overflow-wrap: anywhere; }
     section { overflow-x: auto; }
+    section[hidden], tr[hidden] { display: none; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
   </style>
 </head>
@@ -5433,25 +5515,67 @@ function renderAwarenessHtml(result) {
   <header>
     <h1>${escapeHtml(title)}</h1>
     <div class="meta">Generated ${escapeHtml(result.generated_at)} for <code>${escapeHtml(result.workspace_path ?? "global")}</code></div>
+    <div class="controls">
+      <input id="global-filter" type="search" placeholder="Filter rows" autocomplete="off">
+      <select id="section-filter" aria-label="Section">
+        <option value="">All sections</option>
+        ${sectionNames.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}
+      </select>
+      <label><input id="missing-filter" type="checkbox"> Missing files</label>
+    </div>
   </header>
   <main>
     ${sections}
   </main>
+  <script>
+    const filterInput = document.querySelector('#global-filter');
+    const sectionFilter = document.querySelector('#section-filter');
+    const missingFilter = document.querySelector('#missing-filter');
+    function applyFilters() {
+      const text = filterInput.value.trim().toLowerCase();
+      const wantedSection = sectionFilter.value;
+      const onlyMissing = missingFilter.checked;
+      for (const section of document.querySelectorAll('section[data-section]')) {
+        const sectionMatches = !wantedSection || section.dataset.section === wantedSection;
+        let visible = 0;
+        for (const row of section.querySelectorAll('tbody tr')) {
+          const rowMatches = (!text || row.textContent.toLowerCase().includes(text)) && (!onlyMissing || row.dataset.missing === 'true');
+          row.hidden = !(sectionMatches && rowMatches);
+          if (!row.hidden) visible++;
+        }
+        section.hidden = !sectionMatches || visible === 0;
+      }
+    }
+    for (const control of [filterInput, sectionFilter, missingFilter]) control.addEventListener('input', applyFilters);
+    for (const button of document.querySelectorAll('th button[data-key]')) {
+      button.addEventListener('click', () => {
+        const table = button.closest('table');
+        const tbody = table.querySelector('tbody');
+        const index = Array.from(button.closest('tr').children).indexOf(button.closest('th'));
+        const direction = button.dataset.direction === 'asc' ? 'desc' : 'asc';
+        button.dataset.direction = direction;
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort((a, b) => {
+          const av = a.children[index]?.textContent.trim() ?? '';
+          const bv = b.children[index]?.textContent.trim() ?? '';
+          const an = Number(av);
+          const bn = Number(bv);
+          const cmp = Number.isFinite(an) && Number.isFinite(bn) ? an - bn : av.localeCompare(bv);
+          return direction === 'asc' ? cmp : -cmp;
+        });
+        for (const row of rows) tbody.appendChild(row);
+        applyFilters();
+      });
+    }
+    applyFilters();
+  </script>
 </body>
 </html>
 `;
 }
-function writeAwarenessView(db3, params = {}) {
-  const result = queryAwareness(db3, params);
-  const workspacePath = scopeFromParams(params).workspacePath ?? process.cwd();
-  const outPath = resolveWorkspaceOutputPath(params.out, workspacePath, join5(workspacePath, ".octocode", "awareness", "index.html"));
-  mkdirSync3(join5(outPath, ".."), { recursive: true });
-  writeFileSync2(outPath, renderAwarenessHtml(result), "utf8");
-  return { ok: true, path: outPath, view: result.view, count: result.count };
-}
 function resolveWorkspaceOutputPath(output, workspacePath, defaultPath) {
   const target = output?.trim() || defaultPath;
-  return isAbsolute4(target) ? resolve8(target) : resolve8(workspacePath, target);
+  return isAbsolute4(target) ? resolve9(target) : resolve9(workspacePath, target);
 }
 function injectRepoContext(db3, params = {}) {
   const scope = scopeFromParams(params);
@@ -5461,7 +5585,6 @@ function injectRepoContext(db3, params = {}) {
   const mode = normalizeMode(params.mode);
   const includeView = params.includeView ?? params.include_view ?? true;
   const check = params.check ?? true;
-  const generatedAt = utcNow2();
   const queryParams = { ...params, workspacePath, limit: limitOf(params.limit, 50, 500) };
   const all = queryAwareness(db3, { ...queryParams, view: "all" });
   const filesWritten = [];
@@ -5528,6 +5651,12 @@ function injectRepoContext(db3, params = {}) {
   for (const [relPath, budget] of Object.entries(projectionBudgets)) {
     if (!budget.within_budget) warnings.push(`projection budget exceeded: ${relPath} has ${budget.actual_lines}/${budget.max_lines} lines`);
   }
+  const generatedAt = utcNow2();
+  const manifestRelPath = join5("awareness", "manifest.json");
+  const manifestFiles = [
+    ...filesWritten.map((file) => relative2(workspacePath, file)),
+    relative2(workspacePath, join5(outDir, manifestRelPath))
+  ];
   const manifest = {
     schema_version: 1,
     generated_at: generatedAt,
@@ -5551,10 +5680,10 @@ function injectRepoContext(db3, params = {}) {
       workboard: WORKBOARD_BUDGET,
       attend_compact: ATTEND_COMPACT_BUDGET
     },
-    files: filesWritten.map((file) => relative2(workspacePath, file)),
+    files: manifestFiles,
     warnings
   };
-  write(join5("awareness", "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+  write(manifestRelPath, JSON.stringify(manifest, null, 2) + "\n");
   return {
     ok: true,
     generated_at: generatedAt,
@@ -5576,6 +5705,7 @@ function renderRepoAgentsMd(all) {
   const locks = (sections["locks"]?.rows ?? []).slice(0, 3);
   const lockTotal = (sections["locks"]?.rows ?? []).length;
   const projectionWarnings2 = [
+    Number(counts["missing_file_refs"] ?? 0) > 0 ? `Missing/stale file refs (${counts["missing_file_refs"]}) \u2014 use \`query files --format table\` before trusting bookmarks.` : null,
     Number(counts["active_memories"] ?? 0) > 200 ? `Active memories high (${counts["active_memories"]}) \u2014 prefer recall/CSV over full Markdown.` : null,
     Number(counts["tasks"] ?? 0) > 500 ? `Task history high (${counts["tasks"]}) \u2014 use \`query workboard\`.` : null,
     Number(counts["open_refinements"] ?? 0) > 40 ? `Open refinements high (${counts["open_refinements"]}) \u2014 filter CSV before promoting.` : null
@@ -5594,7 +5724,7 @@ function renderRepoAgentsMd(all) {
     "",
     "## Snapshot",
     "",
-    `- Memories ${counts["active_memories"] ?? 0} \xB7 Gotchas ${counts["gotchas"] ?? 0} \xB7 Lessons ${counts["lessons"] ?? 0} \xB7 Locks ${counts["active_locks"] ?? 0} \xB7 Refinements ${counts["open_refinements"] ?? 0} \xB7 Signals ${counts["open_signals"] ?? 0} \xB7 DevReview ${counts["developer_review"] ?? 0}`,
+    `- Memories ${counts["active_memories"] ?? 0} \xB7 Gotchas ${counts["gotchas"] ?? 0} \xB7 Lessons ${counts["lessons"] ?? 0} \xB7 MissingFiles ${counts["missing_file_refs"] ?? 0} \xB7 Locks ${counts["active_locks"] ?? 0} \xB7 Refinements ${counts["open_refinements"] ?? 0} \xB7 Signals ${counts["open_signals"] ?? 0} \xB7 DevReview ${counts["developer_review"] ?? 0}`,
     "",
     "## Retro Files Map",
     "",
@@ -5603,12 +5733,12 @@ function renderRepoAgentsMd(all) {
     "- Gotchas \u2192 `.octocode/GOTCHAS.md` \xB7 live `query gotchas` / `memory recall`",
     "- Lessons \u2192 `.octocode/LEARN.md` \xB7 live `query lessons`",
     "- Memory index \u2192 `.octocode/MEMORY.md` \xB7 live `memory recall --smart`",
-    "- Bookmarks \u2192 `.octocode/BOOKMARKS.md` \xB7 Files \u2192 `awareness/csv/files.csv` \xB7 Workboard \u2192 live `query workboard`",
+    "- Bookmarks \u2192 `.octocode/BOOKMARKS.md` \xB7 Files/missing refs \u2192 live `query files` or `awareness/csv/files.csv` \xB7 Workboard \u2192 live `query workboard`",
     "- Developer review \u2192 `.octocode/DEVELOPER_REVIEW.md` \xB7 live `reflect developer-review` \u2014 agent feedback on the instructions themselves",
     "",
     "## Read Before Editing",
     "",
-    "- Read GOTCHAS + LEARN; filter `awareness/csv/files.csv` for affected paths.",
+    "- Read GOTCHAS + LEARN; run `query files --format table` or filter `awareness/csv/files.csv` for affected and missing paths.",
     "- Prefer live `attend` / `query` when freshness matters; `repo inject` after important memories.",
     "",
     "## Projection Health",
@@ -5665,6 +5795,8 @@ function renderRowsDoc(title, rows, description, maxLines) {
     if (row["failure_signature"]) block.push("", `Failure signature: \`${row["failure_signature"]}\``);
     const refs = Array.isArray(row["references"]) ? row["references"] : [];
     if (refs.length > 0) block.push("", `Refs: ${refs.join(", ")}`);
+    const missingRefs = Array.isArray(row["missing_references"]) ? row["missing_references"] : [];
+    if (missingRefs.length > 0) block.push("", `Missing refs: ${missingRefs.join(", ")}`);
     block.push("", `Source id: \`${id}\``, "");
     const needsOmittedLine = omitted === 0 && rows.length > 0;
     const reserve = maxLines ? needsOmittedLine ? 3 : 1 : 0;
@@ -5693,16 +5825,18 @@ function renderBookmarksDoc(memoryRows2) {
   const byRef = /* @__PURE__ */ new Map();
   for (const row of memoryRows2) {
     const refs = Array.isArray(row["references"]) ? row["references"] : [];
+    const missingRefs = new Set(Array.isArray(row["missing_references"]) ? row["missing_references"] : []);
     const sourceId = String(row["memory_id"] ?? "memory");
     const label = `${row["label"] ?? "MEMORY"}:${row["importance"] ?? ""}`.replace(/:$/, "");
     const title = summarize(String(row["task_context"] ?? row["observation"] ?? sourceId), 90);
     for (const rawRef of refs) {
       const ref = rawRef.trim();
       if (!ref) continue;
-      const entry2 = byRef.get(ref) ?? { kind: bookmarkKind(ref), sourceIds: [], labels: [], titles: [] };
+      const entry2 = byRef.get(ref) ?? { kind: bookmarkKind(ref), sourceIds: [], labels: [], titles: [], missing: false };
       if (!entry2.sourceIds.includes(sourceId)) entry2.sourceIds.push(sourceId);
       if (!entry2.labels.includes(label)) entry2.labels.push(label);
       if (!entry2.titles.includes(title)) entry2.titles.push(title);
+      entry2.missing = entry2.missing || missingRefs.has(ref);
       byRef.set(ref, entry2);
     }
   }
@@ -5729,7 +5863,8 @@ function renderBookmarksDoc(memoryRows2) {
     const sourceText = entry2.sourceIds.slice(0, 3).join(", ");
     const titleText = entry2.titles.slice(0, 2).join(" | ");
     const labelText = entry2.labels.slice(0, 3).join(", ");
-    lines.push(`- \`${ref}\` - ${labelText}; source: ${sourceText}; ${titleText}`);
+    const health = entry2.missing ? " [missing file]" : "";
+    lines.push(`- \`${ref}\`${health} - ${labelText}; source: ${sourceText}; ${titleText}`);
   }
   lines.push("");
   return lines.join("\n");
@@ -5805,15 +5940,18 @@ function renderReferenceDoc(title, bullets, rows = []) {
   return lines.join("\n");
 }
 function renderHtmlSection(name, rows) {
-  return `<section>
+  return `<section data-section="${escapeHtml(name)}">
   <h2>${escapeHtml(name)} (${rows.length})</h2>
   ${rows.length === 0 ? '<p class="meta">No rows.</p>' : `<table>${renderHtmlTable(rows)}</table>`}
 </section>`;
 }
 function renderHtmlTable(rows) {
   const keys = keysForRows(rows).slice(0, 12);
-  const header = `<thead><tr>${keys.map((key) => `<th>${escapeHtml(key)}</th>`).join("")}</tr></thead>`;
-  const body = rows.map((row) => `<tr>${keys.map((key) => `<td>${escapeHtml(cellToString(row[key]))}</td>`).join("")}</tr>`).join("\n");
+  const header = `<thead><tr>${keys.map((key) => `<th><button type="button" data-key="${escapeHtml(key)}">${escapeHtml(key)}</button></th>`).join("")}</tr></thead>`;
+  const body = rows.map((row) => {
+    const missing = row["missing_file"] === true || Number(row["missing_reference_count"] ?? 0) > 0 || Array.isArray(row["missing_references"]) && row["missing_references"].length > 0;
+    return `<tr data-missing="${missing ? "true" : "false"}">${keys.map((key) => `<td>${escapeHtml(cellToString(row[key]))}</td>`).join("")}</tr>`;
+  }).join("\n");
   return `${header}<tbody>${body}</tbody>`;
 }
 function keysForRows(rows) {
@@ -5869,6 +6007,7 @@ function markdownRows(rows) {
     const extras = [];
     if (row["failure_signature"]) extras.push(`failure=${cellToString(row["failure_signature"])}`);
     if (Array.isArray(row["references"]) && row["references"].length > 0) extras.push(`refs=${row["references"].join(", ")}`);
+    if (Array.isArray(row["missing_references"]) && row["missing_references"].length > 0) extras.push(`missing=${row["missing_references"].join(", ")}`);
     const suffix = extras.length > 0 ? ` (${extras.join("; ")})` : "";
     return `- \`${cellToString(id)}\` ${label}${summarize(cellToString(title), 100)} - ${summarize(cellToString(text), 220)}${suffix}`;
   }).join("\n");
@@ -5981,12 +6120,17 @@ function groupWorkboard(rows) {
 }
 function compactRow(row) {
   const next = {};
-  for (const key of ["column", "item_type", "id", "status", "agent_id", "quality", "count", "column_total", "omitted_count", "active_memories", "tasks", "open_refinements", "open_signals"]) {
+  for (const key of ["column", "item_type", "id", "status", "agent_id", "quality", "count", "column_total", "omitted_count", "active_memories", "missing_file_refs", "missing_reference_count", "tasks", "open_refinements", "open_signals"]) {
     const value = row[key];
     if (value != null) next[key] = value;
   }
   if (typeof row["title"] === "string") next["title"] = summarize2(row["title"], 90);
   if (Array.isArray(row["reasons"])) next["reasons"] = row["reasons"].slice(0, 3);
+  if (Array.isArray(row["missing_references"])) {
+    const refs = row["missing_references"];
+    next["missing_references"] = refs.slice(0, 2);
+    next["omitted_missing_reference_count"] = Math.max(0, refs.length - 2);
+  }
   if (Array.isArray(row["files"])) {
     const files = row["files"];
     next["file_count"] = files.length;
@@ -6024,7 +6168,7 @@ function uniqueStrings(values) {
   return [...new Set(values.filter(Boolean))];
 }
 function lineCount2(path2) {
-  if (!existsSync3(path2)) return null;
+  if (!existsSync4(path2)) return null;
   try {
     return readFileSync3(path2, "utf8").split(/\r?\n/).length;
   } catch {
@@ -6036,7 +6180,7 @@ function projectionStats(workspacePath) {
     const path2 = join6(workspacePath, ".octocode", file);
     let mtimeMs = null;
     try {
-      mtimeMs = existsSync3(path2) ? statSync(path2).mtimeMs : null;
+      mtimeMs = existsSync4(path2) ? statSync(path2).mtimeMs : null;
     } catch {
     }
     return { file: `.octocode/${file.replace(/\\/g, "/")}`, lines: lineCount2(path2), mtime_ms: mtimeMs };
@@ -6044,7 +6188,7 @@ function projectionStats(workspacePath) {
 }
 function manifestWarnings(workspacePath, stats) {
   const manifestPath = join6(workspacePath, ".octocode", "awareness", "manifest.json");
-  if (!existsSync3(manifestPath)) return [".octocode/awareness/manifest.json missing; run repo inject when projection context is needed"];
+  if (!existsSync4(manifestPath)) return [".octocode/awareness/manifest.json missing; run repo inject when projection context is needed"];
   try {
     const manifest = JSON.parse(readFileSync3(manifestPath, "utf8"));
     const warnings = [];
@@ -6126,8 +6270,8 @@ function chooseMode(query, evidenceCount, verifyCount, gapCount) {
   return gapCount > 0 ? "mixed" : "exploit";
 }
 function attendAwareness(db3, params = {}) {
-  const cwd = params.cwd ? resolve9(params.cwd) : process.cwd();
-  const workspacePath = resolve9(String(params.workspacePath ?? params.workspace_path ?? params.workspace ?? cwd));
+  const cwd = params.cwd ? resolve10(params.cwd) : process.cwd();
+  const workspacePath = resolve10(String(params.workspacePath ?? params.workspace_path ?? params.workspace ?? cwd));
   const limit = limitOf2(params.limit);
   const query = String(params.query ?? "").trim();
   const files = stringList2(params.file);
@@ -6302,8 +6446,8 @@ function attendAwareness(db3, params = {}) {
 import { spawnSync as spawnSync6 } from "node:child_process";
 import { createHash as createHash2 } from "node:crypto";
 import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, renameSync, unlinkSync, writeFileSync as writeFileSync3 } from "node:fs";
-import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute5, join as join7, relative as relative3, resolve as resolve10 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute5, join as join7, relative as relative3, resolve as resolve11 } from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/sessions.ts
 import { randomUUID as randomUUID8 } from "node:crypto";
@@ -6376,7 +6520,7 @@ function extractPiWriteTargetPaths(toolName2, input = {}, options = {}) {
     "applypatch"
   ].includes(normalizedToolName);
   const payload = objectOrEmpty(input);
-  const command2 = typeof input === "string" ? input : firstString(payload.command, payload.patch, payload.text, payload.content);
+  const command2 = typeof input === "string" ? input : firstString(payload.command, payload.patch);
   if (!isWriteTool) {
     const patchPaths = [];
     addApplyPatchPaths(patchPaths, command2);
@@ -6396,14 +6540,14 @@ function extractPiWriteTargetPaths(toolName2, input = {}, options = {}) {
 
 // bin/hook-runner.ts
 function readStdin() {
-  return new Promise((resolve12) => {
+  return new Promise((resolve13) => {
     let raw = "";
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (chunk) => {
       raw += chunk;
     });
-    process.stdin.on("end", () => resolve12(raw));
-    process.stdin.on("error", () => resolve12(raw));
+    process.stdin.on("end", () => resolve13(raw));
+    process.stdin.on("error", () => resolve13(raw));
   });
 }
 function parsePayload(raw) {
@@ -6517,7 +6661,7 @@ function extractFiles(payload) {
   return extractPiWriteTargetPaths(toolName2, input, { assumeWrite: true });
 }
 function resolveHookPath(file, cwd = process.cwd()) {
-  return resolve10(cwd, file);
+  return resolve11(cwd, file);
 }
 function isInsidePath(candidate, root) {
   const resolvedRoot = canonicalizePath(root);
@@ -6599,7 +6743,7 @@ function hookTaskKey(payload, files, cwd) {
   const explicitId = hookEventId(payload);
   const identity = {
     agent: agentId(payload),
-    workspace: normalizeWorkspacePath(cwd, cwd) ?? resolve10(cwd),
+    workspace: normalizeWorkspacePath(cwd, cwd) ?? resolve11(cwd),
     artifact: artifact(payload),
     event: explicitId,
     files: explicitId ? [] : files.map((file) => resolveHookPath(file, cwd)).sort()
@@ -6635,7 +6779,7 @@ function uniqueActiveHookTaskId(database, params) {
   const binds = [
     params.agentId,
     ...absFiles,
-    normalizeWorkspacePath(params.workspacePath, params.workspacePath) ?? resolve10(params.workspacePath)
+    normalizeWorkspacePath(params.workspacePath, params.workspacePath) ?? resolve11(params.workspacePath)
   ];
   if (params.artifact) {
     where.push("(ai.artifact = ? OR ai.artifact IS NULL)");
@@ -6893,7 +7037,7 @@ async function runHookCommand(command2, rawPayload) {
 async function main() {
   return runHookCommand(process.argv[2] ?? "help");
 }
-var isMain = process.argv[1] ? fileURLToPath2(import.meta.url) === resolve10(process.argv[1]) : false;
+var isMain = process.argv[1] ? fileURLToPath3(import.meta.url) === resolve11(process.argv[1]) : false;
 var invokedAsHookRunner = process.argv[1] ? /^hook-runner\.(js|mjs|ts)$/.test(basename3(process.argv[1])) : false;
 if (isMain && invokedAsHookRunner) {
   process.exitCode = await main();
@@ -6961,6 +7105,36 @@ function parseArgs(argv) {
   return result;
 }
 var GLOBAL_FLAGS = ["db", "compact", "help"];
+var NUMERIC_FLAGS = /* @__PURE__ */ new Set([
+  "limit",
+  "min_importance",
+  "max_importance",
+  "min_count",
+  "min_edits",
+  "min_lines",
+  "older_than_days",
+  "retention_days",
+  "refinement_handoff_retention_days",
+  "refinement_done_retention_days"
+]);
+var VALUE_REQUIRED_FLAGS = /* @__PURE__ */ new Set([
+  "query",
+  "observation",
+  "lesson",
+  "task",
+  "task_context",
+  "subject",
+  "body",
+  "rationale",
+  "reasoning",
+  "remember",
+  "message",
+  "fix_repo",
+  "fix_harness",
+  "fix_instructions",
+  "in_reply_to",
+  "thread_id"
+]);
 var KNOWN_FLAGS = {
   "tell-memory": ["agent_id", "task_context", "observation", "importance", "label", "tag", "reference", "supersedes", "failure_signature", "valid_from", "valid_to", "workspace", "artifact", "repo", "ref", "file", "file_tree_fingerprint", "compat_coerce"],
   "get-memory": ["query", "limit", "min_importance", "label", "tag", "smart", "workspace", "artifact", "repo", "ref", "state", "sort", "global_only", "strict_scope", "as_of", "reference", "regex", "file_regex", "file", "explain", "semantic"],
@@ -7000,6 +7174,20 @@ function validateFlags(command2, args2) {
   if (!known) return [];
   const allowed = /* @__PURE__ */ new Set([...known, ...GLOBAL_FLAGS]);
   return Object.keys(args2).filter((k) => k !== "_" && !allowed.has(k));
+}
+function validateFlagValues(args2) {
+  for (const key of Object.keys(args2)) {
+    if (key === "_") continue;
+    const value = args2[key];
+    if (NUMERIC_FLAGS.has(key)) {
+      const n = typeof value === "string" ? Number(value) : NaN;
+      if (value === true || !Number.isInteger(n)) {
+        die(`--${key.replace(/_/g, "-")} expects an integer`, { got: value === true ? "flag with no value" : String(value) });
+      }
+    } else if (VALUE_REQUIRED_FLAGS.has(key) && value === true) {
+      die(`--${key.replace(/_/g, "-")} expects a value (it was followed by another flag)`);
+    }
+  }
 }
 function parseBoundedSeconds(args2, key, min, max) {
   const raw = args2[key];
@@ -7071,6 +7259,12 @@ function selectCommand(argv) {
   const first = normalizeToken(firstRaw);
   if (!first) return { command: void 0, rest: [] };
   if (first.startsWith("-")) {
+    if (first === "--compact" && argv.length > 1) {
+      const sel = selectCommand(argv.slice(1));
+      if (sel.command && sel.command !== UNKNOWN_COMMAND) {
+        return { command: sel.command, rest: [...sel.rest, "--compact"] };
+      }
+    }
     return argv.every((arg) => arg === "--compact") ? { command: void 0, rest: argv } : { command: UNKNOWN_COMMAND, rest: argv };
   }
   const second = normalizeToken(secondRaw);
@@ -7095,7 +7289,7 @@ function selectCommand(argv) {
   return { command: UNKNOWN_COMMAND, rest: argv };
 }
 function packageSkillScriptPath(...segments) {
-  const here = dirname6(fileURLToPath3(import.meta.url));
+  const here = dirname6(fileURLToPath4(import.meta.url));
   const candidates = [
     join8(here, "..", "skills", "octocode-awareness", "scripts"),
     // dist/skills/ — bundled, preferred
@@ -7105,7 +7299,7 @@ function packageSkillScriptPath(...segments) {
     // dist/bin/ — last resort
   ];
   const scriptsDir = candidates.find(
-    (candidate) => existsSync4(join8(candidate, "schema.mjs")) || existsSync4(join8(candidate, "hooks"))
+    (candidate) => existsSync5(join8(candidate, "schema.mjs")) || existsSync5(join8(candidate, "hooks"))
   ) ?? candidates[0];
   return join8(scriptsDir, ...segments);
 }
@@ -7272,18 +7466,45 @@ function cmdGetMemory(db3, args2, dbPath2, opts2) {
             `OCTOCODE_EMBED_CMD ran (model=${model}) but no stored embeddings matched; results use lexical FTS + decay. Record memories while OCTOCODE_EMBED_CMD is set to populate vectors.`
           ];
         } else {
-          const ranked = loadMemoriesByIds(db3, hits.map((hit) => hit.memory_id));
           const simById = new Map(hits.map((hit) => [hit.memory_id, hit.similarity]));
-          for (const memory of ranked) {
+          const scoped = lexicalSearch(
+            db3,
+            "",
+            hits.length,
+            parseInt(String(args2["min_importance"] ?? "1"), 10),
+            tags,
+            labelArr ?? [],
+            states ?? ["ACTIVE"],
+            {
+              workspacePath: args2["workspace"] ? String(args2["workspace"]) : null,
+              artifact: args2["artifact"] ? String(args2["artifact"]) : null,
+              repo: args2["repo"] ? String(args2["repo"]) : null,
+              ref: args2["ref"] ? String(args2["ref"]) : null,
+              strictScope: Boolean(args2["strict_scope"]),
+              globalOnly: Boolean(args2["global_only"]),
+              asOf: args2["as_of"] ? String(args2["as_of"]) : null,
+              candidateMemoryIds: hits.map((hit) => hit.memory_id)
+            }
+          );
+          const ranked = scoped.map((memory) => {
             const similarity = simById.get(memory.memory_id) ?? 0;
             memory.score = similarity;
             memory.lexical = similarity;
+            return memory;
+          }).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+          if (ranked.length === 0) {
+            payload["warnings"] = [
+              `OCTOCODE_EMBED_CMD ran (model=${model}) and matched embeddings, but none passed the scope/label/importance filters; results use lexical FTS + decay.`
+            ];
+          } else {
+            bumpAccess(db3, ranked.map((memory) => memory.memory_id));
+            delete payload["judgment_required"];
+            delete payload["judgment_reason"];
+            payload["memories"] = ranked.slice(0, limit);
+            payload["count"] = Math.min(ranked.length, limit);
+            payload["mode"] = "semantic";
+            payload["embedding_model"] = model;
           }
-          bumpAccess(db3, ranked.map((memory) => memory.memory_id));
-          payload["memories"] = ranked.slice(0, limit);
-          payload["count"] = Math.min(ranked.length, limit);
-          payload["mode"] = "semantic";
-          payload["embedding_model"] = model;
         }
       } catch (err) {
         payload["warnings"] = [
@@ -7509,83 +7730,6 @@ function cmdReleaseFileLock(db3, args2, dbPath2, opts2) {
   }
   return emit({ db_path: dbPath2, ...result }, 0, opts2);
 }
-function cmdMemoryIndex(db3, args2, dbPath2, opts2) {
-  const limit = args2["limit"] ? parseInt(String(args2["limit"]), 10) : 30;
-  const minImportance = args2["min_importance"] ? parseInt(String(args2["min_importance"]), 10) : 1;
-  const stdout = Boolean(args2["stdout"]);
-  const wsPath = args2["workspace"] ? String(args2["workspace"]) : null;
-  const conds = [];
-  const binds = [minImportance];
-  let sql = `SELECT memory_id, label, importance, task_context, observation, tags_json,
-                    failure_signature, created_at
-     FROM memories WHERE state = 'ACTIVE' AND importance >= ?`;
-  if (wsPath) {
-    sql += " AND (workspace_path = ? OR workspace_path IS NULL)";
-    binds.push(wsPath);
-  }
-  if (args2["artifact"]) {
-    sql += " AND (artifact = ? OR artifact IS NULL)";
-    binds.push(String(args2["artifact"]));
-  }
-  if (args2["repo"]) {
-    sql += " AND (repo = ? OR repo IS NULL)";
-    binds.push(String(args2["repo"]));
-  }
-  if (args2["ref"]) {
-    sql += " AND (ref = ? OR ref IS NULL)";
-    binds.push(String(args2["ref"]));
-  }
-  sql += " ORDER BY importance DESC, access_count DESC, last_accessed_at DESC LIMIT ?";
-  binds.push(limit);
-  void conds;
-  const rows = db3.prepare(sql).all(...binds);
-  if (rows.length > 0) {
-    const refs = db3.prepare(
-      `SELECT memory_id, reference
-       FROM memory_refs
-       WHERE memory_id IN (${rows.map(() => "?").join(",")})
-       ORDER BY memory_id, ordinal`
-    ).all(...rows.map((row) => row.memory_id));
-    const refsByMemory = /* @__PURE__ */ new Map();
-    for (const ref of refs) {
-      const list = refsByMemory.get(ref.memory_id) ?? [];
-      list.push(ref.reference);
-      refsByMemory.set(ref.memory_id, list);
-    }
-    for (const row of rows) row.references = refsByMemory.get(row.memory_id) ?? [];
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const lines = [
-    `# Memory Index \u2014 ${now}`,
-    `<!-- Auto-generated by octocode-awareness memory-index. Regenerate after recording or forgetting memories. -->`,
-    "",
-    `**${rows.length} active memories** (importance \u2265 ${minImportance}, sorted by salience)`,
-    ""
-  ];
-  for (const m of rows) {
-    const tags = parseJsonList(m.tags_json).join(", ");
-    lines.push(`## [${m.label}:${m.importance}] ${m.task_context.slice(0, 80)}`);
-    lines.push(`> ${m.observation.slice(0, 200)}`);
-    if (tags) lines.push(`*Tags: ${tags}*`);
-    if (m.references.length > 0) lines.push(`*References: ${m.references.join(", ")}*`);
-    if (m.failure_signature) lines.push(`*Failure: ${m.failure_signature}*`);
-    lines.push("");
-  }
-  const content = lines.join("\n");
-  if (stdout) {
-    process.stdout.write(content + "\n");
-    return 0;
-  }
-  const outPath = args2["out"] ? String(args2["out"]) : null;
-  const targetPath = outPath ?? resolveDbPath(null).replace("awareness.sqlite3", "MEMORY.md");
-  try {
-    mkdirSync5(dirname6(targetPath), { recursive: true });
-    writeFileSync4(targetPath, content, "utf8");
-  } catch (err) {
-    return emit({ db_path: dbPath2, error: `Could not write MEMORY.md: ${err.message}` }, 1, opts2);
-  }
-  return emit({ db_path: dbPath2, ok: true, path: targetPath, count: rows.length }, 0, opts2);
-}
 function cmdForget(db3, args2, dbPath2, opts2) {
   const rawIds = args2["memory_id"];
   const memoryIds = Array.isArray(rawIds) ? rawIds : rawIds ? [String(rawIds)] : [];
@@ -7670,7 +7814,7 @@ function cmdQuery(db3, args2, dbPath2, opts2) {
   });
   const outPath = args2["out"] ? String(args2["out"]) : null;
   if (outPath) {
-    const resolvedOutPath = isAbsolute6(outPath) ? resolve11(outPath) : resolve11(workspacePath, outPath);
+    const resolvedOutPath = isAbsolute6(outPath) ? resolve12(outPath) : resolve12(workspacePath, outPath);
     mkdirSync5(dirname6(resolvedOutPath), { recursive: true });
     writeFileSync4(resolvedOutPath, formatAwarenessQueryResult(result, format), "utf8");
     return emit({ db_path: dbPath2, path: resolvedOutPath, view: result.view, count: result.count }, 0, opts2);
@@ -7693,26 +7837,6 @@ function cmdAttend(db3, args2, dbPath2, opts2) {
     includeBodies: flagBool(args2["include_bodies"]),
     explainOrgan: flagBool(args2["explain_organ"]),
     compact: opts2.compact
-  });
-  return emit({ db_path: dbPath2, ...result }, 0, opts2);
-}
-function cmdView(db3, args2, dbPath2, opts2) {
-  const view = String(args2["view"] ?? args2._[0] ?? "all");
-  const result = writeAwarenessView(db3, {
-    view,
-    workspacePath: args2["workspace"] ? String(args2["workspace"]) : process.cwd(),
-    artifact: args2["artifact"] ? String(args2["artifact"]) : null,
-    repo: args2["repo"] ? String(args2["repo"]) : null,
-    ref: args2["ref"] ? String(args2["ref"]) : null,
-    query: args2["query"] ? String(args2["query"]) : null,
-    limit: args2["limit"] ? parseInt(String(args2["limit"]), 10) : void 0,
-    agentId: args2["agent_id"] ? String(args2["agent_id"]) : null,
-    state: Array.isArray(args2["state"]) ? args2["state"].map(String) : args2["state"] ? String(args2["state"]) : null,
-    label: Array.isArray(args2["label"]) ? args2["label"].map(String) : args2["label"] ? String(args2["label"]) : null,
-    file: args2["file"] ? String(Array.isArray(args2["file"]) ? args2["file"][0] : args2["file"]) : null,
-    since: args2["since"] ? String(args2["since"]) : null,
-    includeBodies: flagBool(args2["include_bodies"]),
-    out: args2["out"] ? String(args2["out"]) : void 0
   });
   return emit({ db_path: dbPath2, ...result }, 0, opts2);
 }
@@ -7813,61 +7937,6 @@ function cmdDocStaleness(db3, args2, dbPath2, opts2) {
     }
   }
   return emit({ db_path: dbPath2, ...result, proposed }, 0, opts2);
-}
-function cmdNotify(db3, args2, dbPath2, opts2) {
-  if (!args2["agent_id"]) return emit({ error: "--agent-id is required" }, 1, opts2);
-  if (!args2["kind"]) return emit({ error: "--kind is required" }, 1, opts2);
-  if (!args2["subject"]) return emit({ error: "--subject is required" }, 1, opts2);
-  const rawFiles = args2["file"];
-  const files = Array.isArray(rawFiles) ? rawFiles : rawFiles ? [String(rawFiles)] : [];
-  const rawRefIds = args2["ref_id"];
-  const refIds = Array.isArray(rawRefIds) ? rawRefIds : rawRefIds ? [String(rawRefIds)] : [];
-  const result = insertNotification(db3, {
-    agentId: String(args2["agent_id"]),
-    workspacePath: args2["workspace"] ? String(args2["workspace"]) : null,
-    artifact: args2["artifact"] ? String(args2["artifact"]) : null,
-    repo: args2["repo"] ? String(args2["repo"]) : null,
-    ref: args2["ref"] ? String(args2["ref"]) : null,
-    toAgent: args2["to"] ? String(args2["to"]) : null,
-    kind: normalizeNotificationKind(args2["kind"], { coerce: Boolean(args2["compat_coerce"]) }),
-    subject: String(args2["subject"]),
-    body: args2["body"] ? String(args2["body"]) : null,
-    files,
-    refIds,
-    inReplyTo: args2["in_reply_to"] ? String(args2["in_reply_to"]) : null,
-    importance: args2["importance"] ? parseInt(String(args2["importance"]), 10) : 5
-  });
-  return emit({ db_path: dbPath2, ...result }, 0, opts2);
-}
-function cmdNotifyGet(db3, args2, dbPath2, opts2) {
-  if (!args2["agent_id"]) return emit({ error: "--agent-id is required" }, 1, opts2);
-  const rawKinds = args2["kind"];
-  const kinds = Array.isArray(rawKinds) ? rawKinds : rawKinds ? [String(rawKinds)] : [];
-  const result = getNotifications(db3, {
-    agentId: String(args2["agent_id"]),
-    workspacePath: args2["workspace"] ? String(args2["workspace"]) : null,
-    artifact: args2["artifact"] ? String(args2["artifact"]) : null,
-    repo: args2["repo"] ? String(args2["repo"]) : null,
-    ref: args2["ref"] ? String(args2["ref"]) : null,
-    kinds,
-    threadId: args2["thread_id"] ? String(args2["thread_id"]) : null,
-    unreadOnly: args2["all"] ? false : true,
-    markRead: Boolean(args2["mark_read"]),
-    limit: args2["limit"] ? parseInt(String(args2["limit"]), 10) : 20
-  });
-  return emit({ db_path: dbPath2, ...result }, 0, opts2);
-}
-function cmdNotifyResolve(db3, args2, dbPath2, opts2) {
-  const rawIds = args2["signal_id"];
-  const notificationIds = Array.isArray(rawIds) ? rawIds : rawIds ? [String(rawIds)] : [];
-  const result = resolveNotification(db3, {
-    agentId: args2["agent_id"] ? String(args2["agent_id"]) : null,
-    notificationIds,
-    threadId: args2["thread_id"] ? String(args2["thread_id"]) : null,
-    workspacePath: args2["workspace"] ? String(args2["workspace"]) : null,
-    artifact: args2["artifact"] ? String(args2["artifact"]) : null
-  });
-  return emit({ db_path: dbPath2, ...result }, 0, opts2);
 }
 function cmdAgentSignal(db3, args2, dbPath2, opts2) {
   if (!args2["agent_id"]) return emit({ error: "--agent-id is required" }, 1, opts2);
@@ -8093,7 +8162,7 @@ start: attend, workspace status, memory recall, refinement get, signal list, que
 edit: lock acquire, lock wait, lock release, lock prune, verify mark, verify audit
 messages: signal publish, signal list, signal reply, signal ack, signal resolve, signal prune, agent register, agent list
 learning: memory record, memory forget, refinement set, refinement get, refinement delete, reflect record, reflect mine-weakness, reflect export-harness, reflect developer-review, docs list, docs show, docs staleness
-repo context: query <view> [--format json|table|csv|markdown|html], repo inject
+repo context: query files|workboard|all|developer-review [--format json|table|csv|markdown|html], repo inject
 hooks: hook run <pre-edit|post-edit|harness-guard|stop-verify|notify-deliver|session-end>, hooks install|check|remove --host claude|codex|cursor
 utility: session capture, maintenance init, maintenance self-test, maintenance digest
 
@@ -8106,7 +8175,8 @@ examples:
   octocode-awareness lock acquire --agent-id agent --target-file src/file.ts --rationale "edit" --compact
   octocode-awareness signal list --agent-id agent --workspace "$PWD" --compact
   octocode-awareness schema commands --compact
-  octocode-awareness query gotchas --workspace "$PWD" --format json --limit 20 --compact
+  octocode-awareness query files --workspace "$PWD" --format table --limit 50
+  octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
   octocode-awareness repo inject --workspace "$PWD" --mode local --compact
 
 Run "octocode-awareness <command> --help" for command flags. Exit 2 = lock conflict or wait timeout.`;
@@ -8116,7 +8186,7 @@ start: attend; workspace status; memory recall; refinement get; signal list; doc
 edit: lock acquire|wait|release|prune; verify audit|mark
 msg: signal publish|list|reply|ack|resolve|prune; agent register|list
 learn: memory record|forget; reflect record|mine-weakness|export-harness|developer-review; maintenance digest
-repo: query <view> --format json|table|csv|markdown|html; repo inject
+repo: query files|workboard|all|developer-review --format json|table|csv|markdown|html; repo inject
 inspect: schema commands --compact; docs list|show; schema json-schema <name>; <command> --help`;
 var COMMAND_TO_SCHEMA = {
   "tell-memory": "tell_memory",
@@ -8302,8 +8372,10 @@ example: octocode-awareness reflect developer-review --workspace "$PWD" --format
 note: reads agent feedback on the instructions themselves (from reflect record --fix-instructions); same rows feed .octocode/DEVELOPER_REVIEW.md`,
   "query": `usage: octocode-awareness query <all|repo-profile|memories|gotchas|lessons|tasks|locks|agents|signals|refinements|files|activity|workboard|developer-review> [--workspace <repo>] [--format json|table|csv|markdown|html] [--out <path>]
 examples:
+  octocode-awareness query files --workspace "$PWD" --format table --limit 50
   octocode-awareness query workboard --workspace "$PWD" --format json --limit 10 --compact
   octocode-awareness query all --workspace "$PWD" --format html --out .octocode/awareness/index.html
+note: files/memories expose missing file references as file_exists, missing_file, missing_references, and stale_file_refs workboard reasons
 schema: octocode-awareness schema json-schema query --compact`,
   "attend": `usage: octocode-awareness attend [--workspace <repo>] [--query <text>] [--file <p>]... [--limit <n>] [--include-bodies] [--explain-organ]
 example: octocode-awareness attend --query "current task" --workspace "$PWD" --compact
@@ -8396,6 +8468,7 @@ if (command && KNOWN_FLAGS[command]) {
     process.exit(1);
   }
 }
+if (command && command !== UNKNOWN_COMMAND) validateFlagValues(args);
 var dbPath = resolveDbPath(globalDb ?? null);
 var compact = args["compact"] === true || process.env["OCTOCODE_AWARENESS_COMPACT"] === "1";
 var opts = { compact };
@@ -8431,6 +8504,7 @@ if (command === "schema") {
   process.exit(result.status ?? 1);
 }
 if (command === "hook-run") {
+  if (globalDb) die("hook run ignores --db: hooks always use the canonical store. Remove --db, or set OCTOCODE_MEMORY_HOME to relocate the store.");
   process.exit(await runHookCommand(String(args._[0] ?? "help")));
 }
 if (command === "hooks-install") {
@@ -8486,27 +8560,6 @@ try {
     case "verify":
       exitCode = cmdVerify(db2, args, dbPath, opts);
       break;
-    case "notify-get": {
-      const ngFormat = String(args["format"] ?? "json");
-      const ngAgentId = args["agent_id"];
-      if (ngAgentId && ngFormat !== "hook") {
-        exitCode = cmdNotifyGet(db2, args, dbPath, opts);
-      } else {
-        const ngParams = {
-          workspace: args["workspace"],
-          artifact: args["artifact"],
-          format: ngFormat,
-          agent_id: ngAgentId
-        };
-        const ngResult = notifyGet(db2, ngParams);
-        if (ngFormat === "hook" && ngResult["additionalContext"]) {
-          exitCode = emit({ additionalContext: ngResult["additionalContext"] }, 0, opts);
-        } else {
-          exitCode = emit({ db_path: dbPath, ...ngResult }, 0, opts);
-        }
-      }
-      break;
-    }
     case "session-capture":
       exitCode = emit({
         db_path: dbPath,
@@ -8539,14 +8592,6 @@ try {
     case "docs-catalog":
       exitCode = cmdDocsCatalog(db2, args, dbPath, opts);
       break;
-    case "workspace-status": {
-      const wsStatusResult = getWorkspaceStatus(db2, {
-        workspace_path: args["workspace"],
-        artifact: args["artifact"]
-      });
-      exitCode = emit({ db_path: dbPath, ...wsStatusResult }, 0, opts);
-      break;
-    }
     case "digest": {
       const retDays = args["retention_days"] ? Number(args["retention_days"]) : void 0;
       const handoffDays = args["refinement_handoff_retention_days"] ? Number(args["refinement_handoff_retention_days"]) : void 0;
@@ -8597,9 +8642,6 @@ try {
       exitCode = emit({ db_path: dbPath, ...waitResult }, waitResult.lock_free ? 0 : 2, opts);
       break;
     }
-    case "memory-index":
-      exitCode = cmdMemoryIndex(db2, args, dbPath, opts);
-      break;
     case "forget":
       exitCode = cmdForget(db2, args, dbPath, opts);
       break;
@@ -8618,17 +8660,11 @@ try {
     case "attend":
       exitCode = cmdAttend(db2, args, dbPath, opts);
       break;
-    case "view":
-      exitCode = cmdView(db2, args, dbPath, opts);
-      break;
     case "repo-inject":
       exitCode = cmdRepoInject(db2, args, dbPath, opts);
       break;
     case "agent-registry":
       exitCode = cmdAgentRegistry(db2, args, dbPath, opts);
-      break;
-    case "notify":
-      exitCode = cmdNotify(db2, args, dbPath, opts);
       break;
     case "agent-signal": {
       const signalFormat = String(args["format"] ?? "json");
@@ -8645,9 +8681,6 @@ try {
       }
       break;
     }
-    case "notify-resolve":
-      exitCode = cmdNotifyResolve(db2, args, dbPath, opts);
-      break;
     case "notify-prune":
       exitCode = cmdNotifyPrune(db2, args, dbPath, opts);
       break;
