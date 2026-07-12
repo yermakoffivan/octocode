@@ -1,0 +1,49 @@
+{
+  "name": "octocode-monorepo",
+  "version": "1.0.0",
+  "description": "Monorepo for Octocode MCP and related packages - Model Context Protocol server for advanced GitHub repository analysis and code discovery.",
+  "author": "Guy Bary <bgauryy@octocodeai.com>",
+  "homepage": "https://octocode.ai",
+  "repository": "bgauryy/octocode-mcp.git",
+  "bugs": "https://github.com/bgauryy/octocode-mcp/issues",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "yarn@4.9.1",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "yarn prepublish && node ./scripts/workspace-health.mjs run build",
+    "build:native:all": "yarn workspace @octocodeai/octocode-engine build:all",
+    "platforms:check": "yarn workspace @octocodeai/octocode-engine platforms:check",
+    "build:publish": "yarn prepublish && yarn build:native:all && yarn platforms:check && yarn workspace @octocodeai/mcp build:publish",
+    "docs:verify": "node ./scripts/docs-verify.mjs",
+    "health:check": "node ./scripts/workspace-health.mjs check",
+    "health:report": "node ./scripts/workspace-health.mjs report",
+    "lint": "node ./scripts/workspace-health.mjs run lint",
+    "lint:fix": "yarn workspaces foreach -Apt run lint:fix",
+    "deps:dedupe": "node ./scripts/dedupe-deps.mjs",
+    "deps:dedupe:fix": "node ./scripts/dedupe-deps.mjs --fix",
+    "test": "node ./scripts/workspace-health.mjs run test",
+    "test:quiet": "yarn workspaces foreach -Apt run test:quiet",
+    "typecheck": "node ./scripts/workspace-health.mjs run typecheck",
+    "verify": "node ./scripts/workspace-health.mjs verify",
+    "prepublish": "yarn readme:sync",
+    "readme:sync": "node ./scripts/sync-package-readmes.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "prettier": "^3.8.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.61.1"
+  },
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "packages/octocode-engine/npm/*",
+    "skills"
+  ]
+}
