@@ -1,10 +1,61 @@
 {
   "name": "@octocodeai/mcp",
-  "version": "1.0.2",
-  "publishConfig": {
-    "access": "public"
-  },
   "description": "Model Context Protocol (MCP) server for advanced GitHub repository analysis and code discovery. Provides AI assistants with powerful tools to search, analyze, and understand codebases across GitHub.",
+  "version": "17.0.1",
+  "author": "Guy Bary <bgauryy@octocodeai.com>",
+  "bin": {
+    "octocode-mcp": "dist/index.js"
+  },
+  "bugs": "https://github.com/bgauryy/octocode/issues",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@octocodeai/config": "17.0.1",
+    "@octocodeai/octocode-core": "^16.6.3",
+    "@octocodeai/octocode-engine": "17.0.1",
+    "@octocodeai/octocode-tools-core": "17.0.1",
+    "@octokit/oauth-methods": "^6.0.2",
+    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/request": "^10.0.10",
+    "node-cache": "^5.1.2",
+    "octokit": "^5.0.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/ui": "^4.1.9",
+    "esbuild": "^0.28.1",
+    "eslint": "^9.18.0",
+    "rollup": "^4.52.5",
+    "rollup-plugin-dts": "^6.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/public.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/public.d.ts"
+    },
+    "./public": {
+      "types": "./dist/public.d.ts",
+      "import": "./dist/public.js"
+    }
+  },
+  "files": [
+    "dist/*.js",
+    "dist/**/*.d.ts",
+    "manifest.json",
+    "server.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "homepage": "https://octocode.ai",
   "keywords": [
     "ai-tools",
     "anthropic",
@@ -26,46 +77,20 @@
     "semantic-search",
     "typescript"
   ],
-  "author": "Guy Bary <bgauryy@octocodeai.com>",
-  "homepage": "https://octocode.ai",
-  "repository": "bgauryy/octocode.git",
-  "bugs": "https://github.com/bgauryy/octocode/issues",
   "license": "MIT",
-  "type": "module",
   "main": "dist/index.js",
-  "types": "dist/public.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/public.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./types": {
-      "types": "./dist/public.d.ts"
-    },
-    "./public": {
-      "types": "./dist/public.d.ts",
-      "import": "./dist/public.js"
-    }
+  "mcp": {
+    "type": "stdio",
+    "command": "octocode-mcp",
+    "args": []
   },
-  "bin": {
-    "octocode-mcp": "dist/index.js"
+  "mcpName": "io.github.bgauryy/octocode-mcp",
+  "publishConfig": {
+    "access": "public"
   },
-  "files": [
-    "dist/*.js",
-    "dist/**/*.d.ts",
-    "manifest.json",
-    "server.json",
-    "LICENSE",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=20.0.0"
-  },
+  "repository": "bgauryy/octocode.git",
   "scripts": {
     "build": "yarn readme:sync && yarn clean && node build.mjs && yarn build:types",
-    "build:publish": "yarn build",
-    "build:types": "tsc --emitDeclarationOnly --outDir dist/.types -p tsconfig.build.json && node scripts/bundle-dts.mjs",
-    "build:dev": "yarn readme:sync && yarn workspace @octocodeai/octocode-tools-core build:dev && OCTOCODE_RUNTIME_PLATFORMS=native node build.mjs && yarn build:types",
     "build:bin": "bun build ./src/index.ts --compile --minify --sourcemap --outfile dist/octocode-mcp && node scripts/bundle-security.mjs darwin-arm64 dist && node scripts/bundle-engine.mjs darwin-arm64 dist",
     "build:bin:all": "bun run build:bin:linux-x64 && bun run build:bin:linux-arm64 && bun run build:bin:linux-x64-musl && bun run build:bin:darwin-arm64 && bun run build:bin:darwin-x64 && bun run build:bin:windows-x64",
     "build:bin:darwin-arm64": "bun build ./src/index.ts --compile --minify --sourcemap --target=bun-darwin-arm64 --outfile dist/octocode-mcp-darwin-arm64 && node scripts/bundle-security.mjs darwin-arm64 dist && node scripts/bundle-engine.mjs darwin-arm64 dist",
@@ -75,6 +100,9 @@
     "build:bin:linux-x64-musl": "bun build ./src/index.ts --compile --minify --sourcemap --target=bun-linux-x64-musl --outfile dist/octocode-mcp-linux-x64-musl && node scripts/bundle-security.mjs linux-x64-musl dist && node scripts/bundle-engine.mjs linux-x64-musl dist",
     "build:bin:windows-x64": "bun build ./src/index.ts --compile --minify --sourcemap --target=bun-windows-x64 --outfile dist/octocode-mcp-windows-x64.exe && node scripts/bundle-security.mjs windows-x64 dist && node scripts/bundle-engine.mjs windows-x64 dist",
     "build:ci": "yarn verify && yarn build",
+    "build:dev": "yarn readme:sync && yarn workspace @octocodeai/octocode-tools-core build:dev && OCTOCODE_RUNTIME_PLATFORMS=native node build.mjs && yarn build:types",
+    "build:publish": "yarn build",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist/.types -p tsconfig.build.json && node scripts/bundle-dts.mjs",
     "build:watch": "node build.mjs --watch",
     "clean": "rm -rf dist/",
     "debug": "npx @modelcontextprotocol/inspector node dist/index.js",
@@ -84,8 +112,9 @@
     "lint:fix": "eslint src tests --fix",
     "mcp:contracts": "yarn test:contracts",
     "mcp:package": "yarn lint && yarn typecheck && yarn test:contracts",
-    "prepack": "yarn readme:sync && node scripts/check-no-workspace-protocol.mjs && node scripts/prepack.mjs",
-    "prepublishOnly": "node scripts/check-no-workspace-protocol.mjs",
+    "prepack": "yarn readme:sync && node ../octocode/scripts/check-no-workspace-protocol.mjs && node scripts/prepack.mjs",
+    "prepublishOnly": "node ../octocode/scripts/check-no-workspace-protocol.mjs",
+    "readme:sync": "node ../../scripts/sync-package-readmes.mjs .",
     "test": "node ../../node_modules/vitest/vitest.mjs run --coverage",
     "test:contracts": "OCTOCODE_ENFORCE_WARNING_FREE_TESTS=1 node ../../node_modules/vitest/vitest.mjs run tests/index.test.ts tests/index.shutdown.test.ts tests/serverConfig*.test.ts tests/tools/providerExecution.test.ts tests/tools/toolConfig*.test.ts tests/tools/toolFilters.test.ts tests/tools/directToolCatalog.test.ts tests/tools/all-tools.pagination-contract.test.ts tests/tools/lsp_new_public_tools.test.ts tests/tools/toolMetadata.final.test.ts tests/tools/registerBasicTool.test.ts tests/tools/registerRemoteTool*.test.ts tests/security/all-tools-sanitization.test.ts tests/scheme/ tests/utils/bulkOperations.test.ts tests/flows/",
     "test:contracts:flows": "OCTOCODE_ENFORCE_WARNING_FREE_TESTS=1 node ../../node_modules/vitest/vitest.mjs run tests/flows/",
@@ -98,37 +127,8 @@
     "typecheck": "tsc --noEmit --skipLibCheck -p tsconfig.package.json",
     "typecheck:full": "tsc --noEmit --skipLibCheck",
     "verify": "yarn mcp:package",
-    "verify:full": "yarn lint && yarn typecheck:full && yarn test",
-    "readme:sync": "node ../../scripts/sync-package-readmes.mjs ."
+    "verify:full": "yarn lint && yarn typecheck:full && yarn test"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@octocodeai/octocode-core": "^16.6.3",
-    "@octocodeai/octocode-engine": "^16.7.0",
-    "@octokit/oauth-methods": "^6.0.2",
-    "@octokit/plugin-throttling": "^11.0.3",
-    "@octokit/request": "^10.0.10",
-    "node-cache": "^5.1.2",
-    "octokit": "^5.0.5",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@octocodeai/config": "workspace:*",
-    "@octocodeai/octocode-tools-core": "16.6.3",
-    "@types/node": "^25.9.3",
-    "@vitest/coverage-v8": "^4.1.9",
-    "@vitest/ui": "^4.1.9",
-    "esbuild": "^0.28.1",
-    "eslint": "^9.18.0",
-    "rollup": "^4.52.5",
-    "rollup-plugin-dts": "^6.2.3",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
-  },
-  "mcp": {
-    "type": "stdio",
-    "command": "octocode-mcp",
-    "args": []
-  },
-  "mcpName": "io.github.bgauryy/octocode-mcp"
+  "type": "module",
+  "types": "dist/public.d.ts"
 }

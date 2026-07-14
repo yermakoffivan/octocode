@@ -1,24 +1,24 @@
 {
   "name": "@octocodeai/octocode-engine-win32-x64-msvc",
-  "version": "16.7.0",
-  "os": [
-    "win32"
-  ],
+  "description": "High-performance Rust minification for Octocode — win32-x64",
+  "version": "17.0.1",
+  "author": "Guy Bary <bgauryy@octocodeai.com>",
   "cpu": [
     "x64"
   ],
-  "main": "octocode-engine.win32-x64-msvc.node",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "files": [
     "octocode-engine.win32-x64-msvc.node"
   ],
-  "description": "High-performance Rust minification for Octocode — win32-x64",
-  "author": "Guy Bary <bgauryy@octocodeai.com>",
   "license": "MIT",
+  "main": "octocode-engine.win32-x64-msvc.node",
+  "os": [
+    "win32"
+  ],
   "publishConfig": {
     "access": "public"
-  },
-  "engines": {
-    "node": ">=20.0.0"
   },
   "repository": {
     "type": "git",
@@ -26,6 +26,6 @@
     "directory": "packages/octocode-engine"
   },
   "scripts": {
-    "prepublishOnly": "node ../verify-binary.cjs"
+    "prepublishOnly": "node ../../../octocode/scripts/check-no-workspace-protocol.mjs && node ../verify-binary.cjs"
   }
 }

@@ -1,7 +1,45 @@
 {
   "name": "octocode",
-  "version": "2.4.0",
   "description": "Code research CLI for Octocode tools, local workspaces, GitHub repositories, LSP, and MCP setup",
+  "version": "17.0.1",
+  "author": "Guy Bary <bgauryy@octocodeai.com>",
+  "bin": "./out/octocode.js",
+  "bugs": "https://github.com/bgauryy/octocode/issues",
+  "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
+    "@octocodeai/config": "17.0.1",
+    "@octocodeai/octocode-core": "^16.6.3",
+    "@octocodeai/octocode-engine": "17.0.1",
+    "@octocodeai/octocode-tools-core": "17.0.1",
+    "@octokit/auth-oauth-device": "^8.0.3",
+    "@octokit/oauth-methods": "^6.0.2",
+    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/request": "^10.0.10",
+    "node-cache": "^5.1.2",
+    "octokit": "^5.0.5",
+    "open": "^11.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "^4.1.9",
+    "esbuild": "^0.28.1",
+    "eslint": "^9.18.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=20.12.0"
+  },
+  "files": [
+    "out",
+    "docs/**",
+    "assets/example.png",
+    "README.md",
+    "LICENSE"
+  ],
+  "homepage": "https://octocode.ai",
   "keywords": [
     "ai-coding",
     "claude",
@@ -17,26 +55,11 @@
     "windsurf",
     "zed"
   ],
-  "author": "Guy Bary <bgauryy@octocodeai.com>",
-  "homepage": "https://octocode.ai",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bgauryy/octocode.git",
     "directory": "packages/octocode"
-  },
-  "bugs": "https://github.com/bgauryy/octocode/issues",
-  "license": "MIT",
-  "type": "module",
-  "bin": "./out/octocode.js",
-  "files": [
-    "out",
-    "docs/**",
-    "assets/example.png",
-    "README.md",
-    "LICENSE"
-  ],
-  "engines": {
-    "node": ">=20.12.0"
   },
   "scripts": {
     "build": "yarn readme:sync && yarn lint && node build.mjs",
@@ -46,7 +69,7 @@
     "lint:fix": "eslint src tests --fix",
     "prepack": "yarn readme:sync && node scripts/check-no-workspace-protocol.mjs && node scripts/prepack.mjs",
     "prepublishOnly": "node scripts/check-no-workspace-protocol.mjs",
-    "sync:version:publish": "node scripts/sync-version-publish.mjs",
+    "readme:sync": "node ../../scripts/sync-package-readmes.mjs .",
     "start": "node ./out/octocode.js",
     "test": "vitest run --coverage",
     "test:quiet": "vitest run --reporter=dot --silent",
@@ -54,31 +77,7 @@
     "typecheck": "tsc --noEmit",
     "validate:mcp": "npx tsx scripts/validate-mcp-registry.ts",
     "validate:mcp:json": "npx tsx scripts/validate-mcp-registry.ts --json",
-    "verify": "yarn lint && yarn typecheck && yarn test && yarn validate:mcp",
-    "readme:sync": "node ../../scripts/sync-package-readmes.mjs ."
+    "verify": "yarn lint && yarn typecheck && yarn test && yarn validate:mcp"
   },
-  "dependencies": {
-    "@inquirer/prompts": "^8.5.2",
-    "@octocodeai/octocode-core": "^16.6.3",
-    "@octocodeai/octocode-engine": "^16.7.0",
-    "@octokit/auth-oauth-device": "^8.0.3",
-    "@octokit/oauth-methods": "^6.0.2",
-    "@octokit/plugin-throttling": "^11.0.3",
-    "@octokit/request": "^10.0.10",
-    "node-cache": "^5.1.2",
-    "octokit": "^5.0.5",
-    "open": "^11.0.0",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@octocodeai/config": "workspace:*",
-    "@octocodeai/octocode-tools-core": "16.6.3",
-    "@types/node": "^25.9.3",
-    "@vitest/coverage-v8": "^4.1.9",
-    "esbuild": "^0.28.1",
-    "eslint": "^9.18.0",
-    "tsx": "^4.22.4",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
-  }
+  "type": "module"
 }
