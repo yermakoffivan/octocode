@@ -17,6 +17,7 @@ const BUILD_OUTPUTS = {
   'packages/octocode-mcp': ['dist/index.js'],
   'packages/octocode': ['out/octocode.js'],
   'packages/octocode-vscode': ['out/extension.js'],
+  'packages/octocode-skills': ['out/cli.js', 'out/index.js'],
 };
 
 function readJson(filePath) {
@@ -268,8 +269,22 @@ function runVerify(workspaces) {
 }
 
 function main() {
-  const [mode = 'report', scriptName] = process.argv.slice(2);
-  const workspaces = discoverWorkspaces();
+  const args = process.argv.slice(2);
+  const excludes = [];
+  const positional = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--exclude' && i + 1 < args.length) {
+      excludes.push(args[++i]);
+    } else {
+      positional.push(args[i]);
+    }
+  }
+  const [mode = 'report', scriptName] = positional;
+
+  let workspaces = discoverWorkspaces();
+  if (excludes.length > 0) {
+    workspaces = workspaces.filter(ws => !excludes.includes(ws.name));
+  }
 
   switch (mode) {
     case 'report':
@@ -285,7 +300,7 @@ function main() {
       return;
     case 'run':
       if (!scriptName) {
-        console.error('Usage: node scripts/workspace-health.mjs run <script>');
+        console.error('Usage: node scripts/workspace-health.mjs run <script> [--exclude <workspace>]');
         process.exit(1);
       }
       checkRequiredScripts(workspaces);

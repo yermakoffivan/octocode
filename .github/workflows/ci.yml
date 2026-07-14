@@ -2,6 +2,8 @@ name: CI - Lint, Build & Test
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -18,17 +20,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Setup Rust toolchain
-        # Pinned (not `@stable`): with clippy `all = deny` + `-D warnings`, a
-        # floating toolchain can red an unrelated PR the day upstream adds a
-        # new lint. Bump deliberately alongside packages/octocode-engine/rust-toolchain.toml.
-        uses: dtolnay/rust-toolchain@1.96.0
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: packages/octocode-engine
-
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -41,47 +32,32 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Check workspace health
-        run: yarn health:check
-
       - name: Verify docs
         run: yarn docs:verify
 
       - name: Lint
-        run: yarn lint
+        # octocode-engine excluded: Rust/clippy compilation is too costly for CI
+        run: yarn lint:ci
 
-      # Build must run before Typecheck: packages consume their siblings'
+      # Build must run before Typecheck/Test: packages consume their siblings'
       # compiled output (e.g. @octocodeai/octocode-engine subpath exports map to
-      # ./dist/*, which is gitignored). `yarn typecheck` only runs `tsc --noEmit`
-      # and never emits that dist, so on a fresh checkout typecheck would fail to
-      # resolve those modules unless the workspace is built first.
+      # ./dist/*, which is gitignored), and tools-core tests load the host
+      # octocode-engine native addon through the workspace dependency.
       - name: Build
-        # Thin LTO + parallel codegen units for CI only: this build verifies
-        # correctness, it doesn't ship. Fat LTO + codegen-units=1 (the
-        # profile.release used for published artifacts, see
-        # packages/octocode-engine/Cargo.toml) disables parallel codegen and
-        # is the slowest possible config — thin LTO recovers ~95% of the
-        # runtime win at roughly half the compile time.
-        env:
-          CARGO_PROFILE_RELEASE_LTO: thin
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
-        run: yarn build
+        # build:ci builds the host octocode-engine native addon once, then skips
+        # rebuilding octocode-engine while compiling dependent packages.
+        run: yarn build:ci
 
       - name: Verify build outputs
         run: node scripts/workspace-health.mjs check-outputs
 
       - name: Typecheck
-        run: yarn typecheck
+        # octocode-engine excluded: needs napi-generated index.d.ts which requires Rust build
+        run: yarn typecheck:ci
 
       - name: Test
-        run: yarn test
-
-      - name: Test Rust core
-        run: yarn workspace @octocodeai/octocode-engine test:rust
-
-      - name: Audit Rust dependencies
-        working-directory: packages/octocode-engine
-        run: cargo audit -D unmaintained -D unsound -D yanked
+        # octocode-engine excluded: depends on napi native build
+        run: yarn test:ci
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4

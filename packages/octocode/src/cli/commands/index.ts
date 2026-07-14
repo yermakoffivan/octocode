@@ -17,7 +17,6 @@ const commandLoaders: Record<string, CommandLoader> = {
   // Search is the single read-only research surface. Workflow commands below
   // are kept when they provide distinct materialization/cache actions.
   search: async () => (await import('./search.js')).searchCommand,
-  skill: async () => (await import('./skill.js')).skillCommand,
   cache: async () => (await import('./cache.js')).cacheCommand,
   clone: async () => (await import('./clone.js')).cloneCommand,
   install: async () => (await import('./install.js')).installCommand,
@@ -26,6 +25,7 @@ const commandLoaders: Record<string, CommandLoader> = {
   logout: async () => (await import('./auth.js')).logoutCommand,
   status: async () => (await import('./status.js')).statusCommand,
   'lsp-server': async () => (await import('./lsp-server.js')).lspServerCommand,
+  skill: async () => (await import('./skill.js')).skillCommand,
 };
 
 // Every command the CLI dispatches. Each MUST have a matching spec in
